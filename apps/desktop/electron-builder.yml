@@ -1,0 +1,18 @@
+appId: ai.thanos.wallet
+productName: Thanos Wallet
+files:
+  - dist/**
+  - index.html
+mac:
+  category: public.app-category.finance
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+publish: never
