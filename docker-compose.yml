@@ -1,0 +1,172 @@
+version: '3.9'
+
+# =============================================================================
+# THANOS WALLET — LOCAL DEVELOPMENT STACK
+# Usage:
+#   docker compose up -d          → start everything
+#   docker compose up -d postgres redis   → infra only
+#   docker compose logs -f api    → tail a service
+#   docker compose down -v        → stop + wipe volumes
+# =============================================================================
+
+services:
+
+  # ─── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: thanos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-thanos_wallet}
+      POSTGRES_USER:     ${POSTGRES_USER:-thanos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thanos_dev_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thanos} -d ${POSTGRES_DB:-thanos_wallet}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: thanos-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis_dev_secret}
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_secret}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── Backend Services ────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: thanos-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV:          development
+      PORT:              4000
+      DATABASE_URL:      postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD:-thanos_dev_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet}
+      REDIS_URL:         redis://:${REDIS_PASSWORD:-redis_dev_secret}@redis:6379
+      JWT_SECRET:        ${JWT_SECRET:-change_this_in_production_min_32_chars}
+      JWT_EXPIRES_IN:    ${JWT_EXPIRES_IN:-15m}
+      REFRESH_EXPIRES_IN: ${REFRESH_EXPIRES_IN:-30d}
+      CORS_ORIGINS:      ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60000}
+      RATE_LIMIT_MAX:    ${RATE_LIMIT_MAX:-100}
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./services/api/src:/app/src:ro   # hot-reload in dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  indexer:
+    build:
+      context: .
+      dockerfile: services/indexer/Dockerfile
+    container_name: thanos-indexer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV:         development
+      PORT:             4010
+      DATABASE_URL:     postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD:-thanos_dev_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet}
+      REDIS_URL:        redis://:${REDIS_PASSWORD:-redis_dev_secret}@redis:6379
+      # Lithosphere RPC
+      LITHO_RPC_PRIMARY:   ${LITHO_RPC_PRIMARY:-https://rpc.litho.ai}
+      LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-fallback.litho.ai}
+      LITHO_CHAIN_ID:      ${LITHO_CHAIN_ID:-700777}
+      # EVM RPCs
+      ETH_RPC_URL:         ${ETH_RPC_URL:-https://eth.llamarpc.com}
+      BNB_RPC_URL:         ${BNB_RPC_URL:-https://bsc-dataseed.binance.org}
+      # BTC
+      BTC_RPC_URL:         ${BTC_RPC_URL:-https://blockstream.info/api}
+      # SOL
+      SOL_RPC_URL:         ${SOL_RPC_URL:-https://api.mainnet-beta.solana.com}
+      # LEP100 contract addresses (Makalu)
+      MAKALU_LEP100_WLITHO_ADDRESS: ${MAKALU_LEP100_WLITHO_ADDRESS:-}
+      MAKALU_LEP100_LAX_ADDRESS:    ${MAKALU_LEP100_LAX_ADDRESS:-}
+      MAKALU_LEP100_COLLE_ADDRESS:  ${MAKALU_LEP100_COLLE_ADDRESS:-}
+      MAKALU_LEP100_AGII_ADDRESS:   ${MAKALU_LEP100_AGII_ADDRESS:-}
+      MAKALU_LEP100_IMAGE_ADDRESS:  ${MAKALU_LEP100_IMAGE_ADDRESS:-}
+      MAKALU_LEP100_JOT_ADDRESS:    ${MAKALU_LEP100_JOT_ADDRESS:-}
+      MAKALU_LEP100_BLDR_ADDRESS:   ${MAKALU_LEP100_BLDR_ADDRESS:-}
+      MAKALU_LEP100_FGPT_ADDRESS:   ${MAKALU_LEP100_FGPT_ADDRESS:-}
+      MAKALU_LEP100_MUSA_ADDRESS:   ${MAKALU_LEP100_MUSA_ADDRESS:-}
+    ports:
+      - "4010:4010"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4010/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    container_name: thanos-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV:         development
+      DATABASE_URL:     postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD:-thanos_dev_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet}
+      REDIS_URL:        redis://:${REDIS_PASSWORD:-redis_dev_secret}@redis:6379
+      INDEXER_URL:      http://indexer:4010
+      MULTX_API_URL:    ${MULTX_API_URL:-}
+      MULTX_API_KEY:    ${MULTX_API_KEY:-}
+      PRICE_API_URL:    ${PRICE_API_URL:-https://api.coingecko.com/api/v3}
+
+  # ─── Monitoring (local dev) ──────────────────────────────────────────────────
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: thanos-redis-insight
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
