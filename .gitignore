@@ -42,6 +42,11 @@ pnpm-debug.log*
 # Lockfile (project preference)
 pnpm-lock.yaml
 
+# Loose design assets (not source)
+*.fig
+19SHPQjQ.png
+_fig_extract/
+
 # Native / mobile artifacts
 apps/mobile/android/app/build/
 apps/mobile/ios/build/
