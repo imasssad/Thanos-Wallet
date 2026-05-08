@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Thanos Wallet",
+    "slug": "thanos-wallet",
+    "scheme": "thanoswallet",
+    "ios": {
+      "bundleIdentifier": "ai.thanos.wallet"
+    },
+    "android": {
+      "package": "ai.thanos.wallet"
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}
