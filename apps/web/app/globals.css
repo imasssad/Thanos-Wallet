@@ -1,0 +1,254 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* ═══════════════════════════════════════════════════════════════
+     CANONICAL THANOS PALETTE — same values across all 4 apps
+     Edit here? Also update: apps/desktop/src/renderer/styles.css,
+     apps/extension/src/entrypoints/popup/popup.css, apps/mobile/App.tsx
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* Surfaces (dark theme is default) */
+  --bg-base:     #080809;
+  --bg-surface:  #0e0e12;
+  --bg-card:     #141418;
+  --bg-elevated: #1c1c22;
+  --bg-hover:    #232329;
+  --bg-active:   #2c2c34;
+
+  /* Borders */
+  --border-subtle:  #1c1c24;
+  --border-default: #282834;
+  --border-strong:  #383848;
+  --border-glow:    rgba(59, 122, 247, 0.20);
+
+  /* ── Brand accent (purple, secondary) ── */
+  --accent-100: #e8e5fd;
+  --accent-200: #d4cdfb;
+  --accent-300: #b9aef9;
+  --accent-400: #a395f8;
+  --accent-500: #8b7df7;
+  --accent-600: #7060e0;
+  --accent-700: #5b4cc4;
+  --accent-glow:    rgba(139, 125, 247, 0.14);
+  --accent-glow-lg: rgba(139, 125, 247, 0.06);
+
+  /* Legacy --purple-* aliases */
+  --purple-200: var(--accent-200);
+  --purple-300: var(--accent-300);
+  --purple-400: var(--accent-400);
+  --purple-500: var(--accent-500);
+  --purple-600: var(--accent-600);
+  --purple-700: var(--accent-700);
+  --purple-glow:    var(--accent-glow);
+  --purple-glow-lg: var(--accent-glow-lg);
+
+  /* Gradients */
+  --grad-primary: linear-gradient(180deg, #3b7af7 0%, #2563eb 100%);
+  --grad-accent:  linear-gradient(180deg, #8b7df7 0%, #7060e0 100%);
+  --grad-glass:   linear-gradient(180deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.005) 100%);
+  --grad-active:  linear-gradient(135deg, rgba(59,122,247,0.12) 0%, rgba(59,122,247,0.04) 100%);
+
+  /* Glass */
+  --glass-bg:     rgba(20, 20, 24, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  --glass-blur:   12px;
+  --glass-topbar-bg:            rgba(14, 14, 18, 0.75);
+  --glass-control-bg:           rgba(255, 255, 255, 0.04);
+  --glass-control-bg-hover:     rgba(255, 255, 255, 0.08);
+  --glass-control-bg-focus:     rgba(255, 255, 255, 0.06);
+  --glass-control-border-hover: rgba(255, 255, 255, 0.10);
+
+  /* ── Brand primary (blue, matches Thanos logo) ── */
+  --blue:       #3b7af7;
+  --blue-dim:   rgba(59, 122, 247, 0.12);
+  --blue-glow:  rgba(59, 122, 247, 0.20);
+
+  /* Semantic */
+  --green:       #10b981;
+  --green-dim:   rgba(16, 185, 129, 0.10);
+  --green-glow:  rgba(16, 185, 129, 0.18);
+  --red:         #f87171;
+  --red-dim:     rgba(248, 113, 113, 0.10);
+  --yellow:      #eab308;
+  --yellow-dim:  rgba(234, 179, 8, 0.10);
+  --orange:      #f97316;
+  --orange-dim:  rgba(249, 115, 22, 0.10);
+  --pink:        #f472b6;
+  --pink-dim:    rgba(244, 114, 182, 0.10);
+
+  /* Coin brand colors (universal) */
+  --btc: #f7931a;
+  --eth: #627eea;
+  --sol: #14f195;
+
+  /* Text */
+  --text-primary:   #f0f0f4;
+  --text-secondary: #9696aa;
+  --text-muted:     #52525b;
+  --text-inverse:   #0a0a0f;
+
+  /* ── Radius */
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-2xl:  28px;
+  --radius-full: 9999px;
+
+  /* ── Shadows (softer) */
+  --shadow-xs:     0 1px 2px rgba(0,0,0,0.4);
+  --shadow-sm:     0 2px 6px rgba(0,0,0,0.3);
+  --shadow-md:     0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg:     0 8px 32px rgba(0,0,0,0.5);
+  --shadow-accent: 0 2px 14px rgba(139, 125, 247, 0.30);
+  --shadow-card:   0 1px 0 rgba(255,255,255,0.02) inset, 0 1px 8px rgba(0,0,0,0.3);
+
+  /* ── Transitions */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 110ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+
+  /* ── Layout */
+  --sidebar-width: 220px;
+  --topbar-height: 58px;
+}
+
+/* ─── Light mode (canonical, matches desktop) ──────────────────── */
+:root[data-theme="light"] {
+  --bg-base:        #ffffff;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #f4f4f7;
+  --bg-card:        #ffffff;
+  --bg-hover:       #ebebf0;
+  --bg-active:      #e2e2e8;
+
+  --border-subtle:  #ececef;
+  --border-default: #d4d4d8;
+  --border-strong:  #a1a1aa;
+  --border-glow:    rgba(59, 122, 247, 0.25);
+
+  --glass-bg:                   rgba(255, 255, 255, 0.85);
+  --glass-border:               rgba(0, 0, 0, 0.07);
+  --glass-topbar-bg:            rgba(255, 255, 255, 0.92);
+  --glass-control-bg:           rgba(0, 0, 0, 0.04);
+  --glass-control-bg-hover:     rgba(0, 0, 0, 0.07);
+  --glass-control-bg-focus:     rgba(0, 0, 0, 0.05);
+  --glass-control-border-hover: rgba(0, 0, 0, 0.12);
+
+  --text-primary:   #0a0a0f;
+  --text-secondary: #52525b;
+  --text-muted:     #71717a;
+  --text-inverse:   #f4f4f5;
+
+  --shadow-xs:     0 1px 2px rgba(15,15,20,0.04);
+  --shadow-sm:     0 2px 6px rgba(15,15,20,0.06);
+  --shadow-md:     0 4px 16px rgba(15,15,20,0.08);
+  --shadow-lg:     0 12px 32px rgba(15,15,20,0.10);
+  --shadow-accent: 0 2px 14px rgba(59, 122, 247, 0.20);
+  --shadow-card:   0 0 0 1px rgba(15,15,20,0.04), 0 1px 4px rgba(15,15,20,0.05);
+
+  --green:       #16a34a;
+  --green-dim:   rgba(22, 163, 74, 0.10);
+  --red:         #dc2626;
+  --red-dim:     rgba(220, 38, 38, 0.10);
+  --yellow-dim:  rgba(234, 179, 8, 0.10);
+  --blue-dim:    rgba(59, 122, 247, 0.10);
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11' 1, 'ss01' 1;   /* Geist alternate forms */
+  background: var(--bg-base);
+  color: var(--text-primary);
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* Selection */
+::selection { background: rgba(139,125,247,0.25); color: var(--accent-200); }
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* Utilities */
+.mono {
+  font-family: 'Geist Mono', 'JetBrains Mono', monospace;
+  font-feature-settings: 'liga' 0;
+  letter-spacing: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Glass card */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+}
+
+/* Skeleton */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Fade-in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn var(--duration-slow) var(--ease-out) both;
+}
+
+/* Glow pulse */
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.7; }
+  50%       { opacity: 1; }
+}

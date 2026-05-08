@@ -1,0 +1,25 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.default { background: var(--bg-elevated); color: var(--text-secondary); }
+.green   { background: var(--green-dim);  color: var(--green); }
+.red     { background: var(--red-dim);    color: var(--red); }
+.yellow  { background: var(--yellow-dim); color: var(--yellow); }
+.blue    { background: var(--blue-dim);   color: var(--blue); }
+.purple  { background: var(--purple-glow); color: var(--purple-300); }
