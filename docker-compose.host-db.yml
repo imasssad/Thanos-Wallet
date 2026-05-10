@@ -26,6 +26,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    ${REDIS_URL}
     depends_on: !reset []
+    # Internal-only — worker reaches indexer via docker network at http://indexer:4010
+    ports: !reset []
 
   worker:
     extra_hosts:
