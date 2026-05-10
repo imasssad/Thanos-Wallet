@@ -21,10 +21,17 @@ const ACCOUNTS = [
     evm:    '',
   },
   {
-    chain: 'Solana',
-    symbol: 'SOL',
-    color: '#9945ff',
-    bech32: '7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV',
+    chain: 'EVM (wLITHO)',
+    symbol: 'wLITHO',
+    color: '#a395f8',
+    bech32: '',
+    evm:    '0x4F9a7Bc2d8e61f3A0c5b9D7e81fC3a2B4d8E6f1A',
+  },
+  {
+    chain: 'Makalu (FGPT)',
+    symbol: 'FGPT',
+    color: '#10b981',
+    bech32: 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v',
     evm:    '',
   },
   {

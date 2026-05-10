@@ -7,10 +7,11 @@ import { Badge } from '../ui/Badge';
 import { IconSend, IconChevronDown, IconCheck, IconAlert } from '../ui/Icons';
 
 const CHAINS = [
-  { id: 'makalu',  label: 'Makalu',  symbol: 'LITHO', color: '#8b7df7' },
-  { id: 'bitcoin', label: 'Bitcoin', symbol: 'BTC',   color: '#f97316' },
-  { id: 'solana',  label: 'Solana',  symbol: 'SOL',   color: '#9945ff' },
-  { id: 'evm',     label: 'EVM',     symbol: 'ETH',   color: '#627eea' },
+  { id: 'makalu',   label: 'Makalu',         symbol: 'LITHO',  color: '#8b7df7' },
+  { id: 'evm-wl',   label: 'EVM (wLITHO)',   symbol: 'wLITHO', color: '#a395f8' },
+  { id: 'makalu-f', label: 'Makalu (FGPT)',  symbol: 'FGPT',   color: '#10b981' },
+  { id: 'bitcoin',  label: 'Bitcoin',        symbol: 'BTC',    color: '#f97316' },
+  { id: 'evm',      label: 'EVM',            symbol: 'ETH',    color: '#627eea' },
 ];
 
 type Step = 'compose' | 'review' | 'sent';

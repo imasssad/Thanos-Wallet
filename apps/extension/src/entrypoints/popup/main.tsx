@@ -32,18 +32,20 @@ function deriveEvm(seed: string[]): string {
 /* ──────────────────────── Mock data ──────────────────────── */
 
 const ASSETS = [
-  { sym: 'LITHO', name: 'Lithosphere', bal: '4,280.00', usd: '$1,284.00', price: '$0.300',  chg:  3.42, color: '#8b7df7' },
-  { sym: 'BTC',   name: 'Bitcoin',     bal: '0.04821',  usd: '$2,891.00', price: '$59,962', chg: -1.17, color: '#f7931a' },
-  { sym: 'SOL',   name: 'Solana',      bal: '12.380',   usd: '$1,772.00', price: '$143.10', chg:  5.88, color: '#14f195' },
-  { sym: 'ETH',   name: 'Ethereum',    bal: '0.6142',   usd: '$2,210.00', price: '$3,598',  chg:  0.54, color: '#627eea' },
-  { sym: 'USDC',  name: 'USD Coin',    bal: '840.00',   usd: '$840.00',   price: '$1.00',   chg:  0.01, color: '#2775ca' },
+  { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000',   usd: '$15,000.00', price: '$0.300',  chg: 18.40, color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',             bal: '0.04821',  usd: '$2,891.00',  price: '$59,962', chg: -1.17, color: '#f7931a' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',    usd: '$1,500.00',  price: '$0.300',  chg: 18.40, color: '#a395f8' },
+  { sym: 'ETH',    name: 'Ethereum',            bal: '0.6142',   usd: '$2,210.00',  price: '$3,598',  chg:  0.54, color: '#627eea' },
+  { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000',   usd: '$1,200.00',  price: '$0.015',  chg: 42.30, color: '#10b981' },
+  { sym: 'USDC',   name: 'USD Coin',            bal: '840.00',   usd: '$840.00',    price: '$1.00',   chg:  0.01, color: '#2775ca' },
 ];
 
 const TXS = [
-  { type: 'Received', sym: 'LITHO', amt: '+1,200',  time: '2 min ago',  pos: true,  color: '#8b7df7' },
-  { type: 'Sent',     sym: 'BTC',   amt: '-0.012',  time: '1 hr ago',   pos: false, color: '#f7931a' },
-  { type: 'Swap',     sym: 'SOL',   amt: '2.4',     time: '3 hr ago',   pos: true,  color: '#14f195' },
-  { type: 'Received', sym: 'USDC',  amt: '+840',    time: 'Yesterday',  pos: true,  color: '#2775ca' },
+  { type: 'Received', sym: 'LITHO',  amt: '+1,200', time: '2 min ago', pos: true,  color: '#8b7df7' },
+  { type: 'Sent',     sym: 'BTC',    amt: '-0.012', time: '1 hr ago',  pos: false, color: '#f7931a' },
+  { type: 'Swap',     sym: 'wLITHO', amt: '+500',   time: '3 hr ago',  pos: true,  color: '#a395f8' },
+  { type: 'Sent',     sym: 'FGPT',   amt: '-2,000', time: '5 hr ago',  pos: false, color: '#10b981' },
+  { type: 'Received', sym: 'USDC',   amt: '+840',   time: 'Yesterday', pos: true,  color: '#2775ca' },
 ];
 
 /* ──────────────────────── Onboarding ──────────────────────── */
@@ -514,10 +516,11 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
 function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO'); const [to, setTo] = useState('ETH'); const [amt, setAmt] = useState('100');
   const rates: Record<string, Record<string, number>> = {
-    LITHO: { ETH: 0.0000832, BTC: 0.0000050, SOL: 0.00210, USDC: 0.30 },
-    BTC:   { LITHO: 199867, ETH: 16.22, SOL: 543.2, USDC: 63200 },
-    ETH:   { LITHO: 12018, BTC: 0.0617, SOL: 33.49, USDC: 3892 },
-    SOL:   { LITHO: 477, BTC: 0.00184, ETH: 0.0299, USDC: 116.2 },
+    LITHO:  { wLITHO: 1.0,    FGPT: 20.0,   ETH: 0.0000832, BTC: 0.0000050, USDC: 0.30 },
+    wLITHO: { LITHO: 1.0,     FGPT: 20.0,   ETH: 0.0000832, BTC: 0.0000050, USDC: 0.30 },
+    FGPT:   { LITHO: 0.05,    wLITHO: 0.05, ETH: 0.00000416, BTC: 0.00000025, USDC: 0.015 },
+    BTC:    { LITHO: 199867,  wLITHO: 199867, FGPT: 4213333, ETH: 16.22, USDC: 63200 },
+    ETH:    { LITHO: 12018,   wLITHO: 12018,  FGPT: 259467,  BTC: 0.0617, USDC: 3892 },
   };
   const out = ((rates[from]?.[to] ?? 1) * parseFloat(amt || '0')).toFixed(4);
   return (
@@ -526,7 +529,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">FROM</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={from} onChange={e => setFrom(e.target.value)}>
-            {['LITHO','BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
+            {['LITHO','wLITHO','FGPT','BTC','ETH'].map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
         </div>
@@ -534,7 +537,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">TO</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={to} onChange={e => setTo(e.target.value)}>
-            {['ETH','LITHO','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+            {['wLITHO','LITHO','FGPT','ETH','BTC','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>
         </div>

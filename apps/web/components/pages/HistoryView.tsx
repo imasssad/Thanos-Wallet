@@ -24,7 +24,7 @@ interface Tx {
 const MOCK_TXS: Tx[] = [
   { id: '1', type: 'receive', status: 'confirmed', amount: '+1,200',  symbol: 'LITHO', chain: 'Makalu',  from: 'litho1xm9…4a2f', hash: '0xabc123', time: '2 min ago',   usdValue: '$360.00' },
   { id: '2', type: 'send',    status: 'confirmed', amount: '-0.012',  symbol: 'BTC',   chain: 'Bitcoin', to:   'bc1q…mq',        hash: '0xdef456', time: '1 hr ago',   usdValue: '$719.52' },
-  { id: '3', type: 'swap',    status: 'confirmed', amount: '2.4',     symbol: 'SOL',   chain: 'Solana',  to:   'MultX router',   hash: '0x789abc', time: '3 hr ago',   usdValue: '$343.49' },
+  { id: '3', type: 'swap',    status: 'confirmed', amount: '500',     symbol: 'wLITHO', chain: 'EVM',     to:   'MultX router',   hash: '0x789abc', time: '3 hr ago',   usdValue: '$150.00' },
   { id: '4', type: 'receive', status: 'confirmed', amount: '+840',    symbol: 'USDC',  chain: 'EVM',     from: '0x1a2b…cd3e',   hash: '0x123def', time: 'Yesterday',   usdValue: '$840.00' },
   { id: '5', type: 'send',    status: 'pending',   amount: '-500',    symbol: 'COLLE', chain: 'Makalu',  to:   'litho1zr8…1k9p', hash: '0x456789', time: '2 days ago',  usdValue: '$10.00' },
   { id: '6', type: 'contract',status: 'confirmed', amount: 'LEP100 Approve', symbol: '', chain: 'Makalu', to: 'MultX DEX',      hash: '0x789012', time: '3 days ago',  usdValue: '' },

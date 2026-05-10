@@ -2,16 +2,18 @@
 import React, { useState } from 'react';
 
 const MARKET = [
-  { sym: 'BTC',  name: 'Bitcoin',      price: '$63,200.00', chg24: 2.4,  chg7: 8.1,  cap: '$1.24T',  vol: '$38.2B', color: '#f7931a' },
-  { sym: 'ETH',  name: 'Ethereum',     price: '$3,892.00',  chg24: -1.2, chg7: 4.3,  cap: '$468B',   vol: '$18.4B', color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',       price: '$116.20',    chg24: 5.8,  chg7: 12.6, cap: '$52.4B',  vol: '$4.1B',  color: '#14f195' },
-  { sym: 'BNB',  name: 'BNB',          price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
-  { sym: 'XRP',  name: 'XRP',          price: '$0.6280',    chg24: -3.4, chg7: -6.2, cap: '$34.8B',  vol: '$2.3B',  color: '#00aae4' },
-  { sym: 'ADA',  name: 'Cardano',      price: '$0.5140',    chg24: 1.1,  chg7: 3.8,  cap: '$18.2B',  vol: '$0.9B',  color: '#0033ad' },
-  { sym: 'AVAX', name: 'Avalanche',    price: '$38.40',     chg24: 4.2,  chg7: 9.4,  cap: '$15.6B',  vol: '$0.7B',  color: '#e84142' },
-  { sym: 'DOT',  name: 'Polkadot',     price: '$8.720',     chg24: -0.6, chg7: 1.2,  cap: '$11.4B',  vol: '$0.4B',  color: '#e6007a' },
-  { sym: 'DOGE', name: 'Dogecoin',     price: '$0.1024',    chg24: 6.3,  chg7: 18.2, cap: '$14.6B',  vol: '$1.1B',  color: '#c2a633' },
-  { sym: 'LINK', name: 'Chainlink',    price: '$14.82',     chg24: 2.9,  chg7: 7.3,  cap: '$8.7B',   vol: '$0.5B',  color: '#2a5ada' },
+  { sym: 'LITHO',  name: 'Lithosphere',         price: '$0.300',     chg24: 18.4, chg7: 32.1, cap: '$298M',   vol: '$24.5M', color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',             price: '$63,200.00', chg24: 2.4,  chg7: 8.1,  cap: '$1.24T',  vol: '$38.2B', color: '#f7931a' },
+  { sym: 'ETH',    name: 'Ethereum',            price: '$3,892.00',  chg24: -1.2, chg7: 4.3,  cap: '$468B',   vol: '$18.4B', color: '#627eea' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', price: '$0.300',     chg24: 18.4, chg7: 32.1, cap: '$84M',    vol: '$6.8M',  color: '#a395f8' },
+  { sym: 'FGPT',   name: 'FractalGPT',          price: '$0.0150',    chg24: 42.3, chg7: 88.7, cap: '$24M',    vol: '$3.2M',  color: '#10b981' },
+  { sym: 'BNB',    name: 'BNB',                 price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
+  { sym: 'XRP',    name: 'XRP',                 price: '$0.6280',    chg24: -3.4, chg7: -6.2, cap: '$34.8B',  vol: '$2.3B',  color: '#00aae4' },
+  { sym: 'ADA',    name: 'Cardano',             price: '$0.5140',    chg24: 1.1,  chg7: 3.8,  cap: '$18.2B',  vol: '$0.9B',  color: '#0033ad' },
+  { sym: 'AVAX',   name: 'Avalanche',           price: '$38.40',     chg24: 4.2,  chg7: 9.4,  cap: '$15.6B',  vol: '$0.7B',  color: '#e84142' },
+  { sym: 'DOT',    name: 'Polkadot',            price: '$8.720',     chg24: -0.6, chg7: 1.2,  cap: '$11.4B',  vol: '$0.4B',  color: '#e6007a' },
+  { sym: 'DOGE',   name: 'Dogecoin',            price: '$0.1024',    chg24: 6.3,  chg7: 18.2, cap: '$14.6B',  vol: '$1.1B',  color: '#c2a633' },
+  { sym: 'LINK',   name: 'Chainlink',           price: '$14.82',     chg24: 2.9,  chg7: 7.3,  cap: '$8.7B',   vol: '$0.5B',  color: '#2a5ada' },
 ];
 
 export function MarketView() {
@@ -73,11 +75,11 @@ export function MarketView() {
 
 export function PortfolioView() {
   const coins = [
-    { sym: 'BTC', name: 'Bitcoin',  bal: '5.050',  usd: 320250, chg: 24,  color: '#f7931a', pct: 44, price: '$63,200' },
-    { sym: 'ETH', name: 'Ethereum', bal: '94.30',  usd: 178150, chg: -6,  color: '#627eea', pct: 33, price: '$3,892' },
-    { sym: 'SOL', name: 'Solana',   bal: '148.2',  usd: 17548,  chg: 10,  color: '#14f195', pct: 14, price: '$116.20' },
-    { sym: 'BNB', name: 'BNB',      bal: '42.00',  usd: 17559,  chg: 0.8, color: '#f3ba2f', pct: 5,  price: '$418.30' },
-    { sym: 'XRP', name: 'XRP',      bal: '25000',  usd: 15700,  chg: -3.4,color: '#00aae4', pct: 4,  price: '$0.628' },
+    { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: 15000,  chg: 18,  color: '#8b7df7', pct: 28, price: '$0.30' },
+    { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: 320250, chg: 24,  color: '#f7931a', pct: 44, price: '$63,200' },
+    { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: 178150, chg: -6,  color: '#627eea', pct: 16, price: '$3,892' },
+    { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: 1500,   chg: 18,  color: '#a395f8', pct: 7,  price: '$0.30' },
+    { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: 1200,   chg: 42,  color: '#10b981', pct: 5,  price: '$0.015' },
   ];
   let offset = 0;
   const r = 70, circ = 2 * Math.PI * r;
@@ -157,14 +159,15 @@ export function PortfolioView() {
 }
 
 const ALL_TXS = [
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 22, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 BTC', pos: true,  color: '#f7931a' },
-  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 20, 2026', price: '$2,814',  type: 'Send',    status: 'Completed', amount: '-1.500 ETH', pos: false, color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',    date: 'Jan 19, 2026', price: '$118.40', type: 'Receive', status: 'Completed', amount: '+12.00 SOL', pos: true,  color: '#14f195' },
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 17, 2026', price: '$61,800', type: 'Send',    status: 'Completed', amount: '-0.050 BTC', pos: false, color: '#f7931a' },
-  { sym: 'USDC', name: 'USD Coin',  date: 'Jan 15, 2026', price: '$1.00',   type: 'Receive', status: 'Pending',   amount: '+840 USDC',  pos: true,  color: '#2775ca' },
-  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 14, 2026', price: '$3,100',  type: 'Swap',    status: 'Completed', amount: '+4.20 ETH',  pos: true,  color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',    date: 'Jan 12, 2026', price: '$98.10',  type: 'Send',    status: 'Failed',    amount: '-5.00 SOL',  pos: false, color: '#14f195' },
-  { sym: 'BNB',  name: 'BNB',       date: 'Jan 10, 2026', price: '$398.20', type: 'Receive', status: 'Completed', amount: '+2.50 BNB',  pos: true,  color: '#f3ba2f' },
+  { sym: 'LITHO',  name: 'Lithosphere',  date: 'Jan 22, 2026', price: '$0.30',   type: 'Receive', status: 'Completed', amount: '+1,200 LITHO',  pos: true,  color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',      date: 'Jan 20, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 BTC',    pos: true,  color: '#f7931a' },
+  { sym: 'ETH',    name: 'Ethereum',     date: 'Jan 19, 2026', price: '$2,814',  type: 'Send',    status: 'Completed', amount: '-1.500 ETH',    pos: false, color: '#627eea' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', date: 'Jan 18, 2026', price: '$0.30', type: 'Swap', status: 'Completed', amount: '+500 wLITHO', pos: true,  color: '#a395f8' },
+  { sym: 'FGPT',   name: 'FractalGPT',   date: 'Jan 17, 2026', price: '$0.015',  type: 'Send',    status: 'Completed', amount: '-2,000 FGPT',   pos: false, color: '#10b981' },
+  { sym: 'USDC',   name: 'USD Coin',     date: 'Jan 15, 2026', price: '$1.00',   type: 'Receive', status: 'Pending',   amount: '+840 USDC',     pos: true,  color: '#2775ca' },
+  { sym: 'ETH',    name: 'Ethereum',     date: 'Jan 14, 2026', price: '$3,100',  type: 'Swap',    status: 'Completed', amount: '+4.20 ETH',     pos: true,  color: '#627eea' },
+  { sym: 'LITHO',  name: 'Lithosphere',  date: 'Jan 12, 2026', price: '$0.28',   type: 'Send',    status: 'Failed',    amount: '-500 LITHO',    pos: false, color: '#8b7df7' },
+  { sym: 'BNB',    name: 'BNB',          date: 'Jan 10, 2026', price: '$398.20', type: 'Receive', status: 'Completed', amount: '+2.50 BNB',     pos: true,  color: '#f3ba2f' },
 ];
 
 export function TransactionsView() {
@@ -228,10 +231,10 @@ export function TransactionsView() {
 }
 
 const POOLS = [
-  { name: 'Ethereum 2.0', sym: 'ETH', apy: '4.20%', minStake: '0.01 ETH', tvl: '$12.4B', color: '#627eea', locked: false },
-  { name: 'Solana',       sym: 'SOL', apy: '6.80%', minStake: '0.01 SOL', tvl: '$4.2B',  color: '#14f195', locked: false },
-  { name: 'Polkadot',     sym: 'DOT', apy: '12.4%', minStake: '1 DOT',    tvl: '$1.1B',  color: '#e6007a', locked: true  },
-  { name: 'Avalanche',    sym: 'AVAX',apy: '9.10%', minStake: '25 AVAX',  tvl: '$2.8B',  color: '#e84142', locked: false },
+  { name: 'Lithosphere Validator', sym: 'LITHO',  apy: '18.40%', minStake: '100 LITHO', tvl: '$58M',   color: '#8b7df7', locked: false },
+  { name: 'Wrapped LITHO Pool',    sym: 'wLITHO', apy: '14.20%', minStake: '50 wLITHO', tvl: '$22M',   color: '#a395f8', locked: false },
+  { name: 'FractalGPT Stake',      sym: 'FGPT',   apy: '32.50%', minStake: '1,000 FGPT',tvl: '$8.4M',  color: '#10b981', locked: true  },
+  { name: 'Ethereum 2.0',          sym: 'ETH',    apy: '4.20%',  minStake: '0.01 ETH',  tvl: '$12.4B', color: '#627eea', locked: false },
 ];
 
 export function StakingView() {
@@ -250,14 +253,14 @@ export function StakingView() {
               Solstice
             </div>
             <div className="staking-row">
-              <div className="staking-token-icon">eU</div>
+              <div className="staking-token-icon">wL</div>
               <div>
-                <div className="staking-token-name">eUSX</div>
+                <div className="staking-token-name">wLITHO</div>
                 <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
               </div>
               <div className="staking-yield">
                 <div className="staking-yield-label">Annual yield</div>
-                <div className="staking-yield-val">10.05%</div>
+                <div className="staking-yield-val">14.20%</div>
               </div>
             </div>
             <div className="staking-meta"><span>41 days left · 4 months total</span><span>68%</span></div>

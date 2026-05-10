@@ -140,7 +140,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
         {step === 'welcome' && <>
           <h1 className="onboard-title">Welcome to Thanos</h1>
-          <p className="onboard-sub">Multi-chain Web4 wallet — Lithosphere · Bitcoin · Solana · EVM</p>
+          <p className="onboard-sub">Multi-chain Web4 wallet — Lithosphere · Bitcoin · EVM</p>
           <button className="btn-primary onboard-btn" onClick={startCreate}>Create new wallet</button>
           <button className="btn-outline onboard-btn" style={{ width: '100%' }} onClick={() => setStep('import')}>Import existing wallet</button>
         </>}

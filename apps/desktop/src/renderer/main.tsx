@@ -38,18 +38,20 @@ const Repeat2   = Ic(<><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0
 const ACCOUNT = { name: 'RobbyWallet', address: '0x70cA2F2B7' };
 
 const COINS = [
-  { sym: 'BTC',  name: 'Bitcoin',     bal: '5.050',  usd: '$320,250.00', chg:  24, color: '#f7931a', pct: 44 },
-  { sym: 'ETH',  name: 'Ethereum',    bal: '94.30',  usd: '$178,150.00', chg:  -6, color: '#627eea', pct: 33 },
-  { sym: 'SOL',  name: 'Solana',      bal: '148.2',  usd: '$17,548.00',  chg:  10, color: '#14f195', pct: 14 },
-  { sym: '···',  name: 'Other Coins', bal: '—',      usd: '$17,548.00',  chg:   2, color: '#52525b', pct:  9 },
+  { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: '$15,000.00',  chg:  18, color: '#8b7df7', pct: 28 },
+  { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: '$320,250.00', chg:  24, color: '#f7931a', pct: 44 },
+  { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: '$178,150.00', chg:  -6, color: '#627eea', pct: 16 },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500.00',   chg:  18, color: '#a395f8', pct:  7 },
+  { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: '$1,200.00',   chg:  42, color: '#10b981', pct:  5 },
 ];
 
 const TXS = [
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 22, 2026', price: '$63,200', status: 'Completed', amount: '+0.142 BTC', pos: true,  color: '#f7931a' },
-  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 20, 2026', price: '$2,814',  status: 'Completed', amount: '-1.500 ETH', pos: false, color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',    date: 'Jan 19, 2026', price: '$118.40', status: 'Completed', amount: '+12.00 SOL', pos: true,  color: '#14f195' },
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 17, 2026', price: '$61,800', status: 'Completed', amount: '-0.050 BTC', pos: false, color: '#f7931a' },
-  { sym: 'USDC', name: 'USD Coin',  date: 'Jan 15, 2026', price: '$1.00',   status: 'Pending',   amount: '+840 USDC',  pos: true,  color: '#2775ca' },
+  { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 22, 2026', price: '$0.30',   status: 'Completed', amount: '+1,200 LITHO', pos: true,  color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',             date: 'Jan 20, 2026', price: '$63,200', status: 'Completed', amount: '+0.142 BTC',   pos: true,  color: '#f7931a' },
+  { sym: 'ETH',    name: 'Ethereum',            date: 'Jan 19, 2026', price: '$2,814',  status: 'Completed', amount: '-1.500 ETH',   pos: false, color: '#627eea' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', date: 'Jan 18, 2026', price: '$0.30',   status: 'Completed', amount: '+500 wLITHO',  pos: true,  color: '#a395f8' },
+  { sym: 'FGPT',   name: 'FractalGPT',          date: 'Jan 17, 2026', price: '$0.015',  status: 'Completed', amount: '-2,000 FGPT',  pos: false, color: '#10b981' },
+  { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 15, 2026', price: '$1.00',   status: 'Pending',   amount: '+840 USDC',    pos: true,  color: '#2775ca' },
 ];
 
 /* ──────────────────────── Chart paths ──────────────────────── */
@@ -210,14 +212,14 @@ function StakingCard() {
         Solstice
       </div>
       <div className="staking-row">
-        <div className="staking-token-icon">eU</div>
+        <div className="staking-token-icon">wL</div>
         <div>
-          <div className="staking-token-name">eUSX</div>
+          <div className="staking-token-name">wLITHO</div>
           <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
         </div>
         <div className="staking-yield">
           <div className="staking-yield-label">Annual yield</div>
-          <div className="staking-yield-val">10.05%</div>
+          <div className="staking-yield-val">14.20%</div>
         </div>
       </div>
       <div className="staking-meta">
@@ -424,7 +426,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <label className="field-label">Asset</label>
         <select className="field-select" value={coin} onChange={e => setCoin(e.target.value)}>
-          {['LITHO','BTC','ETH','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+          {['LITHO','wLITHO','FGPT','BTC','ETH','USDC'].map(s => <option key={s}>{s}</option>)}
         </select>
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
@@ -466,9 +468,9 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   const [copied, setCopied] = useState(false);
 
   const meta = {
-    evm: { label: 'Ethereum / EVM',  network: 'Mainnet · ETH/ERC-20', color: '#627eea' },
-    btc: { label: 'Bitcoin',          network: 'Mainnet · Native SegWit', color: '#f7931a' },
-    sol: { label: 'Solana',           network: 'Mainnet',               color: '#14f195' },
+    evm: { label: 'Ethereum / EVM',  network: 'Mainnet · ETH/ERC-20 · wLITHO', color: '#627eea' },
+    btc: { label: 'Bitcoin',          network: 'Mainnet · Native SegWit',       color: '#f7931a' },
+    sol: { label: 'Lithosphere',      network: 'Makalu · LITHO/FGPT',           color: '#8b7df7' },
   } as const;
 
   const addr = ad[chain];
@@ -486,7 +488,7 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
         <div style={{ display: 'flex', gap: 6, marginBottom: 16, width: '100%' }}>
           {(['evm','btc','sol'] as const).map(c => (
             <button key={c} onClick={() => setChain(c)} className={`filter-pill ${chain === c ? 'active' : ''}`} style={{ flex: 1, fontSize: 11 }}>
-              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : 'SOL'}
+              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : 'LITHO'}
             </button>
           ))}
         </div>
@@ -529,10 +531,11 @@ function SwapModal({ onClose }: { onClose: () => void }) {
   const [to, setTo]     = useState('ETH');
   const [amt, setAmt]   = useState('100');
   const rates: Record<string, Record<string, number>> = {
-    LITHO: { BTC: 0.0000050, ETH: 0.0000832, SOL: 0.00210, USDC: 0.30 },
-    BTC:   { LITHO: 199867, ETH: 16.22, SOL: 543.2, USDC: 63200 },
-    ETH:   { LITHO: 12018, BTC: 0.0617, SOL: 33.49, USDC: 3892 },
-    SOL:   { LITHO: 477, BTC: 0.00184, ETH: 0.0299, USDC: 116.2 },
+    LITHO:  { wLITHO: 1.0,    FGPT: 20.0,   BTC: 0.0000050, ETH: 0.0000832, USDC: 0.30 },
+    wLITHO: { LITHO: 1.0,     FGPT: 20.0,   BTC: 0.0000050, ETH: 0.0000832, USDC: 0.30 },
+    FGPT:   { LITHO: 0.05,    wLITHO: 0.05, BTC: 0.00000025, ETH: 0.00000416, USDC: 0.015 },
+    BTC:    { LITHO: 199867,  wLITHO: 199867, FGPT: 4213333, ETH: 16.22, USDC: 63200 },
+    ETH:    { LITHO: 12018,   wLITHO: 12018,  FGPT: 259467,  BTC: 0.0617, USDC: 3892 },
   };
   const out = (rates[from]?.[to] ?? 1) * parseFloat(amt || '0');
 
@@ -542,7 +545,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="field-select" value={from} onChange={e => setFrom(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['LITHO','BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
+            {['LITHO','wLITHO','FGPT','BTC','ETH'].map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field-input" value={amt} onChange={e => setAmt(e.target.value)} type="number" placeholder="0.00" style={{ flex: 1 }}/>
         </div>
@@ -554,7 +557,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">To</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="field-select" value={to} onChange={e => setTo(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['ETH','LITHO','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+            {['wLITHO','LITHO','FGPT','ETH','BTC','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
             {out.toFixed(4)}
@@ -578,10 +581,12 @@ function SwapModal({ onClose }: { onClose: () => void }) {
 
 /* ──────────────────────── Market view ──────────────────────── */
 const MARKET = [
-  { sym: 'BTC',  name: 'Bitcoin',      price: '$63,200.00', chg24: 2.4,  chg7: 8.1,  cap: '$1.24T',  vol: '$38.2B', color: '#f7931a' },
-  { sym: 'ETH',  name: 'Ethereum',     price: '$3,892.00',  chg24: -1.2, chg7: 4.3,  cap: '$468B',   vol: '$18.4B', color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',       price: '$116.20',    chg24: 5.8,  chg7: 12.6, cap: '$52.4B',  vol: '$4.1B',  color: '#14f195' },
-  { sym: 'BNB',  name: 'BNB',          price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
+  { sym: 'LITHO',  name: 'Lithosphere',         price: '$0.300',     chg24: 18.4, chg7: 32.1, cap: '$298M',   vol: '$24.5M', color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',             price: '$63,200.00', chg24: 2.4,  chg7: 8.1,  cap: '$1.24T',  vol: '$38.2B', color: '#f7931a' },
+  { sym: 'ETH',    name: 'Ethereum',            price: '$3,892.00',  chg24: -1.2, chg7: 4.3,  cap: '$468B',   vol: '$18.4B', color: '#627eea' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', price: '$0.300',     chg24: 18.4, chg7: 32.1, cap: '$84M',    vol: '$6.8M',  color: '#a395f8' },
+  { sym: 'FGPT',   name: 'FractalGPT',          price: '$0.0150',    chg24: 42.3, chg7: 88.7, cap: '$24M',    vol: '$3.2M',  color: '#10b981' },
+  { sym: 'BNB',    name: 'BNB',                 price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
   { sym: 'XRP',  name: 'XRP',          price: '$0.6280',    chg24: -3.4, chg7: -6.2, cap: '$34.8B',  vol: '$2.3B',  color: '#00aae4' },
   { sym: 'ADA',  name: 'Cardano',      price: '$0.5140',    chg24: 1.1,  chg7: 3.8,  cap: '$18.2B',  vol: '$0.9B',  color: '#0033ad' },
   { sym: 'AVAX', name: 'Avalanche',    price: '$38.40',     chg24: 4.2,  chg7: 9.4,  cap: '$15.6B',  vol: '$0.7B',  color: '#e84142' },
@@ -651,11 +656,11 @@ function MarketView() {
 /* ──────────────────────── Portfolio view ──────────────────────── */
 function PortfolioView() {
   const coins = [
-    { sym: 'BTC', name: 'Bitcoin',  bal: '5.050',  usd: 320250, chg: 24,  color: '#f7931a', pct: 44, price: '$63,200' },
-    { sym: 'ETH', name: 'Ethereum', bal: '94.30',  usd: 178150, chg: -6,  color: '#627eea', pct: 33, price: '$3,892' },
-    { sym: 'SOL', name: 'Solana',   bal: '148.2',  usd: 17548,  chg: 10,  color: '#14f195', pct: 14, price: '$116.20' },
-    { sym: 'BNB', name: 'BNB',      bal: '42.00',  usd: 17559,  chg: 0.8, color: '#f3ba2f', pct: 5,  price: '$418.30' },
-    { sym: 'XRP', name: 'XRP',      bal: '25000',  usd: 15700,  chg: -3.4,color: '#00aae4', pct: 4,  price: '$0.628' },
+    { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: 15000,  chg: 18,  color: '#8b7df7', pct: 28, price: '$0.30' },
+    { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: 320250, chg: 24,  color: '#f7931a', pct: 44, price: '$63,200' },
+    { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: 178150, chg: -6,  color: '#627eea', pct: 16, price: '$3,892' },
+    { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: 1500,   chg: 18,  color: '#a395f8', pct: 7,  price: '$0.30' },
+    { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: 1200,   chg: 42,  color: '#10b981', pct: 5,  price: '$0.015' },
   ];
 
   // Donut chart
@@ -752,16 +757,17 @@ function PortfolioView() {
 
 /* ──────────────────────── Transactions view ──────────────────────── */
 const ALL_TXS = [
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 22, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 BTC', pos: true,  color: '#f7931a' },
-  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 20, 2026', price: '$2,814',  type: 'Send',    status: 'Completed', amount: '-1.500 ETH', pos: false, color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',    date: 'Jan 19, 2026', price: '$118.40', type: 'Receive', status: 'Completed', amount: '+12.00 SOL', pos: true,  color: '#14f195' },
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 17, 2026', price: '$61,800', type: 'Send',    status: 'Completed', amount: '-0.050 BTC', pos: false, color: '#f7931a' },
-  { sym: 'USDC', name: 'USD Coin',  date: 'Jan 15, 2026', price: '$1.00',   type: 'Receive', status: 'Pending',   amount: '+840 USDC',  pos: true,  color: '#2775ca' },
-  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 14, 2026', price: '$3,100',  type: 'Swap',    status: 'Completed', amount: '+4.20 ETH',  pos: true,  color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',    date: 'Jan 12, 2026', price: '$98.10',  type: 'Send',    status: 'Failed',    amount: '-5.00 SOL',  pos: false, color: '#14f195' },
-  { sym: 'BNB',  name: 'BNB',       date: 'Jan 10, 2026', price: '$398.20', type: 'Receive', status: 'Completed', amount: '+2.50 BNB',  pos: true,  color: '#f3ba2f' },
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 8, 2026',  price: '$59,400', type: 'Receive', status: 'Completed', amount: '+0.080 BTC', pos: true,  color: '#f7931a' },
-  { sym: 'USDC', name: 'USD Coin',  date: 'Jan 5, 2026',  price: '$1.00',   type: 'Send',    status: 'Completed', amount: '-250 USDC',  pos: false, color: '#2775ca' },
+  { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 22, 2026', price: '$0.30',   type: 'Receive', status: 'Completed', amount: '+1,200 LITHO',  pos: true,  color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',             date: 'Jan 20, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 BTC',    pos: true,  color: '#f7931a' },
+  { sym: 'ETH',    name: 'Ethereum',            date: 'Jan 19, 2026', price: '$2,814',  type: 'Send',    status: 'Completed', amount: '-1.500 ETH',    pos: false, color: '#627eea' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', date: 'Jan 18, 2026', price: '$0.30',   type: 'Swap',    status: 'Completed', amount: '+500 wLITHO',   pos: true,  color: '#a395f8' },
+  { sym: 'FGPT',   name: 'FractalGPT',          date: 'Jan 17, 2026', price: '$0.015',  type: 'Send',    status: 'Completed', amount: '-2,000 FGPT',   pos: false, color: '#10b981' },
+  { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 15, 2026', price: '$1.00',   type: 'Receive', status: 'Pending',   amount: '+840 USDC',     pos: true,  color: '#2775ca' },
+  { sym: 'ETH',    name: 'Ethereum',            date: 'Jan 14, 2026', price: '$3,100',  type: 'Swap',    status: 'Completed', amount: '+4.20 ETH',     pos: true,  color: '#627eea' },
+  { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 12, 2026', price: '$0.28',   type: 'Send',    status: 'Failed',    amount: '-500 LITHO',    pos: false, color: '#8b7df7' },
+  { sym: 'BNB',    name: 'BNB',                 date: 'Jan 10, 2026', price: '$398.20', type: 'Receive', status: 'Completed', amount: '+2.50 BNB',     pos: true,  color: '#f3ba2f' },
+  { sym: 'BTC',    name: 'Bitcoin',             date: 'Jan 8, 2026',  price: '$59,400', type: 'Receive', status: 'Completed', amount: '+0.080 BTC',    pos: true,  color: '#f7931a' },
+  { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 5, 2026',  price: '$1.00',   type: 'Send',    status: 'Completed', amount: '-250 USDC',     pos: false, color: '#2775ca' },
 ];
 
 function TransactionsView() {
@@ -828,10 +834,10 @@ function TransactionsView() {
 
 /* ──────────────────────── Staking view ──────────────────────── */
 const POOLS = [
-  { name: 'Ethereum 2.0', sym: 'ETH', apy: '4.20%', minStake: '0.01 ETH', tvl: '$12.4B', color: '#627eea', locked: false },
-  { name: 'Solana',       sym: 'SOL', apy: '6.80%', minStake: '0.01 SOL', tvl: '$4.2B',  color: '#14f195', locked: false },
-  { name: 'Polkadot',     sym: 'DOT', apy: '12.4%', minStake: '1 DOT',    tvl: '$1.1B',  color: '#e6007a', locked: true  },
-  { name: 'Avalanche',    sym: 'AVAX',apy: '9.10%', minStake: '25 AVAX',  tvl: '$2.8B',  color: '#e84142', locked: false },
+  { name: 'Lithosphere Validator', sym: 'LITHO',  apy: '18.40%', minStake: '100 LITHO',  tvl: '$58M',   color: '#8b7df7', locked: false },
+  { name: 'Wrapped LITHO Pool',    sym: 'wLITHO', apy: '14.20%', minStake: '50 wLITHO',  tvl: '$22M',   color: '#a395f8', locked: false },
+  { name: 'FractalGPT Stake',      sym: 'FGPT',   apy: '32.50%', minStake: '1,000 FGPT', tvl: '$8.4M',  color: '#10b981', locked: true  },
+  { name: 'Ethereum 2.0',          sym: 'ETH',    apy: '4.20%',  minStake: '0.01 ETH',   tvl: '$12.4B', color: '#627eea', locked: false },
 ];
 
 function StakingView() {
@@ -1120,7 +1126,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
         {step === 'welcome' && (
           <>
             <h1 className="onboard-title">Welcome to Thanos</h1>
-            <p className="onboard-sub">A multi-chain Web4 wallet — Lithosphere, Bitcoin, Solana, EVM.</p>
+            <p className="onboard-sub">A multi-chain Web4 wallet — Lithosphere, Bitcoin, EVM.</p>
             <button className="btn-primary onboard-btn" onClick={startCreate}>Create new wallet</button>
             <button className="btn-outline onboard-btn" style={{ width: '100%', height: 42 }} onClick={() => setStep('import')}>Import existing wallet</button>
           </>

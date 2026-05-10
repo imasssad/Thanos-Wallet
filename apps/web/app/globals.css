@@ -505,7 +505,7 @@ body {
   gap: 2px; margin: 4px 0 12px;
 }
 .alloc-seg { transition: flex 0.4s ease; }
-.alloc-coins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+.alloc-coins { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; }
 .alloc-coin {
   display: flex; flex-direction: column; gap: 4px;
   padding: 0 14px;
