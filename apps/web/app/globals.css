@@ -180,6 +180,9 @@ body {
   letter-spacing: -0.005em;
   min-height: 100vh;
   overflow-x: hidden;
+  /* Global UI zoom — scales all text, icons, and padding proportionally.
+     Set to 2 per user request; tune down if layout density becomes too low. */
+  zoom: 1.5;
 }
 
 /* Scrollbar */
