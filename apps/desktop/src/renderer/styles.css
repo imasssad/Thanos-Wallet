@@ -61,6 +61,8 @@ body {
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* Global UI zoom — matches web app, scales all text/icons/padding 1.5x */
+  zoom: 1.5;
 }
 
 input, textarea { user-select: text; font-family: inherit; }
