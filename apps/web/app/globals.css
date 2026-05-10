@@ -1711,26 +1711,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   width: 100%;
 }
 
-/* ── Eyebrow (universal pattern: 11px uppercase, 0.22em tracking) ── */
-.lp-eyebrow {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--accent-500);
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.lp-eyebrow::before {
-  content: '';
-  width: 22px;
-  height: 1px;
-  background: var(--accent-500);
-  opacity: 0.7;
-}
-
 /* ── Big headings — professional, not screaming ── */
 .lp-h2 {
   font-size: clamp(1.7rem, 3.4vw, 2.8rem);
@@ -1751,12 +1731,15 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 [data-theme="light"] .lp-lede { color: #52525b; }
 
-.lp-accent       { color: var(--accent-500); }
-.lp-accent-grad  {
-  background: linear-gradient(90deg, #8b7df7 0%, #3b7af7 60%, #06b6d4 100%);
+/* Accent: Thanos-blue gradient (matches the logo mark) — applied via
+   background-clip text trick so headlines get the blue→cyan sweep. */
+.lp-accent,
+.lp-accent-grad {
+  background: linear-gradient(90deg, #3b7af7 0%, #06b6d4 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: #3b7af7;  /* fallback */
 }
 
 /* ────────────────────────── NAV ────────────────────────── */
@@ -2515,13 +2498,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   50%      { opacity: 1;   transform: scale(1.25); }
 }
 
-.lp-dl-num {
-  font-size: 9.5px; font-weight: 700;
-  letter-spacing: 0.22em;
-  color: color-mix(in srgb, var(--tile-tint) 80%, transparent);
-  margin-top: 8px;
-}
-
 /* Icon: tinted per-platform, soft inner highlight */
 .lp-dl-icon {
   width: 44px; height: 44px;
@@ -2613,7 +2589,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 @media (max-width: 700px) {
   .lp-dl-list { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .lp-dl-row { padding: 18px 14px; }
-  .lp-dl-num { display: none; }
 }
 @media (max-width: 420px) {
   .lp-dl-list { grid-template-columns: 1fr; }

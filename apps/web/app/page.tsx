@@ -36,10 +36,6 @@ function useReveal<T extends HTMLElement>() {
   return { ref, shown };
 }
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <div className="lp-eyebrow">{children}</div>;
-}
-
 export default function Landing() {
   return (
     <div className="lp-root" data-landing="1">
@@ -89,8 +85,6 @@ function Hero() {
 
       <div className="lp-container lp-hero-stage">
         <div className="lp-hero-text">
-          <Eyebrow>YOUR KEYS · YOUR CRYPTO · ALWAYS</Eyebrow>
-
           <h1 className="lp-hero-title">
             <span className="lp-line"><span className="lp-line-inner">Every chain.</span></span>
             <span className="lp-line"><span className="lp-line-inner">One <span className="lp-accent">key.</span></span></span>
@@ -185,7 +179,6 @@ function DashboardSection() {
   return (
     <section id="dashboard" ref={ref} className={`lp-section ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
-        <Eyebrow>01 · THE DASHBOARD</Eyebrow>
         <h2 className="lp-h2">
           ONE DASHBOARD.<br/>
           EVERYTHING <span className="lp-accent">YOURS.</span>
@@ -252,7 +245,6 @@ function ChainsSection() {
   return (
     <section ref={ref} className={`lp-section lp-section-tight ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
-        <Eyebrow>02 · SUPPORTED CHAINS</Eyebrow>
         <h2 className="lp-h2">
           THREE WORLDS.<br/>
           ONE SIGNATURE.
@@ -288,7 +280,6 @@ function EcosystemSection() {
   return (
     <section id="ecosystem" ref={ref} className={`lp-section ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
-        <Eyebrow>03 · LITHO ECOSYSTEM</Eyebrow>
         <h2 className="lp-h2">
           STAKE LITHO.<br/>
           EARN <span className="lp-accent-grad">18.40%</span>.
@@ -325,7 +316,6 @@ function SecuritySection() {
       <div className="lp-container">
         <div className="lp-split">
           <div>
-            <Eyebrow>04 · SECURITY MODEL</Eyebrow>
             <h2 className="lp-h2">
               YOUR KEYS.<br/>
               YOUR DEVICE.<br/>
@@ -414,7 +404,6 @@ function PlatformSection() {
   return (
     <section id="download" ref={ref} className={`lp-section lp-section-tight ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
-        <Eyebrow>05 · DOWNLOAD</Eyebrow>
         <h2 className="lp-h2">
           ONE WALLET.<br/>
           EVERY DEVICE.
@@ -427,7 +416,8 @@ function PlatformSection() {
         <div className="lp-dl-list">
           {DOWNLOADS.map(({ n, name, sub, cta, href, ready, Icon }, idx) => {
             const Tag = ready ? Link : 'a';
-            const tints = ['#8b7df7', '#3b7af7', '#9ca3af', '#10b981', '#a395f8'];
+            // Web/Desktop = Thanos blue. iOS muted, Android green, Extension cyan.
+            const tints = ['#3b7af7', '#06b6d4', '#9ca3af', '#10b981', '#22d3ee'];
             return (
               <Tag
                 key={n}
@@ -443,7 +433,6 @@ function PlatformSection() {
                     : <>Coming soon</>
                   }
                 </div>
-                <div className="lp-dl-num">{n}</div>
                 <div className="lp-dl-icon"><Icon size={26}/></div>
                 <div className="lp-dl-info">
                   <div className="lp-dl-name">{name}</div>
@@ -473,7 +462,6 @@ function FinalCta() {
     <section ref={ref} className={`lp-final ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container lp-final-stage">
         <div className="lp-final-text">
-          <Eyebrow>READY?</Eyebrow>
           <h2 className="lp-final-h">GET<br/>STARTED.</h2>
           <Link href="/app" className="lp-btn-primary lp-btn-xl">
             Launch wallet <ArrowRight size={20}/>
