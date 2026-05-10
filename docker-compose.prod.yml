@@ -19,8 +19,9 @@ services:
     # Remove dev volume mount — use built image only
     volumes: []
     # Expose only on localhost; use nginx reverse proxy in front for SSL
+    # Port 4100 instead of 4000 to avoid conflict with stuck proxies
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:4100:4000"
 
   indexer:
     environment:
