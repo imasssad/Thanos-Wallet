@@ -17,6 +17,7 @@ COPY tsconfig.base.json ./
 
 # Copy package.json from each workspace package (without source — for cache)
 COPY apps/web/package.json              apps/web/
+COPY packages/api-client/package.json   packages/api-client/
 COPY packages/sdk-core/package.json     packages/sdk-core/
 COPY packages/sdk-react/package.json    packages/sdk-react/
 COPY packages/ui/package.json           packages/ui/
@@ -27,6 +28,7 @@ RUN pnpm install --filter @thanos/web... --frozen-lockfile=false --ignore-script
 
 # Now copy source for web + its workspace deps
 COPY apps/web              apps/web
+COPY packages/api-client   packages/api-client
 COPY packages/sdk-core     packages/sdk-core
 COPY packages/sdk-react    packages/sdk-react
 COPY packages/ui           packages/ui
