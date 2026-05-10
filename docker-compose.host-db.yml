@@ -10,15 +10,14 @@ services:
     profiles: ["disabled"]
 
   # api/indexer/worker connect to HOST Postgres + Redis via host.docker.internal.
-  # Override depends_on with empty MAP (not list) to clear the long-form deps
-  # in base docker-compose.yml.
+  # !reset tag (Compose >= 2.20) clears the depends_on inherited from base compose.
   api:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    ${REDIS_URL}
-    depends_on: {}
+    depends_on: !reset []
 
   indexer:
     extra_hosts:
@@ -26,7 +25,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    ${REDIS_URL}
-    depends_on: {}
+    depends_on: !reset []
 
   worker:
     extra_hosts:
@@ -34,7 +33,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    ${REDIS_URL}
-    depends_on: {}
+    depends_on: !reset []
 
   web:
-    depends_on: {}
+    depends_on: !reset []
