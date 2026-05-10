@@ -608,7 +608,10 @@ function OnboardingScreen({
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
-  const [verifyOrder, setVerifyOrder] = useState<string[]>([]);
+  /* Verify-phrase: only N indices missing; user fills them from a pool */
+  const VERIFY_MISSING = 4;
+  const [missingIdxs, setMissingIdxs] = useState<number[]>([]);
+  const [verifyPicks, setVerifyPicks] = useState<Record<number, string>>({});
   const [verifyPool,  setVerifyPool]  = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
@@ -619,26 +622,30 @@ function OnboardingScreen({
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
 
   const goToVerify = () => {
-    setVerifyOrder([]);
-    setVerifyPool([...seed].sort(() => Math.random() - 0.5));
+    const idxs = Array.from({ length: seed.length }, (_, i) => i)
+      .sort(() => Math.random() - 0.5).slice(0, VERIFY_MISSING).sort((a, b) => a - b);
+    setMissingIdxs(idxs);
+    setVerifyPicks({});
+    setVerifyPool(idxs.map(i => seed[i]).sort(() => Math.random() - 0.5));
     setStep('create-confirm');
   };
   const pickWord = (w: string) => {
-    setVerifyOrder(prev => [...prev, w]);
+    const nextEmpty = missingIdxs.find(i => verifyPicks[i] === undefined);
+    if (nextEmpty === undefined) return;
+    setVerifyPicks(prev => ({ ...prev, [nextEmpty]: w }));
     setVerifyPool(prev => {
       const i = prev.indexOf(w);
       return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
     });
   };
   const unpickAt = (slotIdx: number) => {
-    const w = verifyOrder[slotIdx];
+    const w = verifyPicks[slotIdx];
     if (w === undefined) return;
-    setVerifyOrder(prev => prev.filter((_, i) => i !== slotIdx));
+    setVerifyPicks(prev => { const next = { ...prev }; delete next[slotIdx]; return next; });
     setVerifyPool(prev => [...prev, w]);
   };
-  const allConfirmed = verifyOrder.length === seed.length
-                     && verifyOrder.every((w, i) => w === seed[i]);
-  const orderMismatch = verifyOrder.length === seed.length && !allConfirmed;
+  const allConfirmed = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] === seed[i]);
+  const orderMismatch = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] !== undefined) && !allConfirmed;
 
   const finishCreate = async () => {
     if (password !== password2 || password.length < 8) return;
@@ -770,12 +777,21 @@ function OnboardingScreen({
 
         {step === 'create-confirm' && <>
           <Text style={styles.onboardTitle}>Verify your phrase</Text>
-          <Text style={styles.onboardSub}>Tap the words in correct order. Tap a slot to undo.</Text>
+          <Text style={styles.onboardSub}>Fill in the {VERIFY_MISSING} missing words from the pool below. Tap a slot to undo.</Text>
           <View style={styles.seedGrid}>
-            {Array.from({ length: seed.length }).map((_, i) => {
-              const w = verifyOrder[i];
-              const filled = w !== undefined;
-              const wrong = orderMismatch && filled && seed[i] !== w;
+            {seed.map((word, i) => {
+              const isMissing = missingIdxs.includes(i);
+              const picked = verifyPicks[i];
+              const filled = picked !== undefined;
+              const wrong = orderMismatch && filled && seed[i] !== picked;
+              if (!isMissing) {
+                return (
+                  <View key={i} style={[styles.seedWord, { opacity: 0.5 }]}>
+                    <Text style={styles.seedNum}>{i + 1}.</Text>
+                    <Text style={styles.seedText}>{word}</Text>
+                  </View>
+                );
+              }
               return (
                 <Pressable
                   key={i}
@@ -793,7 +809,7 @@ function OnboardingScreen({
                   ]}
                 >
                   <Text style={styles.seedNum}>{i + 1}.</Text>
-                  <Text style={styles.seedText}>{filled ? w : ' '}</Text>
+                  <Text style={styles.seedText}>{picked ?? ' '}</Text>
                 </Pressable>
               );
             })}
