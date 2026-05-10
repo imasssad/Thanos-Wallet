@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { ArrowUpRight, ArrowDownLeft, Repeat, ChevronRight, ChevronDown, Maximize2 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 
 const COINS = [
@@ -169,15 +170,15 @@ export function Dashboard() {
               <span className="balance-change-pill">▲ +2.34%</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => setModal('send')} className="quick-action-btn">
-              <span className="quick-action-icon">↑</span><span>Send</span>
+              <span className="quick-action-icon"><ArrowUpRight size={14} strokeWidth={2.5}/></span><span>Send</span>
             </button>
             <button onClick={() => setModal('receive')} className="quick-action-btn">
-              <span className="quick-action-icon">↓</span><span>Receive</span>
+              <span className="quick-action-icon"><ArrowDownLeft size={14} strokeWidth={2.5}/></span><span>Receive</span>
             </button>
             <button onClick={() => setModal('swap')} className="quick-action-btn">
-              <span className="quick-action-icon">⇄</span><span>Swap</span>
+              <span className="quick-action-icon"><Repeat size={14} strokeWidth={2.5}/></span><span>Swap</span>
             </button>
           </div>
         </div>
