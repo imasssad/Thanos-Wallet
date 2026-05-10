@@ -1,6 +1,6 @@
 import React from 'react';
-import { HomeView } from '../components/wallet/HomeView';
+import { Dashboard } from '../components/dashboard';
 
 export default function Page() {
-  return <HomeView />;
+  return <Dashboard />;
 }
