@@ -1818,6 +1818,182 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   overflow: hidden;
 }
 
+/* Hero text + visual two-column layout */
+.lp-hero-stage {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: clamp(32px, 5vw, 80px);
+  align-items: center;
+  position: relative; z-index: 1;
+}
+.lp-hero-text { min-width: 0; }
+.lp-hero-visual {
+  display: flex; align-items: center; justify-content: center;
+  perspective: 1600px;
+  opacity: 0; transform: translateY(24px);
+  animation: lpFade 1s ease-out 0.55s forwards;
+}
+@media (max-width: 980px) {
+  .lp-hero-stage { grid-template-columns: 1fr; gap: 48px; }
+  .lp-hero-visual { order: -1; transform: scale(0.85) translateY(0); }
+}
+@media (max-width: 640px) {
+  .lp-hero-visual { display: none; }
+}
+
+/* ── Phone mockup (hero visual) ─────────────────────────────── */
+.lp-phone {
+  position: relative;
+  width: 280px;
+  filter: drop-shadow(0 50px 80px rgba(0,0,0,0.55));
+  transform: rotate(-3deg) translateY(-6px);
+  animation: lpPhoneFloat 6s ease-in-out infinite alternate;
+}
+@keyframes lpPhoneFloat {
+  0%   { transform: rotate(-3deg) translateY(-6px); }
+  100% { transform: rotate(-2deg) translateY(6px); }
+}
+.lp-phone-glow {
+  position: absolute; inset: -40px;
+  background: radial-gradient(circle, rgba(139,125,247,0.30) 0%, rgba(59,122,247,0.12) 40%, transparent 70%);
+  filter: blur(40px);
+  pointer-events: none;
+  z-index: -1;
+}
+.lp-phone-frame {
+  position: relative;
+  border-radius: 38px;
+  background: linear-gradient(180deg, #1c1c22 0%, #0a0a0e 100%);
+  padding: 10px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06) inset,
+    0 1px 0 rgba(255,255,255,0.10) inset,
+    0 -1px 0 rgba(0,0,0,0.5)         inset;
+}
+.lp-phone-notch {
+  position: absolute;
+  top: 18px; left: 50%; transform: translateX(-50%);
+  width: 96px; height: 22px;
+  background: #000;
+  border-radius: 999px;
+  z-index: 2;
+}
+.lp-phone-screen {
+  position: relative;
+  border-radius: 30px;
+  background:
+    radial-gradient(ellipse 100% 50% at 50% 0%, rgba(139,125,247,0.10) 0%, transparent 60%),
+    linear-gradient(180deg, #0e0e12 0%, #080809 100%);
+  padding: 38px 14px 12px;
+  overflow: hidden;
+  font-family: 'Geist', system-ui, sans-serif;
+}
+
+.lp-phone-status {
+  display: flex; justify-content: space-between;
+  font-size: 10px; font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  font-family: 'Geist Mono', monospace;
+  padding: 0 6px;
+  margin-bottom: 14px;
+}
+.lp-phone-greeting {
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  font-weight: 500;
+  margin: 4px 6px 6px;
+}
+.lp-phone-balance {
+  padding: 0 6px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 10px;
+}
+.lp-phone-label {
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(255,255,255,0.42);
+  margin-bottom: 4px;
+}
+.lp-phone-amt {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: #f0f0f4;
+  font-feature-settings: 'tnum' 1;
+  margin-bottom: 8px;
+}
+.lp-phone-cents { color: rgba(255,255,255,0.42); font-weight: 700; font-size: 20px; }
+.lp-phone-pill {
+  display: inline-block;
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.10em;
+  padding: 3px 8px;
+  background: rgba(16,185,129,0.14);
+  color: #10b981;
+  border-radius: 999px;
+}
+
+.lp-phone-coins {
+  display: flex; flex-direction: column;
+  margin-bottom: 10px;
+}
+.lp-phone-coin {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 6px;
+  border-radius: 8px;
+}
+.lp-phone-coin:hover { background: rgba(255,255,255,0.03); }
+.lp-phone-coin-icon {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-size: 10px; font-weight: 800;
+}
+.lp-phone-coin-info { min-width: 0; }
+.lp-phone-coin-name {
+  font-size: 11px; font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.lp-phone-coin-bal {
+  font-size: 9px;
+  color: rgba(255,255,255,0.42);
+  font-family: 'Geist Mono', monospace;
+}
+.lp-phone-coin-right { text-align: right; }
+.lp-phone-coin-usd {
+  font-size: 10px; font-weight: 700;
+  color: rgba(255,255,255,0.92);
+  font-feature-settings: 'tnum' 1;
+  line-height: 1.2;
+}
+.lp-phone-coin-chg { font-size: 9px; font-weight: 700; }
+.lp-phone-coin-chg.pos { color: #10b981; }
+.lp-phone-coin-chg.neg { color: #f87171; }
+
+.lp-phone-tabbar {
+  display: flex; justify-content: space-between;
+  margin-top: 8px;
+  padding: 8px 4px 4px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.lp-phone-tab {
+  font-size: 9px; font-weight: 600;
+  color: rgba(255,255,255,0.40);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.lp-phone-tab.active {
+  background: rgba(139,125,247,0.14);
+  color: #a395f8;
+}
+
 .lp-hero-bg {
   position: absolute; inset: 0;
   pointer-events: none;

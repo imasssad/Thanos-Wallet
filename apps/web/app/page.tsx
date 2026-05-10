@@ -87,38 +87,94 @@ function Hero() {
         <div className="lp-hero-grid" />
       </div>
 
-      <div className="lp-container">
-        <Eyebrow>WEB4 · LITHOSPHERE WALLET · v0.8.1</Eyebrow>
+      <div className="lp-container lp-hero-stage">
+        <div className="lp-hero-text">
+          <Eyebrow>WEB4 · LITHOSPHERE WALLET · v0.8.1</Eyebrow>
 
-        <h1 className="lp-hero-title">
-          <span className="lp-line"><span className="lp-line-inner">Every chain.</span></span>
-          <span className="lp-line"><span className="lp-line-inner">One <span className="lp-accent">key.</span></span></span>
-        </h1>
+          <h1 className="lp-hero-title">
+            <span className="lp-line"><span className="lp-line-inner">Every chain.</span></span>
+            <span className="lp-line"><span className="lp-line-inner">One <span className="lp-accent">key.</span></span></span>
+          </h1>
 
-        <p className="lp-hero-sub">
-          A self-custody wallet for the Lithosphere ecosystem.
-          LITHO, wLITHO, FGPT, BTC, ETH — signed with a single 12-word phrase
-          you actually own.
-        </p>
+          <p className="lp-hero-sub">
+            A self-custody wallet for the Lithosphere ecosystem.
+            LITHO, wLITHO, FGPT, BTC, ETH — signed with a single 12-word phrase
+            you actually own.
+          </p>
 
-        <div className="lp-hero-cta">
-          <Link href="/app" className="lp-btn-primary">
-            Launch wallet <ArrowRight size={16}/>
-          </Link>
-          <a href="#dashboard" className="lp-btn-ghost">See it in motion</a>
+          <div className="lp-hero-cta">
+            <Link href="/app" className="lp-btn-primary">
+              Launch wallet <ArrowRight size={16}/>
+            </Link>
+            <a href="#dashboard" className="lp-btn-ghost">See it in motion</a>
+          </div>
+
+          <div className="lp-hero-meta">
+            <span>Web · Desktop · iOS · Android · Extension</span>
+            <span className="lp-dot">·</span>
+            <span>Non-custodial</span>
+            <span className="lp-dot">·</span>
+            <span>Open source</span>
+          </div>
         </div>
 
-        <div className="lp-hero-meta">
-          <span>Web · Desktop · iOS · Android · Extension</span>
-          <span className="lp-dot">·</span>
-          <span>Non-custodial</span>
-          <span className="lp-dot">·</span>
-          <span>Open source</span>
+        <div className="lp-hero-visual" aria-hidden>
+          <PhoneMockup />
         </div>
       </div>
 
       <div className="lp-scroll-hint" aria-hidden>SCROLL</div>
     </header>
+  );
+}
+
+function PhoneMockup() {
+  const COINS = [
+    { sym: 'LITHO',  name: 'Lithosphere',  bal: '50,000', usd: '$15,000', chg: '+18%', c: '#8b7df7', pct: 78 },
+    { sym: 'BTC',    name: 'Bitcoin',      bal: '5.050',  usd: '$320,250', chg: '+24%', c: '#f7931a', pct: 92 },
+    { sym: 'ETH',    name: 'Ethereum',     bal: '94.30',  usd: '$178,150', chg: '-6%',  c: '#627eea', pct: 64 },
+    { sym: 'wLITHO', name: 'wLITHO',       bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#a395f8', pct: 38 },
+  ];
+  return (
+    <div className="lp-phone">
+      <div className="lp-phone-glow" />
+      <div className="lp-phone-frame">
+        <div className="lp-phone-notch" />
+        <div className="lp-phone-screen">
+          <div className="lp-phone-status">
+            <span>9:41</span>
+            <span className="lp-phone-status-right">5G  100%</span>
+          </div>
+          <div className="lp-phone-greeting">Hi, RobbyWallet</div>
+          <div className="lp-phone-balance">
+            <div className="lp-phone-label">TOTAL BALANCE</div>
+            <div className="lp-phone-amt">$515,950<span className="lp-phone-cents">.00</span></div>
+            <div className="lp-phone-pill">▲ +18.40% TODAY</div>
+          </div>
+          <div className="lp-phone-coins">
+            {COINS.map(c => (
+              <div key={c.sym} className="lp-phone-coin">
+                <div className="lp-phone-coin-icon" style={{ background: c.c }}>{c.sym.slice(0,1)}</div>
+                <div className="lp-phone-coin-info">
+                  <div className="lp-phone-coin-name">{c.sym}</div>
+                  <div className="lp-phone-coin-bal">{c.bal}</div>
+                </div>
+                <div className="lp-phone-coin-right">
+                  <div className="lp-phone-coin-usd">{c.usd}</div>
+                  <div className={`lp-phone-coin-chg ${c.chg.startsWith('-') ? 'neg' : 'pos'}`}>{c.chg}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="lp-phone-tabbar">
+            <span className="lp-phone-tab active">Home</span>
+            <span className="lp-phone-tab">Send</span>
+            <span className="lp-phone-tab">Swap</span>
+            <span className="lp-phone-tab">Stake</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
