@@ -270,7 +270,7 @@ export function Dashboard() {
                     </div>
                   </td>
                   <td>{tx.date}</td>
-                  <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{tx.price}</td>
+                  <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 15 }}>{tx.price}</td>
                   <td>
                     <span className={`status-pill ${
                       tx.status === 'Completed' ? 'status-completed' :

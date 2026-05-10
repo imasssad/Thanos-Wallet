@@ -714,26 +714,26 @@ body {
 .table-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th {
-  text-align: left; font-size: 12px; font-weight: 600;
+  text-align: left; font-size: 14px; font-weight: 600;
   color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase;
   padding: 0 10px 9px; border-bottom: 1px solid var(--border-subtle);
 }
 .data-table td {
-  padding: 9px 10px; font-size: 14px; color: var(--text-secondary);
+  padding: 9px 10px; font-size: 17px; color: var(--text-secondary);
   border-bottom: 1px solid var(--border-subtle); vertical-align: middle;
 }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover td { background: rgba(255,255,255,0.015); }
 .tx-cell { display: flex; align-items: center; gap: 9px; }
-.tx-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
-.tx-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
-.tx-sym  { font-size: 12px; color: var(--text-muted); }
-.status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.tx-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.tx-name { font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.tx-sym  { font-size: 14px; color: var(--text-muted); }
+.status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 15px; font-weight: 600; }
 .status-completed { background: var(--green-dim); color: var(--green); }
 .status-pending   { background: rgba(234,179,8,0.1); color: #eab308; }
 .status-failed    { background: var(--red-dim); color: var(--red); }
-.amt-pos { color: var(--green); font-weight: 600; font-family: 'Geist Mono', monospace; font-size: 13px; }
-.amt-neg { color: var(--text-primary); font-weight: 600; font-family: 'Geist Mono', monospace; font-size: 13px; }
+.amt-pos { color: var(--green); font-weight: 600; font-family: 'Geist Mono', monospace; font-size: 16px; }
+.amt-neg { color: var(--text-primary); font-weight: 600; font-family: 'Geist Mono', monospace; font-size: 16px; }
 
 /* ── Portfolio coin list (right panel) ────────────────────────── */
 .portfolio-list { display: flex; flex-direction: column; gap: 2px; }
