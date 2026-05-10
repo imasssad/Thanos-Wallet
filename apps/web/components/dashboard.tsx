@@ -4,18 +4,20 @@ import { ArrowUpRight, ArrowDownLeft, Repeat, ChevronRight, ChevronDown, Maximiz
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 
 const COINS = [
-  { sym: 'BTC', name: 'Bitcoin',     bal: '5.050',  usd: '$320,250.00', chg:  24, color: '#f7931a', pct: 44 },
-  { sym: 'ETH', name: 'Ethereum',    bal: '94.30',  usd: '$178,150.00', chg:  -6, color: '#627eea', pct: 33 },
-  { sym: 'SOL', name: 'Solana',      bal: '148.2',  usd: '$17,548.00',  chg:  10, color: '#14f195', pct: 14 },
-  { sym: '···', name: 'Other Coins', bal: '—',      usd: '$17,548.00',  chg:   2, color: '#52525b', pct:  9 },
+  { sym: 'LITHO',  name: 'Lithosphere',     bal: '50,000',  usd: '$15,000.00',  chg:  18, color: '#8b7df7', pct: 28 },
+  { sym: 'BTC',    name: 'Bitcoin',         bal: '5.050',   usd: '$320,250.00', chg:  24, color: '#f7931a', pct: 44 },
+  { sym: 'ETH',    name: 'Ethereum',        bal: '94.30',   usd: '$178,150.00', chg:  -6, color: '#627eea', pct: 16 },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500.00', chg: 18, color: '#a395f8', pct: 7 },
+  { sym: 'FGPT',   name: 'FractalGPT',      bal: '80,000',  usd: '$1,200.00',   chg:  42, color: '#10b981', pct: 5 },
 ];
 
 const TXS = [
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 22, 2026', price: '$63,200', status: 'Completed', amount: '+0.142 BTC', pos: true,  color: '#f7931a' },
-  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 20, 2026', price: '$2,814',  status: 'Completed', amount: '-1.500 ETH', pos: false, color: '#627eea' },
-  { sym: 'SOL',  name: 'Solana',    date: 'Jan 19, 2026', price: '$118.40', status: 'Completed', amount: '+12.00 SOL', pos: true,  color: '#14f195' },
-  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 17, 2026', price: '$61,800', status: 'Completed', amount: '-0.050 BTC', pos: false, color: '#f7931a' },
-  { sym: 'USDC', name: 'USD Coin',  date: 'Jan 15, 2026', price: '$1.00',   status: 'Pending',   amount: '+840 USDC',  pos: true,  color: '#2775ca' },
+  { sym: 'LITHO',  name: 'Lithosphere',  date: 'Jan 22, 2026', price: '$0.30',    status: 'Completed', amount: '+1,200 LITHO', pos: true,  color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',      date: 'Jan 20, 2026', price: '$63,200',  status: 'Completed', amount: '+0.142 BTC',   pos: true,  color: '#f7931a' },
+  { sym: 'ETH',    name: 'Ethereum',     date: 'Jan 19, 2026', price: '$2,814',   status: 'Completed', amount: '-1.500 ETH',   pos: false, color: '#627eea' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', date: 'Jan 18, 2026', price: '$0.30', status: 'Completed', amount: '+500 wLITHO', pos: true, color: '#a395f8' },
+  { sym: 'FGPT',   name: 'FractalGPT',   date: 'Jan 17, 2026', price: '$0.015',   status: 'Completed', amount: '-2,000 FGPT',  pos: false, color: '#10b981' },
+  { sym: 'USDC',   name: 'USD Coin',     date: 'Jan 15, 2026', price: '$1.00',    status: 'Pending',   amount: '+840 USDC',    pos: true,  color: '#2775ca' },
 ];
 
 const PERF_LINE = 'M 22,165 C 48,160 72,156 96,152 C 120,148 145,144 168,138 C 191,132 214,116 238,100 C 262,84 285,76 308,68 C 331,60 358,47 382,40 C 402,34 428,24 452,17 C 468,13 482,9 498,7';
@@ -71,7 +73,8 @@ function PriceSparkline() {
 }
 
 function ExchangeWidget() {
-  const [fromAmt, setFromAmt] = useState('1.420');
+  const [fromAmt, setFromAmt] = useState('1000');
+  const out = (parseFloat(fromAmt || '0') * 1.0).toFixed(3);
   return (
     <div className="card">
       <div className="exchange-header">
@@ -79,16 +82,16 @@ function ExchangeWidget() {
         <span style={{ color: 'var(--text-muted)', fontSize: 18 }}>›</span>
       </div>
       <div className="coin-row">
-        <div className="coin-icon" style={{ background: '#f7931a' }}>₿</div>
-        <div className="coin-pick">BTC ▾</div>
+        <div className="coin-icon" style={{ background: '#8b7df7' }}>L</div>
+        <div className="coin-pick">LITHO ▾</div>
         <input className="coin-amount" value={fromAmt} onChange={e => setFromAmt(e.target.value)} type="number"/>
       </div>
-      <div className="coin-balance">Balance: 5.050 BTC</div>
+      <div className="coin-balance">Balance: 50,000 LITHO</div>
       <div className="swap-divider"><button className="swap-btn">⇅</button></div>
       <div className="coin-row">
-        <div className="coin-icon" style={{ background: '#627eea' }}>Ξ</div>
-        <div className="coin-pick">ETH ▾</div>
-        <span className="coin-amount" style={{ display: 'block', userSelect: 'none' }}>23.035</span>
+        <div className="coin-icon" style={{ background: '#a395f8' }}>w</div>
+        <div className="coin-pick">wLITHO ▾</div>
+        <span className="coin-amount" style={{ display: 'block', userSelect: 'none' }}>{out}</span>
       </div>
       <button className="btn-exchange">Exchange</button>
     </div>
@@ -131,14 +134,14 @@ function StakingCard() {
         Solstice
       </div>
       <div className="staking-row">
-        <div className="staking-token-icon">eU</div>
+        <div className="staking-token-icon">wL</div>
         <div>
-          <div className="staking-token-name">eUSX</div>
+          <div className="staking-token-name">wLITHO</div>
           <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
         </div>
         <div className="staking-yield">
           <div className="staking-yield-label">Annual yield</div>
-          <div className="staking-yield-val">10.05%</div>
+          <div className="staking-yield-val">14.20%</div>
         </div>
       </div>
       <div className="staking-meta">

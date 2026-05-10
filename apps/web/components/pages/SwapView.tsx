@@ -6,12 +6,13 @@ import { Badge } from '../ui/Badge';
 import { IconSwap, IconChevronDown, IconAlert } from '../ui/Icons';
 
 const TOKENS = [
-  { symbol: 'LITHO', name: 'Lithosphere', chain: 'Makalu',  balance: '4,280.00' },
-  { symbol: 'BTC',   name: 'Bitcoin',     chain: 'Bitcoin', balance: '0.04821'  },
-  { symbol: 'SOL',   name: 'Solana',      chain: 'Solana',  balance: '12.380'   },
-  { symbol: 'ETH',   name: 'Ethereum',    chain: 'EVM',     balance: '0.6142'   },
-  { symbol: 'USDC',  name: 'USD Coin',    chain: 'EVM',     balance: '840.00'   },
-  { symbol: 'COLLE', name: 'Colle AI',    chain: 'Makalu',  balance: '18,000'   },
+  { symbol: 'LITHO',  name: 'Lithosphere',         chain: 'Makalu',  balance: '50,000'  },
+  { symbol: 'wLITHO', name: 'Wrapped Lithosphere', chain: 'EVM',     balance: '5,000'   },
+  { symbol: 'FGPT',   name: 'FractalGPT',          chain: 'Makalu',  balance: '80,000'  },
+  { symbol: 'BTC',    name: 'Bitcoin',             chain: 'Bitcoin', balance: '0.04821' },
+  { symbol: 'ETH',    name: 'Ethereum',            chain: 'EVM',     balance: '0.6142'  },
+  { symbol: 'USDC',   name: 'USD Coin',            chain: 'EVM',     balance: '840.00'  },
+  { symbol: 'COLLE',  name: 'Colle AI',            chain: 'Makalu',  balance: '18,000'  },
 ];
 
 export function SwapView() {

@@ -94,19 +94,21 @@ function useStyles()  { return useContext(StylesCtx); }
 const ACCOUNT_ADDR = 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v';
 
 const ASSETS = [
-  { sym: 'LITHO', name: 'Lithosphere', chain: 'Makalu',  bal: '4,280.00', usd: '$1,284.00', price: '$0.300',  chg:  3.42, color: '#8b7df7' },
-  { sym: 'BTC',   name: 'Bitcoin',     chain: 'Bitcoin', bal: '0.04821',  usd: '$2,891.00', price: '$59,962', chg: -1.17, color: '#f7931a' },
-  { sym: 'SOL',   name: 'Solana',      chain: 'Solana',  bal: '12.380',   usd: '$1,772.00', price: '$143.10', chg:  5.88, color: '#14f195' },
-  { sym: 'ETH',   name: 'Ethereum',    chain: 'EVM',     bal: '0.6142',   usd: '$2,210.00', price: '$3,598',  chg:  0.54, color: '#627eea' },
-  { sym: 'USDC',  name: 'USD Coin',    chain: 'EVM',     bal: '840.00',   usd: '$840.00',   price: '$1.00',   chg:  0.01, color: '#2775ca' },
-  { sym: 'COLLE', name: 'Colle AI',    chain: 'Makalu',  bal: '18,000',   usd: '$360.00',   price: '$0.020',  chg:  8.22, color: '#10b981' },
+  { sym: 'LITHO',  name: 'Lithosphere',         chain: 'Makalu',  bal: '50,000', usd: '$15,000.00', price: '$0.300',  chg: 18.40, color: '#8b7df7' },
+  { sym: 'BTC',    name: 'Bitcoin',             chain: 'Bitcoin', bal: '0.04821',usd: '$2,891.00',  price: '$59,962', chg: -1.17, color: '#f7931a' },
+  { sym: 'wLITHO', name: 'Wrapped Lithosphere', chain: 'EVM',     bal: '5,000',  usd: '$1,500.00',  price: '$0.300',  chg: 18.40, color: '#a395f8' },
+  { sym: 'ETH',    name: 'Ethereum',            chain: 'EVM',     bal: '0.6142', usd: '$2,210.00',  price: '$3,598',  chg:  0.54, color: '#627eea' },
+  { sym: 'FGPT',   name: 'FractalGPT',          chain: 'Makalu',  bal: '80,000', usd: '$1,200.00',  price: '$0.015',  chg: 42.30, color: '#10b981' },
+  { sym: 'USDC',   name: 'USD Coin',            chain: 'EVM',     bal: '840.00', usd: '$840.00',    price: '$1.00',   chg:  0.01, color: '#2775ca' },
+  { sym: 'COLLE',  name: 'Colle AI',            chain: 'Makalu',  bal: '18,000', usd: '$360.00',    price: '$0.020',  chg:  8.22, color: '#a3e635' },
 ];
 
 const TXS = [
-  { type: 'Received', sym: 'LITHO', amt: '+1,200',  time: '2 min ago',  pos: true  },
-  { type: 'Sent',     sym: 'BTC',   amt: '-0.012',  time: '1 hr ago',   pos: false },
-  { type: 'Swap',     sym: 'SOL',   amt: '2.4',     time: '3 hr ago',   pos: false },
-  { type: 'Received', sym: 'USDC',  amt: '+840',    time: 'Yesterday',  pos: true  },
+  { type: 'Received', sym: 'LITHO',  amt: '+1,200', time: '2 min ago', pos: true  },
+  { type: 'Sent',     sym: 'BTC',    amt: '-0.012', time: '1 hr ago',  pos: false },
+  { type: 'Swap',     sym: 'wLITHO', amt: '+500',   time: '3 hr ago',  pos: true  },
+  { type: 'Sent',     sym: 'FGPT',   amt: '-2,000', time: '5 hr ago',  pos: false },
+  { type: 'Received', sym: 'USDC',   amt: '+840',   time: 'Yesterday', pos: true  },
 ];
 
 /* ─────────────────────────── Reusable bits ─────────────────────────── */
@@ -693,7 +695,7 @@ function OnboardingScreen({
 
         {step === 'welcome' && <>
           <Text style={styles.onboardTitle}>Welcome to Thanos</Text>
-          <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · Solana · EVM.</Text>
+          <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · EVM.</Text>
           <Pressable style={styles.btnPrimary} onPress={startCreate}>
             <Text style={styles.btnPrimaryText}>Create new wallet</Text>
           </Pressable>
