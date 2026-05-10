@@ -8,15 +8,15 @@ interface ThemeCtx {
   toggleTheme: () => void;
 }
 
-const ThemeContext = createContext<ThemeCtx>({ theme: 'light', toggleTheme: () => {} });
+const ThemeContext = createContext<ThemeCtx>({ theme: 'dark', toggleTheme: () => {} });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>('dark');
 
   useEffect(() => {
-    // Default to LIGHT unless user explicitly chose dark previously
+    // Default to DARK unless user explicitly chose light previously
     const stored = localStorage.getItem('thanos-theme') as Theme | null;
-    const resolved: Theme = stored === 'dark' ? 'dark' : 'light';
+    const resolved: Theme = stored === 'light' ? 'light' : 'dark';
     setTheme(resolved);
     document.documentElement.dataset.theme = resolved;
   }, []);
