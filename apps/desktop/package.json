@@ -11,6 +11,7 @@
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
+    "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
     "electron": "^33.2.1",
     "ethers": "^6.13.4",

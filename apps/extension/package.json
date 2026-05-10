@@ -10,6 +10,7 @@
     "lint": "echo 'no lint configured'"
   },
   "dependencies": {
+    "@thanos/api-client": "workspace:*",
     "ethers": "^6.13.4",
     "lucide-react": "^1.14.0",
     "react": "18.3.1",

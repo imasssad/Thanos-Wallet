@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
     "@thanos/sdk-react": "workspace:*",
     "@thanos/ui": "workspace:*",
