@@ -1,6 +1,6 @@
 import cors from 'cors';
 import express from 'express';
-import { buildSeedActivity, getMakaluSeedTokenList, runMakaluSync, seededApprovals } from './lep100-sync';
+import { buildSeedActivity, getMakaluSeedTokenList, runMakaluSync, seededApprovals } from './lep100-sync.js';
 
 const app = express();
 app.use(cors());

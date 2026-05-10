@@ -3,19 +3,14 @@
  * Import this in both the API (to enqueue) and the Worker (to process).
  */
 
+// BullMQ doesn't allow ':' in queue names — use '-' as separator
 export const QUEUES = {
-  /** Sync wallet balances + transaction history from RPC */
-  WALLET_SYNC:      'wallet:sync',
-  /** LEP100 token balance + event sync */
-  LEP100_SYNC:      'lep100:sync',
-  /** Poll MultX bridge status until settled or failed */
-  BRIDGE_POLL:      'bridge:poll',
-  /** Refresh portfolio USD values */
-  PORTFOLIO_REFRESH:'portfolio:refresh',
-  /** Refresh token prices from CoinGecko */
-  PRICE_REFRESH:    'price:refresh',
-  /** Confirm pending transactions on-chain */
-  TX_CONFIRM:       'tx:confirm',
+  WALLET_SYNC:      'wallet-sync',
+  LEP100_SYNC:      'lep100-sync',
+  BRIDGE_POLL:      'bridge-poll',
+  PORTFOLIO_REFRESH:'portfolio-refresh',
+  PRICE_REFRESH:    'price-refresh',
+  TX_CONFIRM:       'tx-confirm',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
