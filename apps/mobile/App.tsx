@@ -1024,8 +1024,22 @@ export default function App() {
 
 /* ─────────────────────────── Styles ─────────────────────────── */
 
+/* Global text-size multiplier for mobile — matches web/desktop 1.5x zoom feel.
+   Applied to every fontSize in the StyleSheet below via _scaleFontSizes(). */
+const MOBILE_TEXT_SCALE = 1.5;
+function _scaleFontSizes<T extends Record<string, any>>(raw: T): T {
+  for (const k in raw) {
+    const s: any = raw[k];
+    if (s && typeof s === 'object') {
+      if (typeof s.fontSize === 'number')   s.fontSize   = Math.round(s.fontSize   * MOBILE_TEXT_SCALE);
+      if (typeof s.lineHeight === 'number') s.lineHeight = Math.round(s.lineHeight * MOBILE_TEXT_SCALE);
+    }
+  }
+  return raw;
+}
+
 function makeStyles(C: Colors) {
-  return StyleSheet.create({
+  return StyleSheet.create(_scaleFontSizes({
     root:      { flex: 1, backgroundColor: C.bgBase },
     body:      { flex: 1 },
     scroll:    { flex: 1 },
@@ -1569,5 +1583,5 @@ function makeStyles(C: Colors) {
       marginTop: 8,
       borderTopColor: C.borderSubtle, borderTopWidth: 1,
     },
-  });
+  }));
 }

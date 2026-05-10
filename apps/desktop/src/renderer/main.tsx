@@ -1465,10 +1465,6 @@ function App() {
               borderRadius: '50%', border: '1.5px solid var(--bg-surface)',
             }}/>
           </button>
-          {/* Round user avatar — matches reference far-right circle */}
-          <button className="nav-user-avatar" onClick={toggleTheme} title="Toggle theme">
-            {isDark ? <Sun size={15}/> : <Moon size={15}/>}
-          </button>
         </div>
       </nav>
 

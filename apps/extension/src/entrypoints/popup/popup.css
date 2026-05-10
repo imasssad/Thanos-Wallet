@@ -51,6 +51,8 @@ body {
   background: var(--bg-base); color: var(--text-primary);
   font-size: 13px; letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
+  /* Modest zoom for popup readability — kept lower than web/desktop to avoid overflow in 360px popup */
+  zoom: 1.2;
 }
 #root { width: 100%; height: 100%; }
 button { font-family: inherit; cursor: pointer; }
