@@ -1838,7 +1838,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 .lp-phone-glow {
   position: absolute; inset: -40px;
-  background: radial-gradient(circle, rgba(139,125,247,0.30) 0%, rgba(59,122,247,0.12) 40%, transparent 70%);
+  background: radial-gradient(circle, rgba(59,122,247,0.30) 0%, rgba(59,122,247,0.12) 40%, transparent 70%);
   filter: blur(40px);
   pointer-events: none;
   z-index: -1;
@@ -1865,7 +1865,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   position: relative;
   border-radius: 30px;
   background:
-    radial-gradient(ellipse 100% 50% at 50% 0%, rgba(139,125,247,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 100% 50% at 50% 0%, rgba(59,122,247,0.10) 0%, transparent 60%),
     linear-gradient(180deg, #0e0e12 0%, #080809 100%);
   padding: 38px 14px 12px;
   overflow: hidden;
@@ -1973,8 +1973,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border-radius: 6px;
 }
 .lp-phone-tab.active {
-  background: rgba(139,125,247,0.14);
-  color: #a395f8;
+  background: rgba(59,122,247,0.14);
+  color: #22d3ee;
 }
 
 .lp-hero-bg {
@@ -1985,7 +1985,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   position: absolute;
   top: 20%; left: 5%;
   width: 720px; height: 720px;
-  background: radial-gradient(circle, rgba(139,125,247,0.25) 0%, rgba(59,122,247,0.08) 40%, transparent 70%);
+  background: radial-gradient(circle, rgba(59,122,247,0.25) 0%, rgba(59,122,247,0.08) 40%, transparent 70%);
   filter: blur(80px);
   animation: lpGlow 14s ease-in-out infinite alternate;
 }
@@ -2060,11 +2060,11 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-size: 14px; font-weight: 600; letter-spacing: -0.005em;
   text-decoration: none;
   transition: transform 0.18s, box-shadow 0.18s;
-  box-shadow: 0 6px 22px rgba(139,125,247,0.16);
+  box-shadow: 0 6px 22px rgba(59,122,247,0.16);
 }
 .lp-btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(139,125,247,0.26);
+  box-shadow: 0 10px 30px rgba(59,122,247,0.26);
 }
 .lp-btn-xl {
   padding: 16px 30px;
@@ -2085,8 +2085,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 [data-theme="light"] .lp-btn-ghost { border-color: rgba(15,15,20,0.12); }
 .lp-btn-ghost:hover {
-  border-color: var(--accent-500);
-  background: rgba(139,125,247,0.06);
+  border-color: var(--blue);
+  background: rgba(59,122,247,0.06);
 }
 
 .lp-hero-meta {
@@ -2097,7 +2097,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   opacity: 0;
   animation: lpFade 0.9s ease-out 0.95s forwards;
 }
-.lp-dot { color: var(--accent-500); opacity: 0.6; }
+.lp-dot { color: var(--blue); opacity: 0.6; }
 
 .lp-scroll-hint {
   position: absolute;
@@ -2132,7 +2132,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   box-shadow:
     0 1px 0 rgba(255,255,255,0.04) inset,
     0 60px 120px -40px rgba(0,0,0,0.6),
-    0 0 80px rgba(139,125,247,0.10);
+    0 0 80px rgba(59,122,247,0.10);
   overflow: hidden;
   transform: rotateX(2deg) rotateY(-1deg);
   transition: transform 0.6s var(--ease-spring);
@@ -2145,7 +2145,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border-color: rgba(15,15,20,0.06);
   box-shadow:
     0 60px 120px -40px rgba(15,15,20,0.18),
-    0 0 80px rgba(139,125,247,0.12);
+    0 0 80px rgba(59,122,247,0.12);
 }
 
 .lp-mock-topbar {
@@ -2254,7 +2254,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 [data-theme="light"] .lp-chain { border-right-color: rgba(15,15,20,0.10); }
 .lp-chain:last-child { border-right: none; }
-.lp-chain:hover { background: rgba(139,125,247,0.04); }
+.lp-chain:hover { background: rgba(59,122,247,0.04); }
 .lp-chain-stripe {
   width: 36px; height: 3px;
   margin-bottom: 24px;
@@ -2276,7 +2276,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .lp-chain-stat {
   font-size: 11px; font-weight: 700;
   letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--accent-500);
+  color: var(--blue);
 }
 
 @media (max-width: 900px) {
@@ -2348,12 +2348,12 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .lp-bullet li::before {
   content: '\2192';
   position: absolute; left: 0; top: 18px;
-  color: var(--accent-500); font-weight: 700;
+  color: var(--blue); font-weight: 700;
   transition: transform 0.2s;
 }
 .lp-bullet li:hover {
   padding-left: 40px;
-  color: var(--accent-500);
+  color: var(--blue);
 }
 
 .lp-seed-mock {
@@ -2392,10 +2392,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .lp-seed-bar {
   font-size: 10px; font-weight: 700;
   letter-spacing: 0.3em;
-  color: var(--accent-500);
+  color: var(--blue);
   text-align: center;
   padding: 12px 0 4px;
-  border-top: 1px dashed rgba(139,125,247,0.3);
+  border-top: 1px dashed rgba(59,122,247,0.3);
 }
 
 /* ────────────────────────── DOWNLOAD TILES — premium glass ────────────────────────── */
@@ -2405,7 +2405,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   gap: 14px;
 }
 .lp-dl-row {
-  --tile-tint: var(--accent-500);
+  --tile-tint: var(--blue);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -2609,7 +2609,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   position: absolute;
   top: -10%; right: -10%;
   width: 60%; height: 80%;
-  background: radial-gradient(circle, rgba(139,125,247,0.18) 0%, transparent 60%);
+  background: radial-gradient(circle, rgba(59,122,247,0.18) 0%, transparent 60%);
   filter: blur(60px);
   pointer-events: none;
 }
@@ -2655,7 +2655,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 .lp-const-glow {
   position: absolute; inset: 12%;
-  background: radial-gradient(circle, rgba(139,125,247,0.22) 0%, rgba(59,122,247,0.10) 40%, transparent 70%);
+  background: radial-gradient(circle, rgba(59,122,247,0.22) 0%, rgba(59,122,247,0.10) 40%, transparent 70%);
   filter: blur(40px);
   pointer-events: none;
   animation: lpConstGlow 8s ease-in-out infinite alternate;
@@ -2689,7 +2689,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   width: 140px; height: 140px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(139,125,247,0.18) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(59,122,247,0.18) 0%, transparent 70%);
   z-index: 2;
 }
 .lp-const-mark::before {
@@ -2700,21 +2700,21 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border: 1px solid rgba(255,255,255,0.06);
   box-shadow:
     0 1px 0 rgba(255,255,255,0.06) inset,
-    0 14px 40px -8px rgba(139,125,247,0.40);
+    0 14px 40px -8px rgba(59,122,247,0.40);
 }
 [data-theme="light"] .lp-const-mark::before {
   background: linear-gradient(180deg, #ffffff 0%, #f4f4f7 100%);
   border-color: rgba(15,15,20,0.06);
   box-shadow:
     0 1px 0 rgba(255,255,255,0.6) inset,
-    0 14px 30px -10px rgba(139,125,247,0.25);
+    0 14px 30px -10px rgba(59,122,247,0.25);
 }
 .lp-const-mark img {
   position: relative;
   z-index: 1;
   width: 90px; height: 90px;
   object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(139,125,247,0.4));
+  filter: drop-shadow(0 4px 12px rgba(59,122,247,0.4));
 }
 
 /* Floating token chips at fixed positions, with gentle individual bob */
@@ -2791,9 +2791,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 [data-theme="light"] .lp-footer-links a { border-color: rgba(15,15,20,0.06); }
 .lp-footer-links a:hover {
-  color: var(--accent-500);
-  border-color: var(--accent-500);
-  background: rgba(139,125,247,0.06);
+  color: var(--blue);
+  border-color: var(--blue);
+  background: rgba(59,122,247,0.06);
 }
 .lp-footer-meta {
   font-size: 11px;

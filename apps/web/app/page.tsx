@@ -124,10 +124,10 @@ function Hero() {
 
 function PhoneMockup() {
   const COINS = [
-    { sym: 'LITHO',  name: 'Lithosphere',  bal: '50,000', usd: '$15,000', chg: '+18%', c: '#8b7df7', pct: 78 },
+    { sym: 'LITHO',  name: 'Lithosphere',  bal: '50,000', usd: '$15,000', chg: '+18%', c: '#3b7af7', pct: 78 },
     { sym: 'BTC',    name: 'Bitcoin',      bal: '5.050',  usd: '$320,250', chg: '+24%', c: '#f7931a', pct: 92 },
     { sym: 'ETH',    name: 'Ethereum',     bal: '94.30',  usd: '$178,150', chg: '-6%',  c: '#627eea', pct: 64 },
-    { sym: 'wLITHO', name: 'wLITHO',       bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#a395f8', pct: 38 },
+    { sym: 'wLITHO', name: 'wLITHO',       bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#22d3ee', pct: 38 },
   ];
   return (
     <div className="lp-phone">
@@ -218,10 +218,10 @@ function DashboardMockup() {
 
         <div className="lp-mock-row">
           {[
-            { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: '$15,000', chg: '+18%', c: '#8b7df7' },
+            { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: '$15,000', chg: '+18%', c: '#3b7af7' },
             { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: '$320,250', chg: '+24%', c: '#f7931a' },
             { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: '$178,150', chg: '-6%',  c: '#627eea' },
-            { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#a395f8' },
+            { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#22d3ee' },
             { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: '$1,200',   chg: '+42%', c: '#10b981' },
           ].map(c => (
             <div key={c.sym} className="lp-mock-coin">
@@ -256,7 +256,7 @@ function ChainsSection() {
 
         <div className="lp-chain-grid">
           {[
-            { name: 'LITHOSPHERE', desc: 'Makalu mainnet — LITHO native, FGPT, low-latency staking. The chain Thanos is built around.', stat: '18.40% APY', c: '#8b7df7' },
+            { name: 'LITHOSPHERE', desc: 'Makalu mainnet — LITHO native, FGPT, low-latency staking. The chain Thanos is built around.', stat: '18.40% APY', c: '#3b7af7' },
             { name: 'EVM',         desc: 'Ethereum, Polygon, Arbitrum and every wrapped token (wLITHO, USDC, ETH).',                    stat: '40+ networks', c: '#627eea' },
             { name: 'BITCOIN',     desc: 'Native SegWit (bc1q…) addresses derived from your phrase. No custodian.',                    stat: 'Self-custody', c: '#f7931a' },
           ].map(ch => (
@@ -480,10 +480,10 @@ function FinalCta() {
 function BrandConstellation() {
   // Floating token chips around the Thanos brand mark.
   const TOKENS = [
-    { sym: 'LITHO',  color: '#8b7df7', x: '14%', y: '18%' },
+    { sym: 'LITHO',  color: '#3b7af7', x: '14%', y: '18%' },
     { sym: 'BTC',    color: '#f7931a', x: '78%', y: '12%' },
     { sym: 'ETH',    color: '#627eea', x: '6%',  y: '64%' },
-    { sym: 'wLITHO', color: '#a395f8', x: '82%', y: '70%' },
+    { sym: 'wLITHO', color: '#22d3ee', x: '82%', y: '70%' },
     { sym: 'FGPT',   color: '#10b981', x: '50%', y: '88%' },
   ];
   return (
