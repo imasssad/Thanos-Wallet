@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
+  Alert, Animated, Easing, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -88,6 +88,34 @@ const StylesCtx  = createContext(makeStyles(DARK));
 function useColors()  { return useContext(ThemeCtx); }
 function useToggle()  { return useContext(ToggleCtx); }
 function useStyles()  { return useContext(StylesCtx); }
+
+/* ─── Page-transition wrapper ─────────────────────────────────────
+   Plays a fade + small slide-up animation whenever `keyName` changes.
+   Used for the main tab body and onboarding step transitions.
+   Excluded from the splash/preloader by design. */
+function AnimatedSwitch({ keyName, children, style }: {
+  keyName: string;
+  children: React.ReactNode;
+  style?: any;
+}) {
+  const opacity    = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+
+  useEffect(() => {
+    opacity.setValue(0);
+    translateY.setValue(10);
+    Animated.parallel([
+      Animated.timing(opacity,    { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, [keyName]);
+
+  return (
+    <Animated.View style={[{ opacity, transform: [{ translateY }] }, style]}>
+      {children}
+    </Animated.View>
+  );
+}
 
 /* ─────────────────────────── Mock data ─────────────────────────── */
 
@@ -700,6 +728,8 @@ function OnboardingScreen({
         </View>
         <Text style={styles.onboardBrand}>Thanos Wallet</Text>
 
+        <AnimatedSwitch keyName={step} style={{ width: '100%' }}>
+
         {step === 'welcome' && <>
           <Text style={styles.onboardTitle}>Welcome to Thanos</Text>
           <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · EVM.</Text>
@@ -943,6 +973,8 @@ function OnboardingScreen({
             <Text style={styles.btnLink}>Forgot password? Reset wallet</Text>
           </Pressable>
         </>}
+
+        </AnimatedSwitch>
       </View>
     </ScrollView>
   );
@@ -1038,14 +1070,16 @@ export default function App() {
               </View>
             </View>
 
-            {/* Body */}
+            {/* Body — animated screen transitions */}
             <View style={styles.body}>
-              {screen === 'home'     && <HomeScreen navigate={setScreen}/>}
-              {screen === 'send'     && <SendScreen goBack={() => setScreen('home')}/>}
-              {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
-              {screen === 'swap'     && <SendScreen goBack={() => setScreen('home')}/>}
-              {screen === 'activity' && <ActivityScreen/>}
-              {screen === 'settings' && <SettingsScreen/>}
+              <AnimatedSwitch keyName={screen} style={{ flex: 1 }}>
+                {screen === 'home'     && <HomeScreen navigate={setScreen}/>}
+                {screen === 'send'     && <SendScreen goBack={() => setScreen('home')}/>}
+                {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
+                {screen === 'swap'     && <SendScreen goBack={() => setScreen('home')}/>}
+                {screen === 'activity' && <ActivityScreen/>}
+                {screen === 'settings' && <SettingsScreen/>}
+              </AnimatedSwitch>
             </View>
 
             {/* Bottom tabs */}
