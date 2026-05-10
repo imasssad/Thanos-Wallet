@@ -2408,9 +2408,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   --tile-tint: var(--blue);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 22px 18px 18px;
+  align-items: center;       /* centered icon + name + sub + CTA */
+  text-align: center;
+  gap: 12px;
+  padding: 36px 18px 22px;   /* extra top padding so icon clears the status pill */
   background:
     linear-gradient(180deg, rgba(28,28,34,0.92) 0%, rgba(12,12,16,0.96) 100%);
   border: 1px solid rgba(255,255,255,0.06);
@@ -2498,19 +2499,19 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   50%      { opacity: 1;   transform: scale(1.25); }
 }
 
-/* Icon: tinted per-platform, soft inner highlight */
+/* Icon: tinted per-platform, larger so brand marks read clearly */
 .lp-dl-icon {
-  width: 44px; height: 44px;
+  width: 64px; height: 64px;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 12px;
+  border-radius: 16px;
   color: #fff;
   background:
-    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--tile-tint) 28%, transparent) 0%, transparent 70%),
-    linear-gradient(180deg, color-mix(in srgb, var(--tile-tint) 18%, rgba(20,20,24,0.9)) 0%, color-mix(in srgb, var(--tile-tint) 8%, rgba(10,10,14,0.95)) 100%);
-  border: 1px solid color-mix(in srgb, var(--tile-tint) 25%, rgba(255,255,255,0.04));
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--tile-tint) 32%, transparent) 0%, transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--tile-tint) 20%, rgba(20,20,24,0.9)) 0%, color-mix(in srgb, var(--tile-tint) 8%, rgba(10,10,14,0.95)) 100%);
+  border: 1px solid color-mix(in srgb, var(--tile-tint) 28%, rgba(255,255,255,0.04));
   box-shadow:
-    0 1px 0 rgba(255,255,255,0.08) inset,
-    0 6px 16px -6px color-mix(in srgb, var(--tile-tint) 50%, transparent);
+    0 1px 0 rgba(255,255,255,0.10) inset,
+    0 10px 24px -8px color-mix(in srgb, var(--tile-tint) 55%, transparent);
   transition: transform 0.25s var(--ease-spring);
 }
 [data-theme="light"] .lp-dl-icon {
@@ -2520,8 +2521,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
     linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--tile-tint) 6%, #f4f4f7) 100%);
   border-color: color-mix(in srgb, var(--tile-tint) 22%, rgba(15,15,20,0.06));
 }
-.lp-dl-row:not(.is-soon):hover .lp-dl-icon { transform: scale(1.08) rotate(-2deg); }
-.lp-dl-icon svg { width: 22px; height: 22px; }
+.lp-dl-row:not(.is-soon):hover .lp-dl-icon { transform: scale(1.06) rotate(-2deg); }
+.lp-dl-icon svg { width: 32px; height: 32px; display: block; }
 
 .lp-dl-info { min-width: 0; width: 100%; }
 .lp-dl-name {
