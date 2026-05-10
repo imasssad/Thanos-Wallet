@@ -31,3 +31,23 @@ services:
   worker:
     environment:
       NODE_ENV: production
+
+  # ─── Web app (Next.js wallet UI) ───────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: thanos-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Public URL the client uses to call the API. Set in .env to your domain.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    # Localhost-only — nginx will reverse proxy to it
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

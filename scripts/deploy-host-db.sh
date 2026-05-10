@@ -127,10 +127,10 @@ ENV
 chmod 600 .env
 echo "[6/7] .env generated"
 
-# ─── 7. Start only API + indexer + worker (no postgres/redis containers) ────
+# ─── 7. Start API + indexer + worker + web (no postgres/redis containers) ──
 echo "[7/7] Building + starting services..."
 docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
-  up -d --build api indexer worker
+  up -d --build api indexer worker web
 
 sleep 10
 echo ""

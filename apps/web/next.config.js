@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Output a self-contained server in .next/standalone — used by the Docker image
+  output: 'standalone',
   transpilePackages: ['@thanos/sdk-core', '@thanos/sdk-react', '@thanos/ui'],
 
   // Skip type-checking during build (handled by IDE / dev server)
