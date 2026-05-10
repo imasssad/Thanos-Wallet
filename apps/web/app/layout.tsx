@@ -1,6 +1,5 @@
 import React from 'react';
 import type { Metadata } from 'next';
-import { WalletProvider } from '@thanos/sdk-react';
 import { ThemeProvider } from '../components/providers/ThemeProvider';
 import { AppShell } from '../components/shell/AppShell';
 import './globals.css';
@@ -26,9 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider>
-          <WalletProvider>
-            <AppShell>{children}</AppShell>
-          </WalletProvider>
+          <AppShell>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>

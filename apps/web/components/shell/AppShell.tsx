@@ -1,24 +1,23 @@
 'use client';
-import React, { useState } from 'react';
-import { Sidebar } from './Sidebar';
-import { TopBar } from './TopBar';
-import styles from './AppShell.module.css';
+import React, { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { useTheme } from '../providers/ThemeProvider';
+import { TopNav } from './TopNav';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [balanceHidden, setBalanceHidden] = useState(false);
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   return (
-    <div className={styles.shell}>
-      <Sidebar />
-      <div className={styles.main}>
-        <TopBar
-          balanceHidden={balanceHidden}
-          onToggleBalance={() => setBalanceHidden(v => !v)}
-        />
-        <main className={styles.content}>
-          {children}
-        </main>
-      </div>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <TopNav/>
+      <main style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        {children}
+      </main>
     </div>
   );
 }
