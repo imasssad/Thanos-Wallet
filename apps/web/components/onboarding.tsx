@@ -32,7 +32,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [step, setStep] = useState<Step>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
-  const [confirm, setConfirm] = useState<{ idx: number; pick: string }[]>([]);
+  const [verifyOrder, setVerifyOrder] = useState<string[]>([]);
+  const [verifyPool, setVerifyPool]   = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [unlockPwd, setUnlockPwd] = useState('');
@@ -42,12 +43,26 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
   const goToVerify = () => {
-    const idxs = Array.from({ length: 12 }, (_, i) => i)
-      .sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a - b);
-    setConfirm(idxs.map(i => ({ idx: i, pick: '' })));
+    setVerifyOrder([]);
+    setVerifyPool([...seed].sort(() => Math.random() - 0.5));
     setStep('create-confirm');
   };
-  const allConfirmed = confirm.every(c => c.pick === seed[c.idx]);
+  const pickWord = (w: string) => {
+    setVerifyOrder(prev => [...prev, w]);
+    setVerifyPool(prev => {
+      const i = prev.indexOf(w);
+      return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
+    });
+  };
+  const unpickAt = (slotIdx: number) => {
+    const w = verifyOrder[slotIdx];
+    if (w === undefined) return;
+    setVerifyOrder(prev => prev.filter((_, i) => i !== slotIdx));
+    setVerifyPool(prev => [...prev, w]);
+  };
+  const allConfirmed = verifyOrder.length === seed.length
+                     && verifyOrder.every((w, i) => w === seed[i]);
+  const orderMismatch = verifyOrder.length === seed.length && !allConfirmed;
 
   const finishCreate = () => {
     if (password !== password2 || password.length < 8) return;
@@ -77,7 +92,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     }
   };
   const resetWallet = () => {
-    if (confirm.length === 0 || window.confirm('This deletes your wallet from this device. You can restore it with your recovery phrase. Continue?')) {
+    if (window.confirm('This deletes your wallet from this device. You can restore it with your recovery phrase. Continue?')) {
       localStorage.removeItem(STORAGE.hasVault);
       localStorage.removeItem(STORAGE.mnemonic);
       localStorage.removeItem(STORAGE.password);
@@ -166,23 +181,37 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
         {step === 'create-confirm' && <>
           <h1 className="onboard-title">Verify your phrase</h1>
-          <p className="onboard-sub">Enter the missing words to confirm you saved it correctly.</p>
+          <p className="onboard-sub">Tap the words in the correct order. Tap a filled slot to undo.</p>
           <div className="seed-grid">
-            {seed.map((w, i) => {
-              const c = confirm.find(x => x.idx === i);
-              if (c) return (
-                <div key={i} className="seed-word seed-input">
+            {Array.from({ length: seed.length }).map((_, i) => {
+              const w = verifyOrder[i];
+              const filled = w !== undefined;
+              const wrong = orderMismatch && filled && seed[i] !== w;
+              return (
+                <div
+                  key={i}
+                  className={`seed-word seed-slot${filled ? ' filled' : ''}${wrong ? ' wrong' : ''}`}
+                  onClick={() => filled && unpickAt(i)}
+                >
                   <span className="seed-num">{i + 1}.</span>
-                  <input
-                    value={c.pick}
-                    onChange={e => setConfirm(prev => prev.map(p => p.idx === i ? { ...p, pick: e.target.value.trim().toLowerCase() } : p))}
-                    placeholder="?"
-                  />
+                  <span className="seed-slot-word">{filled ? w : ' '}</span>
                 </div>
               );
-              return <div key={i} className="seed-word seed-faded"><span className="seed-num">{i + 1}.</span>{w}</div>;
             })}
           </div>
+          <div className="seed-pool">
+            {verifyPool.map((w, i) => (
+              <button
+                key={`${w}-${i}`}
+                type="button"
+                className="seed-pool-chip"
+                onClick={() => pickWord(w)}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+          {orderMismatch && <div className="onboard-err">Order doesn't match. Tap slots to undo and try again.</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('create-show')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} disabled={!allConfirmed} onClick={() => setStep('create-pwd')}>Continue</button>

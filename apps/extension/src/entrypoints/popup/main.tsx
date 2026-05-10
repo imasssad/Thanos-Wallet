@@ -55,7 +55,8 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
-  const [confirm, setConfirm] = useState<{ idx: number; pick: string }[]>([]);
+  const [verifyOrder, setVerifyOrder] = useState<string[]>([]);
+  const [verifyPool,  setVerifyPool]  = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [unlockPwd, setUnlockPwd] = useState('');
@@ -65,12 +66,26 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
   const goToVerify = () => {
-    const idxs = Array.from({ length: 12 }, (_, i) => i)
-      .sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a - b);
-    setConfirm(idxs.map(i => ({ idx: i, pick: '' })));
+    setVerifyOrder([]);
+    setVerifyPool([...seed].sort(() => Math.random() - 0.5));
     setStep('create-confirm');
   };
-  const allConfirmed = confirm.every(c => c.pick === seed[c.idx]);
+  const pickWord = (w: string) => {
+    setVerifyOrder(prev => [...prev, w]);
+    setVerifyPool(prev => {
+      const i = prev.indexOf(w);
+      return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
+    });
+  };
+  const unpickAt = (slotIdx: number) => {
+    const w = verifyOrder[slotIdx];
+    if (w === undefined) return;
+    setVerifyOrder(prev => prev.filter((_, i) => i !== slotIdx));
+    setVerifyPool(prev => [...prev, w]);
+  };
+  const allConfirmed = verifyOrder.length === seed.length
+                     && verifyOrder.every((w, i) => w === seed[i]);
+  const orderMismatch = verifyOrder.length === seed.length && !allConfirmed;
 
   const finishCreate = () => {
     if (password !== password2 || password.length < 8) return;
@@ -167,23 +182,30 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
         {step === 'create-confirm' && <>
           <h1 className="onb-title">Verify phrase</h1>
-          <p className="onb-sub">Enter the missing words.</p>
+          <p className="onb-sub">Tap the words in correct order. Tap a slot to undo.</p>
           <div className="seed-grid">
-            {seed.map((w, i) => {
-              const c = confirm.find(x => x.idx === i);
-              if (c) return (
-                <div key={i} className="seed-cell seed-input">
+            {Array.from({ length: seed.length }).map((_, i) => {
+              const w = verifyOrder[i];
+              const filled = w !== undefined;
+              const wrong = orderMismatch && filled && seed[i] !== w;
+              return (
+                <div
+                  key={i}
+                  className={`seed-cell seed-slot${filled ? ' filled' : ''}${wrong ? ' wrong' : ''}`}
+                  onClick={() => filled && unpickAt(i)}
+                >
                   <span className="seed-num">{i + 1}.</span>
-                  <input
-                    value={c.pick}
-                    onChange={e => setConfirm(prev => prev.map(p => p.idx === i ? { ...p, pick: e.target.value.trim().toLowerCase() } : p))}
-                    placeholder="?"
-                  />
+                  <span>{filled ? w : ' '}</span>
                 </div>
               );
-              return <div key={i} className="seed-cell seed-faded"><span className="seed-num">{i + 1}.</span>{w}</div>;
             })}
           </div>
+          <div className="seed-pool">
+            {verifyPool.map((w, i) => (
+              <button key={`${w}-${i}`} type="button" className="seed-pool-chip" onClick={() => pickWord(w)}>{w}</button>
+            ))}
+          </div>
+          {orderMismatch && <div className="onb-err">Order doesn't match. Tap slots to undo.</div>}
           <div className="row-btns">
             <button className="btn-outline" onClick={() => setStep('create-show')}>Back</button>
             <button className="btn-primary" disabled={!allConfirmed} onClick={() => setStep('create-pwd')}>Continue</button>
@@ -444,7 +466,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
         <input className="field" placeholder="0x… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
         <label className="field-label" style={{ marginTop: 14 }}>AMOUNT</label>
         <input className="field" placeholder="0.00" type="number" value={amt} onChange={e => setAmt(e.target.value)}/>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Balance: 5.050 BTC · ~$1.24 fee</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Balance: 4,280.00 LITHO · ~$0.04 fee</div>
         <button className="btn-primary" disabled={!to || !amt} style={{ marginTop: 16 }}>Review</button>
       </div>
     </Modal>
@@ -490,15 +512,21 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
 }
 
 function SwapModal({ onClose }: { onClose: () => void }) {
-  const [from, setFrom] = useState('BTC'); const [to, setTo] = useState('ETH'); const [amt, setAmt] = useState('0.1');
-  const out = (16.22 * parseFloat(amt || '0')).toFixed(4);
+  const [from, setFrom] = useState('LITHO'); const [to, setTo] = useState('ETH'); const [amt, setAmt] = useState('100');
+  const rates: Record<string, Record<string, number>> = {
+    LITHO: { ETH: 0.0000832, BTC: 0.0000050, SOL: 0.00210, USDC: 0.30 },
+    BTC:   { LITHO: 199867, ETH: 16.22, SOL: 543.2, USDC: 63200 },
+    ETH:   { LITHO: 12018, BTC: 0.0617, SOL: 33.49, USDC: 3892 },
+    SOL:   { LITHO: 477, BTC: 0.00184, ETH: 0.0299, USDC: 116.2 },
+  };
+  const out = ((rates[from]?.[to] ?? 1) * parseFloat(amt || '0')).toFixed(4);
   return (
     <Modal title="Swap" onClose={onClose}>
       <div className="modal-body">
         <label className="field-label">FROM</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={from} onChange={e => setFrom(e.target.value)}>
-            {['BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
+            {['LITHO','BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
         </div>
@@ -506,7 +534,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">TO</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={to} onChange={e => setTo(e.target.value)}>
-            {['ETH','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+            {['ETH','LITHO','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>
         </div>

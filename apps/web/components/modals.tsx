@@ -18,11 +18,11 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 export function SendModal({ onClose }: { onClose: () => void }) {
-  const [coin, setCoin] = useState('BTC');
+  const [coin, setCoin] = useState('LITHO');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [sent, setSent] = useState(false);
-  const balMap: Record<string, string> = { BTC: '5.050', ETH: '94.30', SOL: '148.2', USDC: '840.00' };
+  const balMap: Record<string, string> = { LITHO: '4,280.00', BTC: '5.050', ETH: '94.30', SOL: '148.2', USDC: '840.00' };
 
   if (sent) return (
     <Modal title="Send" onClose={onClose}>
@@ -40,7 +40,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <label className="field-label">Asset</label>
         <select className="field-select" value={coin} onChange={e => setCoin(e.target.value)}>
-          {['BTC','ETH','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+          {['LITHO','BTC','ETH','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
         </select>
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
         <input className="field-input" placeholder="0x… or wallet address" value={to} onChange={e => setTo(e.target.value)}/>
@@ -102,13 +102,14 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
 }
 
 export function SwapModal({ onClose }: { onClose: () => void }) {
-  const [from, setFrom] = useState('BTC');
+  const [from, setFrom] = useState('LITHO');
   const [to, setTo]     = useState('ETH');
-  const [amt, setAmt]   = useState('0.1');
+  const [amt, setAmt]   = useState('100');
   const rates: Record<string, Record<string, number>> = {
-    BTC: { ETH: 16.22, SOL: 543.2, USDC: 63200 },
-    ETH: { BTC: 0.0617, SOL: 33.49, USDC: 3892 },
-    SOL: { BTC: 0.00184, ETH: 0.0299, USDC: 116.2 },
+    LITHO: { BTC: 0.0000050, ETH: 0.0000832, SOL: 0.00210, USDC: 0.30 },
+    BTC:   { LITHO: 199_867, ETH: 16.22, SOL: 543.2, USDC: 63200 },
+    ETH:   { LITHO: 12_018, BTC: 0.0617, SOL: 33.49, USDC: 3892 },
+    SOL:   { LITHO: 477.07, BTC: 0.00184, ETH: 0.0299, USDC: 116.2 },
   };
   const out = (rates[from]?.[to] ?? 1) * parseFloat(amt || '0');
 
@@ -118,7 +119,7 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="field-select" value={from} onChange={e => setFrom(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
+            {['LITHO','BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field-input" value={amt} onChange={e => setAmt(e.target.value)} type="number" placeholder="0.00" style={{ flex: 1 }}/>
         </div>
@@ -128,7 +129,7 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">To</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="field-select" value={to} onChange={e => setTo(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['ETH','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+            {['ETH','LITHO','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
             {out.toFixed(4)}
