@@ -89,7 +89,7 @@ function Hero() {
 
       <div className="lp-container lp-hero-stage">
         <div className="lp-hero-text">
-          <Eyebrow>WEB4 · LITHOSPHERE WALLET · v0.8.1</Eyebrow>
+          <Eyebrow>YOUR KEYS · YOUR CRYPTO · ALWAYS</Eyebrow>
 
           <h1 className="lp-hero-title">
             <span className="lp-line"><span className="lp-line-inner">Every chain.</span></span>
@@ -425,29 +425,35 @@ function PlatformSection() {
         </p>
 
         <div className="lp-dl-list">
-          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, Icon }) => {
+          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, Icon }, idx) => {
             const Tag = ready ? Link : 'a';
+            const tints = ['#8b7df7', '#3b7af7', '#9ca3af', '#10b981', '#a395f8'];
             return (
               <Tag
                 key={n}
                 href={href}
                 {...(!ready ? { onClick: (e: React.MouseEvent) => e.preventDefault(), 'aria-disabled': true } : {})}
-                className={`lp-dl-row ${ready ? '' : 'is-soon'}`}
+                className={`lp-dl-row ${ready ? 'is-live' : 'is-soon'}`}
+                style={{ ['--tile-tint' as any]: tints[idx % tints.length] }}
               >
+                <div className="lp-dl-corner" aria-hidden/>
+                <div className="lp-dl-status">
+                  {ready
+                    ? <><span className="lp-dl-status-dot"/> Available</>
+                    : <>Coming soon</>
+                  }
+                </div>
                 <div className="lp-dl-num">{n}</div>
-                <div className="lp-dl-icon"><Icon size={28}/></div>
+                <div className="lp-dl-icon"><Icon size={26}/></div>
                 <div className="lp-dl-info">
                   <div className="lp-dl-name">{name}</div>
                   <div className="lp-dl-sub">{sub}</div>
                 </div>
                 <div className="lp-dl-cta">
                   {ready ? (
-                    <>{cta} <ArrowRight size={14}/></>
+                    <>{cta} <ArrowRight size={13}/></>
                   ) : (
-                    <>
-                      <span className="lp-dl-soon">Coming soon</span>
-                      <span className="lp-dl-cta-label">{cta}</span>
-                    </>
+                    <span className="lp-dl-cta-label">{cta}</span>
                   )}
                 </div>
               </Tag>
@@ -465,15 +471,60 @@ function FinalCta() {
   const { ref, shown } = useReveal<HTMLElement>();
   return (
     <section ref={ref} className={`lp-final ${shown ? 'is-shown' : ''}`}>
-      <div className="lp-container">
-        <Eyebrow>READY?</Eyebrow>
-        <h2 className="lp-final-h">GET<br/>STARTED.</h2>
-        <Link href="/app" className="lp-btn-primary lp-btn-xl">
-          Launch wallet <ArrowRight size={20}/>
-        </Link>
-        <p className="lp-final-sub">12 words. 90 seconds. No email. No KYC.</p>
+      <div className="lp-container lp-final-stage">
+        <div className="lp-final-text">
+          <Eyebrow>READY?</Eyebrow>
+          <h2 className="lp-final-h">GET<br/>STARTED.</h2>
+          <Link href="/app" className="lp-btn-primary lp-btn-xl">
+            Launch wallet <ArrowRight size={20}/>
+          </Link>
+          <p className="lp-final-sub">12 words. 90 seconds. No email. No KYC.</p>
+        </div>
+
+        <div className="lp-final-visual" aria-hidden>
+          <BrandConstellation/>
+        </div>
       </div>
     </section>
+  );
+}
+
+function BrandConstellation() {
+  // Floating token chips around the Thanos brand mark.
+  const TOKENS = [
+    { sym: 'LITHO',  color: '#8b7df7', x: '14%', y: '18%' },
+    { sym: 'BTC',    color: '#f7931a', x: '78%', y: '12%' },
+    { sym: 'ETH',    color: '#627eea', x: '6%',  y: '64%' },
+    { sym: 'wLITHO', color: '#a395f8', x: '82%', y: '70%' },
+    { sym: 'FGPT',   color: '#10b981', x: '50%', y: '88%' },
+  ];
+  return (
+    <div className="lp-constellation">
+      <div className="lp-const-glow"/>
+      <div className="lp-const-ring lp-const-ring-1"/>
+      <div className="lp-const-ring lp-const-ring-2"/>
+      <div className="lp-const-ring lp-const-ring-3"/>
+
+      <div className="lp-const-mark">
+        <img src="/images/Thanos_Logo_Transparent.png" alt="" width={120} height={120}/>
+      </div>
+
+      {TOKENS.map((t, i) => (
+        <div
+          key={t.sym}
+          className="lp-const-chip"
+          style={{
+            left:  t.x,
+            top:   t.y,
+            ['--chip-color' as any]: t.color,
+            ['--chip-delay' as any]: `${i * 0.4}s`,
+          }}
+        >
+          <span className="lp-const-chip-dot" style={{ background: t.color }}/>
+          {t.sym}
+        </div>
+      ))}
+    </div>
   );
 }
 
