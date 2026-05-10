@@ -606,7 +606,8 @@ function OnboardingScreen({
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
-  const [confirm, setConfirm] = useState<{ idx: number; pick: string }[]>([]);
+  const [verifyOrder, setVerifyOrder] = useState<string[]>([]);
+  const [verifyPool,  setVerifyPool]  = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [unlockPwd, setUnlockPwd] = useState('');
@@ -616,13 +617,26 @@ function OnboardingScreen({
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
 
   const goToVerify = () => {
-    const idxs = Array.from({ length: 12 }, (_, i) => i)
-      .sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a - b);
-    setConfirm(idxs.map(i => ({ idx: i, pick: '' })));
+    setVerifyOrder([]);
+    setVerifyPool([...seed].sort(() => Math.random() - 0.5));
     setStep('create-confirm');
   };
-
-  const allConfirmed = confirm.every(c => c.pick === seed[c.idx]);
+  const pickWord = (w: string) => {
+    setVerifyOrder(prev => [...prev, w]);
+    setVerifyPool(prev => {
+      const i = prev.indexOf(w);
+      return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
+    });
+  };
+  const unpickAt = (slotIdx: number) => {
+    const w = verifyOrder[slotIdx];
+    if (w === undefined) return;
+    setVerifyOrder(prev => prev.filter((_, i) => i !== slotIdx));
+    setVerifyPool(prev => [...prev, w]);
+  };
+  const allConfirmed = verifyOrder.length === seed.length
+                     && verifyOrder.every((w, i) => w === seed[i]);
+  const orderMismatch = verifyOrder.length === seed.length && !allConfirmed;
 
   const finishCreate = async () => {
     if (password !== password2 || password.length < 8) return;
@@ -754,32 +768,46 @@ function OnboardingScreen({
 
         {step === 'create-confirm' && <>
           <Text style={styles.onboardTitle}>Verify your phrase</Text>
-          <Text style={styles.onboardSub}>Enter the missing words to confirm.</Text>
+          <Text style={styles.onboardSub}>Tap the words in correct order. Tap a slot to undo.</Text>
           <View style={styles.seedGrid}>
-            {seed.map((w, i) => {
-              const c = confirm.find(x => x.idx === i);
-              if (c) return (
-                <View key={i} style={[styles.seedWord, styles.seedWordInput]}>
-                  <Text style={styles.seedNum}>{i + 1}.</Text>
-                  <TextInput
-                    style={styles.seedInput}
-                    value={c.pick}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    onChangeText={t => setConfirm(prev => prev.map(p => p.idx === i ? { ...p, pick: t.trim().toLowerCase() } : p))}
-                    placeholder="?"
-                    placeholderTextColor={C.textMuted}
-                  />
-                </View>
-              );
+            {Array.from({ length: seed.length }).map((_, i) => {
+              const w = verifyOrder[i];
+              const filled = w !== undefined;
+              const wrong = orderMismatch && filled && seed[i] !== w;
               return (
-                <View key={i} style={[styles.seedWord, { opacity: 0.5 }]}>
+                <Pressable
+                  key={i}
+                  onPress={() => filled && unpickAt(i)}
+                  style={[
+                    styles.seedWord,
+                    {
+                      borderStyle: filled ? 'solid' : 'dashed',
+                      borderColor: wrong ? C.red : (filled ? C.blue : C.borderDefault),
+                      backgroundColor: wrong
+                        ? 'rgba(248,113,113,0.10)'
+                        : (filled ? 'rgba(59,122,247,0.10)' : 'transparent'),
+                      minHeight: 32,
+                    },
+                  ]}
+                >
                   <Text style={styles.seedNum}>{i + 1}.</Text>
-                  <Text style={styles.seedText}>{w}</Text>
-                </View>
+                  <Text style={styles.seedText}>{filled ? w : ' '}</Text>
+                </Pressable>
               );
             })}
           </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 10, marginBottom: 10, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, backgroundColor: 'rgba(0,0,0,0.05)' }}>
+            {verifyPool.map((w, i) => (
+              <Pressable
+                key={`${w}-${i}`}
+                onPress={() => pickWord(w)}
+                style={{ paddingHorizontal: 12, paddingVertical: 7, backgroundColor: C.bgElevated, borderColor: C.borderDefault, borderWidth: 1, borderRadius: 999 }}
+              >
+                <Text style={{ color: C.textPrimary, fontFamily: 'monospace', fontSize: 12, fontWeight: '600' }}>{w}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {orderMismatch && <Text style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>Order doesn't match. Tap slots to undo.</Text>}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable style={[styles.btnOutline, { flex: 1 }]} onPress={() => setStep('create-show')}>
               <Text style={styles.btnOutlineText}>Back</Text>

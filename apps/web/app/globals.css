@@ -1222,6 +1222,47 @@ body {
   width: 100%; padding: 8px 0; font-weight: 600;
 }
 
+/* ─── Verify-phrase tap-to-order flow ─── */
+.seed-slot {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: var(--border-default);
+  min-height: 34px;
+}
+.seed-slot:not(.filled):hover { border-color: var(--border-strong); }
+.seed-slot.filled {
+  border-style: solid;
+  border-color: rgba(59,122,247,0.45);
+  background: rgba(59,122,247,0.08);
+}
+.seed-slot.filled:hover { border-color: var(--red); background: rgba(248,113,113,0.08); }
+.seed-slot.wrong {
+  border-color: rgba(248,113,113,0.6) !important;
+  background: rgba(248,113,113,0.08) !important;
+}
+.seed-slot-word { font-weight: 600; min-height: 1em; }
+
+.seed-pool {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 12px; margin-bottom: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .seed-pool { background: rgba(0,0,0,0.02); }
+.seed-pool-chip {
+  font-family: 'Geist Mono', monospace; font-size: 12px; font-weight: 600;
+  padding: 7px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+.seed-pool-chip:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.seed-pool-chip:active { transform: scale(0.96); }
+
 .btn-link {
   background: none; border: none; color: var(--blue);
   font-size: 11.5px; font-weight: 600; cursor: pointer;
