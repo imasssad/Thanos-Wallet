@@ -127,7 +127,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           <h1 className="onboard-title">Welcome to Thanos</h1>
           <p className="onboard-sub">Multi-chain Web4 wallet — Lithosphere · Bitcoin · Solana · EVM</p>
           <button className="btn-primary onboard-btn" onClick={startCreate}>Create new wallet</button>
-          <button className="btn-outline onboard-btn" style={{ width: '100%', height: 48 }} onClick={() => setStep('import')}>Import existing wallet</button>
+          <button className="btn-outline onboard-btn" style={{ width: '100%' }} onClick={() => setStep('import')}>Import existing wallet</button>
         </>}
 
         {step === 'create-warn' && <>
@@ -139,7 +139,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             <li>Thanos team will never ask for this phrase</li>
           </ul>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('welcome')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('welcome')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} onClick={() => setStep('create-show')}>I understand</button>
           </div>
         </>}
@@ -159,7 +159,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             {copiedSeed ? <><Check size={14}/> Copied to clipboard</> : <><Copy size={14}/> Copy phrase</>}
           </button>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('create-warn')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('create-warn')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} onClick={goToVerify}>I've saved it</button>
           </div>
         </>}
@@ -184,7 +184,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             })}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('create-show')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('create-show')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} disabled={!allConfirmed} onClick={() => setStep('create-pwd')}>Continue</button>
           </div>
         </>}
@@ -197,7 +197,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           {password && password.length < 8 && <div className="onboard-err">Min 8 characters</div>}
           {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
               {step === 'create-pwd' ? 'Create wallet' : 'Import wallet'}
             </button>
@@ -210,7 +210,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           <textarea className="field-input" style={{ height: 100, resize: 'none', fontFamily: 'Geist Mono, monospace', fontSize: 12 }} placeholder="word1 word2 word3 …" value={importInput} onChange={e => setImportInput(e.target.value)}/>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{importInput.trim().split(/\s+/).filter(Boolean).length} words</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('welcome')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('welcome')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} disabled={![12,15,18,21,24].includes(importInput.trim().split(/\s+/).filter(Boolean).length)} onClick={() => setStep('import-pwd')}>Continue</button>
           </div>
         </>}
