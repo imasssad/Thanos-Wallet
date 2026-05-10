@@ -3,12 +3,56 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/Thanos_Logo_Transparent.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "bundleIdentifier": "ai.thanos.wallet"
+      "bundleIdentifier": "ai.thanos.wallet",
+      "supportsTablet": true,
+      "buildNumber": "1"
     },
     "android": {
-      "package": "ai.thanos.wallet"
+      "package": "ai.thanos.wallet",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": []
     },
-    "plugins": ["expo-secure-store"]
+    "jsEngine": "hermes",
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableBundleCompression": true,
+            "extraProguardRules": "-keep class com.facebook.hermes.unicode.** { *; }\n-keep class com.facebook.jni.** { *; }",
+            "buildTypes": {
+              "release": {
+                "minifyEnabled": true,
+                "shrinkResources": true,
+                "proguardFiles": ["proguard-android-optimize.txt", "proguard-rules.pro"]
+              }
+            }
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "edaba20e-25dd-41e5-85ae-76872c092d1e"
+      }
+    },
+    "owner": "imasssad"
   }
 }

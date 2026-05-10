@@ -1,12 +1,37 @@
 {
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
-    "production": {
-      "ios": {
-        "distribution": "store"
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
+    "preview": {
+      "distribution": "internal",
+      "node": "20.11.0",
+      "env": {
+        "EAS_NO_VCS": "1",
+        "EXPO_PUBLIC_ENV": "production",
+        "NODE_ENV": "production"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "image": "latest",
+        "cache": {
+          "disabled": false
+        }
       }
+    },
+    "production-apk": {
+      "extends": "preview"
+    },
+    "production": {
+      "ios": { "distribution": "store" },
+      "android": { "buildType": "app-bundle" }
     }
   },
   "submit": {

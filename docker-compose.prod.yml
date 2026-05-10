@@ -1,0 +1,33 @@
+# Production override — apply alongside docker-compose.yml
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    # Bind only to localhost — never expose Postgres to the internet.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    # Same: localhost only.
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  api:
+    environment:
+      NODE_ENV: production
+    # Remove dev volume mount — use built image only
+    volumes: []
+    # Expose only on localhost; use nginx reverse proxy in front for SSL
+    ports:
+      - "127.0.0.1:4000:4000"
+
+  indexer:
+    environment:
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:4010:4010"
+
+  worker:
+    environment:
+      NODE_ENV: production

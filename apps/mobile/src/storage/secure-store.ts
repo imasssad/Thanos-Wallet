@@ -1,5 +1,10 @@
 import * as SecureStore from 'expo-secure-store';
-import type { SecureStore as SecureStoreInterface } from '@thanos/sdk-core';
+
+interface SecureStoreInterface {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  remove(key: string): Promise<void>;
+}
 
 export class MobileSecureStore implements SecureStoreInterface {
   async get(key: string): Promise<string | null> {
