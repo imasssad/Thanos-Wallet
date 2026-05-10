@@ -1,12 +1,11 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import { ThemeProvider } from '../components/providers/ThemeProvider';
-import { AppShell } from '../components/shell/AppShell';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Thanos Wallet',
-  description: 'Multi-chain Web4 wallet — Lithosphere, Bitcoin, Solana, EVM',
+  title: 'Thanos Wallet — Web4 wallet for Lithosphere, Bitcoin, EVM',
+  description: 'Self-custody multi-chain wallet built for the Lithosphere ecosystem. LITHO, wLITHO, FGPT, BTC, ETH — one key, every chain.',
   icons: {
     icon: [
       { url: '/favicon.ico' },
@@ -25,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider>
-          <AppShell>{children}</AppShell>
+          {children}
         </ThemeProvider>
       </body>
     </html>

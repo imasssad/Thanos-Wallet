@@ -8,11 +8,11 @@ import {
 } from '../ui/Icons';
 
 const NAV = [
-  { href: '/',         label: 'Portfolio',  icon: IconHome },
-  { href: '/send',     label: 'Send',       icon: IconSend },
-  { href: '/swap',     label: 'Swap',       icon: IconSwap },
-  { href: '/history',  label: 'History',    icon: IconHistory },
-  { href: '/settings', label: 'Settings',   icon: IconSettings },
+  { href: '/app',          label: 'Portfolio',  icon: IconHome },
+  { href: '/app/send',     label: 'Send',       icon: IconSend },
+  { href: '/app/swap',     label: 'Swap',       icon: IconSwap },
+  { href: '/app/history',  label: 'History',    icon: IconHistory },
+  { href: '/app/settings', label: 'Settings',   icon: IconSettings },
 ];
 
 export function Sidebar() {
@@ -38,7 +38,7 @@ export function Sidebar() {
       {/* Nav */}
       <nav className={styles.nav}>
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+          const active = href === '/app' ? pathname === '/app' : pathname.startsWith(href);
           return (
             <Link
               key={href}

@@ -5,10 +5,10 @@ import styles from './QuickActions.module.css';
 import { IconSend, IconReceive, IconSwap, IconLink } from '../ui/Icons';
 
 const ACTIONS = [
-  { href: '/send',    label: 'Send',    icon: IconSend,    primary: true  },
-  { href: '/receive', label: 'Receive', icon: IconReceive, primary: false },
-  { href: '/swap',    label: 'Swap',    icon: IconSwap,    primary: false },
-  { href: '/dapps',   label: 'dApps',   icon: IconLink,    primary: false },
+  { href: '/app/send',    label: 'Send',    icon: IconSend,    primary: true  },
+  { href: '/app/receive', label: 'Receive', icon: IconReceive, primary: false },
+  { href: '/app/swap',    label: 'Swap',    icon: IconSwap,    primary: false },
+  { href: '/app/dapps',   label: 'dApps',   icon: IconLink,    primary: false },
 ] as const;
 
 export function QuickActions() {

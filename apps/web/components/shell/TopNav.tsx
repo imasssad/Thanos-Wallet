@@ -9,12 +9,12 @@ import {
 const ACCOUNT = { name: 'RobbyWallet', address: '0x70cA2F2B7' };
 
 const NAV = [
-  { href: '/',          label: 'Dashboard'    },
-  { href: '/market',    label: 'Market'       },
-  { href: '/portfolio', label: 'Portfolio'    },
-  { href: '/history',   label: 'Transactions' },
-  { href: '/staking',   label: 'Staking'      },
-  { href: '/settings',  label: 'Settings'     },
+  { href: '/app',           label: 'Dashboard'    },
+  { href: '/app/market',    label: 'Market'       },
+  { href: '/app/portfolio', label: 'Portfolio'    },
+  { href: '/app/history',   label: 'Transactions' },
+  { href: '/app/staking',   label: 'Staking'      },
+  { href: '/app/settings',  label: 'Settings'     },
 ];
 
 export function TopNav({ onLock }: { onLock?: () => void }) {
@@ -26,7 +26,7 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
   const [mobileMenu, setMobileMenu]   = useState(false);
 
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
+    href === '/app' ? pathname === '/app' : pathname.startsWith(href);
 
   return (
     <nav className="topnav">
@@ -84,7 +84,7 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
                 <button className="menu-item" onClick={() => { navigator.clipboard?.writeText(ACCOUNT.address); setAccountMenu(false); }}>
                   <Copy size={16}/> Copy address
                 </button>
-                <button className="menu-item" onClick={() => { router.push('/settings'); setAccountMenu(false); }}>
+                <button className="menu-item" onClick={() => { router.push('/app/settings'); setAccountMenu(false); }}>
                   <SettingsIcon size={16}/> Settings
                 </button>
                 <button className="menu-item" onClick={() => { toggleTheme(); setAccountMenu(false); }}>
