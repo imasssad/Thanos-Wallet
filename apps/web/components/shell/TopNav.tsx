@@ -49,11 +49,6 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
         ))}
       </div>
 
-      {/* Mobile menu toggle */}
-      <button className="nav-mobile-toggle" onClick={() => setMobileMenu(v => !v)}>
-        <Menu size={20}/>
-      </button>
-
       <div style={{ flex: 1 }}/>
 
       <div className="topnav-right">
@@ -110,8 +105,8 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
           <Bell size={16}/>
           <span style={{ position: 'absolute', top: 6, right: 6, width: 5, height: 5, background: 'var(--blue)', borderRadius: '50%', border: '1.5px solid var(--bg-surface)' }}/>
         </button>
-        <button className="nav-user-avatar" onClick={toggleTheme} title="Toggle theme">
-          {isDark ? <Sun size={15}/> : <Moon size={15}/>}
+        <button className="nav-mobile-toggle" onClick={() => setMobileMenu(v => !v)} title="Menu">
+          <Menu size={20}/>
         </button>
       </div>
 
