@@ -32,8 +32,12 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [step, setStep] = useState<Step>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
-  const [verifyOrder, setVerifyOrder] = useState<string[]>([]);
-  const [verifyPool, setVerifyPool]   = useState<string[]>([]);
+  /* Verify-phrase state: only N indices are missing; user fills those slots
+     by tapping chips from a pool. The other (12-N) words are pre-filled. */
+  const VERIFY_MISSING = 4;
+  const [missingIdxs,   setMissingIdxs]  = useState<number[]>([]);
+  const [verifyPicks,   setVerifyPicks]  = useState<Record<number, string>>({});
+  const [verifyPool,    setVerifyPool]   = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [unlockPwd, setUnlockPwd] = useState('');
@@ -43,26 +47,37 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
   const goToVerify = () => {
-    setVerifyOrder([]);
-    setVerifyPool([...seed].sort(() => Math.random() - 0.5));
+    // Pick N random indices to verify; pool contains those correct words shuffled
+    const idxs = Array.from({ length: seed.length }, (_, i) => i)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, VERIFY_MISSING)
+      .sort((a, b) => a - b);
+    setMissingIdxs(idxs);
+    setVerifyPicks({});
+    setVerifyPool(idxs.map(i => seed[i]).sort(() => Math.random() - 0.5));
     setStep('create-confirm');
   };
   const pickWord = (w: string) => {
-    setVerifyOrder(prev => [...prev, w]);
+    // fill the next empty missing slot, in slot order
+    const nextEmpty = missingIdxs.find(i => verifyPicks[i] === undefined);
+    if (nextEmpty === undefined) return;
+    setVerifyPicks(prev => ({ ...prev, [nextEmpty]: w }));
     setVerifyPool(prev => {
       const i = prev.indexOf(w);
       return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
     });
   };
   const unpickAt = (slotIdx: number) => {
-    const w = verifyOrder[slotIdx];
+    const w = verifyPicks[slotIdx];
     if (w === undefined) return;
-    setVerifyOrder(prev => prev.filter((_, i) => i !== slotIdx));
+    setVerifyPicks(prev => { const next = { ...prev }; delete next[slotIdx]; return next; });
     setVerifyPool(prev => [...prev, w]);
   };
-  const allConfirmed = verifyOrder.length === seed.length
-                     && verifyOrder.every((w, i) => w === seed[i]);
-  const orderMismatch = verifyOrder.length === seed.length && !allConfirmed;
+  const allConfirmed = missingIdxs.length > 0
+                     && missingIdxs.every(i => verifyPicks[i] === seed[i]);
+  const orderMismatch = missingIdxs.length > 0
+                     && missingIdxs.every(i => verifyPicks[i] !== undefined)
+                     && !allConfirmed;
 
   const finishCreate = () => {
     if (password !== password2 || password.length < 8) return;
@@ -181,12 +196,21 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
         {step === 'create-confirm' && <>
           <h1 className="onboard-title">Verify your phrase</h1>
-          <p className="onboard-sub">Tap the words in the correct order. Tap a filled slot to undo.</p>
+          <p className="onboard-sub">Fill in the {VERIFY_MISSING} missing words by tapping from the pool below. Tap a filled slot to undo.</p>
           <div className="seed-grid">
-            {Array.from({ length: seed.length }).map((_, i) => {
-              const w = verifyOrder[i];
-              const filled = w !== undefined;
-              const wrong = orderMismatch && filled && seed[i] !== w;
+            {seed.map((word, i) => {
+              const isMissing = missingIdxs.includes(i);
+              const picked = verifyPicks[i];
+              const filled = picked !== undefined;
+              const wrong = orderMismatch && filled && seed[i] !== picked;
+              if (!isMissing) {
+                return (
+                  <div key={i} className="seed-word seed-faded">
+                    <span className="seed-num">{i + 1}.</span>
+                    <span>{word}</span>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={i}
@@ -194,7 +218,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
                   onClick={() => filled && unpickAt(i)}
                 >
                   <span className="seed-num">{i + 1}.</span>
-                  <span className="seed-slot-word">{filled ? w : ' '}</span>
+                  <span className="seed-slot-word">{picked ?? ' '}</span>
                 </div>
               );
             })}
