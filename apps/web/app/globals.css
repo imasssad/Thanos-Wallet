@@ -1077,12 +1077,11 @@ body {
 .input-trail-btn:hover { color: var(--text-primary); background: rgba(0,0,0,0.04); }
 [data-theme="dark"] .input-trail-btn:hover { background: rgba(255,255,255,0.06); }
 
-/* Pill-shaped primary button (Trust style) */
-.onboard-card .btn-primary,
-.onboard-card .btn-pill {
+/* Default primary: rounded rectangle so it matches the outline button beside it */
+.onboard-card .btn-primary {
   height: 50px;
   margin-top: 22px;
-  border-radius: 999px;
+  border-radius: 13px;
   background: var(--blue);
   font-size: 14px; font-weight: 600;
   letter-spacing: -0.005em;
@@ -1091,6 +1090,8 @@ body {
   transition: transform 0.08s, filter 0.15s, background 0.15s, box-shadow 0.15s;
   border: none;
 }
+/* Explicit pill style for solo CTAs (e.g. "Unlock" on the unlock screen) */
+.onboard-card .btn-pill { border-radius: 999px !important; }
 .onboard-card .btn-primary:hover:not(:disabled) {
   filter: brightness(1.05);
   box-shadow: 0 4px 12px rgba(59,122,247,0.3);
@@ -1116,14 +1117,15 @@ body {
   box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset;
 }
 
-/* Outline buttons (light + dark) */
+/* Outline buttons (light + dark) — matches primary height/radius for clean side-by-side rows */
 .onboard-card .btn-outline {
-  height: 48px !important;
-  border-radius: 12px;
+  height: 50px !important;
+  border-radius: 13px;
   background: #ffffff;
   border: 1px solid #d4d4d8;
-  font-size: 13.5px; font-weight: 600;
+  font-size: 14px; font-weight: 600;
   color: var(--text-primary);
+  margin-top: 22px;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .onboard-card .btn-outline:hover {
