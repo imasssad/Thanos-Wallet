@@ -1,86 +1,581 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
+import {
+  ArrowUpRight, ArrowDownLeft, Repeat, Plus,
+  Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
+  Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search,
+  Fingerprint, Key, AlertTriangle, Globe, Zap, Bell,
+} from 'lucide-react';
 
-/* ──────────────────────── Icons (inline SVG) ──────────────────────── */
+/* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
-const I = (path: React.ReactNode) => ({ size = 16 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">{path}</svg>
-);
+const STORAGE = {
+  hasVault: 'thanos.has_vault',
+  mnemonic: 'thanos.mnemonic',
+  password: 'thanos.password',
+  theme:    'thanos-theme',
+};
 
-const Send       = I(<><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></>);
-const Receive    = I(<><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></>);
-const Swap       = I(<><path d="M7 16V4M3 8l4-4 4 4"/><path d="M17 8v12m4-4l-4 4-4-4"/></>);
-const Link       = I(<><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></>);
-const Home       = I(<><path d="M3 12L12 3l9 9"/><path d="M5 10.5V21h14V10.5"/></>);
-const History    = I(<><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></>);
-const Settings   = I(<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></>);
-const Copy       = I(<><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>);
-const ChevDown   = I(<path d="M6 9l6 6 6-6"/>);
-const Eye        = I(<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>);
-const Lock       = I(<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>);
-const Sun        = I(<><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></>);
-const Moon       = I(<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>);
+function generateMnemonic(): string[] {
+  return Wallet.createRandom().mnemonic!.phrase.split(' ');
+}
+function isValidMnemonic(p: string) {
+  try { Mnemonic.fromPhrase(p.trim().toLowerCase()); return true; }
+  catch { return false; }
+}
+function deriveEvm(seed: string[]): string {
+  try { return HDNodeWallet.fromPhrase(seed.join(' '), undefined, "m/44'/60'/0'/0/0").address; }
+  catch { return '0x0000000000000000000000000000000000000000'; }
+}
 
 /* ──────────────────────── Mock data ──────────────────────── */
 
-const ACCOUNT = {
-  name:    'Account 1',
-  address: 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v',
-};
-
 const ASSETS = [
-  { sym: 'LITHO', name: 'Lithosphere', chain: 'Makalu',  bal: '4,280.00', usd: '$1,284.00', chg:  3.42, grad: ['#8b7df7', '#7060e0'] },
-  { sym: 'BTC',   name: 'Bitcoin',     chain: 'Bitcoin', bal: '0.04821',  usd: '$2,891.00', chg: -1.17, grad: ['#f97316', '#ea580c'] },
-  { sym: 'SOL',   name: 'Solana',      chain: 'Solana',  bal: '12.380',   usd: '$1,772.00', chg:  5.88, grad: ['#9945ff', '#7c3aed'] },
-  { sym: 'ETH',   name: 'Ethereum',    chain: 'EVM',     bal: '0.6142',   usd: '$2,210.00', chg:  0.54, grad: ['#627eea', '#4f63bb'] },
-  { sym: 'USDC',  name: 'USD Coin',    chain: 'EVM',     bal: '840.00',   usd: '$840.00',   chg:  0.01, grad: ['#2775ca', '#1a5fa0'] },
-  { sym: 'COLLE', name: 'Colle AI',    chain: 'Makalu',  bal: '18,000',   usd: '$360.00',   chg:  8.22, grad: ['#00d68f', '#00a86b'] },
+  { sym: 'LITHO', name: 'Lithosphere', bal: '4,280.00', usd: '$1,284.00', price: '$0.300',  chg:  3.42, color: '#8b7df7' },
+  { sym: 'BTC',   name: 'Bitcoin',     bal: '0.04821',  usd: '$2,891.00', price: '$59,962', chg: -1.17, color: '#f7931a' },
+  { sym: 'SOL',   name: 'Solana',      bal: '12.380',   usd: '$1,772.00', price: '$143.10', chg:  5.88, color: '#14f195' },
+  { sym: 'ETH',   name: 'Ethereum',    bal: '0.6142',   usd: '$2,210.00', price: '$3,598',  chg:  0.54, color: '#627eea' },
+  { sym: 'USDC',  name: 'USD Coin',    bal: '840.00',   usd: '$840.00',   price: '$1.00',   chg:  0.01, color: '#2775ca' },
 ];
 
-const TOTAL_USD = '$9,357.00';
-const CHANGE_24H = 2.34;
+const TXS = [
+  { type: 'Received', sym: 'LITHO', amt: '+1,200',  time: '2 min ago',  pos: true,  color: '#8b7df7' },
+  { type: 'Sent',     sym: 'BTC',   amt: '-0.012',  time: '1 hr ago',   pos: false, color: '#f7931a' },
+  { type: 'Swap',     sym: 'SOL',   amt: '2.4',     time: '3 hr ago',   pos: true,  color: '#14f195' },
+  { type: 'Received', sym: 'USDC',  amt: '+840',    time: 'Yesterday',  pos: true,  color: '#2775ca' },
+];
 
-function shortAddr(a: string) { return a.length > 14 ? `${a.slice(0, 7)}…${a.slice(-5)}` : a; }
+/* ──────────────────────── Onboarding ──────────────────────── */
 
-/* ──────────────────────── Views ──────────────────────── */
+type OnboardStep = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm' | 'create-pwd'
+                 | 'import' | 'import-pwd' | 'unlock';
 
-function HomeView() {
+function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (s: string[]) => void }) {
+  const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
+  const [seed, setSeed] = useState<string[]>([]);
+  const [importInput, setImportInput] = useState('');
+  const [confirm, setConfirm] = useState<{ idx: number; pick: string }[]>([]);
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [unlockPwd, setUnlockPwd] = useState('');
+  const [unlockErr, setUnlockErr] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [copiedSeed, setCopiedSeed] = useState(false);
+
+  const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
+  const goToVerify = () => {
+    const idxs = Array.from({ length: 12 }, (_, i) => i)
+      .sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a - b);
+    setConfirm(idxs.map(i => ({ idx: i, pick: '' })));
+    setStep('create-confirm');
+  };
+  const allConfirmed = confirm.every(c => c.pick === seed[c.idx]);
+
+  const finishCreate = () => {
+    if (password !== password2 || password.length < 8) return;
+    localStorage.setItem(STORAGE.hasVault, '1');
+    localStorage.setItem(STORAGE.mnemonic, seed.join(' '));
+    localStorage.setItem(STORAGE.password, password);
+    onComplete(seed);
+  };
+  const finishImport = () => {
+    if (password !== password2 || password.length < 8) return;
+    const words = importInput.trim().toLowerCase().split(/\s+/);
+    if (![12, 15, 18, 21, 24].includes(words.length)) { alert('Phrase must be 12/15/18/21/24 words'); return; }
+    if (!isValidMnemonic(words.join(' '))) { alert('Invalid recovery phrase'); return; }
+    localStorage.setItem(STORAGE.hasVault, '1');
+    localStorage.setItem(STORAGE.mnemonic, words.join(' '));
+    localStorage.setItem(STORAGE.password, password);
+    onComplete(words);
+  };
+  const tryUnlock = () => {
+    const stored = localStorage.getItem(STORAGE.password);
+    const mnem = localStorage.getItem(STORAGE.mnemonic);
+    if (stored && unlockPwd === stored && mnem) onComplete(mnem.split(' '));
+    else { setUnlockErr('Incorrect password'); setUnlockPwd(''); }
+  };
+  const resetWallet = () => {
+    if (window.confirm('Erase wallet from this browser? You can restore with your recovery phrase.')) {
+      [STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password].forEach(k => localStorage.removeItem(k));
+      setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
+    }
+  };
+  const copySeed = async () => {
+    const text = seed.join(' ');
+    let ok = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+    }
+    if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+    if (ok) { setCopiedSeed(true); setTimeout(() => setCopiedSeed(false), 2000); }
+  };
+
+  return (
+    <div className="onb-wrap">
+      <div className="onb-card">
+        <div className="onb-logo">
+          <img src="/icons/icon128.png" alt="Thanos" width="48" height="48"/>
+        </div>
+
+        {step === 'welcome' && <>
+          <h1 className="onb-title">Welcome to Thanos</h1>
+          <p className="onb-sub">Multi-chain Web4 wallet</p>
+          <button className="btn-primary" onClick={startCreate}>Create new wallet</button>
+          <button className="btn-outline" onClick={() => setStep('import')}>Import existing</button>
+        </>}
+
+        {step === 'create-warn' && <>
+          <h1 className="onb-title">Save your phrase</h1>
+          <p className="onb-sub">12 words = your wallet's only backup. Anyone with them has full access.</p>
+          <ul className="warn-list">
+            <li>Write them down on paper</li>
+            <li>Keep them safe and private</li>
+            <li>Never share with anyone</li>
+          </ul>
+          <div className="row-btns">
+            <button className="btn-outline" onClick={() => setStep('welcome')}>Back</button>
+            <button className="btn-primary" onClick={() => setStep('create-show')}>I understand</button>
+          </div>
+        </>}
+
+        {step === 'create-show' && <>
+          <h1 className="onb-title">Recovery phrase</h1>
+          <p className="onb-sub">Write all 12 words down in order.</p>
+          <div className="seed-grid">
+            {seed.map((w, i) => (
+              <div key={i} className="seed-cell">
+                <span className="seed-num">{i + 1}.</span>
+                <span style={{ userSelect: 'text' }}>{w}</span>
+              </div>
+            ))}
+          </div>
+          <button className="btn-link" onClick={copySeed}>
+            {copiedSeed ? <><Check size={13}/> Copied</> : <><Copy size={13}/> Copy phrase</>}
+          </button>
+          <div className="row-btns">
+            <button className="btn-outline" onClick={() => setStep('create-warn')}>Back</button>
+            <button className="btn-primary" onClick={goToVerify}>Saved it</button>
+          </div>
+        </>}
+
+        {step === 'create-confirm' && <>
+          <h1 className="onb-title">Verify phrase</h1>
+          <p className="onb-sub">Enter the missing words.</p>
+          <div className="seed-grid">
+            {seed.map((w, i) => {
+              const c = confirm.find(x => x.idx === i);
+              if (c) return (
+                <div key={i} className="seed-cell seed-input">
+                  <span className="seed-num">{i + 1}.</span>
+                  <input
+                    value={c.pick}
+                    onChange={e => setConfirm(prev => prev.map(p => p.idx === i ? { ...p, pick: e.target.value.trim().toLowerCase() } : p))}
+                    placeholder="?"
+                  />
+                </div>
+              );
+              return <div key={i} className="seed-cell seed-faded"><span className="seed-num">{i + 1}.</span>{w}</div>;
+            })}
+          </div>
+          <div className="row-btns">
+            <button className="btn-outline" onClick={() => setStep('create-show')}>Back</button>
+            <button className="btn-primary" disabled={!allConfirmed} onClick={() => setStep('create-pwd')}>Continue</button>
+          </div>
+        </>}
+
+        {(step === 'create-pwd' || step === 'import-pwd') && <>
+          <h1 className="onb-title">Set password</h1>
+          <p className="onb-sub">Min 8 characters. Used to unlock on this device.</p>
+          <input className="field" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}/>
+          <input className="field" type="password" placeholder="Confirm" value={password2} onChange={e => setPassword2(e.target.value)} style={{ marginTop: 8 }}/>
+          {password && password.length < 8 && <div className="onb-err">Min 8 characters</div>}
+          {password && password2 && password !== password2 && <div className="onb-err">Passwords don't match</div>}
+          <div className="row-btns">
+            <button className="btn-outline" onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
+            <button className="btn-primary" disabled={password.length < 8 || password !== password2} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
+              {step === 'create-pwd' ? 'Create' : 'Import'}
+            </button>
+          </div>
+        </>}
+
+        {step === 'import' && <>
+          <h1 className="onb-title">Import wallet</h1>
+          <p className="onb-sub">Paste your recovery phrase (12-24 words).</p>
+          <textarea className="field field-textarea" placeholder="word1 word2…" value={importInput} onChange={e => setImportInput(e.target.value)}/>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+            {importInput.trim().split(/\s+/).filter(Boolean).length} words
+          </div>
+          <div className="row-btns">
+            <button className="btn-outline" onClick={() => setStep('welcome')}>Back</button>
+            <button className="btn-primary"
+              disabled={![12,15,18,21,24].includes(importInput.trim().split(/\s+/).filter(Boolean).length)}
+              onClick={() => setStep('import-pwd')}>Continue</button>
+          </div>
+        </>}
+
+        {step === 'unlock' && <>
+          <h1 className="onb-title">Welcome back</h1>
+          <p className="onb-sub">Enter password to unlock</p>
+          <div className="input-wrap">
+            <input
+              className="field"
+              type={showPwd ? 'text' : 'password'}
+              placeholder="Password"
+              value={unlockPwd}
+              onChange={e => { setUnlockPwd(e.target.value); setUnlockErr(''); }}
+              onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+              autoFocus
+            />
+            <button className="input-eye" onClick={() => setShowPwd(s => !s)} type="button" tabIndex={-1}>
+              {showPwd ? <EyeOff size={15}/> : <Eye size={15}/>}
+            </button>
+          </div>
+          {unlockErr && <div className="onb-err">{unlockErr}</div>}
+          <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd}>Unlock</button>
+          <div className="onb-footer">
+            <p className="onb-footer-text">Forgot password? Wallet can be restored with the recovery phrase.</p>
+            <button className="onb-footer-link" onClick={resetWallet}>Reset wallet</button>
+          </div>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────── Main app screens ──────────────────────── */
+
+function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap') => void; onLock: () => void }) {
+  return (
+    <div className="screen">
+      <div className="screen-header">
+        <div className="acct-chip" onClick={onLock} title="Long-press to lock">
+          <div className="acct-avatar"><User size={13}/></div>
+          <div>
+            <div className="acct-name">Account 1</div>
+            <div className="acct-addr">litho1…o9z4v</div>
+          </div>
+        </div>
+        <button className="icon-btn"><Bell size={15}/></button>
+      </div>
+
+      <div className="balance-card">
+        <div className="balance-label">TOTAL BALANCE</div>
+        <div className="balance-amt">$9,357.00</div>
+        <div className="balance-row">
+          <div className="change-pill">▲ 2.34%</div>
+          <span className="balance-sub">+$214.32 today</span>
+        </div>
+      </div>
+
+      <div className="qa-row">
+        <button className="qa-btn" onClick={() => onAction('send')}>
+          <div className="qa-icon"><ArrowUpRight size={14}/></div>
+          <span>Send</span>
+        </button>
+        <button className="qa-btn" onClick={() => onAction('receive')}>
+          <div className="qa-icon"><ArrowDownLeft size={14}/></div>
+          <span>Receive</span>
+        </button>
+        <button className="qa-btn" onClick={() => onAction('swap')}>
+          <div className="qa-icon"><Repeat size={14}/></div>
+          <span>Swap</span>
+        </button>
+        <button className="qa-btn">
+          <div className="qa-icon"><Plus size={14}/></div>
+          <span>Buy</span>
+        </button>
+      </div>
+
+      <div className="section-header">
+        <span>Assets</span>
+        <span className="count-pill">{ASSETS.length}</span>
+      </div>
+      <div className="card list">
+        {ASSETS.map((a, i) => (
+          <div key={a.sym} className={`row ${i < ASSETS.length - 1 ? 'row-border' : ''}`}>
+            <div className="row-avatar" style={{ background: a.color }}>{a.sym.slice(0,1)}</div>
+            <div className="row-mid">
+              <div className="row-name">{a.name}</div>
+              <div className="row-sub">{a.price} <span className={a.chg >= 0 ? 'pos' : 'neg'}>{a.chg >= 0 ? '+' : ''}{a.chg}%</span></div>
+            </div>
+            <div className="row-right">
+              <div className="row-amt">{a.usd}</div>
+              <div className="row-bal">{a.bal} {a.sym}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActivityScreen() {
+  return (
+    <div className="screen">
+      <h1 className="page-title">Activity</h1>
+      <div className="filter-row">
+        {['All', 'Sent', 'Received', 'Swap'].map((f, i) => (
+          <button key={f} className={`filter-pill ${i === 0 ? 'active' : ''}`}>{f}</button>
+        ))}
+      </div>
+      <div className="section-header">Today</div>
+      <div className="card list">
+        {TXS.map((t, i) => {
+          const Ic = t.type === 'Sent' ? ArrowUpRight : t.type === 'Received' ? ArrowDownLeft : Repeat;
+          return (
+            <div key={i} className={`row ${i < TXS.length - 1 ? 'row-border' : ''}`}>
+              <div className="row-avatar" style={{ background: t.pos ? 'rgba(16,185,129,0.18)' : 'rgba(59,122,247,0.18)', color: t.pos ? '#10b981' : '#3b7af7' }}>
+                <Ic size={14} strokeWidth={2.4}/>
+              </div>
+              <div className="row-mid">
+                <div className="row-name">{t.type} {t.sym}</div>
+                <div className="row-sub">{t.time}</div>
+              </div>
+              <div className="row-right">
+                <div className={`row-amt ${t.pos ? 'pos' : ''}`}>{t.amt} {t.sym}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; onToggleTheme: () => void; onLock: () => void }) {
+  return (
+    <div className="screen">
+      <h1 className="page-title">Settings</h1>
+      <div className="acct-header-card">
+        <img src="/icons/icon128.png" alt="" width="32" height="32"/>
+        <div style={{ flex: 1 }}>
+          <div className="acct-header-name">Account 1</div>
+          <div className="acct-header-addr">litho1a7…o9z4v</div>
+        </div>
+        <button className="copy-chip">Copy</button>
+      </div>
+
+      <div className="section-label">SECURITY</div>
+      <div className="card list">
+        <div className="set-row row-border">
+          <div className="set-icon"><Fingerprint size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Biometric unlock</div>
+            <div className="set-sub">Coming soon</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </div>
+        <div className="set-row row-border">
+          <div className="set-icon"><Key size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Change password</div>
+            <div className="set-sub">Update wallet password</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </div>
+        <div className="set-row">
+          <div className="set-icon"><AlertTriangle size={15} color="var(--red)"/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label" style={{ color: 'var(--red)' }}>Recovery phrase</div>
+            <div className="set-sub">View 12-word seed</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </div>
+      </div>
+
+      <div className="section-label">APPEARANCE</div>
+      <div className="card list">
+        <button className="set-row" onClick={onToggleTheme} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left' }}>
+          <div className="set-icon">{isDark ? <Moon size={15}/> : <Sun size={15}/>}</div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Theme</div>
+            <div className="set-sub">{isDark ? 'Dark mode' : 'Light mode'}</div>
+          </div>
+          <div className={`toggle ${isDark ? 'on' : ''}`}><div className="toggle-thumb"/></div>
+        </button>
+      </div>
+
+      <div className="section-label">SESSION</div>
+      <div className="card list">
+        <button className="set-row" onClick={onLock} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+          <div className="set-icon" style={{ color: 'var(--red)' }}><Lock size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label" style={{ color: 'var(--red)' }}>Lock wallet</div>
+            <div className="set-sub">Require password to access</div>
+          </div>
+        </button>
+      </div>
+
+      <div className="version">Thanos Wallet · v0.8.1</div>
+    </div>
+  );
+}
+
+/* ──────────────────────── Modals ──────────────────────── */
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <button className="modal-back-btn" onClick={onClose}><ChevronLeft size={18}/></button>
+          <span className="modal-title">{title}</span>
+          <div style={{ width: 28 }}/>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SendModal({ onClose }: { onClose: () => void }) {
+  const [to, setTo] = useState(''); const [amt, setAmt] = useState('');
+  return (
+    <Modal title="Send" onClose={onClose}>
+      <div className="modal-body">
+        <label className="field-label">RECIPIENT</label>
+        <input className="field" placeholder="0x… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
+        <label className="field-label" style={{ marginTop: 14 }}>AMOUNT</label>
+        <input className="field" placeholder="0.00" type="number" value={amt} onChange={e => setAmt(e.target.value)}/>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Balance: 5.050 BTC · ~$1.24 fee</div>
+        <button className="btn-primary" disabled={!to || !amt} style={{ marginTop: 16 }}>Review</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ReceiveModal({ onClose, address }: { onClose: () => void; address: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(address); ok = true; } catch {}
+    if (!ok) {
+      const ta = document.createElement('textarea'); ta.value = address;
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1800); }
+  };
+  return (
+    <Modal title="Receive" onClose={onClose}>
+      <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
+        <div className="qr-box">
+          <svg viewBox="0 0 100 100" width="160" height="160">
+            <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
+            <rect x="14" y="14" width="20" height="20" rx="2" fill="currentColor"/>
+            <rect x="57" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
+            <rect x="66" y="14" width="20" height="20" rx="2" fill="currentColor"/>
+            <rect x="5" y="57" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
+            <rect x="14" y="66" width="20" height="20" rx="2" fill="currentColor"/>
+            {[57,63,69,75,81,87,93].map((x,i) =>
+              [57,63,69,75,81,87,93].map((y,j) =>
+                (i+j)%2===0 ? <rect key={`${i}${j}`} x={x} y={y} width="4" height="4" fill="currentColor" opacity="0.7"/> : null
+              )
+            )}
+          </svg>
+        </div>
+        <div className="addr-box">{address.slice(0, 16)}…{address.slice(-6)}</div>
+        <button className="btn-primary" onClick={copy}>{copied ? '✓ Copied' : 'Copy address'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function SwapModal({ onClose }: { onClose: () => void }) {
+  const [from, setFrom] = useState('BTC'); const [to, setTo] = useState('ETH'); const [amt, setAmt] = useState('0.1');
+  const out = (16.22 * parseFloat(amt || '0')).toFixed(4);
+  return (
+    <Modal title="Swap" onClose={onClose}>
+      <div className="modal-body">
+        <label className="field-label">FROM</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select className="field" style={{ width: 80 }} value={from} onChange={e => setFrom(e.target.value)}>
+            {['BTC','ETH','SOL'].map(s => <option key={s}>{s}</option>)}
+          </select>
+          <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
+        </div>
+        <div style={{ textAlign: 'center', margin: '8px 0' }}>↓</div>
+        <label className="field-label">TO</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <select className="field" style={{ width: 80 }} value={to} onChange={e => setTo(e.target.value)}>
+            {['ETH','BTC','SOL','USDC'].map(s => <option key={s}>{s}</option>)}
+          </select>
+          <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>1 {from} ≈ 16.22 {to}</div>
+        <button className="btn-primary" style={{ marginTop: 12 }}>Swap</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ──────────────────────── App shell ──────────────────────── */
+
+type Tab = 'home' | 'activity' | 'settings';
+type Modal = 'send' | 'receive' | 'swap' | null;
+
+function App() {
+  const [hasVault, setHasVault] = useState<boolean | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [seed, setSeed] = useState<string[]>([]);
+  const [tab, setTab] = useState<Tab>('home');
+  const [modal, setModal] = useState<Modal>(null);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    setHasVault(localStorage.getItem(STORAGE.hasVault) === '1');
+    const stored = localStorage.getItem(STORAGE.theme);
+    const dark = stored === 'dark';
+    setIsDark(dark);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  }, []);
+
+  const toggleTheme = () => {
+    setIsDark(prev => {
+      const next = !prev;
+      localStorage.setItem(STORAGE.theme, next ? 'dark' : 'light');
+      document.documentElement.dataset.theme = next ? 'dark' : 'light';
+      return next;
+    });
+  };
+
+  const lock = () => { setUnlocked(false); setSeed([]); };
+  const onComplete = (s: string[]) => { setSeed(s); setHasVault(true); setUnlocked(true); };
+
+  if (hasVault === null) return <div className="root-loading"/>;
+  if (!unlocked) return <Onboarding hasVault={hasVault} onComplete={onComplete}/>;
+
+  const evmAddr = seed.length ? deriveEvm(seed) : 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v';
+
   return (
     <>
-      <div className="balance-block">
-        <span className="balance-label">Total balance</span>
-        <span className="balance-amt">{TOTAL_USD}</span>
-        <span className={`balance-change ${CHANGE_24H >= 0 ? 'pos' : 'neg'}`}>
-          {CHANGE_24H >= 0 ? '+' : '−'}{Math.abs(CHANGE_24H).toFixed(2)}% · 24h
-        </span>
-      </div>
+      {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
+      {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} address={evmAddr}/>}
+      {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
 
-      <div className="actions">
-        <a className="action primary" href="#send">      <Send size={16}/>     Send</a>
-        <a className="action"          href="#receive">   <Receive size={16}/>  Receive</a>
-        <a className="action"          href="#swap">      <Swap size={16}/>     Swap</a>
-        <a className="action"          href="#dapps">     <Link size={16}/>     dApps</a>
-      </div>
-
-      <div>
-        <div className="section-title">Assets</div>
-        <div className="asset-list">
-          {ASSETS.map(a => (
-            <button key={`${a.sym}-${a.chain}`} className="asset-row">
-              <div className="asset-avatar" style={{ background: `linear-gradient(145deg, ${a.grad[0]}, ${a.grad[1]})` }}>
-                {a.sym.slice(0, 2)}
-              </div>
-              <div className="asset-info">
-                <span className="asset-symbol">{a.sym}</span>
-                <span className="asset-bal">{a.bal} {a.sym}</span>
-              </div>
-              <div className="asset-right">
-                <span className="asset-usd">{a.usd}</span>
-                <span className={`asset-change ${a.chg >= 0 ? 'pos' : 'neg'}`}>
-                  {a.chg >= 0 ? '+' : ''}{a.chg.toFixed(2)}%
-                </span>
-              </div>
+      <div className="app">
+        <div className="app-body">
+          {tab === 'home'     && <HomeScreen onAction={setModal} onLock={lock}/>}
+          {tab === 'activity' && <ActivityScreen/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock}/>}
+        </div>
+        <div className="tabbar">
+          {([
+            { k: 'home',     l: 'Home',     I: Home },
+            { k: 'activity', l: 'Activity', I: Clock },
+            { k: 'settings', l: 'Settings', I: SettingsIcon },
+          ] as const).map(t => (
+            <button key={t.k} className={`tab ${tab === t.k ? 'active' : ''}`} onClick={() => setTab(t.k)}>
+              <t.I size={18} strokeWidth={tab === t.k ? 2.4 : 2}/>
+              <span>{t.l}</span>
             </button>
           ))}
         </div>
@@ -89,222 +584,4 @@ function HomeView() {
   );
 }
 
-function SendView() {
-  const [to, setTo] = useState('');
-  const [amt, setAmt] = useState('');
-  return (
-    <>
-      <div className="section-title">Send LITHO</div>
-      <div>
-        <label className="field-label">Recipient</label>
-        <input className="input" value={to} onChange={e => setTo(e.target.value)} placeholder="litho1… or name.litho" />
-      </div>
-      <div>
-        <label className="field-label">Amount</label>
-        <input className="input" value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" type="number" />
-      </div>
-      {amt && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', padding: '0 2px' }}>
-          <span>Network fee</span><span>~0.002 LITHO</span>
-        </div>
-      )}
-      <button className="btn-primary" disabled={!to || !amt}>Continue</button>
-    </>
-  );
-}
-
-function ReceiveView() {
-  const [copied, setCopied] = useState(false);
-  function copy() {
-    navigator.clipboard.writeText(ACCOUNT.address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-  return (
-    <>
-      <div className="section-title">Receive on Makalu</div>
-      <div className="qr-frame">
-        <svg width="140" height="140" viewBox="0 0 160 160">
-          <rect x="10" y="10" width="44" height="44" rx="4" fill="none" stroke="#0b0b14" strokeWidth="4"/>
-          <rect x="20" y="20" width="24" height="24" rx="2" fill="#0b0b14"/>
-          <rect x="106" y="10" width="44" height="44" rx="4" fill="none" stroke="#0b0b14" strokeWidth="4"/>
-          <rect x="116" y="20" width="24" height="24" rx="2" fill="#0b0b14"/>
-          <rect x="10" y="106" width="44" height="44" rx="4" fill="none" stroke="#0b0b14" strokeWidth="4"/>
-          <rect x="20" y="116" width="24" height="24" rx="2" fill="#0b0b14"/>
-          <rect x="68" y="68" width="24" height="24" rx="6" fill="#8b7df7"/>
-          {[60,68,76,84,92,100].map(x =>
-            [60,68,76,84,92,100].map(y => {
-              if (x >= 68 && x <= 84 && y >= 68 && y <= 84) return null;
-              if (x <= 54 && y <= 54) return null;
-              if (x >= 106 && y <= 54) return null;
-              if (x <= 54 && y >= 106) return null;
-              return (x + y) % 16 !== 0
-                ? <rect key={`${x}${y}`} x={x} y={y} width="6" height="6" rx="1" fill="#0b0b14" opacity="0.85"/>
-                : null;
-            })
-          )}
-        </svg>
-      </div>
-
-      <div className="addr-box">
-        <span className="addr-text">{ACCOUNT.address}</span>
-        <button className="icon-btn" onClick={copy} title="Copy">
-          <Copy size={13} />
-        </button>
-      </div>
-      {copied && <span style={{ fontSize: 10, color: 'var(--green)', textAlign: 'center' }}>Address copied to clipboard</span>}
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 2px', lineHeight: 1.5 }}>
-        Only send <strong style={{ color: 'var(--text-secondary)' }}>LITHO</strong> and Makalu-network tokens to this address.
-      </div>
-    </>
-  );
-}
-
-function HistoryView() {
-  const txs = [
-    { type: 'Received', sym: 'LITHO', amt: '+1,200',  time: '2 min ago',  pos: true  },
-    { type: 'Sent',     sym: 'BTC',   amt: '-0.012',  time: '1 hr ago',   pos: false },
-    { type: 'Swap',     sym: 'SOL',   amt: '2.4',     time: '3 hr ago',   pos: false },
-    { type: 'Received', sym: 'USDC',  amt: '+840',    time: 'Yesterday',  pos: true  },
-    { type: 'Sent',     sym: 'COLLE', amt: '-500',    time: '2 days ago', pos: false },
-  ];
-  return (
-    <>
-      <div className="section-title">Recent Activity</div>
-      <div className="asset-list">
-        {txs.map((t, i) => (
-          <button key={i} className="asset-row">
-            <div className="asset-avatar" style={{
-              background: t.pos ? 'rgba(74,222,128,0.10)' : 'rgba(139,125,247,0.10)',
-              color: t.pos ? 'var(--green)' : 'var(--purple-300)',
-              border: `1px solid ${t.pos ? 'rgba(74,222,128,0.20)' : 'rgba(139,125,247,0.22)'}`,
-            }}>{t.type === 'Sent' ? '↗' : t.type === 'Received' ? '↙' : '⇄'}</div>
-            <div className="asset-info">
-              <span className="asset-symbol">{t.type}</span>
-              <span className="asset-bal">{t.time}</span>
-            </div>
-            <div className="asset-right">
-              <span className={`asset-usd ${t.pos ? 'pos' : 'neg'}`} style={{ color: t.pos ? 'var(--green)' : 'var(--text-primary)' }}>
-                {t.amt} {t.sym}
-              </span>
-            </div>
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function SettingsView({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
-  return (
-    <>
-      <div className="section-title">Wallet</div>
-      <div className="asset-list">
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Lock wallet</div>
-            <div className="setting-desc">Require password to unlock</div>
-          </div>
-          <Lock size={15} />
-        </div>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Connected dApps</div>
-            <div className="setting-desc">2 active sessions</div>
-          </div>
-          <ChevDown size={14} />
-        </div>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Network</div>
-            <div className="setting-desc">Makalu (testnet)</div>
-          </div>
-          <ChevDown size={14} />
-        </div>
-      </div>
-      <div className="section-title">Appearance</div>
-      <div className="asset-list">
-        <button className="setting-row" onClick={onToggleTheme} style={{ width: '100%', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left' }}>
-          <div>
-            <div className="setting-label">Theme</div>
-            <div className="setting-desc">{isDark ? 'Dark mode' : 'Light mode'} — tap to switch</div>
-          </div>
-          {isDark ? <Sun size={15} /> : <Moon size={15} />}
-        </button>
-      </div>
-      <div className="section-title">About</div>
-      <div className="asset-list">
-        <div className="setting-row">
-          <div className="setting-label">Version</div>
-          <div className="setting-desc">v0.8.1 · Makalu Sync</div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ──────────────────────── Shell ──────────────────────── */
-
-type Tab = 'home' | 'send' | 'receive' | 'swap' | 'history' | 'settings';
-
-function Popup() {
-  const [tab, setTab] = useState<Tab>('home');
-  const [isDark, setIsDark] = useState(true);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('thanos-theme');
-    const system = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    const resolved = stored ?? system;
-    const dark = resolved !== 'light';
-    setIsDark(dark);
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  }, []);
-
-  const toggleTheme = () => {
-    setIsDark(prev => {
-      const next = !prev;
-      const theme = next ? 'dark' : 'light';
-      localStorage.setItem('thanos-theme', theme);
-      document.documentElement.dataset.theme = theme;
-      return next;
-    });
-  };
-
-  return (
-    <div className="popup">
-      <header className="header">
-        <button className="acct">
-          <div className="acct-avatar">A</div>
-          <div className="acct-info">
-            <span className="acct-name">{ACCOUNT.name}</span>
-            <span className="acct-addr">{shortAddr(ACCOUNT.address)}</span>
-          </div>
-          <ChevDown size={12}/>
-        </button>
-        <span className="net-pill"><span className="net-dot"/>Makalu</span>
-        <button className="icon-btn" onClick={toggleTheme} title={isDark ? 'Light mode' : 'Dark mode'}>
-          {isDark ? <Sun size={14}/> : <Moon size={14}/>}
-        </button>
-        <button className="icon-btn" title="Lock"><Lock size={14}/></button>
-      </header>
-
-      <main className="body">
-        {tab === 'home'     && <HomeView/>}
-        {tab === 'send'     && <SendView/>}
-        {tab === 'receive'  && <ReceiveView/>}
-        {tab === 'swap'     && <SendView/>}
-        {tab === 'history'  && <HistoryView/>}
-        {tab === 'settings' && <SettingsView isDark={isDark} onToggleTheme={toggleTheme}/>}
-      </main>
-
-      <nav className="tabs">
-        <button className={`tab ${tab === 'home' ? 'active' : ''}`}     onClick={() => setTab('home')}>     <Home size={17}/>     Home</button>
-        <button className={`tab ${tab === 'swap' ? 'active' : ''}`}     onClick={() => setTab('swap')}>     <Swap size={17}/>     Swap</button>
-        <button className={`tab ${tab === 'history' ? 'active' : ''}`}  onClick={() => setTab('history')}>  <History size={17}/>  Activity</button>
-        <button className={`tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}> <Settings size={17}/> Settings</button>
-      </nav>
-    </div>
-  );
-}
-
-createRoot(document.getElementById('root')!).render(<Popup/>);
+createRoot(document.getElementById('root')!).render(<App/>);
