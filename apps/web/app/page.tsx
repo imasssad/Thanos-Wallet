@@ -305,35 +305,98 @@ function SecuritySection() {
   );
 }
 
-/* ────────────────────────── PLATFORM SECTION ────────────────────────── */
+/* ────────────────────────── DOWNLOAD / PLATFORMS SECTION ────────────────────────── */
+
+const IconWeb = (p: { size?: number }) => (
+  <svg width={p.size ?? 24} height={p.size ?? 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+    <circle cx="12" cy="12" r="9"/>
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+  </svg>
+);
+const IconDesktop = (p: { size?: number }) => (
+  <svg width={p.size ?? 24} height={p.size ?? 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden>
+    <rect x="2.5" y="3.5" width="19" height="13" rx="2"/>
+    <path d="M8 21h8M12 17v4"/>
+  </svg>
+);
+const IconApple = (p: { size?: number }) => (
+  <svg width={p.size ?? 24} height={p.size ?? 24} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M16.365 1.43c0 1.14-.41 2.21-1.16 3-.85.93-2.27 1.66-3.34 1.57-.13-1.07.43-2.21 1.13-2.97.78-.86 2.18-1.5 3.37-1.6Zm4.34 16.04c-.6 1.39-.88 2.01-1.66 3.24-1.08 1.71-2.6 3.83-4.49 3.85-1.68.02-2.11-1.1-4.39-1.09-2.28.01-2.76 1.11-4.44 1.09-1.89-.02-3.33-1.94-4.41-3.65-3-4.78-3.32-10.39-1.47-13.37 1.32-2.12 3.4-3.36 5.36-3.36 2 0 3.25 1.1 4.9 1.1 1.6 0 2.58-1.1 4.89-1.1 1.74 0 3.59.95 4.9 2.59-4.31 2.36-3.61 8.51 1.81 10.7Z"/>
+  </svg>
+);
+const IconAndroid = (p: { size?: number }) => (
+  <svg width={p.size ?? 24} height={p.size ?? 24} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M17.6 9.48 19.07 7a.4.4 0 0 0-.69-.4l-1.49 2.5A10.4 10.4 0 0 0 12 8a10.4 10.4 0 0 0-4.89.99L5.62 6.6a.4.4 0 0 0-.69.4L6.4 9.48A8 8 0 0 0 2 16h20a8 8 0 0 0-4.4-6.52ZM7 13.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/>
+  </svg>
+);
+const IconExtension = (p: { size?: number }) => (
+  <svg width={p.size ?? 24} height={p.size ?? 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden>
+    <path d="M14 4a2 2 0 1 0-4 0H5a1 1 0 0 0-1 1v5a2 2 0 1 1 0 4v5a1 1 0 0 0 1 1h5a2 2 0 1 0 4 0h5a1 1 0 0 0 1-1v-5a2 2 0 1 1 0-4V5a1 1 0 0 0-1-1h-5Z"/>
+  </svg>
+);
+
+type DL = {
+  n: string;
+  name: string;
+  sub: string;
+  cta: string;
+  href: string;
+  ready: boolean;
+  Icon: React.FC<{ size?: number }>;
+};
+
+const DOWNLOADS: DL[] = [
+  { n: '01', name: 'Web',       sub: 'Any modern browser · runs at devapp.thanos.fi',     cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
+  { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
+  { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
+  { n: '04', name: 'Android',   sub: 'Phone · Tablet · APK or Play Store',                cta: 'Download .apk', href: '#',    ready: false, Icon: IconAndroid },
+  { n: '05', name: 'Extension', sub: 'Chrome · Firefox · dApp signer for window.thanos',  cta: 'Chrome Store',  href: '#',    ready: false, Icon: IconExtension },
+];
 
 function PlatformSection() {
   const { ref, shown } = useReveal<HTMLElement>();
   return (
-    <section ref={ref} className={`lp-section lp-section-tight ${shown ? 'is-shown' : ''}`}>
+    <section id="download" ref={ref} className={`lp-section lp-section-tight ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
-        <Eyebrow>05 · WHERE IT RUNS</Eyebrow>
+        <Eyebrow>05 · DOWNLOAD</Eyebrow>
         <h2 className="lp-h2">
           ONE WALLET.<br/>
           EVERY DEVICE.
         </h2>
         <p className="lp-lede">
           Same vault, same keys, same UX. Sign on desktop, confirm on mobile, dApp-connect from the extension.
+          Real download links go live with the public release.
         </p>
 
-        <div className="lp-plat-grid">
-          {[
-            { n: '01', name: 'Web',       sub: 'Next.js · runs on any browser' },
-            { n: '02', name: 'Desktop',   sub: 'Electron · macOS, Windows, Linux' },
-            { n: '03', name: 'Mobile',    sub: 'React Native · iOS, Android (APK)' },
-            { n: '04', name: 'Extension', sub: 'WXT · Chrome / Firefox dApp signer' },
-          ].map(p => (
-            <div key={p.n} className="lp-plat">
-              <div className="lp-plat-num">{p.n}</div>
-              <div className="lp-plat-name">{p.name}</div>
-              <div className="lp-plat-sub">{p.sub}</div>
-            </div>
-          ))}
+        <div className="lp-dl-list">
+          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, Icon }) => {
+            const Tag = ready ? Link : 'a';
+            return (
+              <Tag
+                key={n}
+                href={href}
+                {...(!ready ? { onClick: (e: React.MouseEvent) => e.preventDefault(), 'aria-disabled': true } : {})}
+                className={`lp-dl-row ${ready ? '' : 'is-soon'}`}
+              >
+                <div className="lp-dl-num">{n}</div>
+                <div className="lp-dl-icon"><Icon size={28}/></div>
+                <div className="lp-dl-info">
+                  <div className="lp-dl-name">{name}</div>
+                  <div className="lp-dl-sub">{sub}</div>
+                </div>
+                <div className="lp-dl-cta">
+                  {ready ? (
+                    <>{cta} <ArrowRight size={14}/></>
+                  ) : (
+                    <>
+                      <span className="lp-dl-soon">Coming soon</span>
+                      <span className="lp-dl-cta-label">{cta}</span>
+                    </>
+                  )}
+                </div>
+              </Tag>
+            );
+          })}
         </div>
       </div>
     </section>
