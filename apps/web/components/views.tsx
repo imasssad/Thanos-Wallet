@@ -1,0 +1,347 @@
+'use client';
+import React, { useState } from 'react';
+
+const MARKET = [
+  { sym: 'BTC',  name: 'Bitcoin',      price: '$63,200.00', chg24: 2.4,  chg7: 8.1,  cap: '$1.24T',  vol: '$38.2B', color: '#f7931a' },
+  { sym: 'ETH',  name: 'Ethereum',     price: '$3,892.00',  chg24: -1.2, chg7: 4.3,  cap: '$468B',   vol: '$18.4B', color: '#627eea' },
+  { sym: 'SOL',  name: 'Solana',       price: '$116.20',    chg24: 5.8,  chg7: 12.6, cap: '$52.4B',  vol: '$4.1B',  color: '#14f195' },
+  { sym: 'BNB',  name: 'BNB',          price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
+  { sym: 'XRP',  name: 'XRP',          price: '$0.6280',    chg24: -3.4, chg7: -6.2, cap: '$34.8B',  vol: '$2.3B',  color: '#00aae4' },
+  { sym: 'ADA',  name: 'Cardano',      price: '$0.5140',    chg24: 1.1,  chg7: 3.8,  cap: '$18.2B',  vol: '$0.9B',  color: '#0033ad' },
+  { sym: 'AVAX', name: 'Avalanche',    price: '$38.40',     chg24: 4.2,  chg7: 9.4,  cap: '$15.6B',  vol: '$0.7B',  color: '#e84142' },
+  { sym: 'DOT',  name: 'Polkadot',     price: '$8.720',     chg24: -0.6, chg7: 1.2,  cap: '$11.4B',  vol: '$0.4B',  color: '#e6007a' },
+  { sym: 'DOGE', name: 'Dogecoin',     price: '$0.1024',    chg24: 6.3,  chg7: 18.2, cap: '$14.6B',  vol: '$1.1B',  color: '#c2a633' },
+  { sym: 'LINK', name: 'Chainlink',    price: '$14.82',     chg24: 2.9,  chg7: 7.3,  cap: '$8.7B',   vol: '$0.5B',  color: '#2a5ada' },
+];
+
+export function MarketView() {
+  const [search, setSearch] = useState('');
+  const filtered = MARKET.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div className="main-area" style={{ width: '100%' }}>
+      <div className="page-wrap">
+        <div className="page-header">
+          <h1 className="page-title">Market</h1>
+          <div className="search-field">
+            <input placeholder="Search coins…" value={search} onChange={e => setSearch(e.target.value)} className="search-field-input"/>
+          </div>
+        </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table className="data-table" style={{ tableLayout: 'fixed' }}>
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}>#</th>
+                <th>Name</th>
+                <th style={{ textAlign: 'right' }}>Price</th>
+                <th style={{ textAlign: 'right' }}>24h %</th>
+                <th style={{ textAlign: 'right' }}>7d %</th>
+                <th style={{ textAlign: 'right' }}>Market Cap</th>
+                <th style={{ textAlign: 'right' }}>Volume (24h)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c, i) => (
+                <tr key={c.sym}>
+                  <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
+                  <td>
+                    <div className="tx-cell">
+                      <div className="tx-avatar" style={{ background: c.color }}>{c.sym.slice(0,2)}</div>
+                      <div>
+                        <div className="tx-name">{c.name}</div>
+                        <div className="tx-sym">{c.sym}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 12, fontWeight: 600 }}>{c.price}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span className={c.chg24 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg24 >= 0 ? '+' : ''}{c.chg24}%</span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span className={c.chg7 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg7 >= 0 ? '+' : ''}{c.chg7}%</span>
+                  </td>
+                  <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-secondary)' }}>{c.cap}</td>
+                  <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{c.vol}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function PortfolioView() {
+  const coins = [
+    { sym: 'BTC', name: 'Bitcoin',  bal: '5.050',  usd: 320250, chg: 24,  color: '#f7931a', pct: 44, price: '$63,200' },
+    { sym: 'ETH', name: 'Ethereum', bal: '94.30',  usd: 178150, chg: -6,  color: '#627eea', pct: 33, price: '$3,892' },
+    { sym: 'SOL', name: 'Solana',   bal: '148.2',  usd: 17548,  chg: 10,  color: '#14f195', pct: 14, price: '$116.20' },
+    { sym: 'BNB', name: 'BNB',      bal: '42.00',  usd: 17559,  chg: 0.8, color: '#f3ba2f', pct: 5,  price: '$418.30' },
+    { sym: 'XRP', name: 'XRP',      bal: '25000',  usd: 15700,  chg: -3.4,color: '#00aae4', pct: 4,  price: '$0.628' },
+  ];
+  let offset = 0;
+  const r = 70, circ = 2 * Math.PI * r;
+  const segments = coins.map(c => {
+    const len = (c.pct / 100) * circ;
+    const seg = { ...c, offset, len };
+    offset += len;
+    return seg;
+  });
+  return (
+    <div className="main-area" style={{ width: '100%' }}>
+      <div className="page-wrap">
+        <div className="page-header">
+          <h1 className="page-title">Portfolio</h1>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Updated just now</div>
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          <div className="card" style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 24 }}>
+            <div style={{ position: 'relative', width: 180, height: 180 }}>
+              <svg viewBox="0 0 180 180" width="180" height="180" style={{ transform: 'rotate(-90deg)' }}>
+                {segments.map((s, i) => (
+                  <circle key={i} cx="90" cy="90" r={r} fill="none" stroke={s.color} strokeWidth="22"
+                    strokeDasharray={`${s.len - 2} ${circ - s.len + 2}`} strokeDashoffset={-s.offset}/>
+                ))}
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total</div>
+                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>$3.15M</div>
+              </div>
+            </div>
+            {coins.map(c => (
+              <div key={c.sym} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }}/>
+                <span style={{ fontSize: 12, flex: 1, color: 'var(--text-secondary)' }}>{c.name}</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{c.pct}%</span>
+              </div>
+            ))}
+          </div>
+          <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th style={{ textAlign: 'right' }}>Price</th>
+                  <th style={{ textAlign: 'right' }}>Holdings</th>
+                  <th style={{ textAlign: 'right' }}>Value</th>
+                  <th style={{ textAlign: 'right' }}>24h</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coins.map(c => (
+                  <tr key={c.sym}>
+                    <td>
+                      <div className="tx-cell">
+                        <div className="tx-avatar" style={{ background: c.color }}>{c.sym.slice(0,2)}</div>
+                        <div>
+                          <div className="tx-name">{c.name}</div>
+                          <div className="tx-sym">{c.sym}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.price}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.bal} {c.sym}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, fontSize: 12 }}>${c.usd.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg >= 0 ? '+' : ''}{c.chg}%</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ALL_TXS = [
+  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 22, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 BTC', pos: true,  color: '#f7931a' },
+  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 20, 2026', price: '$2,814',  type: 'Send',    status: 'Completed', amount: '-1.500 ETH', pos: false, color: '#627eea' },
+  { sym: 'SOL',  name: 'Solana',    date: 'Jan 19, 2026', price: '$118.40', type: 'Receive', status: 'Completed', amount: '+12.00 SOL', pos: true,  color: '#14f195' },
+  { sym: 'BTC',  name: 'Bitcoin',   date: 'Jan 17, 2026', price: '$61,800', type: 'Send',    status: 'Completed', amount: '-0.050 BTC', pos: false, color: '#f7931a' },
+  { sym: 'USDC', name: 'USD Coin',  date: 'Jan 15, 2026', price: '$1.00',   type: 'Receive', status: 'Pending',   amount: '+840 USDC',  pos: true,  color: '#2775ca' },
+  { sym: 'ETH',  name: 'Ethereum',  date: 'Jan 14, 2026', price: '$3,100',  type: 'Swap',    status: 'Completed', amount: '+4.20 ETH',  pos: true,  color: '#627eea' },
+  { sym: 'SOL',  name: 'Solana',    date: 'Jan 12, 2026', price: '$98.10',  type: 'Send',    status: 'Failed',    amount: '-5.00 SOL',  pos: false, color: '#14f195' },
+  { sym: 'BNB',  name: 'BNB',       date: 'Jan 10, 2026', price: '$398.20', type: 'Receive', status: 'Completed', amount: '+2.50 BNB',  pos: true,  color: '#f3ba2f' },
+];
+
+export function TransactionsView() {
+  const [filter, setFilter] = useState<'All'|'Send'|'Receive'|'Swap'>('All');
+  const filtered = filter === 'All' ? ALL_TXS : ALL_TXS.filter(t => t.type === filter);
+  return (
+    <div className="main-area" style={{ width: '100%' }}>
+      <div className="page-wrap">
+        <div className="page-header">
+          <h1 className="page-title">Transactions</h1>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['All','Send','Receive','Swap'] as const).map(f => (
+              <button key={f} className={`filter-pill ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
+            ))}
+          </div>
+        </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th>Price</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((tx, i) => (
+                <tr key={i}>
+                  <td>
+                    <div className="tx-cell">
+                      <div className="tx-avatar" style={{ background: tx.color }}>{tx.sym.slice(0,2)}</div>
+                      <div>
+                        <div className="tx-name">{tx.name}</div>
+                        <div className="tx-sym">{tx.sym}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><span className={`type-pill type-${tx.type.toLowerCase()}`}>{tx.type}</span></td>
+                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tx.date}</td>
+                  <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{tx.price}</td>
+                  <td>
+                    <span className={`status-pill status-${tx.status.toLowerCase()}`}>
+                      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
+                      {tx.status}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <span className={tx.pos ? 'amt-pos' : 'amt-neg'}>{tx.amount}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const POOLS = [
+  { name: 'Ethereum 2.0', sym: 'ETH', apy: '4.20%', minStake: '0.01 ETH', tvl: '$12.4B', color: '#627eea', locked: false },
+  { name: 'Solana',       sym: 'SOL', apy: '6.80%', minStake: '0.01 SOL', tvl: '$4.2B',  color: '#14f195', locked: false },
+  { name: 'Polkadot',     sym: 'DOT', apy: '12.4%', minStake: '1 DOT',    tvl: '$1.1B',  color: '#e6007a', locked: true  },
+  { name: 'Avalanche',    sym: 'AVAX',apy: '9.10%', minStake: '25 AVAX',  tvl: '$2.8B',  color: '#e84142', locked: false },
+];
+
+export function StakingView() {
+  return (
+    <div className="main-area" style={{ width: '100%' }}>
+      <div className="page-wrap">
+        <div className="page-header">
+          <h1 className="page-title">Staking</h1>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Earn passive yield on your assets</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Active Position</div>
+          <div className="staking-card">
+            <div className="staking-brand">
+              <div className="staking-brand-icon">S</div>
+              Solstice
+            </div>
+            <div className="staking-row">
+              <div className="staking-token-icon">eU</div>
+              <div>
+                <div className="staking-token-name">eUSX</div>
+                <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
+              </div>
+              <div className="staking-yield">
+                <div className="staking-yield-label">Annual yield</div>
+                <div className="staking-yield-val">10.05%</div>
+              </div>
+            </div>
+            <div className="staking-meta"><span>41 days left · 4 months total</span><span>68%</span></div>
+            <div className="staking-bar"><div className="staking-bar-fill" style={{ width: '68%' }}/></div>
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Available Pools</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {POOLS.map(p => (
+              <div key={p.sym} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div className="tx-avatar" style={{ background: p.color, width: 38, height: 38, fontSize: 12, borderRadius: 10, flexShrink: 0 }}>{p.sym.slice(0,2)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>TVL {p.tvl} · Min {p.minStake}</div>
+                </div>
+                <div style={{ textAlign: 'right', marginRight: 16 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)', letterSpacing: '-0.03em' }}>{p.apy}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>APY</div>
+                </div>
+                <button className="btn-primary" style={{ width: 90, height: 36, fontSize: 12, marginTop: 0 }}>
+                  {p.locked ? 'Locked' : 'Stake'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function SettingsView() {
+  const [currency, setCurrency] = useState('USD');
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12 }}>{title}</div>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden' }}>
+        {children}
+      </div>
+    </div>
+  );
+  const Row = ({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) => (
+    <div className="settings-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
+        {sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+      </div>
+      {children}
+    </div>
+  );
+  return (
+    <div className="main-area" style={{ width: '100%' }}>
+      <div className="page-wrap" style={{ maxWidth: 600 }}>
+        <div className="page-header"><h1 className="page-title">Settings</h1></div>
+        <Section title="General">
+          <Row label="Currency" sub="Display prices in">
+            <select className="field-select" style={{ width: 100 }} value={currency} onChange={e => setCurrency(e.target.value)}>
+              {['USD','EUR','GBP','JPY','BTC'].map(c => <option key={c}>{c}</option>)}
+            </select>
+          </Row>
+          <Row label="Language" sub="Interface language">
+            <select className="field-select" style={{ width: 120 }}>
+              <option>English</option><option>Spanish</option><option>Arabic</option>
+            </select>
+          </Row>
+        </Section>
+        <Section title="Security">
+          <Row label="Auto-lock" sub="Lock wallet after inactivity">
+            <select className="field-select" style={{ width: 120 }}>
+              <option>5 minutes</option><option>15 minutes</option><option>1 hour</option>
+            </select>
+          </Row>
+          <Row label="Change Password" sub="Update your wallet password">
+            <button className="btn-outline">Change</button>
+          </Row>
+          <Row label="Backup Seed Phrase" sub="Export your 12/24-word phrase">
+            <button className="btn-outline" style={{ color: 'var(--red)', borderColor: 'rgba(248,113,113,0.3)' }}>Export</button>
+          </Row>
+        </Section>
+        <Section title="About">
+          <Row label="Version" sub="Thanos Wallet"><span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>v0.8.1</span></Row>
+        </Section>
+      </div>
+    </div>
+  );
+}
