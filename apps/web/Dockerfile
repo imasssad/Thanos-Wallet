@@ -21,7 +21,9 @@ COPY packages/sdk-core/package.json     packages/sdk-core/
 COPY packages/sdk-react/package.json    packages/sdk-react/
 COPY packages/ui/package.json           packages/ui/
 
-RUN pnpm install --filter @thanos/web... --frozen-lockfile=false
+# --ignore-scripts skips native compile (usb, tiny-secp256k1, etc.) which only
+# matters for browser-side hardware-wallet code, not server-rendered web.
+RUN pnpm install --filter @thanos/web... --frozen-lockfile=false --ignore-scripts
 
 # Now copy source for web + its workspace deps
 COPY apps/web              apps/web
