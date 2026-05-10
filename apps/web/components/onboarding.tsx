@@ -87,11 +87,33 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     }
   };
   const copySeed = async () => {
-    try {
-      await navigator.clipboard.writeText(seed.join(' '));
+    const text = seed.join(' ');
+    let ok = false;
+    // Try modern clipboard API (HTTPS only)
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(text); ok = true; } catch {}
+    }
+    // Fallback: legacy execCommand (works on HTTP)
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.setAttribute('readonly', '');
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch {}
+    }
+    if (ok) {
       setCopiedSeed(true);
       setTimeout(() => setCopiedSeed(false), 2200);
-    } catch {}
+    } else {
+      alert('Copy unavailable. Long-press / select the words manually.');
+    }
   };
 
   return (
