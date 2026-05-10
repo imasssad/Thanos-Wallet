@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 
 const COINS = [
   { sym: 'BTC', name: 'Bitcoin',     bal: '5.050',  usd: '$320,250.00', chg:  24, color: '#f7931a', pct: 44 },
@@ -151,8 +152,14 @@ function StakingCard() {
 }
 
 export function Dashboard() {
+  const [modal, setModal] = useState<ModalKind>(null);
+
   return (
     <div className="workspace" style={{ width: '100%' }}>
+      {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
+      {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
+      {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
+
       <div className="main-area">
         <div className="balance-hero">
           <div>
@@ -161,6 +168,17 @@ export function Dashboard() {
               $3,150,298.00
               <span className="balance-change-pill">▲ +2.34%</span>
             </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setModal('send')} className="quick-action-btn">
+              <span className="quick-action-icon">↑</span><span>Send</span>
+            </button>
+            <button onClick={() => setModal('receive')} className="quick-action-btn">
+              <span className="quick-action-icon">↓</span><span>Receive</span>
+            </button>
+            <button onClick={() => setModal('swap')} className="quick-action-btn">
+              <span className="quick-action-icon">⇄</span><span>Swap</span>
+            </button>
           </div>
         </div>
 
