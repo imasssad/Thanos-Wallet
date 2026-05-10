@@ -55,13 +55,13 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
         <div style={{ position: 'relative' }}>
           <button className="account-chip" onClick={() => setAccountMenu(v => !v)}>
             <div className="chip-avatar">
-              <User size={14}/>
+              <User size={18}/>
             </div>
             <div className="chip-info">
               <span className="chip-name">{ACCOUNT.name}</span>
               <span className="chip-addr">{ACCOUNT.address}</span>
             </div>
-            <ChevronDown size={11} color="var(--text-muted)"/>
+            <ChevronDown size={13} color="var(--text-muted)"/>
           </button>
 
           {accountMenu && (
@@ -69,7 +69,7 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
               <div className="menu-overlay" onClick={() => setAccountMenu(false)}/>
               <div className="account-menu">
                 <div className="menu-header">
-                  <div className="menu-avatar"><User size={20}/></div>
+                  <div className="menu-avatar"><User size={24}/></div>
                   <div>
                     <div className="menu-name">{ACCOUNT.name}</div>
                     <div className="menu-addr">{ACCOUNT.address}</div>
@@ -82,31 +82,31 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
                 </div>
                 <div className="menu-divider"/>
                 <button className="menu-item" onClick={() => { navigator.clipboard?.writeText(ACCOUNT.address); setAccountMenu(false); }}>
-                  <Copy size={16}/> Copy address
+                  <Copy size={18}/> Copy address
                 </button>
                 <button className="menu-item" onClick={() => { router.push('/app/settings'); setAccountMenu(false); }}>
-                  <SettingsIcon size={16}/> Settings
+                  <SettingsIcon size={18}/> Settings
                 </button>
                 <button className="menu-item" onClick={() => { toggleTheme(); setAccountMenu(false); }}>
-                  {isDark ? <Sun size={16}/> : <Moon size={16}/>} {isDark ? 'Light mode' : 'Dark mode'}
+                  {isDark ? <Sun size={18}/> : <Moon size={18}/>} {isDark ? 'Light mode' : 'Dark mode'}
                 </button>
                 {onLock && <>
                   <div className="menu-divider"/>
                   <button className="menu-item menu-item-danger" onClick={() => { onLock(); setAccountMenu(false); }}>
-                    <Lock size={16}/> Lock wallet
+                    <Lock size={18}/> Lock wallet
                   </button>
                 </>}
               </div>
             </>
           )}
         </div>
-        <button className="icon-btn-nav nav-icon-desktop" title="Search"><Search size={16}/></button>
+        <button className="icon-btn-nav nav-icon-desktop" title="Search"><Search size={18}/></button>
         <button className="icon-btn-nav nav-icon-desktop" title="Notifications" style={{ position: 'relative' }}>
-          <Bell size={16}/>
+          <Bell size={18}/>
           <span style={{ position: 'absolute', top: 6, right: 6, width: 5, height: 5, background: 'var(--blue)', borderRadius: '50%', border: '1.5px solid var(--bg-surface)' }}/>
         </button>
         <button className="nav-mobile-toggle" onClick={() => setMobileMenu(v => !v)} title="Menu">
-          <Menu size={20}/>
+          <Menu size={24}/>
         </button>
       </div>
 

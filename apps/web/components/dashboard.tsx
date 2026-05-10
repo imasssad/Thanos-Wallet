@@ -175,13 +175,13 @@ export function Dashboard() {
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => setModal('send')} className="quick-action-btn">
-              <span className="quick-action-icon"><ArrowUpRight size={14} strokeWidth={2.5}/></span><span>Send</span>
+              <span className="quick-action-icon"><ArrowUpRight size={16} strokeWidth={2.5}/></span><span>Send</span>
             </button>
             <button onClick={() => setModal('receive')} className="quick-action-btn">
-              <span className="quick-action-icon"><ArrowDownLeft size={14} strokeWidth={2.5}/></span><span>Receive</span>
+              <span className="quick-action-icon"><ArrowDownLeft size={16} strokeWidth={2.5}/></span><span>Receive</span>
             </button>
             <button onClick={() => setModal('swap')} className="quick-action-btn">
-              <span className="quick-action-icon"><Repeat size={14} strokeWidth={2.5}/></span><span>Swap</span>
+              <span className="quick-action-icon"><Repeat size={16} strokeWidth={2.5}/></span><span>Swap</span>
             </button>
           </div>
         </div>
