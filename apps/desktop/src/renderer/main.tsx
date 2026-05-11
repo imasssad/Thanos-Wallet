@@ -34,6 +34,14 @@ const Send2     = Ic(<><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22
 const Download2 = Ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>);
 const Repeat2   = Ic(<><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></>);
 
+const Globe     = Ic(<><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a14 14 0 0 1 0 20M12 2a14 14 0 0 0 0 20"/></>);
+const Shield    = Ic(<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>);
+const Wifi      = Ic(<><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><circle cx="12" cy="20" r="1"/><path d="M2 9.5a16 16 0 0 1 20 0"/></>);
+const Info      = Ic(<><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></>);
+const KeyIcon   = Ic(<><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></>);
+const Lock2     = Ic(<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>);
+const ChevRight2 = Ic(<polyline points="9 18 15 12 9 6"/>);
+
 /* ──────────────────────── Mock data ──────────────────────── */
 const ACCOUNT = { name: 'RobbyWallet', address: '0x70cA2F2B7' };
 
@@ -884,80 +892,106 @@ function StakingView() {
 function SettingsView({ toggleTheme, isDark }: { toggleTheme: () => void; isDark: boolean }) {
   const [currency, setCurrency] = useState('USD');
   const [autoLock, setAutoLock] = useState('5');
-  const [rpc, setRpc] = useState('https://rpc.makalu.network');
+  const [rpc, setRpc]           = useState('https://rpc.litho.ai');
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12 }}>{title}</div>
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden' }}>
-        {children}
-      </div>
-    </div>
+  const Section = ({
+    icon: Icon, title, sub, children,
+  }: { icon: React.ElementType; title: string; sub: string; children: React.ReactNode }) => (
+    <section className="settings-section">
+      <header className="settings-section-head">
+        <div className="settings-section-icon"><Icon size={18}/></div>
+        <div>
+          <h2 className="settings-section-title">{title}</h2>
+          <p className="settings-section-sub">{sub}</p>
+        </div>
+      </header>
+      <div className="settings-card">{children}</div>
+    </section>
   );
 
-  const Row = ({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', borderBottom: '1px solid var(--border-subtle)' }}
-         className="settings-row">
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+  const Row = ({
+    label, sub, children,
+  }: { label: string; sub?: string; children: React.ReactNode }) => (
+    <div className="settings-row">
+      <div className="settings-row-label">
+        <div className="settings-row-title">{label}</div>
+        {sub && <div className="settings-row-sub">{sub}</div>}
       </div>
-      {children}
+      <div className="settings-row-control">{children}</div>
     </div>
   );
 
   return (
-    <div className="page-wrap" style={{ maxWidth: 600 }}>
-      <div className="page-header"><h1 className="page-title">Settings</h1></div>
+    <div className="settings-view">
+      <div className="settings-wrap">
+        <header className="settings-hero">
+          <h1 className="settings-hero-title">Settings</h1>
+          <p className="settings-hero-sub">
+            Manage your wallet preferences, security, and network configuration.
+          </p>
+        </header>
 
-      <Section title="General">
-        <Row label="Currency" sub="Display prices in">
-          <select className="field-select" style={{ width: 100 }} value={currency} onChange={e => setCurrency(e.target.value)}>
-            {['USD','EUR','GBP','JPY','BTC'].map(c => <option key={c}>{c}</option>)}
-          </select>
-        </Row>
-        <Row label="Appearance" sub="Choose theme">
-          <button className="toggle-btn" onClick={toggleTheme}>
-            <span className={`toggle-thumb ${isDark ? 'right' : 'left'}`}/>
-          </button>
-        </Row>
-        <Row label="Language" sub="Interface language">
-          <select className="field-select" style={{ width: 120 }}>
-            <option>English</option><option>Spanish</option><option>Arabic</option>
-          </select>
-        </Row>
-      </Section>
+        <Section icon={Globe} title="General" sub="Display, language, and theme">
+          <Row label="Currency" sub="Display prices in">
+            <select className="settings-select" value={currency} onChange={e => setCurrency(e.target.value)}>
+              {['USD','EUR','GBP','JPY','BTC'].map(c => <option key={c}>{c}</option>)}
+            </select>
+          </Row>
+          <Row label="Appearance" sub={isDark ? 'Dark theme' : 'Light theme'}>
+            <button className="settings-btn" onClick={toggleTheme}>
+              {isDark ? <Sun size={14}/> : <Moon size={14}/>} {isDark ? 'Switch to light' : 'Switch to dark'}
+            </button>
+          </Row>
+          <Row label="Language" sub="Interface language">
+            <select className="settings-select" defaultValue="English">
+              <option>English</option><option>Spanish</option><option>Arabic</option>
+            </select>
+          </Row>
+        </Section>
 
-      <Section title="Security">
-        <Row label="Auto-lock" sub="Lock wallet after inactivity">
-          <select className="field-select" style={{ width: 120 }} value={autoLock} onChange={e => setAutoLock(e.target.value)}>
-            {[['1','1 minute'],['5','5 minutes'],['15','15 minutes'],['60','1 hour'],['0','Never']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </Row>
-        <Row label="Change Password" sub="Update your wallet password">
-          <button className="btn-outline">Change</button>
-        </Row>
-        <Row label="Backup Seed Phrase" sub="Export your 12/24-word phrase">
-          <button className="btn-outline" style={{ color: 'var(--red)', borderColor: 'rgba(248,113,113,0.3)' }}>Export</button>
-        </Row>
-      </Section>
+        <Section icon={Shield} title="Security" sub="Protect access to your wallet">
+          <Row label="Auto-lock" sub="Lock wallet after inactivity">
+            <select className="settings-select" value={autoLock} onChange={e => setAutoLock(e.target.value)}>
+              {[['1','1 minute'],['5','5 minutes'],['15','15 minutes'],['60','1 hour'],['0','Never']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Row>
+          <Row label="Change password" sub="Update your wallet password">
+            <button className="settings-btn"><KeyIcon size={14}/> Change</button>
+          </Row>
+          <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
+            <button className="settings-btn settings-btn-danger"><Download2 size={14}/> Export</button>
+          </Row>
+          <Row label="Lock wallet now" sub="Sign out on this device">
+            <button className="settings-btn"><Lock2 size={14}/> Lock</button>
+          </Row>
+        </Section>
 
-      <Section title="Network">
-        <Row label="RPC Endpoint" sub="Custom RPC for Makalu">
-          <input className="field-input" style={{ width: 220, fontSize: 11 }} value={rpc} onChange={e => setRpc(e.target.value)}/>
-        </Row>
-        <Row label="Connected Network" sub="Current blockchain">
-          <span className="status-pill status-completed">● Makalu</span>
-        </Row>
-      </Section>
+        <Section icon={Wifi} title="Network" sub="Connection and RPC endpoints">
+          <Row label="RPC endpoint" sub="Custom RPC for Makalu">
+            <input className="settings-input" value={rpc} onChange={e => setRpc(e.target.value)}/>
+          </Row>
+          <Row label="Connected network" sub="Current blockchain">
+            <span className="settings-network-pill">
+              <span className="settings-network-dot"/> Makalu
+            </span>
+          </Row>
+        </Section>
 
-      <Section title="About">
-        <Row label="Version" sub="Thanos Wallet Desktop"><span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>v0.8.1</span></Row>
-        <Row label="Build" sub="Release channel"><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Stable</span></Row>
-        <Row label="Clear Cache" sub="Remove local cached data">
-          <button className="btn-outline">Clear</button>
-        </Row>
-      </Section>
+        <Section icon={Info} title="About" sub="Build info and version">
+          <Row label="Version" sub="Thanos Wallet Desktop">
+            <span className="settings-version">v0.8.1</span>
+          </Row>
+          <Row label="Build" sub="Release channel">
+            <span className="settings-version">Stable</span>
+          </Row>
+          <Row label="Clear cache" sub="Remove local cached data">
+            <button className="settings-btn">Clear</button>
+          </Row>
+          <Row label="Documentation" sub="Read the desktop guide">
+            <a href="#" className="settings-btn settings-btn-link">View <ChevRight2 size={14}/></a>
+          </Row>
+        </Section>
+      </div>
     </div>
   );
 }

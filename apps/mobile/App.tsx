@@ -8,7 +8,7 @@ import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
-  Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun,
+  Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff,
 } from 'lucide-react-native';
 
@@ -493,23 +493,36 @@ function SettingsScreen() {
   const toggle = useToggle();
   const isDark = C.bgBase === DARK.bgBase;
 
-  const WALLET_OPTS = [
-    { label: 'Biometric unlock',  desc: 'Use Face ID to unlock',     Icon: Fingerprint },
-    { label: 'Auto-lock',         desc: 'After 5 minutes',           Icon: Clock },
-    { label: 'Connected dApps',   desc: '2 active sessions',         Icon: Zap },
+  type SettingItem = { label: string; desc: string; Icon: React.ElementType; danger?: boolean };
+
+  const SECURITY_OPTS: SettingItem[] = [
+    { label: 'Biometric unlock',  desc: 'Use Face ID to unlock',           Icon: Fingerprint },
+    { label: 'Auto-lock',         desc: 'After 5 minutes of inactivity',   Icon: Clock },
+    { label: 'Change password',   desc: 'Update wallet password',          Icon: Key },
+    { label: 'Recovery phrase',   desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true },
   ];
-  const NETWORK_OPTS = [
-    { label: 'Network',           desc: 'Makalu (testnet)',          Icon: Globe },
-    { label: 'Custom RPC',        desc: 'Default endpoint',          Icon: Server },
-  ];
-  const SECURITY_OPTS = [
-    { label: 'Change password',   desc: 'Update wallet password',    Icon: Key },
-    { label: 'Recovery phrase',   desc: 'View 12-word seed',         Icon: AlertTriangle, danger: true },
+  const NETWORK_OPTS: SettingItem[] = [
+    { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
+    { label: 'Custom RPC',        desc: 'rpc.litho.ai',                    Icon: Server },
+    { label: 'Connected dApps',   desc: '2 active sessions',               Icon: Zap },
   ];
 
-  const Section = ({ title, items }: { title: string; items: any[] }) => (
+  // Premium-pattern section header — icon tile + title + sub.
+  const SectionHead = ({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub: string }) => (
+    <View style={styles.setSectionHead}>
+      <View style={styles.setSectionIcon}>
+        <Icon size={16} color={C.blue} strokeWidth={2}/>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.setSectionTitle}>{title}</Text>
+        <Text style={styles.setSectionSub}>{sub}</Text>
+      </View>
+    </View>
+  );
+
+  const Section = ({ Icon, title, sub, items }: { Icon: React.ElementType; title: string; sub: string; items: SettingItem[] }) => (
     <>
-      <Text style={styles.sectionLabel}>{title}</Text>
+      <SectionHead Icon={Icon} title={title} sub={sub}/>
       <View style={styles.card}>
         {items.map((s, i) => (
           <Pressable key={i} style={[styles.settingRow, i < items.length - 1 && styles.rowBorder]}>
@@ -529,7 +542,11 @@ function SettingsScreen() {
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.pageTitleLarge}>Settings</Text>
+      {/* Gradient hero header */}
+      <View style={styles.setHero}>
+        <Text style={styles.setHeroTitle}>Settings</Text>
+        <Text style={styles.setHeroSub}>Manage your wallet preferences, security, and account details.</Text>
+      </View>
 
       {/* Account header card */}
       <View style={styles.acctHeaderCard}>
@@ -547,11 +564,10 @@ function SettingsScreen() {
         </Pressable>
       </View>
 
-      <Section title="WALLET" items={WALLET_OPTS}/>
-      <Section title="NETWORK" items={NETWORK_OPTS}/>
-      <Section title="SECURITY" items={SECURITY_OPTS}/>
+      <Section Icon={Shield} title="Security"   sub="Protect access to your wallet" items={SECURITY_OPTS}/>
+      <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
 
-      <Text style={styles.sectionLabel}>APPEARANCE</Text>
+      <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
       <View style={styles.card}>
         <Pressable style={styles.settingRow} onPress={toggle}>
           <View style={styles.settingIcon}>
@@ -566,17 +582,8 @@ function SettingsScreen() {
           </View>
         </Pressable>
       </View>
-      <SectionTitle>APPEARANCE</SectionTitle>
-      <View style={styles.card}>
-        <Pressable style={styles.settingRow} onPress={toggle}>
-          <View>
-            <Text style={styles.settingLabel}>Theme</Text>
-            <Text style={styles.settingDesc}>{isDark ? 'Dark mode' : 'Light mode'} — tap to switch</Text>
-          </View>
-          <Text style={{ fontSize: 18 }}>{isDark ? '☀' : '🌙'}</Text>
-        </Pressable>
-      </View>
-      <Text style={styles.versionText}>Thanos Wallet v0.8.1 · Makalu Sync</Text>
+
+      <Text style={styles.versionText}>Thanos Wallet · v0.8.1 · Makalu</Text>
     </ScrollView>
   );
 }
@@ -1434,6 +1441,53 @@ function makeStyles(C: Colors) {
       color: C.textMuted, fontSize: 11, fontWeight: '700',
       letterSpacing: 1, paddingVertical: 4, paddingHorizontal: 4, marginTop: 8,
       textTransform: 'uppercase',
+    },
+
+    /* Premium settings hero + icon-led section headers */
+    setHero: {
+      paddingBottom: 14,
+      marginBottom: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: C.borderSubtle,
+    },
+    setHeroTitle: {
+      color: C.textPrimary,
+      fontSize: 28,
+      fontWeight: '800',
+      letterSpacing: -0.8,
+      marginBottom: 4,
+    },
+    setHeroSub: {
+      color: C.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    setSectionHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 12,
+      marginBottom: 6,
+      paddingHorizontal: 2,
+    },
+    setSectionIcon: {
+      width: 32, height: 32,
+      borderRadius: 9,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: 'rgba(59,122,247,0.12)',
+      borderWidth: 1,
+      borderColor: 'rgba(59,122,247,0.28)',
+    },
+    setSectionTitle: {
+      color: C.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+      letterSpacing: -0.2,
+    },
+    setSectionSub: {
+      color: C.textMuted,
+      fontSize: 11,
+      marginTop: 1,
     },
     acctHeaderCard: {
       flexDirection: 'row', alignItems: 'center',
