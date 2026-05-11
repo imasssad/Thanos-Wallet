@@ -6,17 +6,12 @@ import {
   Wallet as WalletIcon, ChevronLeft, Eye, EyeOff, Copy, Check,
   AlertTriangle, Lock,
 } from 'lucide-react';
-
-const STORAGE = {
-  hasVault:  'thanos.has_vault',
-  mnemonic:  'thanos.mnemonic',
-  password:  'thanos.password',
-  /* Persisted unlocked flag — set on successful onComplete / unlock, cleared
-     only by an explicit Lock or Reset. Lets a page refresh skip the password
-     prompt (per client spec: auth stays valid until user signs out or app
-     is deleted). */
-  unlocked:  'thanos.unlocked',
-};
+import {
+  createVault, openVault, openVaultWithKey,
+  saveVault, loadVault, clearVault,
+  cacheSessionKey, getSessionKey, clearSessionKey,
+  hasLegacyPlaintext, migrateLegacyPlaintext,
+} from '../lib/vault';
 
 /** Generate a fresh BIP39 phrase of the requested length.
  *  12 words = 128 bits of entropy (default, recommended).
@@ -99,42 +94,71 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
                      && missingIdxs.every(i => verifyPicks[i] !== undefined)
                      && !allConfirmed;
 
-  const finishCreate = () => {
-    if (password !== password2 || password.length < 8) return;
-    localStorage.setItem(STORAGE.hasVault, '1');
-    localStorage.setItem(STORAGE.mnemonic, seed.join(' '));
-    localStorage.setItem(STORAGE.password, password);
-    onComplete(seed);
+  const [busy, setBusy] = useState(false);
+
+  const finishCreate = async () => {
+    if (password !== password2 || password.length < 8 || busy) return;
+    setBusy(true);
+    try {
+      const vault = await createVault(seed.join(' '), password);
+      saveVault(vault);
+      // Session-cache the derived key so a refresh skips the password prompt.
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(seed);
+    } finally {
+      setBusy(false);
+    }
   };
-  const finishImport = () => {
-    if (password !== password2 || password.length < 8) return;
+
+  const finishImport = async () => {
+    if (password !== password2 || password.length < 8 || busy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) { alert('Phrase must be 12/15/18/21/24 words'); return; }
     if (!isValidMnemonic(words.join(' '))) { alert('Invalid recovery phrase'); return; }
-    localStorage.setItem(STORAGE.hasVault, '1');
-    localStorage.setItem(STORAGE.mnemonic, words.join(' '));
-    localStorage.setItem(STORAGE.password, password);
-    onComplete(words);
-    // Fire-and-forget: scan the indexer for any LEP100 balances on this
-    // address and persist them so the wallet renders them on first paint.
-    discoverTokens(deriveEvmAddress(words)).catch(() => {});
-  };
-  const tryUnlock = () => {
-    const stored = localStorage.getItem(STORAGE.password);
-    const mnem = localStorage.getItem(STORAGE.mnemonic);
-    if (stored && unlockPwd === stored && mnem) {
-      onComplete(mnem.split(' '));
-    } else {
-      setUnlockErr('Incorrect password');
-      setUnlockPwd('');
+    setBusy(true);
+    try {
+      const vault = await createVault(words.join(' '), password);
+      saveVault(vault);
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(words);
+      // Fire-and-forget: scan the indexer for any LEP100 balances on this
+      // address and persist them so the wallet renders them on first paint.
+      discoverTokens(deriveEvmAddress(words)).catch(() => {});
+    } finally {
+      setBusy(false);
     }
   };
+
+  const tryUnlock = async () => {
+    if (busy) return;
+    setBusy(true);
+    setUnlockErr('');
+    try {
+      const vault = loadVault();
+      if (!vault) {
+        // Vault is missing entirely — treat as fresh install.
+        setUnlockErr('No wallet found on this device. Please create or import one.');
+        setStep('welcome');
+        return;
+      }
+      const opened = await openVault(vault, unlockPwd);
+      if (!opened) {
+        setUnlockErr('Incorrect password');
+        setUnlockPwd('');
+        return;
+      }
+      cacheSessionKey(opened.key);
+      onComplete(opened.mnemonic.split(' '));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const resetWallet = () => {
     if (window.confirm('This deletes your wallet from this device. You can restore it with your recovery phrase. Continue?')) {
-      localStorage.removeItem(STORAGE.hasVault);
-      localStorage.removeItem(STORAGE.mnemonic);
-      localStorage.removeItem(STORAGE.password);
-      localStorage.removeItem(STORAGE.unlocked);
+      clearVault();
       setStep('welcome');
       setUnlockPwd('');
       setUnlockErr('');
@@ -293,8 +317,13 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
-            <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
-              {step === 'create-pwd' ? 'Create wallet' : 'Import wallet'}
+            <button
+              className="btn-primary"
+              style={{ flex: 1 }}
+              disabled={password.length < 8 || password !== password2 || busy}
+              onClick={step === 'create-pwd' ? finishCreate : finishImport}
+            >
+              {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create wallet' : 'Import wallet')}
             </button>
           </div>
         </>}
@@ -328,7 +357,9 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             </button>
           </div>
           {unlockErr && <div className="onboard-err">{unlockErr}</div>}
-          <button className="btn-primary onboard-btn btn-pill" onClick={tryUnlock} disabled={!unlockPwd}>Unlock</button>
+          <button className="btn-primary onboard-btn btn-pill" onClick={tryUnlock} disabled={!unlockPwd || busy}>
+            {busy ? 'Unlocking…' : 'Unlock'}
+          </button>
           <div className="onboard-footer">
             <p className="footer-text">Can't login? You can erase your current wallet and set up a new one</p>
             <button className="footer-link" onClick={resetWallet}>Reset wallet</button>
@@ -340,34 +371,52 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 }
 
 export function useWalletGate() {
-  const [unlocked, setUnlocked] = useState(false);
-  const [hasVault, setHasVault] = useState<boolean | null>(null);
+  const [unlocked,   setUnlocked]   = useState(false);
+  const [hasVault,   setHasVault]   = useState<boolean | null>(null);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
 
   useEffect(() => {
-    const has        = localStorage.getItem(STORAGE.hasVault) === '1';
-    const isUnlocked = localStorage.getItem(STORAGE.unlocked) === '1';
-    const mnem       = localStorage.getItem(STORAGE.mnemonic);
-    setHasVault(has);
-    // Auto-unlock on refresh: if the user previously unlocked, restore the
-    // seed from localStorage and skip the password prompt. Lock / Reset
-    // explicitly clear `unlocked`, so this is safe.
-    if (has && isUnlocked && mnem) {
-      setWalletSeed(mnem.split(' '));
-      setUnlocked(true);
-    }
+    (async () => {
+      // 0) Legacy migration — if the previous plaintext mnemonic is still on
+      //    disk, upgrade it to an encrypted vault silently. This runs once
+      //    per browser; afterwards the plaintext keys are gone.
+      if (hasLegacyPlaintext()) {
+        const mig = await migrateLegacyPlaintext();
+        if (mig.ok && mig.key) cacheSessionKey(mig.key);
+      }
+
+      // 1) Determine vault presence from the new storage shape.
+      const vault = loadVault();
+      setHasVault(!!vault);
+      if (!vault) return;
+
+      // 2) Refresh-survival: if a session-cached AES key is available,
+      //    decrypt the vault without prompting. Cold open (no
+      //    sessionStorage) -> user must enter password.
+      const key = getSessionKey();
+      if (!key) return;
+      const mnemonic = await openVaultWithKey(vault, key);
+      if (mnemonic) {
+        setWalletSeed(mnemonic.split(' '));
+        setUnlocked(true);
+      } else {
+        // Stale / mismatched session key — wipe it so the unlock screen shows.
+        clearSessionKey();
+      }
+    })().catch(() => { /* fail closed = show unlock screen */ });
   }, []);
 
   const lock = () => {
     setUnlocked(false);
     setWalletSeed([]);
-    localStorage.removeItem(STORAGE.unlocked);
+    clearSessionKey();
   };
   const onComplete = (seed: string[]) => {
     setWalletSeed(seed);
     setHasVault(true);
     setUnlocked(true);
-    localStorage.setItem(STORAGE.unlocked, '1');
+    // Note: the session key was cached inside finishCreate / finishImport /
+    // tryUnlock right after decryption. No re-cache needed here.
   };
   const evmAddress = walletSeed.length ? deriveEvmAddress(walletSeed) : '0x0000…0000';
 
