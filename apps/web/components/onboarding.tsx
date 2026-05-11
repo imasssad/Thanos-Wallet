@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
+import { HDNodeWallet, Mnemonic } from 'ethers';
+import { discoverTokens } from '../lib/token-discovery';
 import {
   Wallet as WalletIcon, ChevronLeft, Eye, EyeOff, Copy, Check,
   AlertTriangle, Lock,
@@ -10,10 +11,23 @@ const STORAGE = {
   hasVault:  'thanos.has_vault',
   mnemonic:  'thanos.mnemonic',
   password:  'thanos.password',
+  /* Persisted unlocked flag — set on successful onComplete / unlock, cleared
+     only by an explicit Lock or Reset. Lets a page refresh skip the password
+     prompt (per client spec: auth stays valid until user signs out or app
+     is deleted). */
+  unlocked:  'thanos.unlocked',
 };
 
-function generateMnemonic(): string[] {
-  return Wallet.createRandom().mnemonic!.phrase.split(' ');
+/** Generate a fresh BIP39 phrase of the requested length.
+ *  12 words = 128 bits of entropy (default, recommended).
+ *  24 words = 256 bits of entropy (higher security, longer phrase to back up). */
+function generateMnemonic(wordCount: 12 | 24 = 12): string[] {
+  // ethers entropy: 16 bytes -> 12 words, 32 bytes -> 24 words
+  const entropyBytes = wordCount === 24 ? 32 : 16;
+  const entropy = new Uint8Array(entropyBytes);
+  crypto.getRandomValues(entropy);
+  const hex = '0x' + Array.from(entropy).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Mnemonic.fromEntropy(hex).phrase.split(' ');
 }
 function isValidMnemonic(phrase: string): boolean {
   try { Mnemonic.fromPhrase(phrase.trim().toLowerCase()); return true; }
@@ -25,15 +39,16 @@ function deriveEvmAddress(seed: string[]): string {
   } catch { return '0x0000000000000000000000000000000000000000'; }
 }
 
-type Step = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm' | 'create-pwd'
+type Step = 'welcome' | 'create-length' | 'create-warn' | 'create-show' | 'create-confirm' | 'create-pwd'
           | 'import' | 'import-pwd' | 'unlock';
 
 export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; onComplete: (seed: string[]) => void }) {
   const [step, setStep] = useState<Step>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
+  const [phraseLen, setPhraseLen]     = useState<12 | 24>(12);
   /* Verify-phrase state: only N indices are missing; user fills those slots
-     by tapping chips from a pool. The other (12-N) words are pre-filled. */
+     by tapping chips from a pool. The other (seed.length - N) words are pre-filled. */
   const VERIFY_MISSING = 4;
   const [missingIdxs,   setMissingIdxs]  = useState<number[]>([]);
   const [verifyPicks,   setVerifyPicks]  = useState<Record<number, string>>({});
@@ -45,7 +60,12 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [showPwd, setShowPwd] = useState(false);
   const [copiedSeed, setCopiedSeed] = useState(false);
 
-  const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
+  const startCreate = () => { setStep('create-length'); };
+  const pickLengthAndGenerate = (n: 12 | 24) => {
+    setPhraseLen(n);
+    setSeed(generateMnemonic(n));
+    setStep('create-warn');
+  };
   const goToVerify = () => {
     // Pick N random indices to verify; pool contains those correct words shuffled
     const idxs = Array.from({ length: seed.length }, (_, i) => i)
@@ -95,6 +115,9 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     localStorage.setItem(STORAGE.mnemonic, words.join(' '));
     localStorage.setItem(STORAGE.password, password);
     onComplete(words);
+    // Fire-and-forget: scan the indexer for any LEP100 balances on this
+    // address and persist them so the wallet renders them on first paint.
+    discoverTokens(deriveEvmAddress(words)).catch(() => {});
   };
   const tryUnlock = () => {
     const stored = localStorage.getItem(STORAGE.password);
@@ -111,6 +134,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       localStorage.removeItem(STORAGE.hasVault);
       localStorage.removeItem(STORAGE.mnemonic);
       localStorage.removeItem(STORAGE.password);
+      localStorage.removeItem(STORAGE.unlocked);
       setStep('welcome');
       setUnlockPwd('');
       setUnlockErr('');
@@ -160,23 +184,41 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           <button className="btn-outline onboard-btn" style={{ width: '100%' }} onClick={() => setStep('import')}>Import existing wallet</button>
         </>}
 
+        {step === 'create-length' && <>
+          <h1 className="onboard-title">Choose phrase length</h1>
+          <p className="onboard-sub">How many words do you want your recovery phrase to be? Both are secure — 24 words just adds extra entropy.</p>
+          <div className="phrase-len-choice">
+            <button className={`phrase-len-tile ${phraseLen === 12 ? 'active' : ''}`} onClick={() => pickLengthAndGenerate(12)}>
+              <div className="phrase-len-num">12</div>
+              <div className="phrase-len-label">words</div>
+              <div className="phrase-len-sub">Recommended · 128-bit entropy</div>
+            </button>
+            <button className={`phrase-len-tile ${phraseLen === 24 ? 'active' : ''}`} onClick={() => pickLengthAndGenerate(24)}>
+              <div className="phrase-len-num">24</div>
+              <div className="phrase-len-label">words</div>
+              <div className="phrase-len-sub">Advanced · 256-bit entropy</div>
+            </button>
+          </div>
+          <button className="btn-outline" style={{ width: '100%', marginTop: 14 }} onClick={() => setStep('welcome')}>Back</button>
+        </>}
+
         {step === 'create-warn' && <>
           <h1 className="onboard-title">Save your recovery phrase</h1>
-          <p className="onboard-sub">12 words below are the only way to restore your wallet. Anyone with these words has full access. Never share them, never store online.</p>
+          <p className="onboard-sub">The {phraseLen} words below are the only way to restore your wallet. Anyone with these words has full access. Never share them, never store online.</p>
           <ul className="warn-list">
             <li>Write them down on paper</li>
             <li>Keep them somewhere safe and private</li>
             <li>Thanos team will never ask for this phrase</li>
           </ul>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('welcome')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('create-length')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} onClick={() => setStep('create-show')}>I understand</button>
           </div>
         </>}
 
         {step === 'create-show' && <>
           <h1 className="onboard-title">Your recovery phrase</h1>
-          <p className="onboard-sub">Write these 12 words down in order. You'll confirm them next.</p>
+          <p className="onboard-sub">Write these {phraseLen} words down in order. You'll confirm them next.</p>
           <div className="seed-grid">
             {seed.map((w, i) => (
               <div key={i} className="seed-word">
@@ -303,14 +345,29 @@ export function useWalletGate() {
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
 
   useEffect(() => {
-    setHasVault(localStorage.getItem(STORAGE.hasVault) === '1');
+    const has        = localStorage.getItem(STORAGE.hasVault) === '1';
+    const isUnlocked = localStorage.getItem(STORAGE.unlocked) === '1';
+    const mnem       = localStorage.getItem(STORAGE.mnemonic);
+    setHasVault(has);
+    // Auto-unlock on refresh: if the user previously unlocked, restore the
+    // seed from localStorage and skip the password prompt. Lock / Reset
+    // explicitly clear `unlocked`, so this is safe.
+    if (has && isUnlocked && mnem) {
+      setWalletSeed(mnem.split(' '));
+      setUnlocked(true);
+    }
   }, []);
 
-  const lock = () => { setUnlocked(false); setWalletSeed([]); };
+  const lock = () => {
+    setUnlocked(false);
+    setWalletSeed([]);
+    localStorage.removeItem(STORAGE.unlocked);
+  };
   const onComplete = (seed: string[]) => {
     setWalletSeed(seed);
     setHasVault(true);
     setUnlocked(true);
+    localStorage.setItem(STORAGE.unlocked, '1');
   };
   const evmAddress = walletSeed.length ? deriveEvmAddress(walletSeed) : '0x0000…0000';
 

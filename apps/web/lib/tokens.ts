@@ -33,6 +33,17 @@ export type Token = {
   change24h: number;
 };
 
+/**
+ * Pricing rules (per client spec):
+ *   LAX    = hard-coded $1.0001 always
+ *   LITHO  = placeholder $5.00 until oracle wired
+ *   JOT    = placeholder $0.50 until oracle wired
+ *   IMAGE  = placeholder $0.025 until oracle wired
+ *   LitBTC = fetched live (tracks BTC via CoinGecko)
+ *   FGPT   = fetched live (symbol lookup on CoinGecko, falls back to placeholder)
+ *   COLLE  = fetched live (symbol lookup on CoinGecko, falls back to placeholder)
+ * See apps/web/lib/pricing.ts for the fetcher + cache.
+ */
 export const TOKENS: Token[] = [
   {
     sym: 'LITHO',
@@ -42,7 +53,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#3b7af7',
     icon: '/images/tokens/litho.png',
-    priceUsd: 0.30,
+    priceUsd: 5.00,        // placeholder — see pricing.ts
     balance: '50,000',
     change24h: 18.40,
   },
@@ -54,7 +65,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#f7931a',
     icon: '/images/tokens/litbtc.png',
-    priceUsd: 63200,
+    priceUsd: 63200,        // fetched live — pricing.ts overrides this on load
     balance: '0.85',
     change24h: 2.40,
   },
@@ -66,7 +77,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#ef4444',
     icon: '/images/tokens/jot.png',
-    priceUsd: 0.085,
+    priceUsd: 0.50,         // placeholder — see pricing.ts
     balance: '12,400',
     change24h: 11.20,
   },
@@ -78,9 +89,9 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#06b6d4',
     icon: '/images/tokens/lax.png',
-    priceUsd: 1.00,
+    priceUsd: 1.0001,       // HARD-CODED — never fetched. see pricing.ts
     balance: '4,200',
-    change24h: 0.05,
+    change24h: 0.01,
   },
   {
     sym: 'COLLE',
@@ -91,9 +102,21 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#9ca3af',
     icon: '/images/tokens/colle.png',
-    priceUsd: 0.020,
+    priceUsd: 0.020,        // fetched live — pricing.ts overrides this on load
     balance: '18,000',
     change24h: 8.22,
+  },
+  {
+    sym: 'IMAGE',
+    name: 'Imagen Network',
+    chain: 'Makalu',
+    address: '0xAcD98E323968647936887aD4934e64B01060727e',
+    decimals: 18,
+    color: '#22d3ee',
+    icon: '/images/tokens/image.png',
+    priceUsd: 0.025,        // placeholder — see pricing.ts
+    balance: '6,500',
+    change24h: 5.40,
   },
   {
     sym: 'FurGPT',
@@ -103,7 +126,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#f59e0b',
     icon: '/images/tokens/furgpt.png',
-    priceUsd: 0.015,
+    priceUsd: 0.015,        // fetched live — pricing.ts overrides this on load
     balance: '80,000',
     change24h: 42.30,
   },

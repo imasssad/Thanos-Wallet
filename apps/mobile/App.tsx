@@ -709,7 +709,7 @@ function OnboardingScreen({
   };
 
   const resetWallet = async () => {
-    await AsyncStorage.multiRemove([STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password]);
+    await AsyncStorage.multiRemove([STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password, 'thanos.unlocked']);
     setStep('welcome');
     setUnlockPwd('');
     setUnlockErr('');
@@ -988,14 +988,31 @@ export default function App() {
   const [hasVault, setHasVault] = useState<boolean | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE.hasVault).then(v => setHasVault(v === '1'));
+    // Restore vault state + auto-unlock if the user previously unlocked
+    // (client spec: auth stays valid until user signs out or the app is deleted).
+    (async () => {
+      const [has, isUnlocked, mnem] = await Promise.all([
+        AsyncStorage.getItem(STORAGE.hasVault),
+        AsyncStorage.getItem('thanos.unlocked'),
+        AsyncStorage.getItem(STORAGE.mnemonic),
+      ]);
+      setHasVault(has === '1');
+      if (has === '1' && isUnlocked === '1' && mnem) {
+        setWalletSeed(mnem.split(' '));
+        setUnlocked(true);
+      }
+    })();
   }, []);
 
   const colors = isDark ? DARK : LIGHT;
   const styles = useMemo(() => makeStyles(colors), [isDark]);
   const toggle = () => setIsDark(d => !d);
 
-  const handleLock = () => { setUnlocked(false); setWalletSeed([]); };
+  const handleLock = () => {
+    setUnlocked(false);
+    setWalletSeed([]);
+    AsyncStorage.removeItem('thanos.unlocked').catch(() => {});
+  };
 
   // Wait for storage check before deciding which screen to show
   if (hasVault === null) {
@@ -1024,6 +1041,8 @@ export default function App() {
                   setWalletSeed(seed);
                   setHasVault(true);
                   setUnlocked(true);
+                  // Persist unlocked flag so app cold-start skips re-auth
+                  AsyncStorage.setItem('thanos.unlocked', '1').catch(() => {});
                 }}
               />
             </SafeAreaView>
