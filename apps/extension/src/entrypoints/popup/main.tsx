@@ -121,7 +121,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   };
   const resetWallet = () => {
     if (window.confirm('Erase wallet from this browser? You can restore with your recovery phrase.')) {
-      [STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password].forEach(k => localStorage.removeItem(k));
+      [STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password, 'thanos.unlocked'].forEach(k => localStorage.removeItem(k));
       setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
     }
   };
@@ -578,7 +578,15 @@ function App() {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    setHasVault(localStorage.getItem(STORAGE.hasVault) === '1');
+    const has        = localStorage.getItem(STORAGE.hasVault) === '1';
+    const isUnlocked = localStorage.getItem('thanos.unlocked') === '1';
+    const mnem       = localStorage.getItem(STORAGE.mnemonic);
+    setHasVault(has);
+    // Auto-unlock on extension popup re-open if the user previously unlocked.
+    if (has && isUnlocked && mnem) {
+      setSeed(mnem.split(' '));
+      setUnlocked(true);
+    }
     const stored = localStorage.getItem(STORAGE.theme);
     const dark = stored === 'dark';
     setIsDark(dark);
@@ -594,8 +602,17 @@ function App() {
     });
   };
 
-  const lock = () => { setUnlocked(false); setSeed([]); };
-  const onComplete = (s: string[]) => { setSeed(s); setHasVault(true); setUnlocked(true); };
+  const lock = () => {
+    setUnlocked(false);
+    setSeed([]);
+    localStorage.removeItem('thanos.unlocked');
+  };
+  const onComplete = (s: string[]) => {
+    setSeed(s);
+    setHasVault(true);
+    setUnlocked(true);
+    localStorage.setItem('thanos.unlocked', '1');
+  };
 
   if (hasVault === null) return <div className="root-loading"/>;
   if (!unlocked) return <Onboarding hasVault={hasVault} onComplete={onComplete}/>;

@@ -1359,6 +1359,17 @@ function App() {
     return () => { cancelled = true; };
   }, [unlocked, walletAddr, walletSeed.length]);
 
+  // Auto-unlock on relaunch if the user previously unlocked this device.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isUnlocked = localStorage.getItem('thanos.unlocked') === '1';
+    const mnem       = localStorage.getItem('thanos.mnemonic');
+    if (hasVault && isUnlocked && mnem) {
+      setWalletSeed(mnem.split(' '));
+      setUnlocked(true);
+    }
+  }, [hasVault]);
+
   useEffect(() => {
     // Default to LIGHT unless user explicitly chose dark
     const stored = localStorage.getItem('thanos-theme');
@@ -1384,6 +1395,7 @@ function App() {
         onComplete={(seed, _pwd) => {
           setWalletSeed(seed);
           setUnlocked(true);
+          localStorage.setItem('thanos.unlocked', '1');
         }}
       />
     );
@@ -1392,6 +1404,7 @@ function App() {
   const lock = () => {
     setUnlocked(false);
     setWalletSeed([]);
+    localStorage.removeItem('thanos.unlocked');
   };
 
   return (
