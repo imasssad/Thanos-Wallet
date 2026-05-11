@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { TOKENS } from '../lib/tokens';
+import { Globe, Shield, Info, ChevronRight, Key, Download, Lock } from 'lucide-react';
 
 // Market view leads with the Lithosphere ecosystem (canonical token list),
 // then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
@@ -313,54 +314,93 @@ export function StakingView() {
 
 export function SettingsView() {
   const [currency, setCurrency] = useState('USD');
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12 }}>{title}</div>
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden' }}>
-        {children}
+
+  const Section = ({
+    icon: Icon, title, sub, children,
+  }: { icon: React.ElementType; title: string; sub: string; children: React.ReactNode }) => (
+    <section className="settings-section">
+      <header className="settings-section-head">
+        <div className="settings-section-icon"><Icon size={18} strokeWidth={2}/></div>
+        <div>
+          <h2 className="settings-section-title">{title}</h2>
+          <p className="settings-section-sub">{sub}</p>
+        </div>
+      </header>
+      <div className="settings-card">{children}</div>
+    </section>
+  );
+
+  const Row = ({
+    label, sub, children,
+  }: { label: string; sub?: string; children: React.ReactNode }) => (
+    <div className="settings-row">
+      <div className="settings-row-label">
+        <div className="settings-row-title">{label}</div>
+        {sub && <div className="settings-row-sub">{sub}</div>}
       </div>
+      <div className="settings-row-control">{children}</div>
     </div>
   );
-  const Row = ({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) => (
-    <div className="settings-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
-      </div>
-      {children}
-    </div>
-  );
+
   return (
-    <div className="main-area" style={{ width: '100%' }}>
-      <div className="page-wrap" style={{ maxWidth: 600 }}>
-        <div className="page-header"><h1 className="page-title">Settings</h1></div>
-        <Section title="General">
+    <div className="main-area settings-view">
+      <div className="settings-wrap">
+        <header className="settings-hero">
+          <h1 className="settings-hero-title">Settings</h1>
+          <p className="settings-hero-sub">
+            Manage your wallet preferences, security, and account details.
+          </p>
+        </header>
+
+        <Section icon={Globe} title="General" sub="Display, language, and locale">
           <Row label="Currency" sub="Display prices in">
-            <select className="field-select" style={{ width: 100 }} value={currency} onChange={e => setCurrency(e.target.value)}>
+            <select className="settings-select" value={currency} onChange={e => setCurrency(e.target.value)}>
               {['USD','EUR','GBP','JPY','BTC'].map(c => <option key={c}>{c}</option>)}
             </select>
           </Row>
           <Row label="Language" sub="Interface language">
-            <select className="field-select" style={{ width: 120 }}>
+            <select className="settings-select" defaultValue="English">
               <option>English</option><option>Spanish</option><option>Arabic</option>
             </select>
           </Row>
         </Section>
-        <Section title="Security">
+
+        <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
-            <select className="field-select" style={{ width: 120 }}>
-              <option>5 minutes</option><option>15 minutes</option><option>1 hour</option>
+            <select className="settings-select" defaultValue="5 minutes">
+              <option>1 minute</option>
+              <option>5 minutes</option>
+              <option>15 minutes</option>
+              <option>1 hour</option>
+              <option>Never</option>
             </select>
           </Row>
-          <Row label="Change Password" sub="Update your wallet password">
-            <button className="btn-outline">Change</button>
+          <Row label="Change password" sub="Update your wallet password">
+            <button className="settings-btn">
+              <Key size={14}/> Change
+            </button>
           </Row>
-          <Row label="Backup Seed Phrase" sub="Export your 12/24-word phrase">
-            <button className="btn-outline" style={{ color: 'var(--red)', borderColor: 'rgba(248,113,113,0.3)' }}>Export</button>
+          <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
+            <button className="settings-btn settings-btn-danger">
+              <Download size={14}/> Export
+            </button>
+          </Row>
+          <Row label="Lock wallet now" sub="Sign out on this device">
+            <button className="settings-btn">
+              <Lock size={14}/> Lock
+            </button>
           </Row>
         </Section>
-        <Section title="About">
-          <Row label="Version" sub="Thanos Wallet"><span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>v0.8.1</span></Row>
+
+        <Section icon={Info} title="About" sub="Build info and version">
+          <Row label="Version" sub="Thanos Wallet">
+            <span className="settings-version">v0.8.1</span>
+          </Row>
+          <Row label="Documentation" sub="Read the wallet guide">
+            <a href="#" className="settings-btn settings-btn-link">
+              View <ChevronRight size={14}/>
+            </a>
+          </Row>
         </Section>
       </div>
     </div>
