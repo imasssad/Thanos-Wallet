@@ -1372,7 +1372,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .topnav-logo { padding-right: 8px; margin-right: 6px; }
 }
 
-/* Mobile — collapse nav to hamburger, stack right panel */
+/* ─── Tablet (≤768) — collapse nav to hamburger, stack right panel ─── */
 @media (max-width: 768px) {
   .nav-tabs-desktop { display: none !important; }
   .nav-mobile-toggle { display: flex; }
@@ -1380,6 +1380,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .topnav { height: 56px; padding: 0 12px; }
   .chip-info { display: none; }
   .account-chip { padding: 3px; gap: 0; }
+
+  /* Prevent any unintended horizontal scroll across the whole app shell */
+  html, body, .workspace { overflow-x: hidden; }
 
   .workspace { flex-direction: column; }
   .right-panel {
@@ -1389,7 +1392,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
     border-top: 1px solid var(--border-subtle);
     padding: 14px !important;
   }
-  .main-area { padding: 14px 14px 24px !important; }
+  .main-area { padding: 14px 14px 20px !important; }
 
   /* Stack the charts row */
   .charts-row { flex-direction: column; gap: 12px; }
@@ -1397,14 +1400,14 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
   /* Hero balance: stack quick actions below */
   .balance-hero { flex-direction: column; align-items: flex-start !important; gap: 14px; }
-  .balance-amount { font-size: 30px !important; }
+  .balance-amount { font-size: 34px !important; }
 
   /* Allocation: 2 columns instead of 4 */
   .alloc-coins { grid-template-columns: repeat(2, 1fr) !important; gap: 14px 0 !important; }
   .alloc-coin { padding: 0 10px !important; border-left: 1px solid var(--border-subtle); }
   .alloc-coin:nth-child(odd) { border-left: none; padding-left: 0; }
 
-  /* Tables: horizontal scroll */
+  /* Tables: horizontal scroll inside their card */
   .data-table { font-size: 14px; }
   .card { overflow-x: auto; }
 
@@ -1417,11 +1420,98 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .seed-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
 
-/* Very small phones */
-@media (max-width: 380px) {
-  .balance-amount { font-size: 30px !important; }
-  .quick-action-btn { padding: 8px 12px 8px 6px !important; font-size: 14px !important; }
-  .quick-action-icon { width: 24px !important; height: 24px !important; }
+/* ─── Phone (≤480) — true mobile density ─────────────────────────── */
+@media (max-width: 480px) {
+  /* Topnav: compact logo, smaller chip, hide search+bell entirely on phone */
+  .topnav { height: 52px; padding: 0 10px; gap: 6px; }
+  .topnav-logo { padding-right: 8px; margin-right: 4px; border-right: none; }
+  .logo-mark { width: 30px; height: 30px; }
+  .topnav-logo img { width: 28px !important; height: 28px !important; }
+  .icon-btn-nav { width: 30px; height: 30px; }
+  .nav-mobile-toggle { width: 38px; height: 38px; }
+
+  /* Workspace */
+  .main-area { padding: 12px 12px 18px !important; gap: 10px !important; }
+  .right-panel { padding: 12px !important; gap: 10px !important; }
+
+  /* Balance hero: very compact */
+  .balance-hero { padding: 0; }
+  .balance-amount { font-size: 28px !important; }
+  .balance-label  { font-size: 11px !important; margin-bottom: 4px !important; }
+  .balance-change-pill { font-size: 12px !important; }
+
+  /* Allocation: single column so wLITHO / Wrapped Lithosphere doesn't clip */
+  .alloc-coins { grid-template-columns: 1fr !important; gap: 8px 0 !important; }
+  .alloc-coin { padding: 4px 0 !important; border-left: none !important; border-bottom: 1px solid var(--border-subtle); }
+  .alloc-coin:last-child { border-bottom: none; }
+  .alloc-bar { height: 6px !important; }
+
+  /* Cards: tighter padding */
+  .card { padding: 12px !important; }
+  .card-title { font-size: 14px !important; }
+  .card-header { margin-bottom: 8px !important; }
+
+  /* Quick action buttons: equal-width grid that fills the row */
+  .balance-hero > div:last-child {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+    width: 100%;
+  }
+  .quick-action-btn { justify-content: center; padding: 8px 6px !important; font-size: 12px !important; gap: 6px !important; }
+  .quick-action-icon { width: 22px !important; height: 22px !important; }
+
+  /* Data tables: drop secondary columns on phone so the row fits */
+  .data-table th:nth-child(2),
+  .data-table td:nth-child(2),
+  .data-table th:nth-child(3),
+  .data-table td:nth-child(3) { display: none; }
+  .data-table th, .data-table td { padding: 8px 6px !important; font-size: 13px !important; }
+  .tx-avatar { width: 28px !important; height: 28px !important; font-size: 11px !important; }
+  .tx-name   { font-size: 13px !important; }
+  .tx-sym    { font-size: 11px !important; }
+  .amt-pos, .amt-neg { font-size: 13px !important; }
+  .status-pill { font-size: 10px !important; padding: 2px 6px !important; }
+
+  /* Right-panel portfolio list */
+  .portfolio-row { padding: 8px 0 !important; gap: 8px; }
+  .portfolio-icon { width: 30px !important; height: 30px !important; font-size: 12px !important; }
+  .portfolio-name { font-size: 13px !important; }
+  .portfolio-sym  { font-size: 11px !important; }
+  .portfolio-price{ font-size: 13px !important; }
+  .portfolio-chg  { font-size: 10px !important; }
+
+  /* Exchange widget */
+  .coin-row { padding: 8px 10px !important; }
+  .coin-amount { font-size: 17px !important; }
+  .coin-icon { width: 24px !important; height: 24px !important; font-size: 11px !important; }
+  .btn-exchange { height: 38px !important; font-size: 13px !important; }
+
+  /* Modals on phone — full-width sheet */
+  .modal-box { width: calc(100vw - 24px) !important; max-width: 100% !important; }
+  .field-input, .field-select { font-size: 14px !important; padding: 10px 11px !important; }
+}
+
+/* ─── Very small phones (≤360) — extra-tight ─────────────────────── */
+@media (max-width: 360px) {
+  .topnav { padding: 0 8px; }
+  .main-area, .right-panel { padding: 10px !important; }
+  .card { padding: 10px !important; }
+  .balance-amount { font-size: 24px !important; }
+  .card-title    { font-size: 13px !important; }
+  .quick-action-btn { font-size: 11px !important; padding: 7px 4px !important; }
+  .quick-action-icon { width: 20px !important; height: 20px !important; }
+
+  /* Hide section change-pill on very small */
+  .balance-change-pill { display: none !important; }
+
+  /* Onboarding tight */
+  .onboard-card { padding: 22px 16px 18px !important; }
+  .onboard-title { font-size: 20px !important; }
+  .seed-grid { grid-template-columns: 1fr !important; }
+  .phrase-len-choice { gap: 8px; }
+  .phrase-len-tile { padding: 18px 10px 14px; }
+  .phrase-len-num { font-size: 30px; }
 }
 /* ═════════════════════════════════════════════════════════════════
    ONBOARDING — PREMIUM OVERHAUL (dark mode)

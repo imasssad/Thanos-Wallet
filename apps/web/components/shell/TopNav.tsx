@@ -11,7 +11,7 @@ const ACCOUNT = { name: 'RobbyWallet', address: '0x70cA2F2B7' };
 const NAV = [
   { href: '/app',           label: 'Dashboard'    },
   { href: '/app/market',    label: 'Market'       },
-  { href: '/app/portfolio', label: 'Portfolio'    },
+  { href: '/app/assets',    label: 'Assets'       },
   { href: '/app/history',   label: 'Transactions' },
   { href: '/app/staking',   label: 'Staking'      },
   { href: '/app/settings',  label: 'Settings'     },
