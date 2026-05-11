@@ -5,19 +5,17 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { IconSwap, IconChevronDown, IconAlert } from '../ui/Icons';
 
-const TOKENS = [
-  { symbol: 'LITHO',  name: 'Lithosphere',         chain: 'Makalu',  balance: '50,000'  },
-  { symbol: 'wLITHO', name: 'Wrapped Lithosphere', chain: 'EVM',     balance: '5,000'   },
-  { symbol: 'FGPT',   name: 'FractalGPT',          chain: 'Makalu',  balance: '80,000'  },
-  { symbol: 'BTC',    name: 'Bitcoin',             chain: 'Bitcoin', balance: '0.04821' },
-  { symbol: 'ETH',    name: 'Ethereum',            chain: 'EVM',     balance: '0.6142'  },
-  { symbol: 'USDC',   name: 'USD Coin',            chain: 'EVM',     balance: '840.00'  },
-  { symbol: 'COLLE',  name: 'Colle AI',            chain: 'Makalu',  balance: '18,000'  },
-];
+import { TOKENS as LITHO_TOKENS } from '../../lib/tokens';
+const TOKENS = LITHO_TOKENS.map(t => ({
+  symbol:  t.sym,
+  name:    t.name,
+  chain:   t.chain,
+  balance: t.balance,
+}));
 
 export function SwapView() {
   const [from, setFrom] = useState(TOKENS[0]);
-  const [to, setTo]     = useState(TOKENS[2]);
+  const [to, setTo]     = useState(TOKENS[1]);
   const [amount, setAmount] = useState('');
   const [slippage, setSlippage] = useState('0.5');
   const [loading, setLoading] = useState(false);
