@@ -16,6 +16,8 @@
   "dependencies": {
     "@babel/runtime": "^7.29.2",
     "@expo/metro-runtime": "~4.0.1",
+    "@noble/ciphers": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "ethers": "^6.13.4",
     "expo": "~52.0.11",
