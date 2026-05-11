@@ -1,10 +1,17 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
   Alert, Animated, Easing, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
+import {
+  createVault, openVault, openVaultWithKey,
+  loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
+  cacheSessionKey, getSessionKey, clearSessionKey,
+  hasLegacyPlaintext, migrateLegacyPlaintext,
+} from './lib/vault';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
@@ -623,11 +630,8 @@ function deriveEvmAddress(seed: string[]): string {
   } catch { return '0x0000000000000000000000000000000000000000'; }
 }
 
-const STORAGE = {
-  hasVault:  'thanos.has_vault',
-  mnemonic:  'thanos.mnemonic',
-  password:  'thanos.password',
-};
+// Storage keys live in ./lib/vault.ts now — these legacy AsyncStorage keys
+// are only referenced by migrateLegacyPlaintext() and get wiped on first run.
 
 /* ─────────────────── Onboarding ─────────────────── */
 
@@ -682,41 +686,56 @@ function OnboardingScreen({
   const allConfirmed = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] === seed[i]);
   const orderMismatch = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] !== undefined) && !allConfirmed;
 
+  const [busy, setBusy] = useState(false);
+
   const finishCreate = async () => {
-    if (password !== password2 || password.length < 8) return;
-    await AsyncStorage.setItem(STORAGE.hasVault, '1');
-    await AsyncStorage.setItem(STORAGE.mnemonic, seed.join(' '));
-    await AsyncStorage.setItem(STORAGE.password, password);
-    onComplete(seed);
+    if (password !== password2 || password.length < 8 || busy) return;
+    setBusy(true);
+    try {
+      await createVault(seed.join(' '), password);
+      // createVault session-caches the key internally.
+      onComplete(seed);
+    } finally { setBusy(false); }
   };
 
   const finishImport = async () => {
-    if (password !== password2 || password.length < 8) return;
+    if (password !== password2 || password.length < 8 || busy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) return;
     if (!isValidMnemonic(words.join(' '))) {
-      Alert.alert('Invalid phrase', 'That recovery phrase isn\'t valid.');
+      Alert.alert('Invalid phrase', "That recovery phrase isn't valid.");
       return;
     }
-    await AsyncStorage.setItem(STORAGE.hasVault, '1');
-    await AsyncStorage.setItem(STORAGE.mnemonic, words.join(' '));
-    await AsyncStorage.setItem(STORAGE.password, password);
-    onComplete(words);
+    setBusy(true);
+    try {
+      await createVault(words.join(' '), password);
+      onComplete(words);
+    } finally { setBusy(false); }
   };
 
   const tryUnlock = async () => {
-    const stored = await AsyncStorage.getItem(STORAGE.password);
-    const mnem   = await AsyncStorage.getItem(STORAGE.mnemonic);
-    if (stored && unlockPwd === stored && mnem) {
-      onComplete(mnem.split(' '));
-    } else {
-      setUnlockErr('Incorrect password');
-      setUnlockPwd('');
-    }
+    if (busy) return;
+    setBusy(true);
+    setUnlockErr('');
+    try {
+      const vault = await loadVault();
+      if (!vault) {
+        setUnlockErr('No wallet on this device.');
+        return;
+      }
+      const opened = await openVault(vault, unlockPwd);
+      if (!opened) {
+        setUnlockErr('Incorrect password');
+        setUnlockPwd('');
+        return;
+      }
+      cacheSessionKey(opened.key);
+      onComplete(opened.mnemonic.split(' '));
+    } finally { setBusy(false); }
   };
 
   const resetWallet = async () => {
-    await AsyncStorage.multiRemove([STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password, 'thanos.unlocked']);
+    await clearVaultStore();
     setStep('welcome');
     setUnlockPwd('');
     setUnlockErr('');
@@ -910,11 +929,13 @@ function OnboardingScreen({
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
             <Pressable
-              style={[styles.btnPrimary, { flex: 1, marginTop: 0, opacity: (password.length >= 8 && password === password2) ? 1 : 0.45 }]}
-              disabled={password.length < 8 || password !== password2}
+              style={[styles.btnPrimary, { flex: 1, marginTop: 0, opacity: (password.length >= 8 && password === password2 && !busy) ? 1 : 0.45 }]}
+              disabled={password.length < 8 || password !== password2 || busy}
               onPress={step === 'create-pwd' ? finishCreate : finishImport}
             >
-              <Text style={styles.btnPrimaryText}>{step === 'create-pwd' ? 'Create wallet' : 'Import wallet'}</Text>
+              <Text style={styles.btnPrimaryText}>
+                {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create wallet' : 'Import wallet')}
+              </Text>
             </Pressable>
           </View>
         </>}
@@ -963,11 +984,11 @@ function OnboardingScreen({
           />
           {unlockErr ? <Text style={styles.onboardErr}>{unlockErr}</Text> : null}
           <Pressable
-            style={[styles.btnPrimary, { opacity: unlockPwd ? 1 : 0.45 }]}
-            disabled={!unlockPwd}
+            style={[styles.btnPrimary, { opacity: (unlockPwd && !busy) ? 1 : 0.45 }]}
+            disabled={!unlockPwd || busy}
             onPress={tryUnlock}
           >
-            <Text style={styles.btnPrimaryText}>Unlock</Text>
+            <Text style={styles.btnPrimaryText}>{busy ? 'Unlocking…' : 'Unlock'}</Text>
           </Pressable>
           <Pressable onPress={() => Alert.alert(
             'Reset wallet',
@@ -995,20 +1016,32 @@ export default function App() {
   const [hasVault, setHasVault] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Restore vault state + auto-unlock if the user previously unlocked
-    // (client spec: auth stays valid until user signs out or the app is deleted).
     (async () => {
-      const [has, isUnlocked, mnem] = await Promise.all([
-        AsyncStorage.getItem(STORAGE.hasVault),
-        AsyncStorage.getItem('thanos.unlocked'),
-        AsyncStorage.getItem(STORAGE.mnemonic),
-      ]);
-      setHasVault(has === '1');
-      if (has === '1' && isUnlocked === '1' && mnem) {
-        setWalletSeed(mnem.split(' '));
-        setUnlocked(true);
+      // 1) Legacy migration — if the previous plaintext mnemonic exists in
+      //    AsyncStorage, re-encrypt it into the SecureStore vault and wipe.
+      if (await hasLegacyPlaintext()) {
+        await migrateLegacyPlaintext();
       }
-    })();
+
+      // 2) Vault check.
+      const vault = await loadVault();
+      setHasVault(!!vault);
+      if (!vault) return;
+
+      // 3) Refresh-survival within the current JS runtime: if a session key
+      //    is in module memory (set by createVault/openVault on a previous
+      //    mount), use it. On cold start the module is fresh and this is
+      //    null — user must enter password.
+      const key = getSessionKey();
+      if (!key) return;
+      const mnemonic = await openVaultWithKey(vault, key);
+      if (mnemonic) {
+        setWalletSeed(mnemonic.split(' '));
+        setUnlocked(true);
+      } else {
+        clearSessionKey();
+      }
+    })().catch(() => { /* fall through to onboarding */ });
   }, []);
 
   const colors = isDark ? DARK : LIGHT;
@@ -1018,7 +1051,7 @@ export default function App() {
   const handleLock = () => {
     setUnlocked(false);
     setWalletSeed([]);
-    AsyncStorage.removeItem('thanos.unlocked').catch(() => {});
+    clearSessionKey();
   };
 
   // Wait for storage check before deciding which screen to show
@@ -1048,8 +1081,10 @@ export default function App() {
                   setWalletSeed(seed);
                   setHasVault(true);
                   setUnlocked(true);
-                  // Persist unlocked flag so app cold-start skips re-auth
-                  AsyncStorage.setItem('thanos.unlocked', '1').catch(() => {});
+                  // Session key was cached inside createVault / openVault; no
+                  // extra plaintext flag is written. Cold-start still requires
+                  // password since the JS module is re-loaded — this is the
+                  // intentional security trade-off after removing plaintext.
                 }}
               />
             </SafeAreaView>
