@@ -5,7 +5,7 @@ import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search,
-  Fingerprint, Key, AlertTriangle, Globe, Zap, Bell,
+  Fingerprint, Key, AlertTriangle, Globe, Zap, Bell, Shield,
 } from 'lucide-react';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
@@ -390,9 +390,25 @@ function ActivityScreen() {
 }
 
 function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; onToggleTheme: () => void; onLock: () => void }) {
+  // Premium-pattern settings: icon-led section headers + a gradient title hero.
+  // Adapted for the 360px popup — smaller paddings + tighter spacing.
+  const SectionHead = ({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub: string }) => (
+    <div className="x-set-section-head">
+      <div className="x-set-section-icon"><Icon size={14}/></div>
+      <div>
+        <div className="x-set-section-title">{title}</div>
+        <div className="x-set-section-sub">{sub}</div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="screen">
-      <h1 className="page-title">Settings</h1>
+    <div className="screen x-settings">
+      <div className="x-set-hero">
+        <h1 className="x-set-hero-title">Settings</h1>
+        <p className="x-set-hero-sub">Account, security, and appearance.</p>
+      </div>
+
       <div className="acct-header-card">
         <img src="/icons/icon128.png" alt="" width="32" height="32"/>
         <div style={{ flex: 1 }}>
@@ -402,7 +418,7 @@ function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; on
         <button className="copy-chip">Copy</button>
       </div>
 
-      <div className="section-label">SECURITY</div>
+      <SectionHead Icon={Shield} title="Security" sub="Protect access to your wallet"/>
       <div className="card list">
         <div className="set-row row-border">
           <div className="set-icon"><Fingerprint size={15}/></div>
@@ -421,16 +437,16 @@ function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; on
           <ChevronRight size={15} color="var(--text-muted)"/>
         </div>
         <div className="set-row">
-          <div className="set-icon"><AlertTriangle size={15} color="var(--red)"/></div>
+          <div className="set-icon" style={{ color: 'var(--red)' }}><AlertTriangle size={15}/></div>
           <div style={{ flex: 1 }}>
             <div className="set-label" style={{ color: 'var(--red)' }}>Recovery phrase</div>
-            <div className="set-sub">View 12-word seed</div>
+            <div className="set-sub">View your 12 / 24-word seed</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </div>
       </div>
 
-      <div className="section-label">APPEARANCE</div>
+      <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
       <div className="card list">
         <button className="set-row" onClick={onToggleTheme} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left' }}>
           <div className="set-icon">{isDark ? <Moon size={15}/> : <Sun size={15}/>}</div>
@@ -442,7 +458,7 @@ function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; on
         </button>
       </div>
 
-      <div className="section-label">SESSION</div>
+      <SectionHead Icon={Lock} title="Session" sub="Sign out on this device"/>
       <div className="card list">
         <button className="set-row" onClick={onLock} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
           <div className="set-icon" style={{ color: 'var(--red)' }}><Lock size={15}/></div>
@@ -453,7 +469,7 @@ function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; on
         </button>
       </div>
 
-      <div className="version">Thanos Wallet · v0.8.1</div>
+      <div className="x-set-version">Thanos Wallet · v0.8.1</div>
     </div>
   );
 }
