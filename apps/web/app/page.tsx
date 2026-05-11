@@ -59,8 +59,8 @@ function Nav() {
     <nav className="lp-nav">
       <div className="lp-nav-inner">
         <Link href="/" className="lp-nav-logo">
-          <img src="/images/Thanos_Logo_Transparent.png" alt="" width={28} height={28}/>
-          <span>Thanos</span>
+          <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={44} height={44}/>
+          <span className="lp-nav-logo-text">Thanos</span>
         </Link>
         <div className="lp-nav-right">
           <a href="#dashboard" className="lp-nav-link">Product</a>
