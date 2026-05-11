@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
 import './styles.css';
+import {
+  createVault, openVault, openVaultWithKey,
+  saveVault, loadVault, clearVault,
+  cacheSessionKey, getSessionKey, clearSessionKey,
+  hasLegacyPlaintext, migrateLegacyPlaintext,
+} from './vault';
 
 declare global {
   interface Window {
@@ -1119,40 +1125,58 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   const allConfirmed = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] === seed[i]);
   const orderMismatch = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] !== undefined) && !allConfirmed;
 
+  const [vaultBusy, setVaultBusy] = useState(false);
+
   const finishCreate = async () => {
-    if (password !== password2 || password.length < 8) return;
+    if (password !== password2 || password.length < 8 || vaultBusy) return;
+    setVaultBusy(true);
     try {
-      await window.thanosDesktop?.vaultSet('mnemonic', seed.join(' '));
-      await window.thanosDesktop?.vaultSet('password', password);
-    } catch {/* fallback to localStorage */}
-    localStorage.setItem('thanos.has_vault', '1');
-    localStorage.setItem('thanos.mnemonic', seed.join(' '));
-    localStorage.setItem('thanos.password', password);
-    onComplete(seed, password);
+      const vault = await createVault(seed.join(' '), password);
+      saveVault(vault);
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(seed, password);
+    } finally {
+      setVaultBusy(false);
+    }
   };
 
   const finishImport = async () => {
-    if (password !== password2 || password.length < 8) return;
+    if (password !== password2 || password.length < 8 || vaultBusy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) return;
+    setVaultBusy(true);
     try {
-      await window.thanosDesktop?.vaultSet('mnemonic', words.join(' '));
-      await window.thanosDesktop?.vaultSet('password', password);
-    } catch {/* fallback */}
-    localStorage.setItem('thanos.has_vault', '1');
-    localStorage.setItem('thanos.mnemonic', words.join(' '));
-    localStorage.setItem('thanos.password', password);
-    onComplete(words, password);
+      const vault = await createVault(words.join(' '), password);
+      saveVault(vault);
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(words, password);
+    } finally {
+      setVaultBusy(false);
+    }
   };
 
   const tryUnlock = async () => {
-    const stored = localStorage.getItem('thanos.password');
-    const mnem   = localStorage.getItem('thanos.mnemonic');
-    if (stored && unlockPwd === stored && mnem) {
-      onComplete(mnem.split(' '), unlockPwd);
-    } else {
-      setUnlockErr('Incorrect password');
-      setUnlockPwd('');
+    if (vaultBusy) return;
+    setVaultBusy(true);
+    setUnlockErr('');
+    try {
+      const vault = loadVault();
+      if (!vault) {
+        setUnlockErr('No wallet found on this device.');
+        return;
+      }
+      const opened = await openVault(vault, unlockPwd);
+      if (!opened) {
+        setUnlockErr('Incorrect password');
+        setUnlockPwd('');
+        return;
+      }
+      cacheSessionKey(opened.key);
+      onComplete(opened.mnemonic.split(' '), unlockPwd);
+    } finally {
+      setVaultBusy(false);
     }
   };
 
@@ -1265,7 +1289,9 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
             {password && password.length < 8 && <div className="onboard-err">Min 8 characters</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('create-confirm')}>Back</button>
-              <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2} onClick={finishCreate}>Create wallet</button>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2 || vaultBusy} onClick={finishCreate}>
+                {vaultBusy ? 'Encrypting…' : 'Create wallet'}
+              </button>
             </div>
           </>
         )}
@@ -1300,7 +1326,9 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
             {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('import')}>Back</button>
-              <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2} onClick={finishImport}>Import wallet</button>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2 || vaultBusy} onClick={finishImport}>
+                {vaultBusy ? 'Encrypting…' : 'Import wallet'}
+              </button>
             </div>
           </>
         )}
@@ -1337,15 +1365,15 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
             {unlockErr && <div className="onboard-err">{unlockErr}</div>}
 
-            <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd}>Unlock</button>
+            <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd || vaultBusy}>
+              {vaultBusy ? 'Unlocking…' : 'Unlock'}
+            </button>
 
             <div className="onboard-footer">
               <p className="footer-text">Can't login? You can erase your current wallet and set up a new one</p>
               <button className="footer-link" onClick={() => {
                 if (confirm('This will delete your wallet from this device. You can restore it with your recovery phrase. Continue?')) {
-                  localStorage.removeItem('thanos.has_vault');
-                  localStorage.removeItem('thanos.mnemonic');
-                  localStorage.removeItem('thanos.password');
+                  clearVault();
                   setStep('welcome');
                 }
               }}>Reset wallet</button>
@@ -1376,9 +1404,9 @@ function App() {
   const [modal, setModal]   = useState<Modal>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
+  const [hasVault, setHasVault] = useState(false);
   const [liveEth, setLiveEth] = useState<string | null>(null);
   const [accountMenu, setAccountMenu] = useState(false);
-  const hasVault = typeof window !== 'undefined' && localStorage.getItem('thanos.has_vault') === '1';
 
   const addrs = walletSeed.length > 0
     ? deriveAddressesFromSeed(walletSeed)
@@ -1393,16 +1421,29 @@ function App() {
     return () => { cancelled = true; };
   }, [unlocked, walletAddr, walletSeed.length]);
 
-  // Auto-unlock on relaunch if the user previously unlocked this device.
+  // Vault gate: migrate plaintext if present, then try the session-cached
+  // key to skip the password prompt on refresh.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const isUnlocked = localStorage.getItem('thanos.unlocked') === '1';
-    const mnem       = localStorage.getItem('thanos.mnemonic');
-    if (hasVault && isUnlocked && mnem) {
-      setWalletSeed(mnem.split(' '));
-      setUnlocked(true);
-    }
-  }, [hasVault]);
+    (async () => {
+      if (hasLegacyPlaintext()) {
+        const mig = await migrateLegacyPlaintext();
+        if (mig.ok && mig.key) cacheSessionKey(mig.key);
+      }
+      const vault = loadVault();
+      setHasVault(!!vault);
+      if (!vault) return;
+      const key = getSessionKey();
+      if (!key) return;
+      const mnemonic = await openVaultWithKey(vault, key);
+      if (mnemonic) {
+        setWalletSeed(mnemonic.split(' '));
+        setUnlocked(true);
+      } else {
+        clearSessionKey();
+      }
+    })().catch(() => { /* fall through to onboarding */ });
+  }, []);
 
   useEffect(() => {
     // Default to LIGHT unless user explicitly chose dark
@@ -1421,15 +1462,17 @@ function App() {
     });
   };
 
-  // Show onboarding/unlock until wallet is unlocked
+  // Show onboarding/unlock until wallet is unlocked.
+  // The session AES key is cached inside OnboardingFlow itself on success;
+  // here we just flip the local React state.
   if (!unlocked) {
     return (
       <OnboardingFlow
         hasVault={hasVault}
         onComplete={(seed, _pwd) => {
           setWalletSeed(seed);
+          setHasVault(true);
           setUnlocked(true);
-          localStorage.setItem('thanos.unlocked', '1');
         }}
       />
     );
@@ -1438,7 +1481,7 @@ function App() {
   const lock = () => {
     setUnlocked(false);
     setWalletSeed([]);
-    localStorage.removeItem('thanos.unlocked');
+    clearSessionKey();
   };
 
   return (

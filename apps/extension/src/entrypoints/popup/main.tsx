@@ -7,14 +7,19 @@ import {
   Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search,
   Fingerprint, Key, AlertTriangle, Globe, Zap, Bell, Shield,
 } from 'lucide-react';
+import {
+  createVault, openVault, openVaultWithKey,
+  saveVault, loadVault, clearVault,
+  cacheSessionKey, getSessionKey, clearSessionKey,
+  hasLegacyPlaintext, migrateLegacyPlaintext,
+} from '../../lib/vault';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
+// Storage keys for the popup. Mnemonic / has_vault / unlocked live in
+// vault.ts; only the theme preference stays here.
 const STORAGE = {
-  hasVault: 'thanos.has_vault',
-  mnemonic: 'thanos.mnemonic',
-  password: 'thanos.password',
-  theme:    'thanos-theme',
+  theme: 'thanos-theme',
 };
 
 function generateMnemonic(): string[] {
@@ -96,32 +101,49 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const allConfirmed = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] === seed[i]);
   const orderMismatch = missingIdxs.length > 0 && missingIdxs.every(i => verifyPicks[i] !== undefined) && !allConfirmed;
 
-  const finishCreate = () => {
-    if (password !== password2 || password.length < 8) return;
-    localStorage.setItem(STORAGE.hasVault, '1');
-    localStorage.setItem(STORAGE.mnemonic, seed.join(' '));
-    localStorage.setItem(STORAGE.password, password);
-    onComplete(seed);
+  const [busy, setBusy] = useState(false);
+
+  const finishCreate = async () => {
+    if (password !== password2 || password.length < 8 || busy) return;
+    setBusy(true);
+    try {
+      const vault = await createVault(seed.join(' '), password);
+      saveVault(vault);
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(seed);
+    } finally { setBusy(false); }
   };
-  const finishImport = () => {
-    if (password !== password2 || password.length < 8) return;
+  const finishImport = async () => {
+    if (password !== password2 || password.length < 8 || busy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) { alert('Phrase must be 12/15/18/21/24 words'); return; }
     if (!isValidMnemonic(words.join(' '))) { alert('Invalid recovery phrase'); return; }
-    localStorage.setItem(STORAGE.hasVault, '1');
-    localStorage.setItem(STORAGE.mnemonic, words.join(' '));
-    localStorage.setItem(STORAGE.password, password);
-    onComplete(words);
+    setBusy(true);
+    try {
+      const vault = await createVault(words.join(' '), password);
+      saveVault(vault);
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(words);
+    } finally { setBusy(false); }
   };
-  const tryUnlock = () => {
-    const stored = localStorage.getItem(STORAGE.password);
-    const mnem = localStorage.getItem(STORAGE.mnemonic);
-    if (stored && unlockPwd === stored && mnem) onComplete(mnem.split(' '));
-    else { setUnlockErr('Incorrect password'); setUnlockPwd(''); }
+  const tryUnlock = async () => {
+    if (busy) return;
+    setBusy(true);
+    setUnlockErr('');
+    try {
+      const vault = loadVault();
+      if (!vault) { setUnlockErr('No wallet on this browser.'); return; }
+      const opened = await openVault(vault, unlockPwd);
+      if (!opened) { setUnlockErr('Incorrect password'); setUnlockPwd(''); return; }
+      cacheSessionKey(opened.key);
+      onComplete(opened.mnemonic.split(' '));
+    } finally { setBusy(false); }
   };
   const resetWallet = () => {
     if (window.confirm('Erase wallet from this browser? You can restore with your recovery phrase.')) {
-      [STORAGE.hasVault, STORAGE.mnemonic, STORAGE.password, 'thanos.unlocked'].forEach(k => localStorage.removeItem(k));
+      clearVault();
       setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
     }
   };
@@ -239,8 +261,8 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
           {password && password2 && password !== password2 && <div className="onb-err">Passwords don't match</div>}
           <div className="row-btns">
             <button className="btn-outline" onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
-            <button className="btn-primary" disabled={password.length < 8 || password !== password2} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
-              {step === 'create-pwd' ? 'Create' : 'Import'}
+            <button className="btn-primary" disabled={password.length < 8 || password !== password2 || busy} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
+              {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create' : 'Import')}
             </button>
           </div>
         </>}
@@ -278,7 +300,9 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
             </button>
           </div>
           {unlockErr && <div className="onb-err">{unlockErr}</div>}
-          <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd}>Unlock</button>
+          <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd || busy}>
+            {busy ? 'Unlocking…' : 'Unlock'}
+          </button>
           <div className="onb-footer">
             <p className="onb-footer-text">Forgot password? Wallet can be restored with the recovery phrase.</p>
             <button className="onb-footer-link" onClick={resetWallet}>Reset wallet</button>
@@ -594,19 +618,31 @@ function App() {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    const has        = localStorage.getItem(STORAGE.hasVault) === '1';
-    const isUnlocked = localStorage.getItem('thanos.unlocked') === '1';
-    const mnem       = localStorage.getItem(STORAGE.mnemonic);
-    setHasVault(has);
-    // Auto-unlock on extension popup re-open if the user previously unlocked.
-    if (has && isUnlocked && mnem) {
-      setSeed(mnem.split(' '));
-      setUnlocked(true);
-    }
-    const stored = localStorage.getItem(STORAGE.theme);
-    const dark = stored === 'dark';
-    setIsDark(dark);
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    (async () => {
+      // Legacy plaintext migration (one-shot).
+      if (hasLegacyPlaintext()) {
+        const mig = await migrateLegacyPlaintext();
+        if (mig.ok && mig.key) cacheSessionKey(mig.key);
+      }
+      const vault = loadVault();
+      setHasVault(!!vault);
+      if (vault) {
+        const key = getSessionKey();
+        if (key) {
+          const mnemonic = await openVaultWithKey(vault, key);
+          if (mnemonic) {
+            setSeed(mnemonic.split(' '));
+            setUnlocked(true);
+          } else {
+            clearSessionKey();
+          }
+        }
+      }
+      const stored = localStorage.getItem(STORAGE.theme);
+      const dark = stored === 'dark';
+      setIsDark(dark);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })().catch(() => {});
   }, []);
 
   const toggleTheme = () => {
@@ -621,13 +657,13 @@ function App() {
   const lock = () => {
     setUnlocked(false);
     setSeed([]);
-    localStorage.removeItem('thanos.unlocked');
+    clearSessionKey();
   };
   const onComplete = (s: string[]) => {
     setSeed(s);
     setHasVault(true);
     setUnlocked(true);
-    localStorage.setItem('thanos.unlocked', '1');
+    // Session key was cached inside finishCreate / finishImport / tryUnlock.
   };
 
   if (hasVault === null) return <div className="root-loading"/>;
