@@ -8,7 +8,7 @@ import {
 } from '../ui/Icons';
 
 const NAV = [
-  { href: '/app',          label: 'Portfolio',  icon: IconHome },
+  { href: '/app',          label: 'Assets',     icon: IconHome },
   { href: '/app/send',     label: 'Send',       icon: IconSend },
   { href: '/app/swap',     label: 'Swap',       icon: IconSwap },
   { href: '/app/history',  label: 'History',    icon: IconHistory },

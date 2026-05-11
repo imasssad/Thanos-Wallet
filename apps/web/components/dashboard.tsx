@@ -115,7 +115,7 @@ function PortfolioList() {
   return (
     <div className="card">
       <div className="card-header">
-        <span className="card-title">My Portfolio</span>
+        <span className="card-title">My Assets</span>
         <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}>View all</button>
       </div>
       <div className="portfolio-list">
@@ -241,7 +241,7 @@ export function Dashboard() {
 
           <div className="card perf-chart-card">
             <div className="card-header">
-              <span className="card-title">Portfolio performance</span>
+              <span className="card-title">Asset performance</span>
               <button className="chart-selector">This week ▾</button>
             </div>
             <PerformanceChart/>

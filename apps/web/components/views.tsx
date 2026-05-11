@@ -111,7 +111,7 @@ export function PortfolioView() {
     <div className="main-area" style={{ width: '100%' }}>
       <div className="page-wrap">
         <div className="page-header">
-          <h1 className="page-title">Portfolio</h1>
+          <h1 className="page-title">Assets</h1>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Updated just now</div>
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
