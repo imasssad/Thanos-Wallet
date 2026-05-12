@@ -4,6 +4,7 @@ import { useTheme } from '../providers/ThemeProvider';
 import { TopNav } from './TopNav';
 import { OnboardingFlow, useWalletGate } from '../onboarding';
 import { dualFromEvm, type DualAddress } from '../../lib/address';
+import { WalletConnectHost } from '../WalletConnectHost';
 
 /* Wallet context — exposes the unlocked address (in both formats) AND the
    raw mnemonic words to any descendant. The mnemonic is needed only when a
@@ -42,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <WalletContext.Provider value={{ evmAddress, addresses, seed: walletSeed }}>
+      <WalletConnectHost/>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <TopNav onLock={lock}/>
         <main style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
