@@ -7,7 +7,13 @@ import {
   MAKALU_CHAIN_ID,
 } from '../lib/address';
 import { sendTokens, estimateSendFee, SendError } from '../lib/signer';
-import { getQuote as multxGetQuote, type Quote as MultXQuote, MultXUnavailable } from '../lib/multx';
+import {
+  getQuote   as multxGetQuote,
+  execute    as multxExecute,
+  getStatus  as multxGetStatus,
+  type Quote as MultXQuote,
+  MultXUnavailable,
+} from '../lib/multx';
 import { TokenSelect } from './ui/TokenSelect';
 import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
@@ -367,6 +373,8 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+type SwapStage = 'compose' | 'executing' | 'bridging' | 'settling' | 'completed' | 'failed';
+
 export function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO');
   const [to, setTo]     = useState('LitBTC');
@@ -376,6 +384,16 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const [quote, setQuote]               = useState<MultXQuote | null>(null);
   const [quoteError, setQuoteError]     = useState<string | null>(null);
   const [bridgeOffline, setBridgeOffline] = useState(false);
+
+  /* Execution / status tracking — once the user clicks Swap, we POST to
+     /v1/execute, then poll /v1/status/:id until the bridge resolves the
+     destination tx (or errors). State transitions drive a simple progress
+     panel beneath the form. */
+  const [stage, setStage] = useState<SwapStage>('compose');
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [sourceHash,  setSourceHash]  = useState<string | null>(null);
+  const [destHash,    setDestHash]    = useState<string | null>(null);
+  const [execError,   setExecError]   = useState<string | null>(null);
 
   // Fallback indicative rate from the canonical USD prices — used only when
   // the MultX endpoint isn't reachable, so the UI still has something to show.
@@ -416,6 +434,100 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const displayedOut  = quote ? Number(quote.toAmount) : fallbackOut;
   const feeLine = quote ? `${quote.feeFrom} ${quote.from}` : 'Rate-only preview';
 
+  /* Poll /v1/status/:id while we're in an in-flight state. The bridge SLA
+     is "minutes, not seconds" so 4s polling is plenty. On terminal states
+     we stop the loop and surface the result. */
+  useEffect(() => {
+    if (!executionId) return;
+    if (stage === 'completed' || stage === 'failed') return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const s = await multxGetStatus(executionId);
+        if (cancelled) return;
+        if (s.sourceHash) setSourceHash(s.sourceHash);
+        if (s.destHash)   setDestHash(s.destHash);
+        if (s.state === 'completed') setStage('completed');
+        else if (s.state === 'failed') { setStage('failed'); setExecError(s.error || 'Bridge reported failure'); }
+        else if (s.state === 'settling')  setStage('settling');
+        else if (s.state === 'bridging')  setStage('bridging');
+      } catch {
+        /* Don't flip to failed on a single network blip — the bridge could
+           be temporarily slow. The user can close the modal if they want. */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 4_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [executionId, stage]);
+
+  /* Kick off the bridge execution. The real signedTx envelope is something
+     the bridge contract spec defines (not yet finalised), so today we send
+     an empty placeholder — the bridge will accept-or-reject and we surface
+     either path through the polling effect above. Once the spec lands the
+     signedTx construction goes here. */
+  const onSwap = async () => {
+    if (!quote) return;
+    setStage('executing');
+    setExecError(null);
+    try {
+      const exec = await multxExecute(quote.quoteId, /* signedTx */ '0x');
+      setExecutionId(exec.executionId);
+      setSourceHash(exec.sourceHash ?? null);
+      setStage(exec.state === 'pending' ? 'bridging' : exec.state);
+    } catch (e) {
+      setStage('failed');
+      setExecError(e instanceof MultXUnavailable
+        ? 'Bridge is unavailable — try again in a moment.'
+        : (e as Error).message || 'Bridge execute failed');
+    }
+  };
+
+  /* ─── Status panel ─── */
+  if (stage !== 'compose') {
+    return (
+      <Modal title="Swap" onClose={onClose}>
+        <div className="modal-body" style={{ padding: '8px 0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '12px 0' }}>
+            {stage === 'completed' ? (
+              <div style={{ fontSize: 28, color: 'var(--green)' }}>✓</div>
+            ) : stage === 'failed' ? (
+              <div style={{ fontSize: 28, color: 'var(--red)' }}>✕</div>
+            ) : (
+              <div style={{ width: 36, height: 36, border: '3px solid var(--border-default)', borderTopColor: 'var(--blue)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}/>
+            )}
+            <div style={{ fontSize: 14, fontWeight: 700 }}>
+              {stage === 'executing' && 'Submitting to bridge…'}
+              {stage === 'bridging'  && 'Bridging — moving funds across chains'}
+              {stage === 'settling'  && 'Settling on destination chain'}
+              {stage === 'completed' && 'Swap complete'}
+              {stage === 'failed'    && 'Swap failed'}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280 }}>
+              {amt} {from} → {displayedOut.toFixed(6)} {to}
+            </div>
+            {sourceHash && (
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', maxWidth: 320 }}>
+                Source: <a href={`https://makalu.litho.ai/tx/${sourceHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)' }}>{sourceHash}</a>
+              </div>
+            )}
+            {destHash && (
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', maxWidth: 320 }}>
+                Destination: <code>{destHash}</code>
+              </div>
+            )}
+            {execError && (
+              <div style={{ fontSize: 11, color: 'var(--red)', textAlign: 'center', maxWidth: 320 }}>{execError}</div>
+            )}
+          </div>
+          {(stage === 'completed' || stage === 'failed') && (
+            <button className="btn-primary" onClick={onClose} style={{ marginTop: 8 }}>Done</button>
+          )}
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title="Swap" onClose={onClose}>
       <div className="modal-body">
@@ -454,7 +566,8 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
         <button
           className="btn-primary"
           style={{ marginTop: 18 }}
-          disabled={!quote && !bridgeOffline}
+          disabled={!quote || bridgeOffline}
+          onClick={onSwap}
           title={bridgeOffline ? 'Bridge offline — cannot execute' : ''}
         >
           {quote ? `Swap ${from} → ${to}` : (bridgeOffline ? 'Bridge offline' : 'Fetching quote…')}
