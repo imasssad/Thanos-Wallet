@@ -5,6 +5,7 @@ import { TopNav } from './TopNav';
 import { OnboardingFlow, useWalletGate } from '../onboarding';
 import { dualFromEvm, type DualAddress } from '../../lib/address';
 import { WalletConnectHost } from '../WalletConnectHost';
+import { preloadTokenLogos } from '../../lib/token-logos';
 
 /* Wallet context — exposes the unlocked address (in both formats) AND the
    raw mnemonic words to any descendant. The mnemonic is needed only when a
@@ -29,6 +30,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  /* Fire-and-forget one-time bootstrap of CoinGecko's top-250 logo map.
+     TokenIcon reads the cached map synchronously after this lands. Skipped
+     entirely on SSR (preloadTokenLogos guards on window). */
+  useEffect(() => {
+    void preloadTokenLogos();
+  }, []);
 
   // Wait for client-side check (avoid SSR mismatch)
   if (hasVault === null) {
