@@ -34,6 +34,9 @@ jobs:
           ssh-keyscan -H "${{ secrets.VPS_SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Pull + rebuild + restart
+        # Rebuilds web + api + indexer so backend changes ship alongside the
+        # frontend. Docker caches unchanged layers, so when only the web image
+        # actually changed the api/indexer rebuilds are near-instant.
         run: |
           ssh -i ~/.ssh/id_ed25519 \
             "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_SSH_HOST }}" \
@@ -44,17 +47,17 @@ jobs:
                -f docker-compose.yml \
                -f docker-compose.prod.yml \
                -f docker-compose.host-db.yml \
-               build web
+               build web api indexer
              docker compose \
                -f docker-compose.yml \
                -f docker-compose.prod.yml \
                -f docker-compose.host-db.yml \
-               up -d web
+               up -d web api indexer
              docker compose \
                -f docker-compose.yml \
                -f docker-compose.prod.yml \
                -f docker-compose.host-db.yml \
-               ps web'
+               ps web api indexer'
 
       - name: Smoke-check
         run: |

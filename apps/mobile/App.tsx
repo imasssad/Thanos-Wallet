@@ -53,7 +53,7 @@ const DARK = {
   textPrimary:   '#f0f0f4',
   textSecondary: '#9696aa',
   textMuted:     '#52525b',
-  statusBar:     'light-content' as const,
+  statusBar:     'light-content' as 'light-content' | 'dark-content',
 };
 
 const LIGHT = {
@@ -83,7 +83,7 @@ const LIGHT = {
   textPrimary:   '#0a0a0f',
   textSecondary: '#52525b',
   textMuted:     '#71717a',
-  statusBar:     'dark-content' as const,
+  statusBar:     'dark-content' as 'light-content' | 'dark-content',
 };
 
 type Colors = typeof DARK;
@@ -1213,16 +1213,6 @@ function makeStyles(C: Colors) {
       borderColor: C.borderSubtle, borderWidth: 1,
       alignItems: 'center', justifyContent: 'center',
     },
-
-    netPill: {
-      flexDirection: 'row', alignItems: 'center', gap: 5,
-      paddingHorizontal: 10, paddingVertical: 4,
-      backgroundColor: 'rgba(74,222,128,0.07)',
-      borderColor: 'rgba(74,222,128,0.16)', borderWidth: 1,
-      borderRadius: 999,
-    },
-    netDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.green },
-    netText: { color: C.green, fontSize: 11, fontWeight: '600' },
 
     /* Network pill (top of home) */
     netPillRow: { alignItems: 'flex-start', marginBottom: 4 },
