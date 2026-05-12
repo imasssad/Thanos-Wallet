@@ -5,13 +5,14 @@
  * into the displayed token list.
  *
  * The indexer endpoint we hit:
- *   GET  /indexer/balances?address=0x…&chainId=700777
+ *   GET  /lep100/balances/:walletAddress
  *
- * Response shape (current mock; services/indexer/src/server.ts):
- *   { chainId, symbol, name, balance, usdValue, change24hPct, tokenAddress?, decimals? }[]
+ * Response shape (services/indexer/src/server.ts):
+ *   { walletAddress, items: IndexerAsset[] }
  */
 
 import { TOKENS, type Token } from './tokens';
+import { getLep100Balances, IndexerOffline } from './indexer';
 
 const STORAGE_KEY = 'thanos.discovered_tokens';
 
@@ -21,17 +22,6 @@ export type DiscoveredToken = Pick<Token, 'sym' | 'name' | 'chain' | 'address' |
   /** Whether this token came from auto-discovery vs the canonical TOKENS[] list. */
   discovered: true;
 };
-
-interface IndexerBalance {
-  chainId:        number;
-  symbol:         string;
-  name?:          string;
-  balance:        string;
-  usdValue?:      string;
-  change24hPct?:  number;
-  tokenAddress?:  string;
-  decimals?:      number;
-}
 
 /** Read previously-discovered tokens from localStorage. */
 export function loadDiscoveredTokens(): DiscoveredToken[] {
@@ -56,21 +46,12 @@ function saveDiscoveredTokens(tokens: DiscoveredToken[]) {
 export async function discoverTokens(address: string): Promise<DiscoveredToken[]> {
   if (!address || !address.startsWith('0x')) return [];
 
-  const baseUrl =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_INDEXER_URL) ||
-    '/indexer';
-
-  let balances: IndexerBalance[] = [];
+  let balances;
   try {
-    const res = await fetch(`${baseUrl}/balances?address=${encodeURIComponent(address)}&chainId=700777`);
-    if (res.ok) {
-      const data = await res.json();
-      balances = Array.isArray(data) ? data : (data?.balances ?? []);
-    }
-  } catch {
-    // Indexer offline / network failure — return empty so the UI keeps the canonical list.
-    return loadDiscoveredTokens();
+    balances = await getLep100Balances(address);
+  } catch (e) {
+    if (e instanceof IndexerOffline) return loadDiscoveredTokens();
+    throw e;
   }
 
   // Skip tokens already present in our canonical TOKENS[] list (matched by
@@ -96,7 +77,7 @@ export async function discoverTokens(address: string): Promise<DiscoveredToken[]
       chain:     'Makalu' as const,
       address:   b.tokenAddress ?? null,
       decimals:  b.decimals ?? 18,
-      color:     '#52525b',       // neutral until the user assigns one
+      color:     '#52525b',
       icon:      '/images/tokens/_default.png',
       balance:   b.balance,
       discovered: true,
