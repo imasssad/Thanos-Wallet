@@ -147,6 +147,23 @@ export const TOKENS: Token[] = [
     balance: '0',
     change24h: 0,
   },
+  // ─── Bitcoin ───────────────────────────────────────────────────────────
+  // Native BTC at BIP84 segwit path m/84'/0'/0'/0/0 → bc1q… address.
+  // UTXO management + PSBT signing handled by sdk-core's BitcoinClient
+  // talking to mempool.space. Recipients on this row use legacy /
+  // segwit / bech32 / taproot addresses, not 0x / litho1.
+  {
+    sym: 'BTC',
+    name: 'Bitcoin',
+    chain: 'Bitcoin',
+    address: null, // native
+    decimals: 8,
+    color: '#f7931a',
+    icon: '/images/tokens/btc.png',
+    priceUsd: 63200,        // fetched live from CoinGecko via pricing.ts
+    balance: '0',
+    change24h: 0,
+  },
 ];
 
 /** Quick lookup by ticker. */
