@@ -24,6 +24,7 @@ import {
   parseUnits, formatEther,
   type Provider,
 } from 'ethers';
+import { BitcoinClient } from '@thanos/sdk-core';
 
 /* ─── In-worker secret state ─────────────────────────────────────────── */
 
@@ -124,6 +125,15 @@ interface SignTxPayload {
 }
 interface SignTxReply { hash: string }
 
+/* Bitcoin payload: amount is human-readable BTC ("0.001"), worker converts
+   to satoshis. Mnemonic-only — PK imports use a different worker path. */
+interface SendBtcPayload {
+  recipient:        string;
+  amount:           string;          // BTC, human-readable
+  feeRateSatPerVb?: number;
+}
+interface SendBtcReply  { hash: string }
+
 async function handleInit(p: InitPayload): Promise<InitReply> {
   source = p.source;
   const signer = getSigner(false);
@@ -201,11 +211,36 @@ function handleLock(): { ok: true } {
   return { ok: true };
 }
 
+/* ─── Bitcoin handler ────────────────────────────────────────────────── */
+
+let _btcClient: BitcoinClient | null = null;
+function getBtcClient(): BitcoinClient {
+  if (_btcClient) return _btcClient;
+  _btcClient = new BitcoinClient();
+  return _btcClient;
+}
+
+async function handleSendBitcoin(p: SendBtcPayload): Promise<SendBtcReply> {
+  if (!source) throw new Error('worker_locked');
+  if (source.kind !== 'mnemonic') throw new Error('btc_requires_mnemonic');
+  const btc = parseFloat(p.amount);
+  if (!btc || btc <= 0) throw new Error('invalid_amount');
+  const amountSats = Math.round(btc * 1e8);
+
+  const txid = await getBtcClient().send(source.mnemonic, {
+    networkId:       'bitcoin-mainnet',
+    to:              p.recipient.trim(),
+    amountSats,
+    feeRateSatPerVb: p.feeRateSatPerVb,
+  });
+  return { hash: txid };
+}
+
 /* ─── Message dispatch ───────────────────────────────────────────────── */
 
 interface RpcRequest {
   id:      number;
-  op:      'init' | 'send' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock';
+  op:      'init' | 'send' | 'send-btc' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock';
   payload?: unknown;
 }
 
@@ -216,6 +251,7 @@ self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
     switch (op) {
       case 'init':             result = await handleInit(payload as InitPayload); break;
       case 'send':             result = await handleSend(payload as SendPayload); break;
+      case 'send-btc':         result = await handleSendBitcoin(payload as SendBtcPayload); break;
       case 'sign-message':     result = await handleSignMessage(payload as SignMsgPayload); break;
       case 'sign-typed-data':  result = await handleSignTypedData(payload as SignTypedDataPayload); break;
       case 'sign-transaction': result = await handleSignTransaction(payload as SignTxPayload); break;
