@@ -10,6 +10,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ledgerhq/hw-app-eth": "^7.8.2",
+    "@ledgerhq/hw-transport": "^6.35.2",
+    "@ledgerhq/hw-transport-webusb": "^6.29.6",
     "@reown/walletkit": "^1.5.5",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
