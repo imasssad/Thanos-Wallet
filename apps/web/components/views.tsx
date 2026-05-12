@@ -616,7 +616,7 @@ export function SettingsView() {
         <Section icon={Globe} title="General" sub="Display, language, and locale">
           <Row label="Currency" sub="Display prices in">
             <select className="settings-select" value={currency} onChange={e => setCurrency(e.target.value)}>
-              {['USD','EUR','GBP','JPY','BTC'].map(c => <option key={c}>{c}</option>)}
+              {['USD','EUR','GBP','JPY','BTC','LAX'].map(c => <option key={c}>{c}</option>)}
             </select>
           </Row>
           <Row label="Language" sub="Interface language">
@@ -660,7 +660,12 @@ export function SettingsView() {
             <span className="settings-version">v0.8.1</span>
           </Row>
           <Row label="Documentation" sub="Read the wallet guide">
-            <a href="#" className="settings-btn settings-btn-link">
+            <a
+              href="https://docs.thanos.fi/abstract"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-btn settings-btn-link"
+            >
               View <ChevronRight size={14}/>
             </a>
           </Row>
