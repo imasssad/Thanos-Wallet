@@ -609,6 +609,73 @@ function SwapModal({ onClose }: { onClose: () => void }) {
 type Tab = 'home' | 'activity' | 'settings';
 type Modal = 'send' | 'receive' | 'swap' | null;
 
+/* ─── EIP-1193 connection approval screen ──────────────────────────────── */
+function ApprovalScreen({
+  approval, address, onApprove, onReject,
+}: {
+  approval: { origin: string; method: string };
+  address:  string;
+  onApprove: () => void;
+  onReject:  () => void;
+}) {
+  // origin = 'https://app.example.com'. Strip protocol for nicer display.
+  const host = (() => {
+    try { return new URL(approval.origin).host; } catch { return approval.origin; }
+  })();
+  return (
+    <div className="screen" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
+      <div style={{ textAlign: 'center', marginTop: 4 }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: 16,
+          background: 'rgba(59,122,247,0.14)',
+          border: '1px solid rgba(59,122,247,0.30)',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: 10,
+        }}>
+          <Globe size={26} color="var(--blue)"/>
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>Connect this site?</div>
+        <div style={{
+          fontSize: 12, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'Geist Mono, monospace',
+          wordBreak: 'break-all',
+        }}>
+          {host}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>This site will be able to</div>
+        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+          • See your wallet address &amp; balance<br/>
+          • Request approvals for transactions &amp; signatures
+        </div>
+        <div style={{
+          fontSize: 11, color: 'var(--text-muted)',
+          padding: '8px 10px',
+          background: 'var(--bg-elevated)',
+          borderRadius: 8,
+          fontFamily: 'Geist Mono, monospace',
+          wordBreak: 'break-all',
+        }}>
+          {address}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+        <button className="btn-outline" style={{ flex: 1 }} onClick={onReject}>Reject</button>
+        <button className="btn-primary" style={{ flex: 1 }} onClick={onApprove}>Connect</button>
+      </div>
+    </div>
+  );
+}
+
+interface PendingApproval {
+  id:     string;
+  origin: string;
+  method: string;
+  params: unknown[];
+}
+
 function App() {
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
@@ -616,6 +683,31 @@ function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
   const [isDark, setIsDark] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+
+  // Watch chrome.storage.session for an incoming dApp approval request.
+  useEffect(() => {
+    let cancelled = false;
+    const checkApproval = async () => {
+      try {
+        const stored = await browser.storage.session.get('pending_approval');
+        const pa = stored.pending_approval as PendingApproval | undefined;
+        if (!cancelled) setPendingApproval(pa ?? null);
+      } catch {}
+    };
+    checkApproval();
+    const listener = (changes: Record<string, { newValue?: unknown }>, area: string) => {
+      if (area !== 'session') return;
+      if ('pending_approval' in changes) {
+        setPendingApproval((changes.pending_approval.newValue as PendingApproval | undefined) ?? null);
+      }
+    };
+    browser.storage.onChanged.addListener(listener as never);
+    return () => {
+      cancelled = true;
+      browser.storage.onChanged.removeListener(listener as never);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -658,18 +750,53 @@ function App() {
     setUnlocked(false);
     setSeed([]);
     clearSessionKey();
+    // Tell the background SW the wallet is locked so dApps see accountsChanged([]).
+    try { browser?.runtime?.sendMessage({ type: 'thanos-lock' }); } catch {}
   };
   const onComplete = (s: string[]) => {
     setSeed(s);
     setHasVault(true);
     setUnlocked(true);
-    // Session key was cached inside finishCreate / finishImport / tryUnlock.
+    // Announce the unlocked address so the background can answer eth_accounts.
+    try {
+      const addr = deriveEvm(s);
+      browser?.runtime?.sendMessage({ type: 'thanos-active-address', address: addr });
+    } catch {}
   };
 
   if (hasVault === null) return <div className="root-loading"/>;
   if (!unlocked) return <Onboarding hasVault={hasVault} onComplete={onComplete}/>;
 
   const evmAddr = seed.length ? deriveEvm(seed) : 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v';
+
+  /* If a dApp is asking to connect, show the approval screen instead of the
+     normal wallet UI. The user has to handle it (approve / reject) before
+     they can do anything else — typical wallet-extension behaviour. */
+  if (pendingApproval && pendingApproval.method === 'eth_requestAccounts') {
+    return (
+      <ApprovalScreen
+        approval={pendingApproval}
+        address={evmAddr}
+        onApprove={() => {
+          browser.runtime.sendMessage({
+            type:       'thanos-approval-result',
+            approvalId: pendingApproval.id,
+            approved:   true,
+            address:    evmAddr,
+          });
+          setPendingApproval(null);
+        }}
+        onReject={() => {
+          browser.runtime.sendMessage({
+            type:       'thanos-approval-result',
+            approvalId: pendingApproval.id,
+            approved:   false,
+          });
+          setPendingApproval(null);
+        }}
+      />
+    );
+  }
 
   return (
     <>
