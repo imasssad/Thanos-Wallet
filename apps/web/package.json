@@ -14,6 +14,7 @@
     "@ledgerhq/hw-transport": "^6.35.2",
     "@ledgerhq/hw-transport-webusb": "^6.29.6",
     "@reown/walletkit": "^1.5.5",
+    "@sentry/nextjs": "^10.52.0",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
     "@thanos/sdk-react": "workspace:*",

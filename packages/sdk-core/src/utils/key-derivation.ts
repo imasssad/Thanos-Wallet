@@ -31,7 +31,7 @@ function fromB64(s: string): Uint8Array {
 async function deriveKeyMaterial(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: ITERATIONS, hash: 'SHA-256' },
     base,
     { name: 'AES-GCM', length: KEY_LEN },
     false,
@@ -78,14 +78,14 @@ export async function decryptWithPassword(password: string, vault: EncryptedVaul
   const iterations = vault.iterations ?? ITERATIONS;
   const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
     base,
     { name: 'AES-GCM', length: KEY_LEN },
     false,
     ['decrypt']
   );
   try {
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, fromB64(vault.payload));
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, fromB64(vault.payload) as BufferSource);
     return dec.decode(plaintext);
   } catch {
     throw new Error('Decryption failed — incorrect password or corrupted vault');

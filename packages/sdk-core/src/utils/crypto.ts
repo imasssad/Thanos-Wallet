@@ -4,7 +4,7 @@ const textDecoder = new TextDecoder();
 async function deriveAesKey(secret: string, salt: Uint8Array): Promise<CryptoKey> {
   const baseKey = await crypto.subtle.importKey('raw', textEncoder.encode(secret), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 250000, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -36,9 +36,9 @@ export async function decryptString(secret: string, payload: string): Promise<st
   const parsed = JSON.parse(payload) as { salt: string; iv: string; payload: string };
   const key = await deriveAesKey(secret, fromBase64(parsed.salt));
   const bytes = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: fromBase64(parsed.iv) },
+    { name: 'AES-GCM', iv: fromBase64(parsed.iv) as BufferSource },
     key,
-    fromBase64(parsed.payload)
+    fromBase64(parsed.payload) as BufferSource
   );
   return textDecoder.decode(bytes);
 }

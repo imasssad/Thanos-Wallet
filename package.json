@@ -2,6 +2,7 @@
   "name": "thanos-wallet-monorepo",
   "private": true,
   "version": "0.2.0",
+  "packageManager": "pnpm@9.12.0",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",

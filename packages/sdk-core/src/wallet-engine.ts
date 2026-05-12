@@ -63,7 +63,7 @@ export class WalletEngine {
         chainId: MAKALU_TESTNET.chainId,
         address: evm.address,
         name: 'Lithosphere Account',
-        derivationPath: evm.path,
+        derivationPath: evm.path ?? "m/44'/60'/0'/0/0",
         publicKey: evm.publicKey
       },
       {

@@ -1,0 +1,70 @@
+name: deploy
+
+# Auto-deploys the web container to the VPS on every push to main, after
+# CI has gone green. Pulls the repo on the VPS over SSH, rebuilds the web
+# image, restarts only the web service.
+#
+# Requires three GitHub Actions secrets to be configured:
+#   VPS_SSH_HOST       — IP or hostname (e.g. 76.13.250.159)
+#   VPS_SSH_USER       — typically 'root' or a dedicated deploy user
+#   VPS_SSH_PRIVATE_KEY — full PEM content of the private key with VPS access
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-web:
+    name: pull + rebuild web on VPS
+    runs-on: ubuntu-latest
+    needs: []
+    # Gate: only run when the relevant paths changed.
+    if: |
+      contains(github.event.head_commit.message, '[deploy]') ||
+      github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Pull + rebuild + restart
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_SSH_HOST }}" \
+            'set -e
+             cd /var/www/thanos-wallet
+             git pull origin main
+             docker compose \
+               -f docker-compose.yml \
+               -f docker-compose.prod.yml \
+               -f docker-compose.host-db.yml \
+               build web
+             docker compose \
+               -f docker-compose.yml \
+               -f docker-compose.prod.yml \
+               -f docker-compose.host-db.yml \
+               up -d web
+             docker compose \
+               -f docker-compose.yml \
+               -f docker-compose.prod.yml \
+               -f docker-compose.host-db.yml \
+               ps web'
+
+      - name: Smoke-check
+        run: |
+          for i in 1 2 3 4 5; do
+            if curl -fsS -m 10 "https://devapp.thanos.fi/" >/dev/null; then
+              echo "✓ devapp.thanos.fi is up"
+              exit 0
+            fi
+            echo "waiting for site… ($i/5)"
+            sleep 10
+          done
+          echo "✗ site did not respond"
+          exit 1

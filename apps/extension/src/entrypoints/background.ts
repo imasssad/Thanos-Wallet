@@ -149,7 +149,7 @@ export default defineBackground(() => {
     console.log('Thanos Wallet extension installed');
   });
 
-  browser.runtime.onMessage.addListener((msg: unknown, _sender: unknown, sendResponse: (resp: unknown) => void) => {
+  browser.runtime.onMessage.addListener(((msg: unknown, _sender: unknown, sendResponse: (resp: unknown) => void) => {
     const m = msg as RpcMessage & { type?: string; approvalId?: string; approved?: boolean; address?: string };
 
     // 1) Direct RPC from content script.
@@ -171,7 +171,8 @@ export default defineBackground(() => {
           // Persist the connection.
           (async () => {
             const conns = await getConnections();
-            const origin = (await browser.storage.session.get('pending_approval')).pending_approval?.origin;
+            const stored = await browser.storage.session.get('pending_approval') as { pending_approval?: { origin?: string } };
+            const origin = stored.pending_approval?.origin;
             if (origin) {
               conns[origin] = { address: m.address!, connectedAt: Date.now() };
               await setConnections(conns);
@@ -207,5 +208,5 @@ export default defineBackground(() => {
     }
 
     return false;
-  });
+  }) as Parameters<typeof browser.runtime.onMessage.addListener>[0]);
 });

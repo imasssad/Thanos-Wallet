@@ -22,6 +22,7 @@ out/
 .expo-shared/
 .wxt/
 .output/
+.turbo/
 *.zip
 *.tsbuildinfo
 
