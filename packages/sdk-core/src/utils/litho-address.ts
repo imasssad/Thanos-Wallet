@@ -90,8 +90,8 @@ export function lithoToEvm(lithoAddress: string): string {
   if (bytes.length !== 20) {
     throw new Error(`Expected 20-byte address payload, got ${bytes.length}`);
   }
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
+  const hex = Array.from(bytes as ArrayLike<number>)
+    .map((b: number) => b.toString(16).padStart(2, '0'))
     .join('');
   return toChecksumAddress(`0x${hex}`);
 }
