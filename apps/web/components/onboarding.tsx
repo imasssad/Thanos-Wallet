@@ -13,6 +13,7 @@ import {
   hasLegacyPlaintext, migrateLegacyPlaintext,
 } from '../lib/vault';
 import { serializeSource, deserializeSource, type WalletSource } from '../lib/wallet-source';
+import { initSigner, lockSigner } from '../lib/signer-client';
 
 /** Generate a fresh BIP39 phrase of the requested length.
  *  12 words = 128 bits of entropy (default, recommended).
@@ -499,6 +500,7 @@ export function useWalletGate() {
   const [walletAddress,    setWalletAddress]    = useState<string>('');
 
   const applySource = (source: WalletSource) => {
+    // Set the address synchronously for the UI.
     if (source.kind === 'mnemonic') {
       const words = source.mnemonic.split(' ');
       setWalletSeed(words);
@@ -513,6 +515,11 @@ export function useWalletGate() {
         setWalletAddress('0x0000…0000');
       }
     }
+    // Fire-and-forget: hand the secret to the signing worker. After this
+    // resolves, signing flows can call signer-client without ever seeing
+    // the secret on the main thread again. Failure is non-fatal — callers
+    // that need the worker will surface their own error if it's unavailable.
+    void initSigner(source).catch(() => { /* worker may be unsupported (SSR / old browser) */ });
   };
 
   useEffect(() => {
@@ -552,6 +559,9 @@ export function useWalletGate() {
     setWalletPrivateKey(undefined);
     setWalletAddress('');
     clearSessionKey();
+    // Wipe the secret from the signing worker too — otherwise it'd keep
+    // signing on behalf of the locked wallet.
+    void lockSigner().catch(() => { /* worker may already be torn down */ });
   };
   const onComplete = (source: WalletSource) => {
     applySource(source);
