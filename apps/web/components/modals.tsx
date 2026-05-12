@@ -1,11 +1,12 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TOKENS } from '../lib/tokens';
 import { useWallet } from './shell/AppShell';
 import {
   validateAddressForChain, resolveToEvm, truncateLithoAddress,
   MAKALU_CHAIN_ID,
 } from '../lib/address';
+import { sendTokens, estimateSendFee, SendError } from '../lib/signer';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
 const BAL_MAP: Record<string, string> = Object.fromEntries(TOKENS.map(t => [t.sym, t.balance]));
@@ -26,11 +27,19 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+type SendStage = 'compose' | 'broadcasting' | 'pending' | 'confirmed' | 'failed';
+
 export function SendModal({ onClose }: { onClose: () => void }) {
-  const [coin, setCoin] = useState('LITHO');
-  const [to, setTo] = useState('');
+  const wallet = useWallet();
+  const [coin, setCoin]     = useState('LITHO');
+  const [to, setTo]         = useState('');
   const [amount, setAmount] = useState('');
-  const [sent, setSent] = useState(false);
+
+  const [stage, setStage]   = useState<SendStage>('compose');
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [error, setError]   = useState<string | null>(null);
+  const [feeStr, setFeeStr] = useState<string | null>(null);
+
   const balMap = BAL_MAP;
 
   /* Validate the recipient against the chain. For LITHO / wLITHO / FGPT
@@ -44,16 +53,96 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   /* Canonical EVM form — what we'd actually broadcast to the chain. */
   const canonicalEvm = useMemo(() => resolveToEvm(to.trim()), [to]);
 
-  if (sent) return (
-    <Modal title="Send" onClose={onClose}>
-      <div className="modal-success">
-        <div className="success-icon">✓</div>
-        <div className="success-title">Transaction Sent</div>
-        <div className="success-sub">{amount} {coin} sent to {truncateLithoAddress(to.trim(), 10, 6)}</div>
-        <button className="btn-primary" onClick={onClose}>Done</button>
-      </div>
-    </Modal>
-  );
+  /* Live fee estimate. Re-runs (debounced) when the inputs change. Read-only,
+     never broadcasts — safe to call repeatedly. */
+  useEffect(() => {
+    if (!wallet?.seed?.length || !recipientValidation.valid || !amount) {
+      setFeeStr(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const est = await estimateSendFee(wallet.seed, { symbol: coin, recipient: to, amount });
+        if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} LITHO` : null);
+      } catch {
+        if (!cancelled) setFeeStr(null);
+      }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [coin, to, amount, recipientValidation.valid, wallet?.seed]);
+
+  const onSubmit = async () => {
+    if (!wallet?.seed?.length) {
+      setError('Wallet is locked. Please refresh and unlock.');
+      setStage('failed');
+      return;
+    }
+    setStage('broadcasting');
+    setError(null);
+    try {
+      const result = await sendTokens(wallet.seed, { symbol: coin, recipient: to, amount });
+      setTxHash(result.hash);
+      setStage('pending');
+      // Background: wait for confirmation. Doesn't block the UI; user can dismiss.
+      result.wait()
+        .then(r => {
+          setStage(r.status === 1 ? 'confirmed' : 'failed');
+          if (r.status !== 1) setError('Transaction reverted on-chain');
+        })
+        .catch(() => setStage('failed'));
+    } catch (e) {
+      const msg = e instanceof SendError ? e.message : (e as Error).message || 'Failed to send';
+      setError(msg);
+      setStage('failed');
+    }
+  };
+
+  /* ─── Result states (broadcast / pending / confirmed / failed) ───── */
+
+  if (stage !== 'compose') {
+    const explorer = txHash ? `https://makalu.litho.ai/tx/${txHash}` : null;
+    return (
+      <Modal title="Send" onClose={onClose}>
+        <div className="modal-success">
+          {stage === 'broadcasting' && <>
+            <div className="success-icon" style={{ animation: 'lpScrollHint 1.4s ease-in-out infinite' }}>…</div>
+            <div className="success-title">Signing &amp; broadcasting</div>
+            <div className="success-sub">Sending {amount} {coin} to {truncateLithoAddress(to.trim(), 10, 6)}</div>
+          </>}
+          {stage === 'pending' && <>
+            <div className="success-icon">✓</div>
+            <div className="success-title">Submitted</div>
+            <div className="success-sub">Waiting for confirmation…</div>
+            {txHash && <a href={explorer ?? '#'} target="_blank" rel="noreferrer"
+              style={{ fontSize: 11, color: 'var(--blue)', wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', marginTop: 6 }}>
+              {truncateLithoAddress(txHash, 14, 10)}
+            </a>}
+            <button className="btn-primary" onClick={onClose} style={{ marginTop: 12 }}>Done</button>
+          </>}
+          {stage === 'confirmed' && <>
+            <div className="success-icon" style={{ color: 'var(--green)' }}>✓</div>
+            <div className="success-title">Confirmed</div>
+            <div className="success-sub">{amount} {coin} sent to {truncateLithoAddress(to.trim(), 10, 6)}</div>
+            {txHash && <a href={explorer ?? '#'} target="_blank" rel="noreferrer"
+              style={{ fontSize: 11, color: 'var(--blue)', wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', marginTop: 6 }}>
+              View on explorer →
+            </a>}
+            <button className="btn-primary" onClick={onClose} style={{ marginTop: 12 }}>Done</button>
+          </>}
+          {stage === 'failed' && <>
+            <div className="success-icon" style={{ color: 'var(--red)' }}>✕</div>
+            <div className="success-title">Transaction failed</div>
+            <div className="success-sub" style={{ color: 'var(--red)' }}>{error || 'Unknown error'}</div>
+            <button className="btn-primary" onClick={() => { setStage('compose'); setError(null); setTxHash(null); }}
+              style={{ marginTop: 12 }}>Try again</button>
+          </>}
+        </div>
+      </Modal>
+    );
+  }
+
+  /* ─── Compose state ──────────────────────────────────────────────── */
 
   return (
     <Modal title="Send" onClose={onClose}>
@@ -74,7 +163,6 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           autoCorrect="off"
           style={{ fontFamily: to ? 'Geist Mono, monospace' : undefined, fontSize: to ? 12 : undefined }}
         />
-        {/* Address feedback: show format detected + canonical EVM equivalent */}
         {to.trim() && recipientValidation.valid && (
           <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
             ✓ Valid {recipientValidation.format === 'litho' ? 'litho1' : 'EVM'} address
@@ -100,15 +188,20 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           Balance: {balMap[coin] ?? '—'} {coin}
           <button style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }} onClick={() => setAmount(balMap[coin] ?? '')}>MAX</button>
         </div>
-        <div className="fee-row"><span>Network fee</span><span>~$1.24 (Fast)</span></div>
+        <div className="fee-row"><span>Network fee</span><span>{feeStr ? `≈ ${feeStr}` : '—'}</span></div>
         <button
           className="btn-primary"
           style={{ marginTop: 18 }}
-          disabled={!recipientValidation.valid || !amount}
-          onClick={() => setSent(true)}
+          disabled={!recipientValidation.valid || !amount || !wallet?.seed?.length}
+          onClick={onSubmit}
         >
           Send {coin}
         </button>
+        {!wallet?.seed?.length && (
+          <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6, textAlign: 'center' }}>
+            Wallet locked — refresh to unlock
+          </div>
+        )}
       </div>
     </Modal>
   );
