@@ -19,6 +19,7 @@ import { TokenSelect } from './ui/TokenSelect';
 import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
 import { looksLikeName, resolveName } from '../lib/dnns';
+import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
@@ -76,13 +77,23 @@ export function SendModal({ onClose }: { onClose: () => void }) {
 
   const balMap = BAL_MAP;
 
-  /* Validate the recipient against the chain. For LITHO / wLITHO / FGPT
-     etc. on Makalu, accept litho1… or 0x…; for anything else, EVM only. */
+  /* Lookup the token row for the currently selected symbol — drives
+     chain-aware branches for validation, fee estimation and broadcast. */
+  const selectedToken = useMemo(() => TOKENS.find(t => t.sym === coin) ?? null, [coin]);
+  const isSolanaSend = selectedToken?.chain === 'Solana';
+
+  /* Validate the recipient against the chain of the selected token. */
   const recipientValidation = useMemo(() => {
     const trimmed = to.trim();
-    if (!trimmed) return { valid: false, format: null as 'evm' | 'litho' | null, reason: '' };
-    return validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
-  }, [to]);
+    if (!trimmed) return { valid: false, format: null as 'evm' | 'litho' | 'solana' | null, reason: '' };
+    if (isSolanaSend) {
+      return isValidSolanaAddress(trimmed)
+        ? { valid: true,  format: 'solana' as const, reason: '' }
+        : { valid: false, format: 'solana' as const, reason: 'Not a valid Solana address (base58 PublicKey)' };
+    }
+    const v = validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
+    return { ...v, format: v.format as 'evm' | 'litho' | null };
+  }, [to, isSolanaSend]);
 
   /* Canonical EVM form — what we'd actually broadcast to the chain.
      If the user typed a DNNS name and we resolved it, use that instead. */
@@ -113,10 +124,19 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [to]);
 
-  /* Live fee estimate. Re-runs (debounced) when the inputs change. Read-only,
-     never broadcasts — safe to call repeatedly. */
+  /* Live fee estimate. EVM path uses gasLimit × maxFeePerGas via ethers.
+     Solana txs cost a near-constant ~5_000 lamports (0.000005 SOL); we
+     show that as the static estimate instead of round-tripping the RPC. */
   useEffect(() => {
-    if (!wallet?.seed?.length || !recipientValidation.valid || !amount) {
+    if (!recipientValidation.valid || !amount) {
+      setFeeStr(null);
+      return;
+    }
+    if (isSolanaSend) {
+      setFeeStr('~0.000005 SOL');
+      return;
+    }
+    if (!wallet?.seed?.length && !wallet?.privateKey) {
       setFeeStr(null);
       return;
     }
@@ -133,14 +153,48 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amount, recipientValidation.valid, wallet?.seed]);
+  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend]);
 
   const onSubmit = async () => {
-    if (!wallet?.seed?.length) {
+    if (!wallet?.seed?.length && !wallet?.privateKey) {
       setError('Wallet is locked. Please refresh and unlock.');
       setStage('failed');
       return;
     }
+
+    /* ─── Solana branch ─────────────────────────────────────────────────
+       Solana sends aren't routed through the EVM signing worker yet —
+       they handle the mnemonic on the main thread briefly. Mnemonic-only
+       (no private-key import support for Solana in v1). */
+    if (isSolanaSend) {
+      if (!wallet.seed?.length) {
+        setError('Solana send requires a recovery-phrase wallet (private-key import not yet supported for SOL).');
+        setStage('failed');
+        return;
+      }
+      if (!selectedToken) return;
+      setStage('broadcasting');
+      setError(null);
+      try {
+        const sig = selectedToken.address === null
+          ? await sendSol({       mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount })
+          : await sendSplToken({  mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount,
+                                   mintAddress: selectedToken.address, decimals: selectedToken.decimals });
+        setTxHash(sig);
+        setStage('pending');
+        // Solana finalizes in ~13s on average. Treat it as confirmed
+        // after the optimistic 'confirmed' commitment that sendTransaction
+        // implicitly waits for via the connection's preflight commitment.
+        setStage('confirmed');
+      } catch (e) {
+        const msg = e instanceof SolanaSendError ? e.message : (e as Error).message || 'Failed to send';
+        setError(msg);
+        setStage('failed');
+      }
+      return;
+    }
+
+    /* ─── EVM branch (existing) ─────────────────────────────────────── */
     setStage('broadcasting');
     setError(null);
     try {
@@ -198,7 +252,9 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   /* ─── Result states (broadcast / pending / confirmed / failed) ───── */
 
   if (stage !== 'compose') {
-    const explorer = txHash ? `https://makalu.litho.ai/tx/${txHash}` : null;
+    const explorer = txHash
+      ? (isSolanaSend ? solanaExplorerUrl(txHash) : `https://makalu.litho.ai/tx/${txHash}`)
+      : null;
     return (
       <Modal title="Send" onClose={onClose}>
         <div className="modal-success">
@@ -310,8 +366,12 @@ export function SendModal({ onClose }: { onClose: () => void }) {
 
         {to.trim() && recipientValidation.valid && (
           <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            ✓ Valid {recipientValidation.format === 'litho' ? 'litho1' : 'EVM'} address
-            {matchedContact && (
+            ✓ Valid {
+              recipientValidation.format === 'litho'  ? 'litho1' :
+              recipientValidation.format === 'solana' ? 'Solana' :
+              'EVM'
+            } address
+            {matchedContact && !isSolanaSend && (
               <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>· {matchedContact.name}</span>
             )}
             {recipientValidation.format === 'litho' && canonicalEvm && (

@@ -16,7 +16,7 @@ export type Token = {
   /** Full name (e.g. 'Lithosphere'). */
   name:      string;
   /** Where it lives. 'native' for the chain coin. */
-  chain:     'Makalu' | 'Kamet' | 'Bitcoin' | 'EVM';
+  chain:     'Makalu' | 'Kamet' | 'Bitcoin' | 'EVM' | 'Solana';
   /** Contract address. `null` for native gas coin. */
   address:   string | null;
   /** Decimals — 18 for all LEP100 (ERC-20) tokens. */
@@ -129,6 +129,23 @@ export const TOKENS: Token[] = [
     priceUsd: 0.015,        // fetched live — pricing.ts overrides this on load
     balance: '80,000',
     change24h: 42.30,
+  },
+  // ─── Solana ────────────────────────────────────────────────────────────
+  // Native SOL: `address: null` follows the same convention as LITHO. The
+  // wallet derives a Solana keypair from the BIP39 seed at the SLIP-0010
+  // path m/44'/501'/0'/0' (handled by sdk-core's deriveSolanaKeypair).
+  // Recipients on this row use base58 PublicKey strings, not 0x / litho1.
+  {
+    sym: 'SOL',
+    name: 'Solana',
+    chain: 'Solana',
+    address: null, // native
+    decimals: 9,
+    color: '#14f195',
+    icon: '/images/tokens/sol.png',
+    priceUsd: 150.00,       // fetched live from CoinGecko via pricing.ts
+    balance: '0',
+    change24h: 0,
   },
 ];
 
