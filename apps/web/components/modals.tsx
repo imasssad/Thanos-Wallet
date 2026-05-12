@@ -17,6 +17,7 @@ import {
 import { TokenSelect } from './ui/TokenSelect';
 import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
+import { looksLikeName, resolveName } from '../lib/dnns';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
@@ -51,9 +52,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   const [error, setError]   = useState<string | null>(null);
   const [feeStr, setFeeStr] = useState<string | null>(null);
 
-  // Recipient UX state — QR scanner + address-book autocomplete.
+  // Recipient UX state — QR scanner + address-book autocomplete + DNNS resolver.
   const [showQr,       setShowQr]       = useState(false);
   const [showSuggest,  setShowSuggest]  = useState(false);
+  const [dnnsResolved, setDnnsResolved] = useState<string | null>(null);
+  const [dnnsState,    setDnnsState]    = useState<'idle' | 'resolving' | 'not-found'>('idle');
   const contactSuggestions = useMemo<Contact[]>(() => {
     const trimmed = to.trim();
     if (!trimmed) return [];
@@ -80,8 +83,34 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     return validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
   }, [to]);
 
-  /* Canonical EVM form — what we'd actually broadcast to the chain. */
-  const canonicalEvm = useMemo(() => resolveToEvm(to.trim()), [to]);
+  /* Canonical EVM form — what we'd actually broadcast to the chain.
+     If the user typed a DNNS name and we resolved it, use that instead. */
+  const canonicalEvm = useMemo(() => {
+    const direct = resolveToEvm(to.trim());
+    if (direct) return direct;
+    return dnnsResolved;
+  }, [to, dnnsResolved]);
+
+  /* Debounced DNNS resolution. Only fires when the input looks like a
+     name (contains '.', not a raw address). Sets state to drive the inline
+     "Resolved to 0x…" hint. */
+  useEffect(() => {
+    const trimmed = to.trim();
+    if (!looksLikeName(trimmed)) {
+      setDnnsResolved(null);
+      setDnnsState('idle');
+      return;
+    }
+    let cancelled = false;
+    setDnnsState('resolving');
+    const t = setTimeout(async () => {
+      const addr = await resolveName(trimmed);
+      if (cancelled) return;
+      setDnnsResolved(addr);
+      setDnnsState(addr ? 'idle' : 'not-found');
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [to]);
 
   /* Live fee estimate. Re-runs (debounced) when the inputs change. Read-only,
      never broadcasts — safe to call repeatedly. */
@@ -260,7 +289,32 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
         )}
-        {to.trim() && !recipientValidation.valid && (
+
+        {/* DNNS — resolved / resolving / not-found states for name input. */}
+        {looksLikeName(to.trim()) && (
+          <>
+            {dnnsState === 'resolving' && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                Resolving {to.trim()}…
+              </div>
+            )}
+            {dnnsState === 'idle' && dnnsResolved && (
+              <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                ✓ Resolved {to.trim()}
+                <span style={{ color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>
+                  → {truncateLithoAddress(dnnsResolved, 8, 6)}
+                </span>
+              </div>
+            )}
+            {dnnsState === 'not-found' && (
+              <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4 }}>
+                Could not resolve {to.trim()}
+              </div>
+            )}
+          </>
+        )}
+
+        {to.trim() && !recipientValidation.valid && !looksLikeName(to.trim()) && (
           <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4 }}>
             {recipientValidation.reason || 'Invalid address'}
           </div>
