@@ -77,3 +77,34 @@ jobs:
       - run: pnpm --filter @thanos/web test
       # Auth route tests — register/login/me/refresh/logout against a mocked pg.
       - run: pnpm --filter @thanos/api test
+
+  audit:
+    name: dependency audit (high+)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Non-blocking for now — surfaces advisories but doesn't fail the build.
+    # Flip to `continue-on-error: false` once the floor is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --no-frozen-lockfile
+      - name: pnpm audit (high+ severity, prod deps only)
+        run: pnpm audit --audit-level=high --prod
+
+  gitleaks:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }  # full history so gitleaks can scan all commits on a PR
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # gitleaks-action's default config scans the repo for AWS keys, GitHub
+          # tokens, JWT-shaped strings, etc. Add a .gitleaks.toml to tune.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # optional — only needed for org-wide use

@@ -1,0 +1,79 @@
+# Postgres backups
+
+`pg-backup.sh` runs a `pg_dump`, rotates daily/weekly/monthly, and optionally
+pushes the latest dump off-site to S3.
+
+## One-time setup on the VPS
+
+1. Copy the env template and fill in real values:
+
+   ```bash
+   sudo tee /root/.thanos-backup.env > /dev/null <<'EOF'
+   PGUSER=thanos
+   PGPASSWORD=<the password>
+   PGDATABASE=thanos_wallet
+   PGHOST=127.0.0.1
+   BACKUP_DIR=/var/backups/thanos-wallet
+   # Optional off-site push — uncomment if AWS CLI + creds are configured
+   # S3_BUCKET=s3://thanos-backups/postgres
+   EOF
+   sudo chmod 600 /root/.thanos-backup.env
+   ```
+
+2. Make sure the script is executable and the backup directory exists:
+
+   ```bash
+   sudo chmod +x /var/www/thanos-wallet/ops/backups/pg-backup.sh
+   sudo mkdir -p /var/backups/thanos-wallet
+   ```
+
+3. Run it once manually to confirm it works:
+
+   ```bash
+   sudo /var/www/thanos-wallet/ops/backups/pg-backup.sh
+   ls -la /var/backups/thanos-wallet/daily/
+   ```
+
+4. Add the cron entry:
+
+   ```bash
+   sudo crontab -e
+   # Daily 04:00 UTC — quiet period for the indexer poller.
+   0 4 * * * /var/www/thanos-wallet/ops/backups/pg-backup.sh >> /var/log/thanos-pg-backup.log 2>&1
+   ```
+
+5. Verify the cron is registered:
+
+   ```bash
+   sudo crontab -l | grep pg-backup
+   ```
+
+## Restoring a backup
+
+Pick the dump you want and pipe it into `psql`:
+
+```bash
+# 1) Stop the services that talk to the DB (so the restore can DROP cleanly)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml stop api indexer worker
+
+# 2) Restore — the dump was taken with --clean --if-exists, so it drops and
+#    recreates each table.
+gunzip -c /var/backups/thanos-wallet/daily/thanos-wallet-YYYYMMDDTHHMMSSZ.sql.gz \
+  | PGPASSWORD=… psql -h 127.0.0.1 -U thanos -d thanos_wallet
+
+# 3) Bring services back
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml up -d api indexer worker
+
+# 4) Watch logs until the indexer reports "schema ready" + "background poll"
+docker logs --tail=20 thanos-indexer
+```
+
+## What's *not* in this script (intentionally)
+
+- **Continuous WAL archiving / PITR.** Daily dumps mean an RPO of 24h. If we
+  need tighter RPO, switch to `pgbackrest` with WAL shipping.
+- **Encrypted backups.** Add GPG encryption between `gzip` and the optional
+  `aws s3 cp` step if backups go to a shared S3 bucket.
+- **Monitoring.** Today the cron emits a log line; if it fails the only
+  signal is "no new file in /var/backups/thanos-wallet/daily". Add a check
+  to the alerting stack once Prometheus is wired (see TODO #17).
