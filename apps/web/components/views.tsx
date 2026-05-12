@@ -7,6 +7,8 @@ import { useWallet } from './shell/AppShell';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
+import { Select } from './ui/Select';
+import { usePrices, priceOr } from '../lib/usePrices';
 
 // Market view leads with the Lithosphere ecosystem (canonical token list),
 // then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
@@ -32,7 +34,17 @@ const MARKET = [
 
 export function MarketView() {
   const [search, setSearch] = useState('');
-  const filtered = MARKET.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
+  const prices = usePrices();
+
+  /* Overlay live CoinGecko prices on the canonical Lithosphere rows.
+     Mainstream-coin rows (BNB/XRP/etc.) keep their reference prices for now. */
+  const market = React.useMemo(() => MARKET.map(c => {
+    const live = prices?.[c.sym];
+    if (typeof live !== 'number') return c;
+    return { ...c, price: `$${live.toLocaleString('en-US', { maximumFractionDigits: 4 })}` };
+  }), [prices]);
+
+  const filtered = market.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="main-area" style={{ width: '100%' }}>
       <div className="page-wrap">
@@ -90,6 +102,7 @@ export function MarketView() {
 export function PortfolioView() {
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
+  const prices = usePrices();
 
   // Indexer-backed live balances. Null = haven't tried yet; [] = tried,
   // got nothing; non-empty = real data. We never throw out the canonical
@@ -133,7 +146,7 @@ export function PortfolioView() {
       displayBal = ethers.formatUnits(a.balance || '0', a.decimals ?? 18);
     } catch { /* malformed — leave 0 */ }
     const balNum  = parseFloat(displayBal) || 0;
-    const priceUsd = canon?.priceUsd ?? 0;
+    const priceUsd = priceOr(prices, a.symbol, canon?.priceUsd ?? 0);
     return {
       sym:   a.symbol,
       name:  a.name || canon?.name || a.symbol,
@@ -152,10 +165,11 @@ export function PortfolioView() {
   const fromIndexer = (liveAssets ?? []).map(mergeRow).filter(r => r.balNum > 0);
   const fromCanonical = TOKENS.map(t => {
     const balNum = parseFloat(t.balance.replace(/,/g, ''));
+    const liveP  = priceOr(prices, t.sym, t.priceUsd);
     return {
       sym: t.sym, name: t.name, bal: t.balance, balNum,
-      usd: Math.round(balNum * t.priceUsd),
-      chg: t.change24h, color: t.color, priceUsd: t.priceUsd,
+      usd: Math.round(balNum * liveP),
+      chg: t.change24h, color: t.color, priceUsd: liveP,
     };
   });
   const _raw = fromIndexer.length > 0 ? fromIndexer : fromCanonical;
@@ -575,6 +589,8 @@ function AccountSection({ Section, Row }: {
 
 export function SettingsView() {
   const [currency, setCurrency] = useState('USD');
+  const [language, setLanguage] = useState('English');
+  const [autoLock, setAutoLock] = useState('5 minutes');
 
   const Section = ({
     icon: Icon, title, sub, children,
@@ -615,14 +631,20 @@ export function SettingsView() {
 
         <Section icon={Globe} title="General" sub="Display, language, and locale">
           <Row label="Currency" sub="Display prices in">
-            <select className="settings-select" value={currency} onChange={e => setCurrency(e.target.value)}>
-              {['USD','EUR','GBP','JPY','BTC','LAX'].map(c => <option key={c}>{c}</option>)}
-            </select>
+            <Select
+              value={currency}
+              onChange={setCurrency}
+              options={['USD','EUR','GBP','JPY','BTC','LAX']}
+              ariaLabel="Display currency"
+            />
           </Row>
           <Row label="Language" sub="Interface language">
-            <select className="settings-select" defaultValue="English">
-              <option>English</option><option>Spanish</option><option>Arabic</option>
-            </select>
+            <Select
+              value={language}
+              onChange={setLanguage}
+              options={['English','Spanish','Arabic']}
+              ariaLabel="Interface language"
+            />
           </Row>
         </Section>
 
@@ -630,13 +652,12 @@ export function SettingsView() {
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
-            <select className="settings-select" defaultValue="5 minutes">
-              <option>1 minute</option>
-              <option>5 minutes</option>
-              <option>15 minutes</option>
-              <option>1 hour</option>
-              <option>Never</option>
-            </select>
+            <Select
+              value={autoLock}
+              onChange={setAutoLock}
+              options={['1 minute','5 minutes','15 minutes','1 hour','Never']}
+              ariaLabel="Auto-lock timeout"
+            />
           </Row>
           <Row label="Change password" sub="Update your wallet password">
             <button className="settings-btn">

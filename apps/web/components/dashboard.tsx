@@ -6,6 +6,7 @@ import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { TokenIcon } from './TokenIcon';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
+import { usePrices, priceOr } from '../lib/usePrices';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -40,8 +41,9 @@ const FALLBACK_TXS = [
 ];
 
 /* Project an indexer asset onto a dashboard coin row, using canonical TOKENS
-   for icon/color/price (the indexer doesn't ship that metadata). */
-function projectAsset(a: IndexerAsset) {
+   for icon/color/price (the indexer doesn't ship that metadata).
+   `prices` is the live CoinGecko snapshot; we prefer that over canonical. */
+function projectAsset(a: IndexerAsset, prices: Record<string, number> | null) {
   const canon = TOKENS.find(t =>
     t.sym.toLowerCase() === a.symbol.toLowerCase()
     || (a.tokenAddress && t.address?.toLowerCase() === a.tokenAddress.toLowerCase())
@@ -53,7 +55,7 @@ function projectAsset(a: IndexerAsset) {
     balNum = parseFloat(formatted) || 0;
     balStr = balNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
   } catch { /* malformed */ }
-  const priceUsd = canon?.priceUsd ?? 0;
+  const priceUsd = priceOr(prices, a.symbol, canon?.priceUsd ?? 0);
   return {
     sym:    a.symbol,
     name:   a.name || canon?.name || a.symbol,
@@ -324,6 +326,7 @@ export function Dashboard() {
   const [modal, setModal] = useState<ModalKind>(null);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
+  const prices    = usePrices();
 
   const [liveAssets,   setLiveAssets]   = useState<IndexerAsset[] | null>(null);
   const [liveActivity, setLiveActivity] = useState<IndexerActivityItem[] | null>(null);
@@ -354,10 +357,26 @@ export function Dashboard() {
   }, [evmAddress]);
 
   /* Build the coin rows: prefer live indexer data, fall back to canonical
-     TOKENS so the dashboard renders the moment the user lands on it. */
+     TOKENS so the dashboard renders the moment the user lands on it. Both
+     paths use live CoinGecko prices when available. */
   const COINS = useMemo(() => {
-    const fromLive = (liveAssets ?? []).map(projectAsset).filter(c => c.balNum > 0);
-    if (fromLive.length === 0) return FALLBACK_COINS;
+    const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
+    if (fromLive.length === 0) {
+      // Recompute the canonical fallback with live prices overlaid.
+      const raw = TOKENS.map(t => {
+        const balNum = parseFloat(t.balance.replace(/,/g, ''));
+        const usdNum = balNum * priceOr(prices, t.sym, t.priceUsd);
+        return {
+          sym: t.sym, name: t.name, bal: t.balance, usdNum, chg: t.change24h, color: t.color,
+        };
+      });
+      const total = raw.reduce((s, c) => s + c.usdNum, 0) || 1;
+      return raw.map(c => ({
+        ...c,
+        usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+        pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
+      }));
+    }
     const total = fromLive.reduce((s, c) => s + c.usdNum, 0) || 1;
     return fromLive.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,
@@ -365,7 +384,7 @@ export function Dashboard() {
       chg: c.chg, color: c.color,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [liveAssets]);
+  }, [liveAssets, prices]);
 
   const TXS = useMemo(() => {
     if (!liveActivity || liveActivity.length === 0) return FALLBACK_TXS;
@@ -381,9 +400,9 @@ export function Dashboard() {
   // For the Exchange widget — map of lowercase symbol → live balance number.
   const liveBalances = useMemo(() => {
     const m = new Map<string, number>();
-    (liveAssets ?? []).map(projectAsset).forEach(a => m.set(a.sym.toLowerCase(), a.balNum));
+    (liveAssets ?? []).map(a => projectAsset(a, prices)).forEach(a => m.set(a.sym.toLowerCase(), a.balNum));
     return m;
-  }, [liveAssets]);
+  }, [liveAssets, prices]);
 
   return (
     <div className="workspace" style={{ width: '100%' }}>
