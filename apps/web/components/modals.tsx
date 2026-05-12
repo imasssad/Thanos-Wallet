@@ -6,7 +6,8 @@ import {
   validateAddressForChain, resolveToEvm, truncateLithoAddress,
   MAKALU_CHAIN_ID,
 } from '../lib/address';
-import { sendTokens, estimateSendFee, SendError } from '../lib/signer';
+import { sendTokens, estimateSendFee, SendError, makeProvider } from '../lib/signer';
+import { signerSend, SignerError } from '../lib/signer-client';
 import {
   getQuote   as multxGetQuote,
   execute    as multxExecute,
@@ -143,21 +144,52 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     setStage('broadcasting');
     setError(null);
     try {
-      const result = await sendTokens(
-        wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
-        { symbol: coin, recipient: to, amount },
-      );
-      setTxHash(result.hash);
+      // Prefer the worker-isolated signing path. The worker holds the
+      // secret in its own context; the main thread only sees the tx hash
+      // come back. If the worker is unavailable (race condition during
+      // init, or unsupported browser) we fall back to in-process signing.
+      let hash: string;
+      try {
+        const result = await signerSend({ symbol: coin, recipient: to, amount });
+        hash = result.hash;
+      } catch (workerErr) {
+        const code = workerErr instanceof SignerError ? workerErr.code : '';
+        if (code === 'worker_locked' || code === 'worker_crashed') {
+          const fallback = await sendTokens(
+            wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+            { symbol: coin, recipient: to, amount },
+          );
+          hash = fallback.hash;
+          // Background: legacy path exposes a wait() for confirmation polling.
+          fallback.wait()
+            .then(r => {
+              setStage(r.status === 1 ? 'confirmed' : 'failed');
+              if (r.status !== 1) setError('Transaction reverted on-chain');
+            })
+            .catch(() => setStage('failed'));
+        } else {
+          // Bubble typed worker errors through the same SendError shape so
+          // the existing 'failed' UI surfaces a clean message.
+          throw workerErr;
+        }
+      }
+      setTxHash(hash);
       setStage('pending');
-      // Background: wait for confirmation. Doesn't block the UI; user can dismiss.
-      result.wait()
-        .then(r => {
-          setStage(r.status === 1 ? 'confirmed' : 'failed');
-          if (r.status !== 1) setError('Transaction reverted on-chain');
-        })
-        .catch(() => setStage('failed'));
+      // Worker path: poll the chain for confirmation via the main-thread
+      // provider. Doesn't block the UI; user can dismiss the modal.
+      if (!error && hash) {
+        makeProvider().waitForTransaction(hash)
+          .then(r => {
+            if (!r) { setStage('failed'); return; }
+            setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
+            if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
+          })
+          .catch(() => setStage('failed'));
+      }
     } catch (e) {
-      const msg = e instanceof SendError ? e.message : (e as Error).message || 'Failed to send';
+      const msg = e instanceof SendError ? e.message
+               : e instanceof SignerError ? e.message
+               : (e as Error).message || 'Failed to send';
       setError(msg);
       setStage('failed');
     }
