@@ -104,16 +104,18 @@ new Worker<BridgePollJob>(
     const { bridgeJobId, executionId, provider, attemptCount } = job.data;
     console.log(`[bridge:poll] ${executionId} attempt=${attemptCount}`);
 
+    // MultX (bridge.litho.ai) is an internal Litho service — no auth layer.
+    // MULTX_API_KEY is kept in env.example only for forward-compat if that
+    // ever changes; today it's intentionally unused.
     const multxUrl = process.env.MULTX_API_URL;
-    const multxKey = process.env.MULTX_API_KEY;
 
-    if (!multxUrl || !multxKey) {
-      console.warn('[bridge:poll] MULTX_API_URL/KEY not configured — skipping poll');
+    if (!multxUrl) {
+      console.warn('[bridge:poll] MULTX_API_URL not configured — skipping poll');
       return { skipped: true };
     }
 
-    const res = await fetch(`${multxUrl}/bridge/status/${executionId}`, {
-      headers: { Authorization: `Bearer ${multxKey}` },
+    const res = await fetch(`${multxUrl}/v1/status/${executionId}`, {
+      headers: { 'accept': 'application/json' },
     });
 
     if (!res.ok) throw new Error(`MultX status check failed: ${res.status}`);

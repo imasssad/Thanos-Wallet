@@ -7,6 +7,7 @@ import {
   MAKALU_CHAIN_ID,
 } from '../lib/address';
 import { sendTokens, estimateSendFee, SendError } from '../lib/signer';
+import { getQuote as multxGetQuote, type Quote as MultXQuote, MultXUnavailable } from '../lib/multx';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
 const BAL_MAP: Record<string, string> = Object.fromEntries(TOKENS.map(t => [t.sym, t.balance]));
@@ -284,12 +285,49 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const [to, setTo]     = useState('LitBTC');
   const [amt, setAmt]   = useState('100');
 
-  // Derive swap rates from the canonical USD prices in lib/tokens.ts.
-  // Real swap routing goes through MultX (https://bridge.litho.ai) — this
-  // is just the indicative quote used in the mock modal until that's wired.
+  /** Live MultX quote (or null while loading / unavailable). */
+  const [quote, setQuote]               = useState<MultXQuote | null>(null);
+  const [quoteError, setQuoteError]     = useState<string | null>(null);
+  const [bridgeOffline, setBridgeOffline] = useState(false);
+
+  // Fallback indicative rate from the canonical USD prices — used only when
+  // the MultX endpoint isn't reachable, so the UI still has something to show.
   const priceOf = (sym: string) => TOKENS.find(t => t.sym === sym)?.priceUsd ?? 1;
-  const rate = priceOf(from) / priceOf(to);
-  const out = rate * parseFloat(amt || '0');
+  const fallbackRate = priceOf(from) / priceOf(to);
+  const fallbackOut  = fallbackRate * parseFloat(amt || '0');
+
+  /* Debounced quote fetch. Cancels in-flight fetches when the inputs change. */
+  useEffect(() => {
+    const trimmed = amt.trim();
+    if (!trimmed || parseFloat(trimmed) <= 0 || from === to) {
+      setQuote(null); setQuoteError(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const q = await multxGetQuote(from, to, trimmed);
+        if (!cancelled) {
+          setQuote(q); setQuoteError(null); setBridgeOffline(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setQuote(null);
+          if (e instanceof MultXUnavailable) {
+            setBridgeOffline(true);
+            setQuoteError('Bridge offline — showing indicative rate');
+          } else {
+            setQuoteError((e as Error).message || 'Quote failed');
+          }
+        }
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [from, to, amt]);
+
+  const displayedRate = quote ? quote.rate : fallbackRate;
+  const displayedOut  = quote ? Number(quote.toAmount) : fallbackOut;
+  const feeLine = quote ? `${quote.feeFrom} ${quote.from}` : 'Rate-only preview';
 
   return (
     <Modal title="Swap" onClose={onClose}>
@@ -310,15 +348,30 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
             {TOKEN_SYMBOLS.map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
-            {out.toFixed(4)}
+            {isFinite(displayedOut) ? displayedOut.toFixed(6) : '—'}
           </div>
         </div>
         <div className="fee-row" style={{ marginTop: 14 }}>
           <span>Rate</span>
-          <span>1 {from} ≈ {rate.toLocaleString('en-US', { maximumFractionDigits: 6 })} {to}</span>
+          <span>1 {from} ≈ {displayedRate.toLocaleString('en-US', { maximumFractionDigits: 6 })} {to}</span>
         </div>
-        <div className="fee-row"><span>Network fee</span><span>~$2.10</span></div>
-        <button className="btn-primary" style={{ marginTop: 18 }}>Swap {from} → {to}</button>
+        <div className="fee-row">
+          <span>Bridge fee</span>
+          <span>{feeLine}</span>
+        </div>
+        {(quoteError || bridgeOffline) && (
+          <div style={{ fontSize: 11, color: bridgeOffline ? 'var(--text-muted)' : 'var(--red)', marginTop: 6 }}>
+            {bridgeOffline ? '⚠ ' : ''}{quoteError}
+          </div>
+        )}
+        <button
+          className="btn-primary"
+          style={{ marginTop: 18 }}
+          disabled={!quote && !bridgeOffline}
+          title={bridgeOffline ? 'Bridge offline — cannot execute' : ''}
+        >
+          {quote ? `Swap ${from} → ${to}` : (bridgeOffline ? 'Bridge offline' : 'Fetching quote…')}
+        </button>
       </div>
     </Modal>
   );
