@@ -1,30 +1,36 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ethers } from 'ethers';
 import { ArrowUpRight, ArrowDownLeft, Repeat, ChevronRight, ChevronDown, Maximize2 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
+import { TokenIcon } from './TokenIcon';
+import { useWallet } from './shell/AppShell';
+import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 
 import { TOKENS } from '../lib/tokens';
 
-// Build the dashboard's allocation/portfolio rows from the canonical
-// Lithosphere ecosystem token list, then compute the allocation pct from
-// the mock USD value so the bar always sums to the totals shown.
-const _coinsRaw = TOKENS.map(t => {
-  const balNum = parseFloat(t.balance.replace(/,/g, ''));
-  const usdNum = balNum * t.priceUsd;
-  return { ...t, balNum, usdNum };
-});
-const _totalUsd = _coinsRaw.reduce((s, c) => s + c.usdNum, 0);
-const COINS = _coinsRaw.map(c => ({
-  sym:   c.sym,
-  name:  c.name,
-  bal:   c.balance,
-  usd:   `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-  chg:   c.change24h,
-  color: c.color,
-  pct:   Math.max(1, Math.round((c.usdNum / _totalUsd) * 100)),
-}));
+/* Default fallback coin rows derived from the canonical TOKENS list. Used
+   on cold start and whenever the indexer is unreachable. */
+const FALLBACK_COINS = (() => {
+  const raw = TOKENS.map(t => {
+    const balNum = parseFloat(t.balance.replace(/,/g, ''));
+    const usdNum = balNum * t.priceUsd;
+    return { ...t, balNum, usdNum };
+  });
+  const total = raw.reduce((s, c) => s + c.usdNum, 0) || 1;
+  return raw.map(c => ({
+    sym:   c.sym,
+    name:  c.name,
+    bal:   c.balance,
+    usdNum: c.usdNum,
+    usd:   `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+    chg:   c.change24h,
+    color: c.color,
+    pct:   Math.max(1, Math.round((c.usdNum / total) * 100)),
+  }));
+})();
 
-const TXS = [
+const FALLBACK_TXS = [
   { sym: 'LITHO',  name: 'Lithosphere',                  date: 'Jan 22, 2026', price: '$0.30',   status: 'Completed', amount: '+1,200 LITHO',  pos: true,  color: '#3b7af7' },
   { sym: 'LitBTC', name: 'Bitcoin (Lithosphere)',        date: 'Jan 20, 2026', price: '$63,200', status: 'Completed', amount: '+0.142 LitBTC', pos: true,  color: '#f7931a' },
   { sym: 'JOT',    name: 'Jot Art',                      date: 'Jan 19, 2026', price: '$0.085', status: 'Completed', amount: '+850 JOT',      pos: true,  color: '#ef4444' },
@@ -32,6 +38,53 @@ const TXS = [
   { sym: 'COLLE',  name: 'Colle AI',                     date: 'Jan 17, 2026', price: '$0.020',  status: 'Completed', amount: '+5,000 COLLE',  pos: true,  color: '#9ca3af' },
   { sym: 'FurGPT', name: 'FurGPT',                       date: 'Jan 15, 2026', price: '$0.015',  status: 'Pending',   amount: '-2,000 FurGPT', pos: false, color: '#f59e0b' },
 ];
+
+/* Project an indexer asset onto a dashboard coin row, using canonical TOKENS
+   for icon/color/price (the indexer doesn't ship that metadata). */
+function projectAsset(a: IndexerAsset) {
+  const canon = TOKENS.find(t =>
+    t.sym.toLowerCase() === a.symbol.toLowerCase()
+    || (a.tokenAddress && t.address?.toLowerCase() === a.tokenAddress.toLowerCase())
+  );
+  let balNum = 0;
+  let balStr = '0';
+  try {
+    const formatted = ethers.formatUnits(a.balance || '0', a.decimals ?? 18);
+    balNum = parseFloat(formatted) || 0;
+    balStr = balNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
+  } catch { /* malformed */ }
+  const priceUsd = canon?.priceUsd ?? 0;
+  return {
+    sym:    a.symbol,
+    name:   a.name || canon?.name || a.symbol,
+    bal:    balStr,
+    balNum,
+    usdNum: balNum * priceUsd,
+    chg:    canon?.change24h ?? 0,
+    color:  canon?.color ?? '#52525b',
+  };
+}
+
+function projectActivity(item: IndexerActivityItem) {
+  const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
+  const decimals = canon?.decimals ?? 18;
+  let amountStr = item.amount;
+  try {
+    amountStr = parseFloat(ethers.formatUnits(item.amount, decimals))
+      .toLocaleString('en-US', { maximumFractionDigits: 6 });
+  } catch { /* leave raw */ }
+  const isOut = item.type === 'send' || item.type === 'burn';
+  return {
+    sym:    item.symbol,
+    name:   canon?.name ?? item.symbol,
+    date:   item.ts ? new Date(item.ts).toLocaleDateString() : '—',
+    price:  canon ? `$${canon.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
+    status: item.status === 'pending' ? 'Pending' : item.status === 'failed' ? 'Failed' : 'Completed',
+    amount: `${isOut ? '-' : '+'}${amountStr} ${item.symbol}`,
+    pos:    !isOut,
+    color:  canon?.color ?? '#52525b',
+  };
+}
 
 const PERF_LINE = 'M 22,165 C 48,160 72,156 96,152 C 120,148 145,144 168,138 C 191,132 214,116 238,100 C 262,84 285,76 308,68 C 331,60 358,47 382,40 C 402,34 428,24 452,17 C 468,13 482,9 498,7';
 const PERF_AREA = `${PERF_LINE} L 498,185 L 22,185 Z`;
@@ -85,33 +138,132 @@ function PriceSparkline() {
   );
 }
 
-function ExchangeWidget() {
+function ExchangeWidget({ liveBalances }: { liveBalances: Map<string, number> }) {
+  const [fromSym, setFromSym] = useState('LITHO');
+  const [toSym,   setToSym]   = useState(TOKENS.find(t => t.sym !== 'LITHO')?.sym ?? 'LitBTC');
   const [fromAmt, setFromAmt] = useState('1000');
-  const out = (parseFloat(fromAmt || '0') * 1.0).toFixed(3);
+  const [pickerOpen, setPickerOpen] = useState<'from' | 'to' | null>(null);
+
+  const fromTok = TOKENS.find(t => t.sym === fromSym) ?? TOKENS[0];
+  const toTok   = TOKENS.find(t => t.sym === toSym)   ?? TOKENS[1];
+  const fromPrice = fromTok.priceUsd || 1;
+  const toPrice   = toTok.priceUsd   || 1;
+  const out = (parseFloat(fromAmt || '0') * (fromPrice / toPrice)).toFixed(4);
+
+  // Live balance if the indexer has reported one, otherwise canonical mock.
+  const fromBalNum =
+    liveBalances.get(fromSym.toLowerCase())
+    ?? parseFloat(fromTok.balance.replace(/,/g, ''))
+    ?? 0;
+  const fromBalDisplay = fromBalNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
+
+  const flip = () => {
+    setFromSym(toSym);
+    setToSym(fromSym);
+  };
+
+  const pick = (side: 'from' | 'to', sym: string) => {
+    if (side === 'from') setFromSym(sym);
+    else                 setToSym(sym);
+    setPickerOpen(null);
+  };
+
   return (
     <div className="card">
       <div className="exchange-header">
         <span className="card-title">Exchange</span>
         <span style={{ color: 'var(--text-muted)', fontSize: 18 }}>›</span>
       </div>
-      <div className="coin-row">
-        <div className="coin-icon" style={{ background: '#8b7df7' }}>L</div>
-        <div className="coin-pick">LITHO ▾</div>
+
+      {/* From row */}
+      <div className="coin-row" style={{ position: 'relative' }}>
+        <TokenIcon sym={fromTok.sym} icon={fromTok.icon} color={fromTok.color} size={32}/>
+        <button
+          className="coin-pick"
+          type="button"
+          onClick={() => setPickerOpen(p => p === 'from' ? null : 'from')}
+          style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit' }}
+        >
+          {fromTok.sym} ▾
+        </button>
         <input className="coin-amount" value={fromAmt} onChange={e => setFromAmt(e.target.value)} type="number"/>
+        {pickerOpen === 'from' && <TokenPicker exclude={toSym} onPick={s => pick('from', s)}/>}
       </div>
-      <div className="coin-balance">Balance: 50,000 LITHO</div>
-      <div className="swap-divider"><button className="swap-btn">⇅</button></div>
-      <div className="coin-row">
-        <div className="coin-icon" style={{ background: '#a395f8' }}>w</div>
-        <div className="coin-pick">wLITHO ▾</div>
+      <div className="coin-balance">Balance: {fromBalDisplay} {fromTok.sym}</div>
+
+      <div className="swap-divider">
+        <button className="swap-btn" onClick={flip} type="button" aria-label="flip">⇅</button>
+      </div>
+
+      {/* To row */}
+      <div className="coin-row" style={{ position: 'relative' }}>
+        <TokenIcon sym={toTok.sym} icon={toTok.icon} color={toTok.color} size={32}/>
+        <button
+          className="coin-pick"
+          type="button"
+          onClick={() => setPickerOpen(p => p === 'to' ? null : 'to')}
+          style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit' }}
+        >
+          {toTok.sym} ▾
+        </button>
         <span className="coin-amount" style={{ display: 'block', userSelect: 'none' }}>{out}</span>
+        {pickerOpen === 'to' && <TokenPicker exclude={fromSym} onPick={s => pick('to', s)}/>}
       </div>
+
       <button className="btn-exchange">Exchange</button>
     </div>
   );
 }
 
-function PortfolioList() {
+function TokenPicker({ exclude, onPick }: { exclude: string; onPick: (sym: string) => void }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 'calc(100% + 6px)',
+        left: 0,
+        right: 0,
+        zIndex: 30,
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 10,
+        padding: 4,
+        boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
+        maxHeight: 240,
+        overflowY: 'auto',
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      {TOKENS.filter(t => t.sym !== exclude).map(t => (
+        <button
+          key={t.sym}
+          onClick={() => onPick(t.sym)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            width: '100%',
+            padding: '8px 8px',
+            borderRadius: 8,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'inherit',
+            textAlign: 'left',
+          }}
+          onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+          onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
+        >
+          <TokenIcon sym={t.sym} icon={t.icon} color={t.color} size={24}/>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600 }}>{t.sym}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PortfolioList({ coins }: { coins: typeof FALLBACK_COINS }) {
   return (
     <div className="card">
       <div className="card-header">
@@ -119,9 +271,9 @@ function PortfolioList() {
         <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}>View all</button>
       </div>
       <div className="portfolio-list">
-        {COINS.filter(c => c.sym !== '···').map(c => (
+        {coins.filter(c => c.sym !== '···').map(c => (
           <div key={c.sym} className="portfolio-row">
-            <div className="portfolio-icon" style={{ background: c.color }}>{c.sym.slice(0,1)}</div>
+            <TokenIcon sym={c.sym} color={c.color} size={32}/>
             <div>
               <div className="portfolio-name">{c.name}</div>
               <div className="portfolio-sym">{c.bal} {c.sym}</div>
@@ -170,6 +322,68 @@ function StakingCard() {
 
 export function Dashboard() {
   const [modal, setModal] = useState<ModalKind>(null);
+  const wallet = useWallet();
+  const evmAddress = wallet?.evmAddress;
+
+  const [liveAssets,   setLiveAssets]   = useState<IndexerAsset[] | null>(null);
+  const [liveActivity, setLiveActivity] = useState<IndexerActivityItem[] | null>(null);
+  const [indexerOk,    setIndexerOk]    = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!evmAddress) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const p = await getPortfolio(evmAddress);
+        if (cancel) return;
+        setLiveAssets(p.assets ?? []);
+        setLiveActivity(p.activity ?? []);
+        setIndexerOk(true);
+      } catch (e) {
+        if (cancel) return;
+        if (e instanceof IndexerOffline) {
+          setIndexerOk(false);
+          setLiveAssets([]);
+          setLiveActivity([]);
+        } else {
+          throw e;
+        }
+      }
+    })();
+    return () => { cancel = true; };
+  }, [evmAddress]);
+
+  /* Build the coin rows: prefer live indexer data, fall back to canonical
+     TOKENS so the dashboard renders the moment the user lands on it. */
+  const COINS = useMemo(() => {
+    const fromLive = (liveAssets ?? []).map(projectAsset).filter(c => c.balNum > 0);
+    if (fromLive.length === 0) return FALLBACK_COINS;
+    const total = fromLive.reduce((s, c) => s + c.usdNum, 0) || 1;
+    return fromLive.map(c => ({
+      sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,
+      usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      chg: c.chg, color: c.color,
+      pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
+    }));
+  }, [liveAssets]);
+
+  const TXS = useMemo(() => {
+    if (!liveActivity || liveActivity.length === 0) return FALLBACK_TXS;
+    return liveActivity.slice(0, 6).map(projectActivity);
+  }, [liveActivity]);
+
+  const totalUsd = COINS.reduce((s, c) => s + c.usdNum, 0);
+  const totalDisplay = `$${totalUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  // 24h change: weighted average of per-coin changes by USD value.
+  const weighted = COINS.reduce((s, c) => s + (c.chg * c.usdNum), 0);
+  const change24h = totalUsd > 0 ? (weighted / totalUsd) : 0;
+
+  // For the Exchange widget — map of lowercase symbol → live balance number.
+  const liveBalances = useMemo(() => {
+    const m = new Map<string, number>();
+    (liveAssets ?? []).map(projectAsset).forEach(a => m.set(a.sym.toLowerCase(), a.balNum));
+    return m;
+  }, [liveAssets]);
 
   return (
     <div className="workspace" style={{ width: '100%' }}>
@@ -180,10 +394,21 @@ export function Dashboard() {
       <div className="main-area">
         <div className="balance-hero">
           <div>
-            <div className="balance-label">Total balance</div>
+            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              Total balance
+              {!indexerOk && (
+                <span style={{
+                  fontSize: 9, letterSpacing: 1, padding: '2px 6px',
+                  background: 'var(--bg-elevated)', borderRadius: 4,
+                  color: 'var(--text-secondary)', fontWeight: 600,
+                }}>OFFLINE · sample</span>
+              )}
+            </div>
             <div className="balance-amount">
-              $3,150,298.00
-              <span className="balance-change-pill">▲ +2.34%</span>
+              {totalDisplay}
+              <span className="balance-change-pill">
+                {change24h >= 0 ? '▲' : '▼'} {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+              </span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -273,9 +498,7 @@ export function Dashboard() {
                 <tr key={i}>
                   <td>
                     <div className="tx-cell">
-                      <div className="tx-avatar" style={{ background: tx.color }}>
-                        {tx.sym.slice(0, 2)}
-                      </div>
+                      <TokenIcon sym={tx.sym} color={tx.color} size={36} style={{ borderRadius: 10 }}/>
                       <div>
                         <div className="tx-name">{tx.name}</div>
                         <div className="tx-sym">{tx.sym}</div>
@@ -304,8 +527,8 @@ export function Dashboard() {
       </div>
 
       <aside className="right-panel">
-        <ExchangeWidget/>
-        <PortfolioList/>
+        <ExchangeWidget liveBalances={liveBalances}/>
+        <PortfolioList coins={COINS}/>
         <StakingCard/>
       </aside>
     </div>
