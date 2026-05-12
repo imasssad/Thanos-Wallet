@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { HDNodeWallet, Mnemonic } from 'ethers';
+import { HDNodeWallet, Mnemonic, Wallet, getAddress, isHexString } from 'ethers';
 import { discoverTokens } from '../lib/token-discovery';
 import {
   Wallet as WalletIcon, ChevronLeft, Eye, EyeOff, Copy, Check,
@@ -12,6 +12,7 @@ import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
 } from '../lib/vault';
+import { serializeSource, deserializeSource, type WalletSource } from '../lib/wallet-source';
 
 /** Generate a fresh BIP39 phrase of the requested length.
  *  12 words = 128 bits of entropy (default, recommended).
@@ -35,12 +36,29 @@ function deriveEvmAddress(seed: string[]): string {
 }
 
 type Step = 'welcome' | 'create-length' | 'create-warn' | 'create-show' | 'create-confirm' | 'create-pwd'
-          | 'import' | 'import-pwd' | 'unlock';
+          | 'import-choose' | 'import' | 'import-pk' | 'import-pwd' | 'import-pk-pwd' | 'unlock';
 
-export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; onComplete: (seed: string[]) => void }) {
+/** Validate a 0x-prefixed 32-byte hex string. Returns the canonical 0x-form
+ *  (lower-case body, no whitespace) and the derived checksummed address,
+ *  or null on parse failure. */
+function validatePrivateKey(input: string): { privateKey: string; address: string } | null {
+  let raw = input.trim();
+  if (!raw) return null;
+  if (!raw.startsWith('0x')) raw = '0x' + raw;
+  if (!isHexString(raw, 32)) return null;
+  try {
+    const w = new Wallet(raw);
+    return { privateKey: raw.toLowerCase(), address: getAddress(w.address) };
+  } catch {
+    return null;
+  }
+}
+
+export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; onComplete: (source: WalletSource) => void }) {
   const [step, setStep] = useState<Step>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
+  const [pkInput,     setPkInput]     = useState('');
   const [phraseLen, setPhraseLen]     = useState<12 | 24>(12);
   /* Verify-phrase state: only N indices are missing; user fills those slots
      by tapping chips from a pool. The other (seed.length - N) words are pre-filled. */
@@ -100,12 +118,13 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     if (password !== password2 || password.length < 8 || busy) return;
     setBusy(true);
     try {
-      const vault = await createVault(seed.join(' '), password);
+      const source: WalletSource = { kind: 'mnemonic', mnemonic: seed.join(' ') };
+      const vault = await createVault(serializeSource(source), password);
       saveVault(vault);
       // Session-cache the derived key so a refresh skips the password prompt.
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
-      onComplete(seed);
+      onComplete(source);
     } finally {
       setBusy(false);
     }
@@ -118,14 +137,34 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     if (!isValidMnemonic(words.join(' '))) { alert('Invalid recovery phrase'); return; }
     setBusy(true);
     try {
-      const vault = await createVault(words.join(' '), password);
+      const source: WalletSource = { kind: 'mnemonic', mnemonic: words.join(' ') };
+      const vault = await createVault(serializeSource(source), password);
       saveVault(vault);
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
-      onComplete(words);
+      onComplete(source);
       // Fire-and-forget: scan the indexer for any LEP100 balances on this
       // address and persist them so the wallet renders them on first paint.
       discoverTokens(deriveEvmAddress(words)).catch(() => {});
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Import via raw 0x-prefixed private key — single-account wallet. */
+  const finishImportPk = async () => {
+    if (password !== password2 || password.length < 8 || busy) return;
+    const pk = validatePrivateKey(pkInput);
+    if (!pk) { alert('Invalid private key — must be 0x-prefixed 32-byte hex'); return; }
+    setBusy(true);
+    try {
+      const source: WalletSource = { kind: 'privateKey', privateKey: pk.privateKey };
+      const vault = await createVault(serializeSource(source), password);
+      saveVault(vault);
+      const opened = await openVault(vault, password);
+      if (opened) cacheSessionKey(opened.key);
+      onComplete(source);
+      discoverTokens(pk.address).catch(() => {});
     } finally {
       setBusy(false);
     }
@@ -150,7 +189,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
         return;
       }
       cacheSessionKey(opened.key);
-      onComplete(opened.mnemonic.split(' '));
+      onComplete(deserializeSource(opened.mnemonic));
     } finally {
       setBusy(false);
     }
@@ -205,7 +244,69 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           <h1 className="onboard-title">Welcome to Thanos</h1>
           <p className="onboard-sub">Multi-chain Web4 wallet — Lithosphere · Bitcoin · EVM</p>
           <button className="btn-primary onboard-btn" onClick={startCreate}>Create new wallet</button>
-          <button className="btn-outline onboard-btn" style={{ width: '100%' }} onClick={() => setStep('import')}>Import existing wallet</button>
+          <button className="btn-outline onboard-btn" style={{ width: '100%' }} onClick={() => setStep('import-choose')}>Import existing wallet</button>
+        </>}
+
+        {step === 'import-choose' && <>
+          <h1 className="onboard-title">Import wallet</h1>
+          <p className="onboard-sub">Choose what you want to import.</p>
+          <button
+            className="btn-outline onboard-btn"
+            style={{ width: '100%', textAlign: 'left', padding: '14px 16px' }}
+            onClick={() => setStep('import')}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Recovery phrase</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              12 / 15 / 18 / 21 / 24-word BIP39 mnemonic — recommended
+            </div>
+          </button>
+          <button
+            className="btn-outline onboard-btn"
+            style={{ width: '100%', textAlign: 'left', padding: '14px 16px', marginTop: 8 }}
+            onClick={() => setStep('import-pk')}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Private key</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              0x-prefixed 32-byte hex — imports a single account
+            </div>
+          </button>
+          <button className="btn-link" style={{ marginTop: 14 }} onClick={() => setStep('welcome')}>Back</button>
+        </>}
+
+        {step === 'import-pk' && <>
+          <h1 className="onboard-title">Import private key</h1>
+          <p className="onboard-sub">Paste a 0x-prefixed 32-byte hex private key. Single-account wallet — no HD derivation.</p>
+          <input
+            className="field-input"
+            style={{ fontFamily: 'Geist Mono, monospace', fontSize: 12 }}
+            placeholder="0xabc123…"
+            value={pkInput}
+            onChange={e => setPkInput(e.target.value)}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+          {pkInput && !validatePrivateKey(pkInput) && (
+            <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6 }}>
+              Not a valid private key. Must be 0x + 64 hex characters.
+            </div>
+          )}
+          {pkInput && validatePrivateKey(pkInput) && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, fontFamily: 'Geist Mono, monospace' }}>
+              → {validatePrivateKey(pkInput)!.address}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('import-choose')}>Back</button>
+            <button
+              className="btn-primary"
+              style={{ flex: 1 }}
+              disabled={!validatePrivateKey(pkInput)}
+              onClick={() => setStep('import-pk-pwd')}
+            >
+              Continue
+            </button>
+          </div>
         </>}
 
         {step === 'create-length' && <>
@@ -308,7 +409,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           </div>
         </>}
 
-        {(step === 'create-pwd' || step === 'import-pwd') && <>
+        {(step === 'create-pwd' || step === 'import-pwd' || step === 'import-pk-pwd') && <>
           <h1 className="onboard-title">Set a password</h1>
           <p className="onboard-sub">Used to unlock your wallet on this device. Min 8 characters.</p>
           <input className="field-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{ marginBottom: 10 }}/>
@@ -316,25 +417,45 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           {password && password.length < 8 && <div className="onboard-err">Min 8 characters</div>}
           {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
+            <button
+              className="btn-outline"
+              style={{ flex: 1 }}
+              onClick={() =>
+                setStep(
+                  step === 'create-pwd'      ? 'create-confirm'
+                  : step === 'import-pk-pwd' ? 'import-pk'
+                  : 'import',
+                )
+              }
+            >
+              Back
+            </button>
             <button
               className="btn-primary"
               style={{ flex: 1 }}
               disabled={password.length < 8 || password !== password2 || busy}
-              onClick={step === 'create-pwd' ? finishCreate : finishImport}
+              onClick={
+                step === 'create-pwd'      ? finishCreate
+                : step === 'import-pk-pwd' ? finishImportPk
+                : finishImport
+              }
             >
-              {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create wallet' : 'Import wallet')}
+              {busy ? 'Encrypting…' : (
+                step === 'create-pwd' ? 'Create wallet' :
+                step === 'import-pk-pwd' ? 'Import key' :
+                'Import wallet'
+              )}
             </button>
           </div>
         </>}
 
         {step === 'import' && <>
-          <h1 className="onboard-title">Import wallet</h1>
+          <h1 className="onboard-title">Import recovery phrase</h1>
           <p className="onboard-sub">Paste your 12, 15, 18, 21, or 24-word recovery phrase.</p>
           <textarea className="field-input" style={{ height: 100, resize: 'none', fontFamily: 'Geist Mono, monospace', fontSize: 12 }} placeholder="word1 word2 word3 …" value={importInput} onChange={e => setImportInput(e.target.value)}/>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{importInput.trim().split(/\s+/).filter(Boolean).length} words</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('welcome')}>Back</button>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('import-choose')}>Back</button>
             <button className="btn-primary" style={{ flex: 1 }} disabled={![12,15,18,21,24].includes(importInput.trim().split(/\s+/).filter(Boolean).length)} onClick={() => setStep('import-pwd')}>Continue</button>
           </div>
         </>}
@@ -371,9 +492,28 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 }
 
 export function useWalletGate() {
-  const [unlocked,   setUnlocked]   = useState(false);
-  const [hasVault,   setHasVault]   = useState<boolean | null>(null);
-  const [walletSeed, setWalletSeed] = useState<string[]>([]);
+  const [unlocked,         setUnlocked]         = useState(false);
+  const [hasVault,         setHasVault]         = useState<boolean | null>(null);
+  const [walletSeed,       setWalletSeed]       = useState<string[]>([]);
+  const [walletPrivateKey, setWalletPrivateKey] = useState<string | undefined>(undefined);
+  const [walletAddress,    setWalletAddress]    = useState<string>('');
+
+  const applySource = (source: WalletSource) => {
+    if (source.kind === 'mnemonic') {
+      const words = source.mnemonic.split(' ');
+      setWalletSeed(words);
+      setWalletPrivateKey(undefined);
+      setWalletAddress(deriveEvmAddress(words));
+    } else {
+      setWalletSeed([]);
+      setWalletPrivateKey(source.privateKey);
+      try {
+        setWalletAddress(getAddress(new Wallet(source.privateKey).address));
+      } catch {
+        setWalletAddress('0x0000…0000');
+      }
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -395,9 +535,9 @@ export function useWalletGate() {
       //    sessionStorage) -> user must enter password.
       const key = getSessionKey();
       if (!key) return;
-      const mnemonic = await openVaultWithKey(vault, key);
-      if (mnemonic) {
-        setWalletSeed(mnemonic.split(' '));
+      const plaintext = await openVaultWithKey(vault, key);
+      if (plaintext) {
+        applySource(deserializeSource(plaintext));
         setUnlocked(true);
       } else {
         // Stale / mismatched session key — wipe it so the unlock screen shows.
@@ -409,16 +549,18 @@ export function useWalletGate() {
   const lock = () => {
     setUnlocked(false);
     setWalletSeed([]);
+    setWalletPrivateKey(undefined);
+    setWalletAddress('');
     clearSessionKey();
   };
-  const onComplete = (seed: string[]) => {
-    setWalletSeed(seed);
+  const onComplete = (source: WalletSource) => {
+    applySource(source);
     setHasVault(true);
     setUnlocked(true);
     // Note: the session key was cached inside finishCreate / finishImport /
     // tryUnlock right after decryption. No re-cache needed here.
   };
-  const evmAddress = walletSeed.length ? deriveEvmAddress(walletSeed) : '0x0000…0000';
+  const evmAddress = walletAddress || '0x0000…0000';
 
-  return { unlocked, hasVault, walletSeed, evmAddress, lock, onComplete };
+  return { unlocked, hasVault, walletSeed, walletPrivateKey, evmAddress, lock, onComplete };
 }

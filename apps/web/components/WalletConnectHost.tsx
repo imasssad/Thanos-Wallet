@@ -20,6 +20,7 @@ import { useWallet } from './shell/AppShell';
 import {
   onSessionRequest, respondRequest, respondError,
 } from '../lib/walletconnect';
+import { Wallet as EthersWallet } from 'ethers';
 import { walletFromSeed, makeProvider } from '../lib/signer';
 
 interface PendingRequest {
@@ -32,11 +33,23 @@ interface PendingRequest {
 export function WalletConnectHost() {
   const wallet = useWallet();
   const seed   = wallet?.seed ?? [];
+  const pk     = wallet?.privateKey;
   const evm    = wallet?.evmAddress ?? '';
 
   // Latest values without retriggering the subscribe effect on every change.
   const seedRef = useRef(seed); seedRef.current = seed;
+  const pkRef   = useRef(pk);   pkRef.current   = pk;
   const evmRef  = useRef(evm);  evmRef.current  = evm;
+
+  /** Build an ethers Wallet for the current unlock — either from the HD seed
+   *  or from a raw private key — without leaking the secret beyond this fn. */
+  const currentWallet = (provider?: Parameters<typeof walletFromSeed>[1]) => {
+    if (pkRef.current) {
+      const w = new EthersWallet(pkRef.current);
+      return provider ? (w.connect(provider) as EthersWallet) : w;
+    }
+    return walletFromSeed(seedRef.current, provider);
+  };
 
   const [pending, setPending] = useState<PendingRequest | null>(null);
 
@@ -58,7 +71,7 @@ export function WalletConnectHost() {
             // params: [hexMessage, fromAddress] — the address may or may not
             // be checksummed; we sign regardless of order as long as one of
             // the entries matches our address.
-            const wallet = walletFromSeed(seedRef.current);
+            const wallet = currentWallet();
             const messageHex = (params[0] as string) ?? '';
             const message = messageHex.startsWith('0x')
               ? Buffer.from(messageHex.slice(2), 'hex')
@@ -69,7 +82,7 @@ export function WalletConnectHost() {
             break;
           }
           case 'eth_signTypedData_v4': {
-            const wallet = walletFromSeed(seedRef.current);
+            const wallet = currentWallet();
             const typedData = JSON.parse(params[1] as string) as {
               domain: Record<string, unknown>;
               types:  Record<string, Array<{ name: string; type: string }>>;
@@ -88,7 +101,7 @@ export function WalletConnectHost() {
             break;
           }
           case 'eth_sendTransaction': {
-            const w = walletFromSeed(seedRef.current, makeProvider());
+            const w = currentWallet(makeProvider());
             const txParams = params[0] as {
               to: string; value?: string; data?: string; gas?: string; gasLimit?: string;
               maxFeePerGas?: string; maxPriorityFeePerGas?: string;
