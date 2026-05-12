@@ -20,4 +20,23 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// Sentry wrapper — only injected when SENTRY_AUTH_TOKEN is present (i.e. release
+// builds in CI). Local dev imports `next` directly and skips source-map upload.
+const SENTRY_ENABLED =
+  !!process.env.SENTRY_AUTH_TOKEN &&
+  !!process.env.NEXT_PUBLIC_SENTRY_DSN;
+
+if (SENTRY_ENABLED) {
+  const { withSentryConfig } = require('@sentry/nextjs');
+  module.exports = withSentryConfig(nextConfig, {
+    org:           process.env.SENTRY_ORG     || 'thanos',
+    project:       process.env.SENTRY_PROJECT || 'thanos-wallet-web',
+    authToken:     process.env.SENTRY_AUTH_TOKEN,
+    silent:        true,
+    widenClientFileUpload: true,
+    hideSourceMaps: true,
+    disableLogger: true,
+  });
+} else {
+  module.exports = nextConfig;
+}

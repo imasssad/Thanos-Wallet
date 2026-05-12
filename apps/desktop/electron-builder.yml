@@ -1,18 +1,56 @@
 appId: ai.thanos.wallet
 productName: Thanos Wallet
+
+# Files included in the packaged app — dist/ holds the transpiled main process
+# and the Vite-built renderer bundle.
 files:
   - dist/**
   - index.html
+
+# ─── macOS ───────────────────────────────────────────────────────────────────
+# Hardened runtime + notarization are required for distribution outside the
+# App Store. Notarization is gated on APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD /
+# APPLE_TEAM_ID being present in the CI environment (see SIGNING.md).
 mac:
   category: public.app-category.finance
   hardenedRuntime: true
+  gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  notarize: false
+  # electron-builder auto-discovers the Developer ID cert from the keychain
+  # (or from CSC_LINK / CSC_KEY_PASSWORD when running in CI).
+  notarize: ${env.APPLE_ID:-false}
+  target:
+    - dmg
+    - zip
+
+# ─── Windows ─────────────────────────────────────────────────────────────────
+# Code signing uses the EV cert delivered out-of-band (HSM-resident). In CI we
+# point CSC_LINK at the .pfx file and CSC_KEY_PASSWORD at its passphrase.
+# Without those env vars, an unsigned NSIS installer is still produced for
+# local testing.
 win:
   target:
     - nsis
+  publisherName: Thanos Wallet
+  # When CSC_LINK / CSC_KEY_PASSWORD are present, electron-builder auto-signs
+  # with signtool using SHA-256. For HSM / YubiKey EV certs we'll need a
+  # custom signer hook (see SIGNING.md, Windows section).
+  signingHashAlgorithms:
+    - sha256
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  perMachine: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+
+# ─── Linux ───────────────────────────────────────────────────────────────────
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Finance
+  maintainer: Thanos Wallet <devs@thanos.fi>
+
 publish: never

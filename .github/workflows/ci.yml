@@ -1,0 +1,61 @@
+name: ci
+
+# Fast feedback on every push + PR: typecheck and a minimal build sanity
+# check across the four clients + backend services. Heavy stuff (release
+# bundles, electron dist, mobile EAS) stays in release.yml on tags.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: typecheck (all workspaces)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --no-frozen-lockfile
+      - name: Typecheck workspace
+        run: pnpm typecheck
+        env:
+          # Web app needs these at typecheck time to satisfy NEXT_PUBLIC_* reads.
+          NEXT_PUBLIC_LITHO_RPC:        https://rpc.litho.ai
+          NEXT_PUBLIC_REOWN_PROJECT_ID: 6d05d9a84112ca2f7c1bb77a76a18c81
+          NEXT_PUBLIC_MULTX_API_URL:    https://bridge.litho.ai
+
+  build-web:
+    name: build (web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --filter @thanos/web build
+        env:
+          NEXT_PUBLIC_LITHO_RPC:        https://rpc.litho.ai
+          NEXT_PUBLIC_REOWN_PROJECT_ID: 6d05d9a84112ca2f7c1bb77a76a18c81
+          NEXT_PUBLIC_MULTX_API_URL:    https://bridge.litho.ai
+
+  build-extension:
+    name: build (extension)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --filter @thanos/extension build

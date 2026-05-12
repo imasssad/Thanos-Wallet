@@ -4,5 +4,5 @@
     "types": ["wxt/client"],
     "noEmit": true
   },
-  "include": ["src/**/*", "wxt.config.ts"]
+  "include": ["src/**/*", "wxt.config.ts", ".wxt/wxt.d.ts"]
 }
