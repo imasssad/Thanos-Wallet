@@ -17,6 +17,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@reown/walletkit": "^1.5.5",
     "@sentry/nextjs": "^10.52.0",
+    "@solana/web3.js": "^1.98.0",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
     "@thanos/sdk-react": "workspace:*",

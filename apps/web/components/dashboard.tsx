@@ -7,6 +7,7 @@ import { TokenIcon } from './TokenIcon';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { usePrices, priceOr } from '../lib/usePrices';
+import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -356,20 +357,56 @@ export function Dashboard() {
     return () => { cancel = true; };
   }, [evmAddress]);
 
+  /* Solana balance — fetched direct from Solana RPC (the LITHO indexer
+     doesn't track non-EVM chains). Only mnemonic wallets can derive a
+     SOL address; private-key imports stay EVM-only for now. */
+  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const walletSeed = wallet?.seed;
+  useEffect(() => {
+    if (!walletSeed?.length) { setSolBalance(null); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const addr = getSolanaAddress(walletSeed.join(' '));
+        const bal  = await getSolanaBalance(addr);
+        if (!cancel) setSolBalance(parseFloat(bal));
+      } catch {
+        if (!cancel) setSolBalance(null);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [walletSeed]);
+
   /* Build the coin rows: prefer live indexer data, fall back to canonical
      TOKENS so the dashboard renders the moment the user lands on it. Both
-     paths use live CoinGecko prices when available. */
+     paths use live CoinGecko prices when available. SOL is appended
+     separately because the indexer is EVM-only. */
   const COINS = useMemo(() => {
+    const solToken = TOKENS.find(t => t.sym === 'SOL');
+    const solRow = (solBalance !== null && solToken)
+      ? {
+          sym:    'SOL',
+          name:   solToken.name,
+          bal:    solBalance.toLocaleString('en-US', { maximumFractionDigits: 4 }),
+          balNum: solBalance,
+          usdNum: solBalance * priceOr(prices, 'SOL', solToken.priceUsd),
+          chg:    solToken.change24h,
+          color:  solToken.color,
+        }
+      : null;
+
     const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
     if (fromLive.length === 0) {
       // Recompute the canonical fallback with live prices overlaid.
-      const raw = TOKENS.map(t => {
+      const raw = TOKENS.filter(t => t.sym !== 'SOL').map(t => {
         const balNum = parseFloat(t.balance.replace(/,/g, ''));
         const usdNum = balNum * priceOr(prices, t.sym, t.priceUsd);
         return {
           sym: t.sym, name: t.name, bal: t.balance, usdNum, chg: t.change24h, color: t.color,
         };
       });
+      // Drop in real SOL if we have it, alongside the canonical fallback rows.
+      if (solRow) raw.push({ sym: solRow.sym, name: solRow.name, bal: solRow.bal, usdNum: solRow.usdNum, chg: solRow.chg, color: solRow.color });
       const total = raw.reduce((s, c) => s + c.usdNum, 0) || 1;
       return raw.map(c => ({
         ...c,
@@ -377,8 +414,9 @@ export function Dashboard() {
         pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
       }));
     }
-    const total = fromLive.reduce((s, c) => s + c.usdNum, 0) || 1;
-    return fromLive.map(c => ({
+    const combined = solRow ? [...fromLive, solRow] : fromLive;
+    const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
+    return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,
       usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
       chg: c.chg, color: c.color,
