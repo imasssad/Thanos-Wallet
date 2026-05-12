@@ -1,7 +1,11 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { ethers } from 'ethers';
 import { TOKENS } from '../lib/tokens';
-import { Globe, Shield, Info, ChevronRight, Key, Download, Lock } from 'lucide-react';
+import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon } from 'lucide-react';
+import { useWallet } from './shell/AppShell';
+import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
+import { apiClient, type AuthUser } from '../lib/auth-client';
 
 // Market view leads with the Lithosphere ecosystem (canonical token list),
 // then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
@@ -83,19 +87,85 @@ export function MarketView() {
 }
 
 export function PortfolioView() {
-  // Build the portfolio rows from the shared Lithosphere token list,
-  // computing USD totals + allocation pct so everything sums to 100%.
-  const _raw = TOKENS.map(t => {
+  const wallet = useWallet();
+  const evmAddress = wallet?.evmAddress;
+
+  // Indexer-backed live balances. Null = haven't tried yet; [] = tried,
+  // got nothing; non-empty = real data. We never throw out the canonical
+  // TOKENS list — it provides icons/colors/prices the indexer doesn't have.
+  const [liveAssets, setLiveAssets] = useState<IndexerAsset[] | null>(null);
+  const [indexerOk,  setIndexerOk]  = useState<boolean>(true);
+  const [updatedAt,  setUpdatedAt]  = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!evmAddress) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const portfolio = await getPortfolio(evmAddress);
+        if (cancel) return;
+        setLiveAssets(portfolio.assets ?? []);
+        setUpdatedAt(portfolio.updatedAt);
+        setIndexerOk(true);
+      } catch (e) {
+        if (cancel) return;
+        if (e instanceof IndexerOffline) {
+          setIndexerOk(false);
+          setLiveAssets([]); // fall back to canonical TOKENS rendering below
+        } else {
+          throw e;
+        }
+      }
+    })();
+    return () => { cancel = true; };
+  }, [evmAddress]);
+
+  // Map a live indexer asset onto a UI row, using canonical TOKENS for
+  // icon/color/price (the indexer doesn't know about those).
+  function mergeRow(a: IndexerAsset) {
+    const canon = TOKENS.find(t =>
+      t.sym.toLowerCase() === a.symbol.toLowerCase() ||
+      (a.tokenAddress && t.address?.toLowerCase() === a.tokenAddress.toLowerCase())
+    );
+    let displayBal = '0';
+    try {
+      displayBal = ethers.formatUnits(a.balance || '0', a.decimals ?? 18);
+    } catch { /* malformed — leave 0 */ }
+    const balNum  = parseFloat(displayBal) || 0;
+    const priceUsd = canon?.priceUsd ?? 0;
+    return {
+      sym:   a.symbol,
+      name:  a.name || canon?.name || a.symbol,
+      bal:   balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }),
+      balNum,
+      usd:   Math.round(balNum * priceUsd),
+      chg:   canon?.change24h ?? 0,
+      color: canon?.color ?? '#52525b',
+      priceUsd,
+    };
+  }
+
+  // Pick which dataset to render:
+  //  - Real indexer data when we have any non-zero row
+  //  - Otherwise canonical TOKENS so the UI is never blank
+  const fromIndexer = (liveAssets ?? []).map(mergeRow).filter(r => r.balNum > 0);
+  const fromCanonical = TOKENS.map(t => {
     const balNum = parseFloat(t.balance.replace(/,/g, ''));
-    return { ...t, balNum, usd: Math.round(balNum * t.priceUsd) };
+    return {
+      sym: t.sym, name: t.name, bal: t.balance, balNum,
+      usd: Math.round(balNum * t.priceUsd),
+      chg: t.change24h, color: t.color, priceUsd: t.priceUsd,
+    };
   });
-  const _total = _raw.reduce((s, r) => s + r.usd, 0);
+  const _raw = fromIndexer.length > 0 ? fromIndexer : fromCanonical;
+  const _total = _raw.reduce((s, r) => s + r.usd, 0) || 1;
+
   const coins = _raw.map(r => ({
     sym:   r.sym,
     name:  r.name,
-    bal:   r.balance,
+    bal:   r.bal,
     usd:   r.usd,
-    chg:   r.change24h,
+    chg:   r.chg,
     color: r.color,
     pct:   Math.max(1, Math.round((r.usd / _total) * 100)),
     price: `$${r.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}`,
@@ -113,7 +183,18 @@ export function PortfolioView() {
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Assets</h1>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Updated just now</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {!indexerOk && (
+              <span style={{
+                fontSize: 10, letterSpacing: 1, padding: '2px 6px',
+                background: 'var(--bg-elevated)', borderRadius: 4,
+                color: 'var(--text-secondary)',
+              }}>OFFLINE · sample data</span>
+            )}
+            <span>
+              Updated {updatedAt ? new Date(updatedAt).toLocaleTimeString() : 'just now'}
+            </span>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <div className="card" style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 24 }}>
@@ -126,7 +207,9 @@ export function PortfolioView() {
               </svg>
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total</div>
-                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>$3.15M</div>
+                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>
+                  ${_total.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </div>
               </div>
             </div>
             {coins.map(c => (
@@ -189,18 +272,86 @@ const ALL_TXS = [
   { sym: 'JOT',    name: 'Jot Art',                      date: 'Jan 10, 2026', price: '$0.080',  type: 'Receive', status: 'Completed', amount: '+1,200 JOT',    pos: true,  color: '#ef4444' },
 ];
 
+function activityToRow(item: IndexerActivityItem) {
+  // The indexer's activity rows are normalised but light on display metadata;
+  // we look up icon/color from canonical TOKENS by symbol and format the
+  // amount with the right decimals. Unknown tokens fall back to neutral grey.
+  const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
+  const decimals = canon?.decimals ?? 18;
+  let amountStr = item.amount;
+  try {
+    const formatted = ethers.formatUnits(item.amount, decimals);
+    const n = parseFloat(formatted);
+    amountStr = n.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  } catch { /* indexer returned a non-wei value (e.g. already-formatted) */ }
+  const isOut = item.type === 'send' || item.type === 'burn';
+  const typeLabel =
+    item.type === 'send'    ? 'Send'    :
+    item.type === 'receive' ? 'Receive' :
+    item.type === 'swap'    ? 'Swap'    :
+    item.type.charAt(0).toUpperCase() + item.type.slice(1);
+  return {
+    sym:    item.symbol,
+    name:   canon?.name ?? item.symbol,
+    date:   item.ts ? new Date(item.ts).toLocaleDateString() : '—',
+    price:  canon ? `$${canon.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
+    type:   typeLabel,
+    status: item.status === 'pending' ? 'Pending'
+          : item.status === 'failed'  ? 'Failed'
+          : 'Completed',
+    amount: `${isOut ? '-' : '+'}${amountStr} ${item.symbol}`,
+    pos:    !isOut,
+    color:  canon?.color ?? '#52525b',
+  };
+}
+
 export function TransactionsView() {
+  const wallet = useWallet();
+  const evmAddress = wallet?.evmAddress;
   const [filter, setFilter] = useState<'All'|'Send'|'Receive'|'Swap'>('All');
-  const filtered = filter === 'All' ? ALL_TXS : ALL_TXS.filter(t => t.type === filter);
+  const [live,   setLive]   = useState<IndexerActivityItem[] | null>(null);
+  const [indexerOk, setIndexerOk] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!evmAddress) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const items = await getActivity(evmAddress);
+        if (!cancel) { setLive(items); setIndexerOk(true); }
+      } catch (e) {
+        if (cancel) return;
+        if (e instanceof IndexerOffline) {
+          setIndexerOk(false);
+          setLive([]);
+        } else {
+          throw e;
+        }
+      }
+    })();
+    return () => { cancel = true; };
+  }, [evmAddress]);
+
+  const rows = live && live.length > 0 ? live.map(activityToRow) : ALL_TXS;
+  const filtered = filter === 'All' ? rows : rows.filter(t => t.type === filter);
   return (
     <div className="main-area" style={{ width: '100%' }}>
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Transactions</h1>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['All','Send','Receive','Swap'] as const).map(f => (
-              <button key={f} className={`filter-pill ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
-            ))}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {!indexerOk && (
+              <span style={{
+                fontSize: 10, letterSpacing: 1, padding: '2px 6px',
+                background: 'var(--bg-elevated)', borderRadius: 4,
+                color: 'var(--text-secondary)',
+              }}>OFFLINE · sample data</span>
+            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['All','Send','Receive','Swap'] as const).map(f => (
+                <button key={f} className={`filter-pill ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -312,6 +463,115 @@ export function StakingView() {
   );
 }
 
+/* ─── Cloud account section (optional sign-in) ─────────────────────────────
+   Keeps the wallet local-first: a user can fully operate without ever
+   creating an account. Signing in lets us sync settings / device list /
+   email-driven recovery in the future. */
+function AccountSection({ Section, Row }: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+  Row:     React.FC<{ label: string; sub?: string; children: React.ReactNode }>;
+}) {
+  const [me, setMe]           = useState<AuthUser | null>(null);
+  const [busy, setBusy]       = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [email, setEmail]     = useState('');
+  const [password, setPwd]    = useState('');
+  const [mode, setMode]       = useState<'login' | 'register'>('login');
+
+  useEffect(() => {
+    (async () => {
+      if (await apiClient.isAuthenticated()) {
+        try {
+          const u = await apiClient.me();
+          setMe(u);
+        } catch { /* stale token — silently treat as logged-out */ }
+      }
+    })();
+  }, []);
+
+  const submit = async () => {
+    setBusy(true); setError(null);
+    try {
+      const res = mode === 'login'
+        ? await apiClient.login({ email, password })
+        : await apiClient.register({ email, password });
+      setMe(res.user);
+      setEmail(''); setPwd('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sign-in failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    setBusy(true);
+    try { await apiClient.logout(); } finally {
+      setMe(null);
+      setBusy(false);
+    }
+  };
+
+  if (me) {
+    return (
+      <Section icon={UserIcon} title="Account" sub="Cloud-synced account (optional)">
+        <Row label="Signed in" sub={me.email}>
+          <button className="settings-btn" disabled={busy} onClick={logout}>
+            <Lock size={14}/> Sign out
+          </button>
+        </Row>
+      </Section>
+    );
+  }
+
+  return (
+    <Section icon={UserIcon} title="Account" sub="Optional — link a cloud account for sync/recovery">
+      <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className={`filter-pill ${mode === 'login' ? 'active' : ''}`}
+            onClick={() => setMode('login')}
+            type="button"
+          >Sign in</button>
+          <button
+            className={`filter-pill ${mode === 'register' ? 'active' : ''}`}
+            onClick={() => setMode('register')}
+            type="button"
+          >Create</button>
+        </div>
+        <input
+          className="settings-select"
+          type="email"
+          placeholder="email@example.com"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+        />
+        <input
+          className="settings-select"
+          type="password"
+          placeholder="Password (min 8 characters)"
+          value={password}
+          onChange={e => setPwd(e.target.value)}
+        />
+        {error && (
+          <div style={{ fontSize: 11, color: 'var(--red)' }}>{error}</div>
+        )}
+        <button
+          className="settings-btn"
+          onClick={submit}
+          disabled={busy || !email || password.length < 8}
+        >
+          {busy ? '…' : mode === 'login' ? 'Sign in' : 'Create account'}
+        </button>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+          Your seed phrase stays on this device. Signing in is optional and
+          only used for cross-device settings sync.
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export function SettingsView() {
   const [currency, setCurrency] = useState('USD');
 
@@ -364,6 +624,8 @@ export function SettingsView() {
             </select>
           </Row>
         </Section>
+
+        <AccountSection Section={Section} Row={Row}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
