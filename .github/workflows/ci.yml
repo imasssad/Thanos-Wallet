@@ -59,3 +59,21 @@ jobs:
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/extension build
+
+  test:
+    name: tests (vault + auth)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install --no-frozen-lockfile
+      # Vault round-trip tests — encrypt/decrypt, wrong password, tampering.
+      # A regression here locks every user out of their funds, so this gate
+      # blocks the entire PR.
+      - run: pnpm --filter @thanos/web test
+      # Auth route tests — register/login/me/refresh/logout against a mocked pg.
+      - run: pnpm --filter @thanos/api test

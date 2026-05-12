@@ -3,6 +3,7 @@ packages:
   - apps/desktop
   - apps/extension
   - packages/*
+  - services/*
   # apps/mobile is intentionally NOT a workspace member.
   # Reason: EAS Build cloud doesn't support pnpm workspace symlinks well,
   # and mobile no longer imports any workspace packages anyway.
