@@ -8,6 +8,7 @@ import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { usePrices, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
+import { getBitcoinAddress, getBitcoinBalance } from '../lib/bitcoin';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -357,21 +358,30 @@ export function Dashboard() {
     return () => { cancel = true; };
   }, [evmAddress]);
 
-  /* Solana balance — fetched direct from Solana RPC (the LITHO indexer
-     doesn't track non-EVM chains). Only mnemonic wallets can derive a
-     SOL address; private-key imports stay EVM-only for now. */
+  /* Solana + Bitcoin balances — fetched direct from their respective
+     RPCs (the LITHO indexer doesn't track non-EVM chains). Both require
+     a mnemonic-derived wallet; private-key imports stay EVM-only. */
   const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [btcBalance, setBtcBalance] = useState<number | null>(null);
   const walletSeed = wallet?.seed;
   useEffect(() => {
-    if (!walletSeed?.length) { setSolBalance(null); return; }
+    if (!walletSeed?.length) { setSolBalance(null); setBtcBalance(null); return; }
     let cancel = false;
     (async () => {
+      const phrase = walletSeed.join(' ');
       try {
-        const addr = getSolanaAddress(walletSeed.join(' '));
+        const addr = getSolanaAddress(phrase);
         const bal  = await getSolanaBalance(addr);
         if (!cancel) setSolBalance(parseFloat(bal));
       } catch {
         if (!cancel) setSolBalance(null);
+      }
+      try {
+        const addr = getBitcoinAddress(phrase);
+        const bal  = await getBitcoinBalance(addr);
+        if (!cancel) setBtcBalance(parseFloat(bal));
+      } catch {
+        if (!cancel) setBtcBalance(null);
       }
     })();
     return () => { cancel = true; };
@@ -382,31 +392,36 @@ export function Dashboard() {
      paths use live CoinGecko prices when available. SOL is appended
      separately because the indexer is EVM-only. */
   const COINS = useMemo(() => {
-    const solToken = TOKENS.find(t => t.sym === 'SOL');
-    const solRow = (solBalance !== null && solToken)
-      ? {
-          sym:    'SOL',
-          name:   solToken.name,
-          bal:    solBalance.toLocaleString('en-US', { maximumFractionDigits: 4 }),
-          balNum: solBalance,
-          usdNum: solBalance * priceOr(prices, 'SOL', solToken.priceUsd),
-          chg:    solToken.change24h,
-          color:  solToken.color,
-        }
-      : null;
+    const buildNonEvmRow = (sym: 'SOL' | 'BTC', balance: number | null) => {
+      const tok = TOKENS.find(t => t.sym === sym);
+      if (balance === null || !tok) return null;
+      const decimals = sym === 'BTC' ? 6 : 4; // BTC display precision is tighter
+      return {
+        sym,
+        name:   tok.name,
+        bal:    balance.toLocaleString('en-US', { maximumFractionDigits: decimals }),
+        balNum: balance,
+        usdNum: balance * priceOr(prices, sym, tok.priceUsd),
+        chg:    tok.change24h,
+        color:  tok.color,
+      };
+    };
+    const solRow = buildNonEvmRow('SOL', solBalance);
+    const btcRow = buildNonEvmRow('BTC', btcBalance);
+    const extraRows = [solRow, btcRow].filter((r): r is NonNullable<typeof r> => r !== null);
 
     const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
     if (fromLive.length === 0) {
       // Recompute the canonical fallback with live prices overlaid.
-      const raw = TOKENS.filter(t => t.sym !== 'SOL').map(t => {
+      const raw = TOKENS.filter(t => t.sym !== 'SOL' && t.sym !== 'BTC').map(t => {
         const balNum = parseFloat(t.balance.replace(/,/g, ''));
         const usdNum = balNum * priceOr(prices, t.sym, t.priceUsd);
         return {
           sym: t.sym, name: t.name, bal: t.balance, usdNum, chg: t.change24h, color: t.color,
         };
       });
-      // Drop in real SOL if we have it, alongside the canonical fallback rows.
-      if (solRow) raw.push({ sym: solRow.sym, name: solRow.name, bal: solRow.bal, usdNum: solRow.usdNum, chg: solRow.chg, color: solRow.color });
+      // Drop in real non-EVM rows if we have them, alongside the canonical fallback rows.
+      for (const r of extraRows) raw.push({ sym: r.sym, name: r.name, bal: r.bal, usdNum: r.usdNum, chg: r.chg, color: r.color });
       const total = raw.reduce((s, c) => s + c.usdNum, 0) || 1;
       return raw.map(c => ({
         ...c,
@@ -414,7 +429,7 @@ export function Dashboard() {
         pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
       }));
     }
-    const combined = solRow ? [...fromLive, solRow] : fromLive;
+    const combined = [...fromLive, ...extraRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,

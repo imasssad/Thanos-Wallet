@@ -34,6 +34,7 @@ const COINGECKO_IDS: Record<string, string> = {
   FurGPT: 'furgpt',      // probably 404s today — fall back to placeholder
   COLLE:  'colle-ai',    // probably 404s today — fall back to placeholder
   SOL:    'solana',
+  BTC:    'bitcoin',
 };
 
 const CACHE_TTL_MS = 60_000;

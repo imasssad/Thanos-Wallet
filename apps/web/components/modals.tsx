@@ -20,6 +20,7 @@ import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
 import { looksLikeName, resolveName } from '../lib/dnns';
 import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
+import { isValidBitcoinAddress, sendBitcoin, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
@@ -80,20 +81,26 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   /* Lookup the token row for the currently selected symbol — drives
      chain-aware branches for validation, fee estimation and broadcast. */
   const selectedToken = useMemo(() => TOKENS.find(t => t.sym === coin) ?? null, [coin]);
-  const isSolanaSend = selectedToken?.chain === 'Solana';
+  const isSolanaSend  = selectedToken?.chain === 'Solana';
+  const isBitcoinSend = selectedToken?.chain === 'Bitcoin';
 
   /* Validate the recipient against the chain of the selected token. */
   const recipientValidation = useMemo(() => {
     const trimmed = to.trim();
-    if (!trimmed) return { valid: false, format: null as 'evm' | 'litho' | 'solana' | null, reason: '' };
+    if (!trimmed) return { valid: false, format: null as 'evm' | 'litho' | 'solana' | 'btc' | null, reason: '' };
     if (isSolanaSend) {
       return isValidSolanaAddress(trimmed)
         ? { valid: true,  format: 'solana' as const, reason: '' }
         : { valid: false, format: 'solana' as const, reason: 'Not a valid Solana address (base58 PublicKey)' };
     }
+    if (isBitcoinSend) {
+      return isValidBitcoinAddress(trimmed)
+        ? { valid: true,  format: 'btc' as const, reason: '' }
+        : { valid: false, format: 'btc' as const, reason: 'Not a valid Bitcoin address (legacy / segwit / bech32 / taproot)' };
+    }
     const v = validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
     return { ...v, format: v.format as 'evm' | 'litho' | null };
-  }, [to, isSolanaSend]);
+  }, [to, isSolanaSend, isBitcoinSend]);
 
   /* Canonical EVM form — what we'd actually broadcast to the chain.
      If the user typed a DNNS name and we resolved it, use that instead. */
@@ -126,16 +133,16 @@ export function SendModal({ onClose }: { onClose: () => void }) {
 
   /* Live fee estimate. EVM path uses gasLimit × maxFeePerGas via ethers.
      Solana txs cost a near-constant ~5_000 lamports (0.000005 SOL); we
-     show that as the static estimate instead of round-tripping the RPC. */
+     show that as the static estimate instead of round-tripping the RPC.
+     Bitcoin fees depend on the mempool fee rate × tx vsize, which we
+     don't compute pre-broadcast — show a placeholder. */
   useEffect(() => {
     if (!recipientValidation.valid || !amount) {
       setFeeStr(null);
       return;
     }
-    if (isSolanaSend) {
-      setFeeStr('~0.000005 SOL');
-      return;
-    }
+    if (isSolanaSend)  { setFeeStr('~0.000005 SOL'); return; }
+    if (isBitcoinSend) { setFeeStr('Mempool fee · variable'); return; }
     if (!wallet?.seed?.length && !wallet?.privateKey) {
       setFeeStr(null);
       return;
@@ -153,12 +160,43 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend]);
+  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend]);
 
   const onSubmit = async () => {
     if (!wallet?.seed?.length && !wallet?.privateKey) {
       setError('Wallet is locked. Please refresh and unlock.');
       setStage('failed');
+      return;
+    }
+
+    /* ─── Bitcoin branch ───────────────────────────────────────────────
+       BIP84 segwit, UTXO + PSBT via sdk-core's BitcoinClient over
+       mempool.space. Mnemonic-only — no private-key import support for
+       BTC in v1 (would need a separate path for raw secp256k1 keys). */
+    if (isBitcoinSend) {
+      if (!wallet.seed?.length) {
+        setError('Bitcoin send requires a recovery-phrase wallet (private-key import not supported for BTC).');
+        setStage('failed');
+        return;
+      }
+      setStage('broadcasting');
+      setError(null);
+      try {
+        const txid = await sendBitcoin({
+          mnemonic:  wallet.seed.join(' '),
+          recipient: to.trim(),
+          amount,
+        });
+        setTxHash(txid);
+        // Bitcoin txs are "pending" until first confirmation (~10 min).
+        // We don't poll mempool.space here; the user can dismiss the
+        // modal and watch the explorer link.
+        setStage('pending');
+      } catch (e) {
+        const msg = e instanceof BitcoinSendError ? e.message : (e as Error).message || 'Failed to send';
+        setError(msg);
+        setStage('failed');
+      }
       return;
     }
 
@@ -253,7 +291,9 @@ export function SendModal({ onClose }: { onClose: () => void }) {
 
   if (stage !== 'compose') {
     const explorer = txHash
-      ? (isSolanaSend ? solanaExplorerUrl(txHash) : `https://makalu.litho.ai/tx/${txHash}`)
+      ? (isSolanaSend  ? solanaExplorerUrl(txHash)
+       : isBitcoinSend ? bitcoinExplorerUrl(txHash)
+       : `https://makalu.litho.ai/tx/${txHash}`)
       : null;
     return (
       <Modal title="Send" onClose={onClose}>
@@ -369,9 +409,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             ✓ Valid {
               recipientValidation.format === 'litho'  ? 'litho1' :
               recipientValidation.format === 'solana' ? 'Solana' :
+              recipientValidation.format === 'btc'    ? 'Bitcoin' :
               'EVM'
             } address
-            {matchedContact && !isSolanaSend && (
+            {matchedContact && !isSolanaSend && !isBitcoinSend && (
               <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>· {matchedContact.name}</span>
             )}
             {recipientValidation.format === 'litho' && canonicalEvm && (
