@@ -11,8 +11,8 @@ const ACCOUNT_NAME = 'RobbyWallet';
 
 const NAV = [
   { href: '/app',           label: 'Dashboard'    },
-  { href: '/app/market',    label: 'Market'       },
   { href: '/app/assets',    label: 'Assets'       },
+  { href: '/app/market',    label: 'Market'       },
   { href: '/app/history',   label: 'Transactions' },
   { href: '/app/staking',   label: 'Staking'      },
   { href: '/app/settings',  label: 'Settings'     },

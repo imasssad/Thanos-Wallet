@@ -59,7 +59,7 @@ function Nav() {
     <nav className="lp-nav">
       <div className="lp-nav-inner">
         <Link href="/" className="lp-nav-logo">
-          <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={44} height={44}/>
+          <img src="/images/Thanos_Logo.png" alt="Thanos" width={44} height={44}/>
           <span className="lp-nav-logo-text">Thanos</span>
         </Link>
         <div className="lp-nav-right">
@@ -87,7 +87,7 @@ function Hero() {
         <div className="lp-hero-text">
           <h1 className="lp-hero-title">
             <span className="lp-line"><span className="lp-line-inner">Every chain.</span></span>
-            <span className="lp-line"><span className="lp-line-inner">One <span className="lp-accent">key.</span></span></span>
+            <span className="lp-line"><span className="lp-line-inner">One <span className="lp-accent">Wallet</span></span></span>
           </h1>
 
           <p className="lp-hero-sub">
@@ -139,7 +139,7 @@ function PhoneMockup() {
             <span>9:41</span>
             <span className="lp-phone-status-right">5G  100%</span>
           </div>
-          <div className="lp-phone-greeting">Hi, RobbyWallet</div>
+          <div className="lp-phone-greeting">Hi Sora,</div>
           <div className="lp-phone-balance">
             <div className="lp-phone-label">TOTAL BALANCE</div>
             <div className="lp-phone-amt">$515,950<span className="lp-phone-cents">.00</span></div>
@@ -180,11 +180,11 @@ function DashboardSection() {
     <section id="dashboard" ref={ref} className={`lp-section ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
         <h2 className="lp-h2">
-          ONE DASHBOARD.<br/>
-          EVERYTHING <span className="lp-accent">YOURS.</span>
+          ONE ACCESS.<br/>
+          FULL <span className="lp-accent">CONTROL.</span>
         </h2>
         <p className="lp-lede">
-          Lithosphere positions, EVM balances, Bitcoin wallets — surfaced in a single feed.
+          Thanos positions, EVM balances, Bitcoin wallets — surfaced in a single feed.
           No tab-hopping. No bridge guesswork. The numbers you came to see, on first paint.
         </p>
 
@@ -207,7 +207,7 @@ function DashboardMockup() {
           <span className="lp-mock-tab">Portfolio</span>
           <span className="lp-mock-tab">Staking</span>
         </div>
-        <div className="lp-mock-acct">RobbyWallet · 0x70cA…2F2B7</div>
+        <div className="lp-mock-acct">Sora · 0x70cA…2F2B7</div>
       </div>
 
       <div className="lp-mock-body">
@@ -281,8 +281,7 @@ function EcosystemSection() {
     <section id="ecosystem" ref={ref} className={`lp-section ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
         <h2 className="lp-h2">
-          STAKE LITHO.<br/>
-          EARN <span className="lp-accent-grad">18.40%</span>.
+          STAKE <span className="lp-accent-grad">LITHO</span>.
         </h2>
         <p className="lp-lede">
           Validator delegation, wrapped-LITHO pools, and FractalGPT yield —
