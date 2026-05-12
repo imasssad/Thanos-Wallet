@@ -20,7 +20,8 @@ import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
 import { looksLikeName, resolveName } from '../lib/dnns';
 import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
-import { isValidBitcoinAddress, sendBitcoin, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
+import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
+import { signerSendBitcoin } from '../lib/signer-client';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
@@ -142,7 +143,28 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       return;
     }
     if (isSolanaSend)  { setFeeStr('~0.000005 SOL'); return; }
-    if (isBitcoinSend) { setFeeStr('Mempool fee · variable'); return; }
+    if (isBitcoinSend) {
+      // Live BTC fee estimate — fetches UTXOs + mempool fastest fee rate,
+      // estimates vsize from inputs+outputs. ~0 cost since no signing.
+      if (!wallet?.seed?.length && !wallet?.privateKey) {
+        setFeeStr(null);
+        return;
+      }
+      const source = wallet.privateKey
+        ? { kind: 'privateKey' as const, privateKey: wallet.privateKey }
+        : { kind: 'mnemonic'   as const, mnemonic: wallet.seed.join(' ') };
+      let cancelled = false;
+      setFeeStr('Estimating…');
+      const t = setTimeout(async () => {
+        try {
+          const est = await estimateBitcoinFee({ source, amount });
+          if (!cancelled) setFeeStr(est ? `${est.btc} BTC · ${est.feeRate} sat/vB` : null);
+        } catch {
+          if (!cancelled) setFeeStr(null);
+        }
+      }, 400);
+      return () => { cancelled = true; clearTimeout(t); };
+    }
     if (!wallet?.seed?.length && !wallet?.privateKey) {
       setFeeStr(null);
       return;
@@ -170,23 +192,46 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     }
 
     /* ─── Bitcoin branch ───────────────────────────────────────────────
-       BIP84 segwit, UTXO + PSBT via sdk-core's BitcoinClient over
-       mempool.space. Mnemonic-only — no private-key import support for
-       BTC in v1 (would need a separate path for raw secp256k1 keys). */
+       BIP84 segwit (mnemonic) or single-keypair P2WPKH (private key),
+       UTXO + PSBT, broadcast via mempool.space. Mnemonic sends prefer
+       the WebWorker so the seed never re-enters main-thread scope. */
     if (isBitcoinSend) {
-      if (!wallet.seed?.length) {
-        setError('Bitcoin send requires a recovery-phrase wallet (private-key import not supported for BTC).');
+      if (!wallet.seed?.length && !wallet.privateKey) {
+        setError('Wallet is locked. Please refresh and unlock.');
         setStage('failed');
         return;
       }
       setStage('broadcasting');
       setError(null);
       try {
-        const txid = await sendBitcoin({
-          mnemonic:  wallet.seed.join(' '),
-          recipient: to.trim(),
-          amount,
-        });
+        let txid: string;
+        // Mnemonic path: try the worker first, fall back to direct.
+        // PK path: direct only — the worker is mnemonic-flavoured.
+        if (wallet.seed?.length) {
+          try {
+            const r = await signerSendBitcoin({ recipient: to.trim(), amount });
+            txid = r.hash;
+          } catch (workerErr) {
+            const code = (workerErr as { code?: string }).code
+                       ?? (workerErr as Error).message;
+            if (code === 'worker_locked' || code === 'worker_crashed' || code === 'btc_requires_mnemonic') {
+              txid = await sendBitcoin({
+                source:    { kind: 'mnemonic', mnemonic: wallet.seed.join(' ') },
+                recipient: to.trim(),
+                amount,
+              });
+            } else {
+              throw workerErr;
+            }
+          }
+        } else {
+          // PK wallet — main-thread direct send.
+          txid = await sendBitcoin({
+            source:    { kind: 'privateKey', privateKey: wallet.privateKey! },
+            recipient: to.trim(),
+            amount,
+          });
+        }
         setTxHash(txid);
         // Bitcoin txs are "pending" until first confirmation (~10 min).
         // We don't poll mempool.space here; the user can dismiss the

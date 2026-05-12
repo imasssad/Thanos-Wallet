@@ -120,3 +120,13 @@ export function signerSignTransaction(input: {
 }): Promise<{ hash: string }> {
   return call('sign-transaction', input);
 }
+
+/** Bitcoin send via the worker. Mnemonic-only — PK-imported wallets must
+ *  fall back to the direct (main-thread) sendBitcoin() path. */
+export function signerSendBitcoin(input: {
+  recipient:        string;
+  amount:           string;      // human-readable BTC
+  feeRateSatPerVb?: number;
+}): Promise<{ hash: string }> {
+  return call('send-btc', input);
+}

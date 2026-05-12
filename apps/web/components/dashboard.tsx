@@ -8,7 +8,7 @@ import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { usePrices, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
-import { getBitcoinAddress, getBitcoinBalance } from '../lib/bitcoin';
+import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -359,25 +359,36 @@ export function Dashboard() {
   }, [evmAddress]);
 
   /* Solana + Bitcoin balances — fetched direct from their respective
-     RPCs (the LITHO indexer doesn't track non-EVM chains). Both require
-     a mnemonic-derived wallet; private-key imports stay EVM-only. */
+     RPCs (the LITHO indexer doesn't track non-EVM chains).
+     Solana: mnemonic-only (no SLIP-0010 derivation from raw secp256k1 PK).
+     Bitcoin: works for both mnemonic (BIP84) and private-key imports
+     (single P2WPKH keypair derived from the raw 32-byte key). */
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [btcBalance, setBtcBalance] = useState<number | null>(null);
   const walletSeed = wallet?.seed;
+  const walletPk   = wallet?.privateKey;
   useEffect(() => {
-    if (!walletSeed?.length) { setSolBalance(null); setBtcBalance(null); return; }
+    if (!walletSeed?.length && !walletPk) { setSolBalance(null); setBtcBalance(null); return; }
     let cancel = false;
     (async () => {
-      const phrase = walletSeed.join(' ');
-      try {
-        const addr = getSolanaAddress(phrase);
-        const bal  = await getSolanaBalance(addr);
-        if (!cancel) setSolBalance(parseFloat(bal));
-      } catch {
-        if (!cancel) setSolBalance(null);
+      // Solana — mnemonic only.
+      if (walletSeed?.length) {
+        try {
+          const addr = getSolanaAddress(walletSeed.join(' '));
+          const bal  = await getSolanaBalance(addr);
+          if (!cancel) setSolBalance(parseFloat(bal));
+        } catch {
+          if (!cancel) setSolBalance(null);
+        }
+      } else {
+        setSolBalance(null);
       }
+      // Bitcoin — works for either source.
       try {
-        const addr = getBitcoinAddress(phrase);
+        const source = walletPk
+          ? { kind: 'privateKey' as const, privateKey: walletPk }
+          : { kind: 'mnemonic'   as const, mnemonic: walletSeed!.join(' ') };
+        const addr = getBitcoinAddressFromSource(source);
         const bal  = await getBitcoinBalance(addr);
         if (!cancel) setBtcBalance(parseFloat(bal));
       } catch {
@@ -385,7 +396,7 @@ export function Dashboard() {
       }
     })();
     return () => { cancel = true; };
-  }, [walletSeed]);
+  }, [walletSeed, walletPk]);
 
   /* Build the coin rows: prefer live indexer data, fall back to canonical
      TOKENS so the dashboard renders the moment the user lands on it. Both
