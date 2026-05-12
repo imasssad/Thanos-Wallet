@@ -1,0 +1,41 @@
+# Prometheus scrape config for Thanos Wallet.
+#
+# Each service is expected to expose /metrics on its internal Docker network
+# port. Once a service ships its prom-client integration, uncomment the
+# matching job below and `docker compose ... up -d --force-recreate prometheus`.
+
+global:
+  scrape_interval:     15s
+  scrape_timeout:      10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ─── Wallet services ────────────────────────────────────────────────────
+  # `host.docker.internal` resolves to the Docker bridge gateway so the
+  # observability stack can reach services running in the main wallet stack.
+
+  # - job_name: thanos-api
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ['host.docker.internal:4100']
+
+  # - job_name: thanos-indexer
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ['host.docker.internal:4010']
+
+  # - job_name: thanos-worker
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ['host.docker.internal:4020']
+
+  # ─── Host metrics (optional) ────────────────────────────────────────────
+  # Run node_exporter on the host to scrape CPU/mem/disk/network:
+  #
+  # - job_name: node
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9100']

@@ -72,24 +72,54 @@ Sensitive fields auto-redacted: `password`, `mnemonic`, `seed`,
 `private_key`, `token`, `accessToken`, `refreshToken`, `authorization`,
 plus nested matches (e.g. `*.password`).
 
-## Prometheus + Grafana — TODO
+## Prometheus + Grafana
 
-Metric collection isn't wired yet. The intended stack:
+A starter Prometheus + Grafana stack is in `ops/observability/`. It runs
+as a separate compose file so the wallet app stack can stay lean:
 
-- Each service exposes `/metrics` (prom-client) on the internal Docker
-  network only.
-- Prometheus container scrapes them every 15s.
-- Grafana queries Prometheus + alerts on:
-  - **RPC failover triggered** (Makalu primary unreachable)
-  - **Indexer sync gap > 5 min** (block cursor stalling)
-  - **Queue backlog > 100** (BullMQ workers behind)
-  - **API p99 latency > 1s**
-  - **5xx rate > 1%** sustained 5 min
+```bash
+# On the VPS:
+cd /var/www/thanos-wallet
+docker compose -f ops/observability/docker-compose.observability.yml up -d
+```
 
-Each is a separate alert routed to whatever paging tool we standardise on
-(Slack webhook, PagerDuty, email).
+Then:
+- **Prometheus** at `http://localhost:9090` (bind to localhost only; reverse-proxy if you need remote access)
+- **Grafana** at `http://localhost:3001` (default login `admin / admin`, change immediately)
 
-This is on the backlog — see todo #17.
+Prometheus self-scrapes plus scrapes the api / indexer / worker services
+once each exposes `/metrics`. The scrape config is in
+`ops/observability/prometheus.yml` — add new targets there.
+
+Alerts to add (route via Grafana → Alerting):
+  - RPC failover triggered (FallbackProvider rotation count climbing)
+  - Indexer sync gap > 5 min (block cursor stalling)
+  - Queue backlog > 100 (BullMQ workers behind)
+  - API p99 latency > 1s
+  - 5xx rate > 1% sustained 5 min
+
+Each alert routes to Slack webhook / PagerDuty / email — set up in the
+Grafana contact-points UI.
+
+## Redis persistence
+
+The bundled `redis` container in `docker-compose.yml` already runs with
+`--appendonly yes --appendfsync everysec` — AOF persistence enabled, ~1s
+durability window.
+
+The **host Redis** the production stack uses (via
+`docker-compose.host-db.yml`) needs the same enabled manually. Run once
+on the VPS:
+
+```bash
+# Append the directive if it's not already there
+grep -q '^appendonly yes' /etc/redis/redis.conf \
+  || echo 'appendonly yes' | sudo tee -a /etc/redis/redis.conf
+grep -q '^appendfsync' /etc/redis/redis.conf \
+  || echo 'appendfsync everysec' | sudo tee -a /etc/redis/redis.conf
+sudo systemctl restart redis-server
+ls -la /var/lib/redis/   # appendonly.aof should appear
+```
 
 ## Uptime / external probes
 
