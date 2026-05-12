@@ -11,7 +11,7 @@
  * lives in memory for the lifetime of a single transaction.
  */
 import {
-  Contract, HDNodeWallet, Mnemonic,
+  Contract, HDNodeWallet, Mnemonic, Wallet,
   formatEther, parseUnits,
   type Provider, type TransactionResponse,
 } from 'ethers';
@@ -49,6 +49,23 @@ export function walletFromSeed(seed: string[], provider?: Provider): HDNodeWalle
   const mnemonic = Mnemonic.fromPhrase(phrase);
   const hd = HDNodeWallet.fromMnemonic(mnemonic, HD_PATH);
   return provider ? (hd.connect(provider) as HDNodeWallet) : hd;
+}
+
+/**
+ * Unified input shape for the send/estimate paths. A wallet is built either
+ * from a 12/24-word seed (HD path) or from a raw 0x-prefixed private key
+ * (single account). Helper resolves to an ethers Wallet for signing.
+ */
+export type WalletInput =
+  | { seed: string[] }
+  | { privateKey: string };
+
+export function walletFromInput(input: WalletInput, provider?: Provider): HDNodeWallet | Wallet {
+  if ('privateKey' in input) {
+    const w = new Wallet(input.privateKey);
+    return provider ? (w.connect(provider) as Wallet) : w;
+  }
+  return walletFromSeed(input.seed, provider);
 }
 
 /* ─── Send flows ───────────────────────────────────────────────────────── */
@@ -94,7 +111,7 @@ export class SendError extends Error {
  *   - 'rpc_error'       — network / node failure
  *   - 'rejected'        — user-side cancel (only meaningful with HW wallets)
  */
-export async function sendTokens(seed: string[], input: SendInput): Promise<SendResult> {
+export async function sendTokens(walletInput: WalletInput, input: SendInput): Promise<SendResult> {
   const token: Token | undefined = TOKEN_BY_SYM[input.symbol];
   if (!token) throw new SendError('invalid_token', `Unknown token: ${input.symbol}`);
 
@@ -110,7 +127,7 @@ export async function sendTokens(seed: string[], input: SendInput): Promise<Send
   if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
   const provider = makeProvider();
-  const wallet = walletFromSeed(seed, provider);
+  const wallet = walletFromInput(walletInput, provider);
 
   let tx: TransactionResponse;
   try {
@@ -160,7 +177,7 @@ export interface FeeEstimate {
   totalLitho: string;
 }
 
-export async function estimateSendFee(seed: string[], input: SendInput): Promise<FeeEstimate | null> {
+export async function estimateSendFee(walletInput: WalletInput, input: SendInput): Promise<FeeEstimate | null> {
   const token = TOKEN_BY_SYM[input.symbol];
   if (!token) return null;
   const to = resolveToEvm(input.recipient.trim());
@@ -172,7 +189,7 @@ export async function estimateSendFee(seed: string[], input: SendInput): Promise
   if (weiAmount <= 0n) return null;
 
   const provider = makeProvider();
-  const wallet = walletFromSeed(seed, provider);
+  const wallet = walletFromInput(walletInput, provider);
 
   try {
     const feeData = await provider.getFeeData();

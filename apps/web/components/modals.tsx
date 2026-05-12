@@ -65,7 +65,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const est = await estimateSendFee(wallet.seed, { symbol: coin, recipient: to, amount });
+        const est = await estimateSendFee(
+          wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+          { symbol: coin, recipient: to, amount },
+        );
         if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} LITHO` : null);
       } catch {
         if (!cancelled) setFeeStr(null);
@@ -83,7 +86,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     setStage('broadcasting');
     setError(null);
     try {
-      const result = await sendTokens(wallet.seed, { symbol: coin, recipient: to, amount });
+      const result = await sendTokens(
+        wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+        { symbol: coin, recipient: to, amount },
+      );
       setTxHash(result.hash);
       setStage('pending');
       // Background: wait for confirmation. Doesn't block the UI; user can dismiss.

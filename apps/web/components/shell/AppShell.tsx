@@ -15,8 +15,12 @@ import { preloadTokenLogos } from '../../lib/token-logos';
 interface WalletContextValue {
   evmAddress: string;
   addresses:  DualAddress | null;
-  /** The unlocked BIP39 phrase (split into words). Used only at signing time. */
+  /** The unlocked BIP39 phrase (split into words). Empty when the wallet
+   *  was imported from a raw private key — see `privateKey` below. */
   seed:       string[];
+  /** Raw 0x-prefixed private key, set ONLY when the wallet was imported
+   *  via private key (not derived from a mnemonic). */
+  privateKey?: string;
 }
 const WalletContext = createContext<WalletContextValue | null>(null);
 export function useWallet(): WalletContextValue | null {
@@ -25,7 +29,7 @@ export function useWallet(): WalletContextValue | null {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
-  const { unlocked, hasVault, onComplete, lock, evmAddress, walletSeed } = useWalletGate();
+  const { unlocked, hasVault, onComplete, lock, evmAddress, walletSeed, walletPrivateKey } = useWalletGate();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -50,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const addresses = dualFromEvm(evmAddress);
 
   return (
-    <WalletContext.Provider value={{ evmAddress, addresses, seed: walletSeed }}>
+    <WalletContext.Provider value={{ evmAddress, addresses, seed: walletSeed, privateKey: walletPrivateKey }}>
       <WalletConnectHost/>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <TopNav onLock={lock}/>
