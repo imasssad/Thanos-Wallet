@@ -55,7 +55,7 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
     <nav className="topnav">
       <div className="topnav-logo">
         <div className="logo-mark">
-          <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={34} height={34} style={{ objectFit: 'contain' }}/>
+          <img src="/images/Thanos_Logo.png" alt="Thanos" width={34} height={34} style={{ objectFit: 'contain' }}/>
         </div>
       </div>
 

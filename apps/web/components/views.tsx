@@ -6,6 +6,7 @@ import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIco
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
+import { TokenIcon } from './TokenIcon';
 
 // Market view leads with the Lithosphere ecosystem (canonical token list),
 // then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
@@ -60,7 +61,7 @@ export function MarketView() {
                   <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
                   <td>
                     <div className="tx-cell">
-                      <div className="tx-avatar" style={{ background: c.color }}>{c.sym.slice(0,2)}</div>
+                      <TokenIcon sym={c.sym} color={c.color} size={36} style={{ borderRadius: 10 }}/>
                       <div>
                         <div className="tx-name">{c.name}</div>
                         <div className="tx-sym">{c.sym}</div>
@@ -236,7 +237,7 @@ export function PortfolioView() {
                   <tr key={c.sym}>
                     <td>
                       <div className="tx-cell">
-                        <div className="tx-avatar" style={{ background: c.color }}>{c.sym.slice(0,2)}</div>
+                        <TokenIcon sym={c.sym} color={c.color} size={36} style={{ borderRadius: 10 }}/>
                         <div>
                           <div className="tx-name">{c.name}</div>
                           <div className="tx-sym">{c.sym}</div>
@@ -371,7 +372,7 @@ export function TransactionsView() {
                 <tr key={i}>
                   <td>
                     <div className="tx-cell">
-                      <div className="tx-avatar" style={{ background: tx.color }}>{tx.sym.slice(0,2)}</div>
+                      <TokenIcon sym={tx.sym} color={tx.color} size={36} style={{ borderRadius: 10 }}/>
                       <div>
                         <div className="tx-name">{tx.name}</div>
                         <div className="tx-sym">{tx.sym}</div>
@@ -442,7 +443,7 @@ export function StakingView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {POOLS.map(p => (
               <div key={p.sym} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div className="tx-avatar" style={{ background: p.color, width: 38, height: 38, fontSize: 12, borderRadius: 10, flexShrink: 0 }}>{p.sym.slice(0,2)}</div>
+                <TokenIcon sym={p.sym} color={p.color} size={38} style={{ borderRadius: 10 }}/>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>TVL {p.tvl} · Min {p.minStake}</div>
