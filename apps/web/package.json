@@ -14,6 +14,7 @@
     "@ledgerhq/hw-app-eth": "^7.8.2",
     "@ledgerhq/hw-transport": "^6.35.2",
     "@ledgerhq/hw-transport-webusb": "^6.29.6",
+    "@radix-ui/react-select": "^2.2.6",
     "@reown/walletkit": "^1.5.5",
     "@sentry/nextjs": "^10.52.0",
     "@thanos/api-client": "workspace:*",

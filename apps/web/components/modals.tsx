@@ -8,6 +8,7 @@ import {
 } from '../lib/address';
 import { sendTokens, estimateSendFee, SendError } from '../lib/signer';
 import { getQuote as multxGetQuote, type Quote as MultXQuote, MultXUnavailable } from '../lib/multx';
+import { TokenSelect } from './ui/TokenSelect';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
 const BAL_MAP: Record<string, string> = Object.fromEntries(TOKENS.map(t => [t.sym, t.balance]));
@@ -149,9 +150,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body">
         <label className="field-label">Asset</label>
-        <select className="field-select" value={coin} onChange={e => setCoin(e.target.value)}>
-          {TOKEN_SYMBOLS.map(s => <option key={s}>{s}</option>)}
-        </select>
+        <TokenSelect value={coin} onChange={setCoin} options={TOKEN_SYMBOLS} ariaLabel="Send asset"/>
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
         <input
@@ -334,9 +333,9 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <select className="field-select" value={from} onChange={e => setFrom(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {TOKEN_SYMBOLS.map(s => <option key={s}>{s}</option>)}
-          </select>
+          <div style={{ flex: '0 0 130px' }}>
+            <TokenSelect value={from} onChange={setFrom} options={TOKEN_SYMBOLS} ariaLabel="Swap from"/>
+          </div>
           <input className="field-input" value={amt} onChange={e => setAmt(e.target.value)} type="number" placeholder="0.00" style={{ flex: 1 }}/>
         </div>
         <div style={{ textAlign: 'center', margin: '10px 0' }}>
@@ -344,9 +343,9 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
         </div>
         <label className="field-label">To</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <select className="field-select" value={to} onChange={e => setTo(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {TOKEN_SYMBOLS.map(s => <option key={s}>{s}</option>)}
-          </select>
+          <div style={{ flex: '0 0 130px' }}>
+            <TokenSelect value={to} onChange={setTo} options={TOKEN_SYMBOLS} ariaLabel="Swap to"/>
+          </div>
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
             {isFinite(displayedOut) ? displayedOut.toFixed(6) : '—'}
           </div>
