@@ -11,21 +11,18 @@
  * lives in memory for the lifetime of a single transaction.
  */
 import {
-  Contract, HDNodeWallet, JsonRpcProvider, Mnemonic,
-  formatEther, parseUnits, type TransactionResponse,
+  Contract, HDNodeWallet, Mnemonic,
+  formatEther, parseUnits,
+  type Provider, type TransactionResponse,
 } from 'ethers';
 import { TOKEN_BY_SYM, type Token } from './tokens';
 import { resolveToEvm } from './address';
 
 /* ─── Constants ────────────────────────────────────────────────────────── */
 
-export const MAKALU_CHAIN_ID = 700777;
-export const MAKALU_RPC_PRIMARY =
-  // Browser env: only NEXT_PUBLIC_* leaks into the bundle. Server-side env
-  // vars on the Next.js API routes can read LITHO_RPC_PRIMARY directly.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_LITHO_RPC) ||
-  'https://rpc.litho.ai';
+import { getMakaluProvider, MAKALU_CHAIN_ID as _CHAIN_ID } from './rpc';
+
+export const MAKALU_CHAIN_ID = _CHAIN_ID;
 
 const HD_PATH = "m/44'/60'/0'/0/0";
 
@@ -38,8 +35,8 @@ const LEP100_TRANSFER_ABI = [
 
 /* ─── Signer construction ─────────────────────────────────────────────── */
 
-export function makeProvider(): JsonRpcProvider {
-  return new JsonRpcProvider(MAKALU_RPC_PRIMARY, MAKALU_CHAIN_ID);
+export function makeProvider() {
+  return getMakaluProvider();
 }
 
 /**
@@ -47,7 +44,7 @@ export function makeProvider(): JsonRpcProvider {
  * Throws if the phrase is invalid (shouldn't happen — the gate already
  * decrypted it from a vault we created).
  */
-export function walletFromSeed(seed: string[], provider?: JsonRpcProvider): HDNodeWallet {
+export function walletFromSeed(seed: string[], provider?: Provider): HDNodeWallet {
   const phrase = seed.join(' ');
   const mnemonic = Mnemonic.fromPhrase(phrase);
   const hd = HDNodeWallet.fromMnemonic(mnemonic, HD_PATH);

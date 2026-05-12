@@ -3,19 +3,40 @@
  *
  * The indexer uses a *separate* RPC endpoint from user-facing requests
  * (rpc-2.litho.ai) so head-of-chain reads don't compete with sync traffic.
+ * Multiple endpoints (comma-separated) build a FallbackProvider so one
+ * dead RPC doesn't pause the sync loop.
  */
-import { Contract, JsonRpcProvider, ZeroAddress } from 'ethers';
+import { Contract, FallbackProvider, JsonRpcProvider, ZeroAddress, type Provider } from 'ethers';
 
 export const MAKALU_CHAIN_ID = 700777;
 export const KAMET_CHAIN_ID  = 900523;
 
-/** Provider used by the sync loop. Defaults to the rpc-2 endpoint. */
-export const makaluProvider = new JsonRpcProvider(
-  process.env.LITHO_RPC_INDEXER
+function readIndexerRpcUrls(): string[] {
+  const raw =
+    process.env.LITHO_RPC_INDEXER
     || process.env.LITHO_RPC_PRIMARY
-    || 'https://rpc-2.litho.ai',
-  MAKALU_CHAIN_ID,
-);
+    || 'https://rpc-2.litho.ai,https://rpc.litho.ai,https://rpc-3.litho.ai';
+  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function buildProvider(): Provider {
+  const urls = readIndexerRpcUrls();
+  if (urls.length === 1) return new JsonRpcProvider(urls[0], MAKALU_CHAIN_ID);
+  return new FallbackProvider(
+    urls.map(url => ({
+      provider:     new JsonRpcProvider(url, MAKALU_CHAIN_ID),
+      priority:     1,
+      weight:       1,
+      stallTimeout: 1500,
+    })),
+    MAKALU_CHAIN_ID,
+    { quorum: 1 },
+  );
+}
+
+/** Provider used by the sync loop. Will failover automatically across the
+ *  configured endpoint list. */
+export const makaluProvider: Provider = buildProvider();
 
 /** Standard ERC-20 / LEP-100 ABI. LEP-100 = ERC-20 + burn/burnFrom, but
  *  burn doesn't emit a distinct event — it shows as a Transfer to 0x0 —

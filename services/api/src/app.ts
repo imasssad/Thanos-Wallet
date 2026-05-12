@@ -44,7 +44,8 @@ export function createApp(): express.Express {
   });
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('[api] unhandled error', err);
+    // Lazy import so app.ts doesn't depend on log.ts at module load (test ergonomics).
+    import('./lib/log.js').then(({ log }) => log.error({ err: err.message, stack: err.stack }, 'unhandled error'));
     res.status(500).json({ error: 'Internal server error' });
   });
 

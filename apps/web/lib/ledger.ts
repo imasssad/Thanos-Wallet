@@ -113,9 +113,10 @@ export async function signTransaction(
   }
 }
 
-/** Build, sign, and broadcast an EVM tx via Ledger. */
+/** Build, sign, and broadcast an EVM tx via Ledger.
+ *  Accepts any ethers Provider (JsonRpcProvider, FallbackProvider, etc.). */
 export async function signAndBroadcastTx(args: {
-  provider: ethers.JsonRpcProvider;
+  provider: ethers.Provider;
   from:     string;
   to:       string;
   value:    bigint;
