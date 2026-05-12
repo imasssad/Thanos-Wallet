@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Worker, Queue, QueueEvents } from 'bullmq';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import pg from 'pg';
 import {
   QUEUES,
@@ -119,7 +119,7 @@ new Worker<BridgePollJob>(
     });
 
     if (!res.ok) throw new Error(`MultX status check failed: ${res.status}`);
-    const status = await res.json();
+    const status = await res.json() as { state?: string };
 
     // Map MultX status to our internal status
     const internalStatus =
