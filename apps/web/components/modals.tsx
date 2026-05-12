@@ -9,6 +9,9 @@ import {
 import { sendTokens, estimateSendFee, SendError } from '../lib/signer';
 import { getQuote as multxGetQuote, type Quote as MultXQuote, MultXUnavailable } from '../lib/multx';
 import { TokenSelect } from './ui/TokenSelect';
+import { QrScannerModal } from './QrScannerModal';
+import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
+import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
 const BAL_MAP: Record<string, string> = Object.fromEntries(TOKENS.map(t => [t.sym, t.balance]));
@@ -41,6 +44,25 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError]   = useState<string | null>(null);
   const [feeStr, setFeeStr] = useState<string | null>(null);
+
+  // Recipient UX state — QR scanner + address-book autocomplete.
+  const [showQr,       setShowQr]       = useState(false);
+  const [showSuggest,  setShowSuggest]  = useState(false);
+  const contactSuggestions = useMemo<Contact[]>(() => {
+    const trimmed = to.trim();
+    if (!trimmed) return [];
+    return searchContacts(trimmed).slice(0, 5);
+  }, [to]);
+  const matchedContact = useMemo<Contact | null>(() => {
+    // If the input already matches a saved contact, show their name beside the
+    // green "Valid address" badge.
+    return canonicalEvmFor(to);
+  }, [to]);
+
+  function canonicalEvmFor(input: string): Contact | null {
+    const evm = resolveToEvm(input.trim());
+    return evm ? findContactByAddress(evm) : null;
+  }
 
   const balMap = BAL_MAP;
 
@@ -159,19 +181,72 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         <TokenSelect value={coin} onChange={setCoin} options={TOKEN_SYMBOLS} ariaLabel="Send asset"/>
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
-        <input
-          className="field-input"
-          placeholder="litho1… or 0x…"
-          value={to}
-          onChange={e => setTo(e.target.value)}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          style={{ fontFamily: to ? 'Geist Mono, monospace' : undefined, fontSize: to ? 12 : undefined }}
-        />
+        <div style={{ position: 'relative' }}>
+          <input
+            className="field-input"
+            placeholder="litho1… or 0x…"
+            value={to}
+            onChange={e => { setTo(e.target.value); setShowSuggest(true); }}
+            onFocus={() => setShowSuggest(true)}
+            onBlur={() => setTimeout(() => setShowSuggest(false), 120)}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            style={{ fontFamily: to ? 'Geist Mono, monospace' : undefined, fontSize: to ? 12 : undefined, paddingRight: 40 }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowQr(true)}
+            aria-label="Scan QR"
+            title="Scan QR"
+            style={{
+              position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+              borderRadius: 6, padding: 4, cursor: 'pointer', display: 'flex',
+            }}
+          >
+            <QrCode size={16} color="var(--text-secondary)"/>
+          </button>
+        </div>
+
+        {/* Saved-contact autocomplete — shows up to 5 matches as the user types. */}
+        {showSuggest && contactSuggestions.length > 0 && (
+          <div style={{
+            marginTop: 6,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 8,
+            padding: 4,
+            maxHeight: 180,
+            overflowY: 'auto',
+          }}>
+            {contactSuggestions.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                onMouseDown={() => { setTo(c.evm); setShowSuggest(false); }}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                  width: '100%', padding: '8px 10px', borderRadius: 6,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'inherit', textAlign: 'left',
+                }}
+                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{c.name}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{c.evm}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {to.trim() && recipientValidation.valid && (
-          <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             ✓ Valid {recipientValidation.format === 'litho' ? 'litho1' : 'EVM'} address
+            {matchedContact && (
+              <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>· {matchedContact.name}</span>
+            )}
             {recipientValidation.format === 'litho' && canonicalEvm && (
               <span style={{ color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>
                 · {truncateLithoAddress(canonicalEvm, 8, 6)}
@@ -184,6 +259,13 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             {recipientValidation.reason || 'Invalid address'}
           </div>
         )}
+
+        <QrScannerModal
+          open={showQr}
+          onClose={() => setShowQr(false)}
+          onResult={(decoded) => { setTo(decoded); setShowQr(false); }}
+        />
+
 
         <label className="field-label" style={{ marginTop: 14 }}>Amount</label>
         <div style={{ position: 'relative' }}>

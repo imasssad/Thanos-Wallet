@@ -9,6 +9,8 @@ import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
 import { Select } from './ui/Select';
 import { usePrices, priceOr } from '../lib/usePrices';
+import { loadContacts, addContact, deleteContact, type Contact } from '../lib/address-book';
+import { BookUser, Plus, Trash2 } from 'lucide-react';
 
 // Market view leads with the Lithosphere ecosystem (canonical token list),
 // then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
@@ -587,6 +589,108 @@ function AccountSection({ Section, Row }: {
   );
 }
 
+/* ─── Address book section ──────────────────────────────────────────────── */
+function AddressBookSection({ Section, Row }: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+  Row:     React.FC<{ label: string; sub?: string; children: React.ReactNode }>;
+}) {
+  void Row; // we render our own rows below
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [name,     setName]     = useState('');
+  const [address,  setAddress]  = useState('');
+  const [err,      setErr]      = useState<string | null>(null);
+
+  useEffect(() => { setContacts(loadContacts()); }, []);
+
+  const onAdd = () => {
+    setErr(null);
+    try {
+      addContact({ name, address });
+      setContacts(loadContacts());
+      setName('');
+      setAddress('');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add contact');
+    }
+  };
+
+  const onDelete = (id: string) => {
+    if (deleteContact(id)) setContacts(loadContacts());
+  };
+
+  return (
+    <Section icon={BookUser} title="Address book" sub="Saved contacts for quick send">
+      <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+        <input
+          className="settings-select"
+          placeholder="Name (e.g. Sora)"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+        <input
+          className="settings-select"
+          placeholder="0x… or litho1…"
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          spellCheck={false}
+          autoCapitalize="off"
+          style={{ fontFamily: address ? 'Geist Mono, monospace' : undefined, fontSize: address ? 12 : undefined }}
+        />
+        {err && <div style={{ fontSize: 11, color: 'var(--red)' }}>{err}</div>}
+        <button
+          className="settings-btn"
+          onClick={onAdd}
+          disabled={!name.trim() || !address.trim()}
+        >
+          <Plus size={14}/> Save contact
+        </button>
+      </div>
+
+      {contacts.length > 0 && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {contacts.map(c => (
+            <div
+              key={c.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 10px',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 8,
+              }}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: 8,
+                background: 'var(--bg-card)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 700, fontSize: 11, color: 'var(--text-secondary)',
+              }}>
+                {c.name.charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {c.evm}
+                </div>
+              </div>
+              <button
+                onClick={() => onDelete(c.id)}
+                aria-label="Delete contact"
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-muted)', padding: 6, display: 'flex',
+                }}
+              >
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export function SettingsView() {
   const [currency, setCurrency] = useState('USD');
   const [language, setLanguage] = useState('English');
@@ -649,6 +753,8 @@ export function SettingsView() {
         </Section>
 
         <AccountSection Section={Section} Row={Row}/>
+
+        <AddressBookSection Section={Section} Row={Row}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
