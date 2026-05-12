@@ -107,6 +107,23 @@ interface SendReply    { hash: string; symbol: string; to: string; value: string
 interface SignMsgPayload { message: string }    // utf-8 string OR 0x-prefixed hex
 interface SignMsgReply   { signature: string }
 
+interface SignTypedDataPayload {
+  domain:      Record<string, unknown>;
+  types:       Record<string, Array<{ name: string; type: string }>>;
+  message:     Record<string, unknown>;
+}
+interface SignTypedDataReply   { signature: string }
+
+interface SignTxPayload {
+  to:                    string;
+  value?:                string;       // bigint as string
+  data?:                 string;
+  gasLimit?:             string;
+  maxFeePerGas?:         string;
+  maxPriorityFeePerGas?: string;
+}
+interface SignTxReply { hash: string }
+
 async function handleInit(p: InitPayload): Promise<InitReply> {
   source = p.source;
   const signer = getSigner(false);
@@ -146,6 +163,29 @@ async function handleSignMessage(p: SignMsgPayload): Promise<SignMsgReply> {
   return { signature };
 }
 
+/** EIP-712 typed-data signing. The caller is expected to have already
+ *  stripped the EIP712Domain key from `types` (ethers v6 wants it absent). */
+async function handleSignTypedData(p: SignTypedDataPayload): Promise<SignTypedDataReply> {
+  const signer = getSigner(false);
+  const signature = await signer.signTypedData(p.domain, p.types, p.message);
+  return { signature };
+}
+
+/** Build, sign, and broadcast a raw EVM transaction. Used for
+ *  `eth_sendTransaction` requests coming from WalletConnect dApps. */
+async function handleSignTransaction(p: SignTxPayload): Promise<SignTxReply> {
+  const signer = getSigner(true);
+  const tx = await signer.sendTransaction({
+    to:    p.to,
+    value: p.value ? BigInt(p.value) : undefined,
+    data:  p.data,
+    gasLimit:             p.gasLimit,
+    maxFeePerGas:         p.maxFeePerGas,
+    maxPriorityFeePerGas: p.maxPriorityFeePerGas,
+  });
+  return { hash: tx.hash };
+}
+
 async function handleAddress(): Promise<{ address: string }> {
   if (cachedAddress) return { address: cachedAddress };
   if (!source) throw new Error('worker_locked');
@@ -165,7 +205,7 @@ function handleLock(): { ok: true } {
 
 interface RpcRequest {
   id:      number;
-  op:      'init' | 'send' | 'sign-message' | 'address' | 'lock';
+  op:      'init' | 'send' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock';
   payload?: unknown;
 }
 
@@ -174,12 +214,14 @@ self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
   try {
     let result: unknown;
     switch (op) {
-      case 'init':         result = await handleInit(payload as InitPayload); break;
-      case 'send':         result = await handleSend(payload as SendPayload); break;
-      case 'sign-message': result = await handleSignMessage(payload as SignMsgPayload); break;
-      case 'address':      result = await handleAddress(); break;
-      case 'lock':         result = handleLock(); break;
-      default:             throw new Error(`unknown_op:${op as string}`);
+      case 'init':             result = await handleInit(payload as InitPayload); break;
+      case 'send':             result = await handleSend(payload as SendPayload); break;
+      case 'sign-message':     result = await handleSignMessage(payload as SignMsgPayload); break;
+      case 'sign-typed-data':  result = await handleSignTypedData(payload as SignTypedDataPayload); break;
+      case 'sign-transaction': result = await handleSignTransaction(payload as SignTxPayload); break;
+      case 'address':          result = await handleAddress(); break;
+      case 'lock':             result = handleLock(); break;
+      default:                 throw new Error(`unknown_op:${op as string}`);
     }
     (self as unknown as Worker).postMessage({ id, ok: true, result });
   } catch (e) {

@@ -22,6 +22,9 @@ import {
 } from '../lib/walletconnect';
 import { Wallet as EthersWallet } from 'ethers';
 import { walletFromSeed, makeProvider } from '../lib/signer';
+import {
+  signerSignMessage, signerSignTypedData, signerSignTransaction, SignerError,
+} from '../lib/signer-client';
 
 interface PendingRequest {
   request: WalletKitTypes.SessionRequest;
@@ -71,18 +74,30 @@ export function WalletConnectHost() {
             // params: [hexMessage, fromAddress] — the address may or may not
             // be checksummed; we sign regardless of order as long as one of
             // the entries matches our address.
-            const wallet = currentWallet();
             const messageHex = (params[0] as string) ?? '';
-            const message = messageHex.startsWith('0x')
-              ? Buffer.from(messageHex.slice(2), 'hex')
-              : new TextEncoder().encode(String(messageHex));
             // Auto-approve for MVP. UI approval pass is the next iteration.
-            const signature = await wallet.signMessage(message);
+            // Worker-isolated signing first; on worker_locked we fall back
+            // to in-process signing so an early-cold-start race doesn't fail.
+            let signature: string;
+            try {
+              const r = await signerSignMessage(messageHex);
+              signature = r.signature;
+            } catch (wErr) {
+              const code = wErr instanceof SignerError ? wErr.code : '';
+              if (code === 'worker_locked' || code === 'worker_crashed') {
+                const wallet = currentWallet();
+                const messageBytes = messageHex.startsWith('0x')
+                  ? Buffer.from(messageHex.slice(2), 'hex')
+                  : new TextEncoder().encode(String(messageHex));
+                signature = await wallet.signMessage(messageBytes);
+              } else {
+                throw wErr;
+              }
+            }
             await sendOk(signature);
             break;
           }
           case 'eth_signTypedData_v4': {
-            const wallet = currentWallet();
             const typedData = JSON.parse(params[1] as string) as {
               domain: Record<string, unknown>;
               types:  Record<string, Array<{ name: string; type: string }>>;
@@ -92,29 +107,57 @@ export function WalletConnectHost() {
             // ethers v6 wants {types} *without* EIP712Domain — strip if present.
             const { EIP712Domain, ...types } = typedData.types as Record<string, unknown>;
             void EIP712Domain;
-            const sig = await wallet.signTypedData(
-              typedData.domain,
-              types as Record<string, Array<{ name: string; type: string }>>,
-              typedData.message,
-            );
+            const cleanTypes = types as Record<string, Array<{ name: string; type: string }>>;
+            let sig: string;
+            try {
+              const r = await signerSignTypedData({ domain: typedData.domain, types: cleanTypes, message: typedData.message });
+              sig = r.signature;
+            } catch (wErr) {
+              const code = wErr instanceof SignerError ? wErr.code : '';
+              if (code === 'worker_locked' || code === 'worker_crashed') {
+                const wallet = currentWallet();
+                sig = await wallet.signTypedData(typedData.domain, cleanTypes, typedData.message);
+              } else {
+                throw wErr;
+              }
+            }
             await sendOk(sig);
             break;
           }
           case 'eth_sendTransaction': {
-            const w = currentWallet(makeProvider());
             const txParams = params[0] as {
               to: string; value?: string; data?: string; gas?: string; gasLimit?: string;
               maxFeePerGas?: string; maxPriorityFeePerGas?: string;
             };
-            const tx = await w.sendTransaction({
-              to:    txParams.to,
-              value: txParams.value ? BigInt(txParams.value) : undefined,
-              data:  txParams.data,
-              gasLimit: txParams.gas ?? txParams.gasLimit,
-              maxFeePerGas:         txParams.maxFeePerGas,
-              maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
-            });
-            await sendOk(tx.hash);
+            let hash: string;
+            try {
+              const r = await signerSignTransaction({
+                to:                   txParams.to,
+                value:                txParams.value,
+                data:                 txParams.data,
+                gasLimit:             txParams.gas ?? txParams.gasLimit,
+                maxFeePerGas:         txParams.maxFeePerGas,
+                maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
+              });
+              hash = r.hash;
+            } catch (wErr) {
+              const code = wErr instanceof SignerError ? wErr.code : '';
+              if (code === 'worker_locked' || code === 'worker_crashed') {
+                const w = currentWallet(makeProvider());
+                const tx = await w.sendTransaction({
+                  to:    txParams.to,
+                  value: txParams.value ? BigInt(txParams.value) : undefined,
+                  data:  txParams.data,
+                  gasLimit:             txParams.gas ?? txParams.gasLimit,
+                  maxFeePerGas:         txParams.maxFeePerGas,
+                  maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
+                });
+                hash = tx.hash;
+              } else {
+                throw wErr;
+              }
+            }
+            await sendOk(hash);
             break;
           }
           case 'eth_accounts':

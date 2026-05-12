@@ -98,3 +98,25 @@ export function signerSend(input: { symbol: string; recipient: string; amount: s
 export function signerSignMessage(message: string): Promise<{ signature: string }> {
   return call('sign-message', { message });
 }
+
+/** EIP-712 typed-data signing. The caller should have stripped the
+ *  EIP712Domain key from `types` (ethers v6 wants it absent). */
+export function signerSignTypedData(input: {
+  domain:  Record<string, unknown>;
+  types:   Record<string, Array<{ name: string; type: string }>>;
+  message: Record<string, unknown>;
+}): Promise<{ signature: string }> {
+  return call('sign-typed-data', input);
+}
+
+/** Build, sign, and broadcast a raw EVM transaction (eth_sendTransaction). */
+export function signerSignTransaction(input: {
+  to:                    string;
+  value?:                string;       // bigint serialised as string
+  data?:                 string;
+  gasLimit?:             string;
+  maxFeePerGas?:         string;
+  maxPriorityFeePerGas?: string;
+}): Promise<{ hash: string }> {
+  return call('sign-transaction', input);
+}
