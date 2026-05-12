@@ -8,6 +8,14 @@ export default defineConfig({
     description: 'Lithosphere-first wallet with Bitcoin, Solana, MultX, Ignite DEX, and hardware wallet support.',
     permissions: ['storage', 'activeTab', 'tabs'],
     host_permissions: ['https://*/*', 'http://*/*'],
+    // injected.js must be loadable from page context for the MAIN-world
+    // window.thanos provider injection.
+    web_accessible_resources: [
+      {
+        matches:   ['<all_urls>'],
+        resources: ['injected.js'],
+      },
+    ],
     icons: {
       '16':  'icons/icon16.png',
       '32':  'icons/icon32.png',
