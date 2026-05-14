@@ -13,10 +13,19 @@ import {
   hasLegacyPlaintext, migrateLegacyPlaintext,
 } from './lib/vault';
 import {
+  getBiometricCapability, biometricLabel,
+  isBiometricUnlockEnabled, enableBiometricUnlock, disableBiometricUnlock,
+  readProtectedKey,
+  type BiometricKind,
+} from './lib/biometric';
+import { makeAddressQrSvg } from './lib/qr';
+import { SvgXml } from 'react-native-svg';
+import * as Clipboard from 'expo-clipboard';
+import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
-  Copy, Share2, Eye, EyeOff,
+  Copy, Share2, Eye, EyeOff, ScanFace,
 } from 'lucide-react-native';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -124,9 +133,14 @@ function AnimatedSwitch({ keyName, children, style }: {
   );
 }
 
-/* ─────────────────────────── Mock data ─────────────────────────── */
+/* ─────────────────────────── Wallet context ─────────────────────────── */
+/* Real derived address (EVM 0x form) — provided by App after the vault is
+   unlocked. Screens read it via useWalletAddr() instead of the mock
+   ACCOUNT_ADDR constant we used during prototyping. */
+const WalletAddrCtx = createContext<string>('');
+function useWalletAddr(): string { return useContext(WalletAddrCtx); }
 
-const ACCOUNT_ADDR = 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v';
+/* ─────────────────────────── Mock data ─────────────────────────── */
 
 const ASSETS = [
   { sym: 'LITHO',  name: 'Lithosphere',         chain: 'Makalu',  bal: '50,000', usd: '$15,000.00', price: '$0.300',  chg: 18.40, color: '#8b7df7' },
@@ -342,9 +356,24 @@ function SendScreen({ goBack }: { goBack: () => void }) {
 function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
-  const [copied, setCopied] = useState(false);
+  const walletAddr = useWalletAddr();
+  const [copied, setCopied]   = useState(false);
+  const [qrSvg, setQrSvg]     = useState<string | null>(null);
 
-  const copy = () => {
+  /* Generate a real QR for the actual derived 0x address. Re-renders if
+     the address ever changes (account-switch in a follow-up commit). */
+  useEffect(() => {
+    let cancelled = false;
+    setQrSvg(null);
+    if (!walletAddr) return;
+    makeAddressQrSvg(walletAddr, { size: 220, darkColor: '#0a0a0f', lightColor: '#ffffff' })
+      .then(svg => { if (!cancelled) setQrSvg(svg); });
+    return () => { cancelled = true; };
+  }, [walletAddr]);
+
+  const copy = async () => {
+    if (!walletAddr) return;
+    try { await Clipboard.setStringAsync(walletAddr); } catch {}
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -374,38 +403,22 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
           <View style={styles.qrCornerBL}/>
           <View style={styles.qrCornerBR}/>
           <View style={styles.qrPlaceholder}>
-            <Image
-              source={require('./assets/images/Thanos_Logo_Transparent.png')}
-              style={{ width: 38, height: 38, position: 'absolute', zIndex: 2 }}
-              resizeMode="contain"
-            />
-            {/* Faux QR squares */}
-            <View style={styles.qrInner}>
-              {Array.from({ length: 11 }).map((_, r) => (
-                <View key={r} style={{ flexDirection: 'row' }}>
-                  {Array.from({ length: 11 }).map((_, c) => {
-                    const filled = (r + c * 7 + r * c) % 3 !== 0;
-                    return (
-                      <View
-                        key={c}
-                        style={{
-                          width: 11, height: 11, margin: 1,
-                          backgroundColor: filled ? '#0a0a0f' : 'transparent',
-                          borderRadius: 1,
-                        }}
-                      />
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
+            {qrSvg
+              ? <SvgXml xml={qrSvg} width={220} height={220}/>
+              : <Image
+                  source={require('./assets/images/Thanos_Logo_Transparent.png')}
+                  style={{ width: 38, height: 38 }}
+                  resizeMode="contain"
+                />}
           </View>
         </View>
 
-        <View style={styles.addrCard}>
-          <Text style={styles.fieldLabel}>YOUR ADDRESS</Text>
-          <Text style={styles.addrTextLarge}>{ACCOUNT_ADDR.slice(0, 24)}…{ACCOUNT_ADDR.slice(-6)}</Text>
-        </View>
+        <Pressable onPress={copy} style={styles.addrCard}>
+          <Text style={styles.fieldLabel}>YOUR ADDRESS · TAP TO COPY</Text>
+          <Text style={styles.addrTextLarge} numberOfLines={1} ellipsizeMode="middle">
+            {walletAddr || '—'}
+          </Text>
+        </Pressable>
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Pressable style={[styles.btnSecondary, { flex: 1 }]} onPress={copy}>
@@ -498,12 +511,86 @@ function SettingsScreen() {
   const C = useColors();
   const styles = useStyles();
   const toggle = useToggle();
+  const walletAddr = useWalletAddr();
   const isDark = C.bgBase === DARK.bgBase;
 
-  type SettingItem = { label: string; desc: string; Icon: React.ElementType; danger?: boolean };
+  /* Biometric capability + enabled-state. Refreshes after the user
+     toggles it so the row reflects reality. */
+  const [bioKind, setBioKind]   = useState<BiometricKind>('none');
+  const [bioReady, setBioReady] = useState(false);
+  const [bioOn, setBioOn]       = useState(false);
+  const [copied, setCopied]     = useState(false);
 
+  const refreshBio = async () => {
+    const cap = await getBiometricCapability();
+    setBioKind(cap.kind);
+    setBioReady(cap.hasHardware && cap.isEnrolled);
+    setBioOn(await isBiometricUnlockEnabled());
+  };
+  useEffect(() => { void refreshBio(); }, []);
+
+  const onToggleBio = async () => {
+    if (!bioReady) {
+      Alert.alert(
+        'Biometrics unavailable',
+        'No biometric is enrolled on this device. Set up Face ID or fingerprint in your OS settings first.',
+      );
+      return;
+    }
+    if (bioOn) {
+      await disableBiometricUnlock();
+      await refreshBio();
+      return;
+    }
+    const key = getSessionKey();
+    if (!key) {
+      Alert.alert(
+        'Unlock required',
+        'For your security, biometric unlock can only be enabled right after entering your password. Lock and unlock the wallet, then try again.',
+      );
+      return;
+    }
+    const ok = await enableBiometricUnlock(key);
+    if (!ok) {
+      Alert.alert('Could not enable', 'Biometric authentication was cancelled or unavailable.');
+    }
+    await refreshBio();
+  };
+
+  const copyAddr = async () => {
+    if (!walletAddr) return;
+    try { await Clipboard.setStringAsync(walletAddr); } catch {}
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  type SettingItem = {
+    label:   string;
+    desc:    string;
+    Icon:    React.ElementType;
+    danger?: boolean;
+    /** Right-side control. Defaults to a chevron if omitted. */
+    accessory?: React.ReactNode;
+    onPress?: () => void;
+  };
+
+  const bioName = biometricLabel(bioKind);
   const SECURITY_OPTS: SettingItem[] = [
-    { label: 'Biometric unlock',  desc: 'Use Face ID to unlock',           Icon: Fingerprint },
+    {
+      label: `${bioName} unlock`,
+      desc:  bioOn
+               ? `Enabled — unlock with ${bioName}`
+               : bioReady
+                 ? `Use ${bioName} instead of your password`
+                 : 'Not available on this device',
+      Icon:  bioKind === 'face' ? ScanFace : Fingerprint,
+      accessory: (
+        <View style={[styles.toggleSwitch, bioOn && styles.toggleSwitchOn]}>
+          <View style={[styles.toggleThumb, bioOn && styles.toggleThumbOn]}/>
+        </View>
+      ),
+      onPress: onToggleBio,
+    },
     { label: 'Auto-lock',         desc: 'After 5 minutes of inactivity',   Icon: Clock },
     { label: 'Change password',   desc: 'Update wallet password',          Icon: Key },
     { label: 'Recovery phrase',   desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true },
@@ -511,7 +598,7 @@ function SettingsScreen() {
   const NETWORK_OPTS: SettingItem[] = [
     { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
     { label: 'Custom RPC',        desc: 'rpc.litho.ai',                    Icon: Server },
-    { label: 'Connected dApps',   desc: '2 active sessions',               Icon: Zap },
+    { label: 'Connected dApps',   desc: 'WalletConnect — coming soon',     Icon: Zap },
   ];
 
   // Premium-pattern section header — icon tile + title + sub.
@@ -532,7 +619,11 @@ function SettingsScreen() {
       <SectionHead Icon={Icon} title={title} sub={sub}/>
       <View style={styles.card}>
         {items.map((s, i) => (
-          <Pressable key={i} style={[styles.settingRow, i < items.length - 1 && styles.rowBorder]}>
+          <Pressable
+            key={i}
+            style={[styles.settingRow, i < items.length - 1 && styles.rowBorder]}
+            onPress={s.onPress}
+          >
             <View style={styles.settingIcon}>
               <s.Icon size={16} color={s.danger ? C.red : C.textSecondary} strokeWidth={2}/>
             </View>
@@ -540,7 +631,7 @@ function SettingsScreen() {
               <Text style={[styles.settingLabel, s.danger && { color: C.red }]}>{s.label}</Text>
               <Text style={styles.settingDesc}>{s.desc}</Text>
             </View>
-            <ChevronRight size={18} color={C.textMuted}/>
+            {s.accessory ?? <ChevronRight size={18} color={C.textMuted}/>}
           </Pressable>
         ))}
       </View>
@@ -564,10 +655,12 @@ function SettingsScreen() {
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.acctHeaderName}>Account 1</Text>
-          <Text style={styles.acctHeaderAddr}>{ACCOUNT_ADDR.slice(0, 12)}…{ACCOUNT_ADDR.slice(-6)}</Text>
+          <Text style={styles.acctHeaderAddr} numberOfLines={1} ellipsizeMode="middle">
+            {walletAddr || '—'}
+          </Text>
         </View>
-        <Pressable style={styles.copyChip}>
-          <Text style={styles.copyChipText}>Copy</Text>
+        <Pressable style={styles.copyChip} onPress={copyAddr}>
+          <Text style={styles.copyChipText}>{copied ? '✓' : 'Copy'}</Text>
         </Pressable>
       </View>
 
@@ -658,6 +751,23 @@ function OnboardingScreen({
   const [unlockErr, setUnlockErr] = useState('');
   const [copiedSeed, setCopiedSeed] = useState(false);
 
+  /* Biometric unlock availability for the unlock step. Probed once on
+     mount; if a protected-key slot exists and the device can prompt,
+     the unlock step shows a Face ID / Fingerprint button alongside the
+     password input. */
+  const [bioAvail, setBioAvail] = useState<{ kind: BiometricKind; on: boolean }>({ kind: 'none', on: false });
+  useEffect(() => {
+    if (!hasVault) return;
+    (async () => {
+      const cap = await getBiometricCapability();
+      const on  = await isBiometricUnlockEnabled();
+      setBioAvail({
+        kind: cap.kind,
+        on:   on && cap.hasHardware && cap.isEnrolled,
+      });
+    })();
+  }, [hasVault]);
+
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
 
   const goToVerify = () => {
@@ -734,8 +844,35 @@ function OnboardingScreen({
     } finally { setBusy(false); }
   };
 
+  /* Biometric path — reads the OS-protected stash of the derived AES
+     key, then decrypts the vault with it. No Argon2id round-trip. */
+  const tryBiometricUnlock = async () => {
+    if (busy) return;
+    setBusy(true);
+    setUnlockErr('');
+    try {
+      const vault = await loadVault();
+      if (!vault) { setUnlockErr('No wallet on this device.'); return; }
+      const key = await readProtectedKey();
+      if (!key) {
+        setUnlockErr('Biometric unlock cancelled.');
+        return;
+      }
+      const mnemonic = await openVaultWithKey(vault, key);
+      if (!mnemonic) {
+        setUnlockErr('Stored key is invalid — please enter your password.');
+        return;
+      }
+      cacheSessionKey(key);
+      onComplete(mnemonic.split(' '));
+    } finally { setBusy(false); }
+  };
+
   const resetWallet = async () => {
     await clearVaultStore();
+    // Also wipe the biometric-protected key — it pointed at the now-
+    // deleted vault. Future re-onboarding starts a fresh enrolment.
+    await disableBiometricUnlock();
     setStep('welcome');
     setUnlockPwd('');
     setUnlockErr('');
@@ -971,6 +1108,22 @@ function OnboardingScreen({
 
         {step === 'unlock' && <>
           <Text style={styles.onboardTagline}>Secure and trusted multi-chain crypto wallet</Text>
+          {bioAvail.on && (
+            <Pressable
+              style={[styles.btnSecondary, { width: '100%', marginBottom: 12, opacity: busy ? 0.6 : 1 }]}
+              disabled={busy}
+              onPress={tryBiometricUnlock}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {bioAvail.kind === 'face'
+                  ? <ScanFace    size={18} color={C.textPrimary}/>
+                  : <Fingerprint size={18} color={C.textPrimary}/>}
+                <Text style={styles.btnSecondaryText}>
+                  Unlock with {biometricLabel(bioAvail.kind)}
+                </Text>
+              </View>
+            </Pressable>
+          )}
           <Text style={styles.fieldLabel}>Password</Text>
           <TextInput
             style={styles.input}
@@ -980,7 +1133,7 @@ function OnboardingScreen({
             value={unlockPwd}
             onChangeText={t => { setUnlockPwd(t); setUnlockErr(''); }}
             onSubmitEditing={tryUnlock}
-            autoFocus
+            autoFocus={!bioAvail.on}
           />
           {unlockErr ? <Text style={styles.onboardErr}>{unlockErr}</Text> : null}
           <Pressable
@@ -1052,6 +1205,9 @@ export default function App() {
     setUnlocked(false);
     setWalletSeed([]);
     clearSessionKey();
+    // The biometric-protected key stays on disk so the user can unlock
+    // again with Face ID on the next session. Only "Reset wallet"
+    // (in OnboardingScreen) wipes it.
   };
 
   // Wait for storage check before deciding which screen to show
@@ -1101,6 +1257,7 @@ export default function App() {
     <ThemeCtx.Provider value={colors}>
       <StylesCtx.Provider value={styles}>
         <ToggleCtx.Provider value={toggle}>
+        <WalletAddrCtx.Provider value={walletAddr}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
 
@@ -1157,6 +1314,7 @@ export default function App() {
               })}
             </View>
           </SafeAreaView>
+        </WalletAddrCtx.Provider>
         </ToggleCtx.Provider>
       </StylesCtx.Provider>
     </ThemeCtx.Provider>
