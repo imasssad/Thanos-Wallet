@@ -16,6 +16,7 @@ import {
   MultXUnavailable,
 } from '../lib/multx';
 import { TokenSelect } from './ui/TokenSelect';
+import { TokenIcon } from './TokenIcon';
 import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
 import { looksLikeName, resolveName } from '../lib/dnns';
@@ -525,77 +526,283 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * MetaMask-style Receive screen — list of networks the wallet has an
+ * address on, with copy + QR per row.
+ *
+ * Behaviour:
+ *   - Default: searchable list of networks. Each row shows network icon,
+ *     name, truncated address, and copy + QR buttons.
+ *   - Click QR on a row: expands to a full QR card for that network +
+ *     "Copy address" CTA. Back arrow returns to the list.
+ *   - EVM-flavoured chains (Ethereum, BNB, Polygon, Linea, Base, Arbitrum,
+ *     etc.) all share the wallet's single 0x… address since EVM keypairs
+ *     are chain-agnostic — but each row gets its own entry so the user
+ *     understands which chain they're receiving on. Lithosphere Makalu
+ *     gets two rows: the litho1 bech32 form AND the 0x form, since both
+ *     are valid recipients on the chain.
+ */
+import { Copy as CopyIcon, QrCode as QrCodeIcon, ChevronLeft, Search } from 'lucide-react';
+import QRCode from 'qrcode';
+import { getSolanaAddress } from '../lib/solana';
+import { getBitcoinAddressFromSource } from '../lib/bitcoin';
+
+interface ReceiveNetwork {
+  id:      string;
+  name:    string;
+  /** Symbol used by TokenIcon for the chain logo. */
+  symbol:  string;
+  /** Brand color for the avatar fallback. */
+  color:   string;
+  address: string;
+  /** Optional badge — shown as a small label after the name (e.g. "EVM"). */
+  badge?:  string;
+}
+
 export function ReceiveModal({ onClose }: { onClose: () => void }) {
   const wallet = useWallet();
-  const [fmt, setFmt] = useState<'litho' | 'evm'>('litho');
-  const [copied, setCopied] = useState(false);
+  const [view, setView]     = useState<'list' | 'qr'>('list');
+  const [active, setActive] = useState<ReceiveNetwork | null>(null);
+  const [search, setSearch] = useState('');
+  const [qrSvg, setQrSvg]   = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Fallback used only if the gate hasn't resolved (defensive — shouldn't happen).
   const litho = wallet?.addresses?.litho ?? '';
   const evm   = wallet?.addresses?.evm   ?? '';
-  const activeAddr = fmt === 'litho' ? litho : evm;
 
-  const copy = () => {
-    if (!activeAddr) return;
-    navigator.clipboard?.writeText(activeAddr).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+  /* Derive non-EVM addresses on demand. Same code path as the dashboard
+     uses to display SOL / BTC balances; safe to call repeatedly. */
+  const { btcAddr, solAddr } = useMemo(() => {
+    const seedAvailable = !!wallet?.seed?.length;
+    const pk = wallet?.privateKey;
+    let btc = '';
+    let sol = '';
+    try {
+      if (seedAvailable) {
+        sol = getSolanaAddress(wallet!.seed.join(' '));
+      }
+      const source = pk
+        ? { kind: 'privateKey' as const, privateKey: pk }
+        : seedAvailable
+          ? { kind: 'mnemonic' as const, mnemonic: wallet!.seed.join(' ') }
+          : null;
+      if (source) btc = getBitcoinAddressFromSource(source);
+    } catch { /* derivation can fail for malformed keys — show nothing */ }
+    return { btcAddr: btc, solAddr: sol };
+  }, [wallet?.seed, wallet?.privateKey]);
+
+  /* The network list. EVM addresses are all the same `evm` value because
+     EVM accounts are chain-agnostic. */
+  const networks: ReceiveNetwork[] = useMemo(() => {
+    const out: ReceiveNetwork[] = [];
+    if (litho) out.push({ id: 'litho-bech32', name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: litho });
+    if (evm)   out.push({ id: 'litho-evm',    name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: evm, badge: 'EVM' });
+    if (evm)   out.push({ id: 'ethereum',     name: 'Ethereum',           symbol: 'ETH',   color: '#627eea', address: evm });
+    if (evm)   out.push({ id: 'bnb',          name: 'BNB Chain',          symbol: 'BNB',   color: '#f3ba2f', address: evm });
+    if (evm)   out.push({ id: 'polygon',      name: 'Polygon',            symbol: 'POL',   color: '#8247e5', address: evm });
+    if (evm)   out.push({ id: 'base',         name: 'Base',               symbol: 'BASE',  color: '#0052ff', address: evm });
+    if (evm)   out.push({ id: 'arbitrum',     name: 'Arbitrum',           symbol: 'ARB',   color: '#28a0f0', address: evm });
+    if (evm)   out.push({ id: 'linea',        name: 'Linea',              symbol: 'LINEA', color: '#62dfff', address: evm });
+    if (evm)   out.push({ id: 'optimism',     name: 'Optimism',           symbol: 'OP',    color: '#ff0420', address: evm });
+    if (btcAddr) out.push({ id: 'bitcoin',    name: 'Bitcoin',            symbol: 'BTC',   color: '#f7931a', address: btcAddr });
+    if (solAddr) out.push({ id: 'solana',     name: 'Solana',             symbol: 'SOL',   color: '#14f195', address: solAddr });
+    return out;
+  }, [litho, evm, btcAddr, solAddr]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return networks;
+    return networks.filter(n => n.name.toLowerCase().includes(q) || n.symbol.toLowerCase().includes(q));
+  }, [networks, search]);
+
+  /* Generate the QR SVG whenever the active network changes. qrcode's
+     toString(svg) returns an inline SVG ~1KB; we drop it into the DOM
+     via dangerouslySetInnerHTML. The string is wallet-derived addresses,
+     not user input, so injection risk is nil. */
+  useEffect(() => {
+    if (view !== 'qr' || !active) { setQrSvg(null); return; }
+    let cancelled = false;
+    QRCode.toString(active.address, {
+      type:    'svg',
+      margin:  1,
+      width:   220,
+      color:   { dark: '#ffffff', light: '#00000000' },
+    }).then(svg => { if (!cancelled) setQrSvg(svg); })
+      .catch(() => { if (!cancelled) setQrSvg(null); });
+    return () => { cancelled = true; };
+  }, [view, active]);
+
+  const copy = (n: ReceiveNetwork) => {
+    if (!n.address) return;
+    navigator.clipboard?.writeText(n.address).catch(() => {});
+    setCopiedId(n.id);
+    setTimeout(() => setCopiedId(prev => prev === n.id ? null : prev), 1500);
   };
 
+  /* ─── QR sub-view ───────────────────────────────────────────────────── */
+  if (view === 'qr' && active) {
+    return (
+      <Modal title="Receive" onClose={onClose}>
+        <div className="modal-body" style={{ padding: '4px 4px 8px' }}>
+          <button
+            onClick={() => setView('list')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600,
+              padding: '6px 4px', marginBottom: 8,
+            }}
+          >
+            <ChevronLeft size={16}/> Back
+          </button>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '4px 0 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <TokenIcon sym={active.symbol} color={active.color} size={32}/>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{active.name}</div>
+                {active.badge && (
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1, fontWeight: 600 }}>
+                    {active.badge}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{
+              padding: 14, background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-default)', borderRadius: 14,
+              color: 'var(--text-primary)',
+            }}>
+              {qrSvg
+                ? <div dangerouslySetInnerHTML={{ __html: qrSvg }} style={{ lineHeight: 0 }}/>
+                : <div style={{ width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Generating QR…</div>
+              }
+            </div>
+
+            <div
+              style={{
+                fontSize: 12, color: 'var(--text-secondary)',
+                fontFamily: 'Geist Mono, monospace',
+                wordBreak: 'break-all', textAlign: 'center',
+                padding: '8px 10px',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 10, width: '100%',
+              }}
+              title={active.address}
+            >
+              {active.address}
+            </div>
+
+            <button className="btn-primary" style={{ width: '100%' }} onClick={() => copy(active)}>
+              {copiedId === active.id ? '✓ Copied' : 'Copy address'}
+            </button>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, maxWidth: 320 }}>
+              Only send {active.symbol === 'BTC' ? 'Bitcoin' : active.symbol === 'SOL' ? 'Solana / SPL' : active.name} assets to this address.
+              Sending tokens from another chain will result in lost funds.
+            </div>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  /* ─── List view (default) ──────────────────────────────────────────── */
   return (
-    <Modal title="Receive" onClose={onClose}>
-      <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
-        {/* Format toggle */}
-        <div className="addr-fmt-toggle" role="tablist">
-          <button
-            className={`addr-fmt-pill ${fmt === 'litho' ? 'active' : ''}`}
-            onClick={() => setFmt('litho')}
-            role="tab"
-          >
-            litho1…
-          </button>
-          <button
-            className={`addr-fmt-pill ${fmt === 'evm' ? 'active' : ''}`}
-            onClick={() => setFmt('evm')}
-            role="tab"
-          >
-            EVM 0x…
-          </button>
+    <Modal title="Receiving address" onClose={onClose}>
+      <div className="modal-body" style={{ padding: '4px 4px 8px' }}>
+        <div style={{
+          position: 'relative', marginBottom: 8,
+        }}>
+          <Search
+            size={15}
+            style={{
+              position: 'absolute', left: 12, top: '50%',
+              transform: 'translateY(-50%)', color: 'var(--text-muted)',
+            }}
+          />
+          <input
+            className="field-input"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search networks"
+            style={{ paddingLeft: 36 }}
+          />
         </div>
 
-        <div className="qr-box" aria-label={`QR for ${activeAddr}`}>
-          {/* Placeholder QR — replaced by a real qrcode-generated SVG in the
-              follow-up commit that wires receive end-to-end. */}
-          <svg viewBox="0 0 100 100" width="140" height="140">
-            <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="14" y="14" width="20" height="20" rx="2" fill="currentColor"/>
-            <rect x="57" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="66" y="14" width="20" height="20" rx="2" fill="currentColor"/>
-            <rect x="5" y="57" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="14" y="66" width="20" height="20" rx="2" fill="currentColor"/>
-            {[57,63,69,75,81,87,93].map((x,i) =>
-              [57,63,69,75,81,87,93].map((y,j) =>
-                (i+j)%2===0 ? <rect key={`${i}${j}`} x={x} y={y} width="4" height="4" fill="currentColor" opacity="0.7"/> : null
-              )
-            )}
-          </svg>
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-          {fmt === 'litho' ? 'Lithosphere bech32 address' : 'EVM hex address'}
-        </div>
-        <div className="addr-box" title={activeAddr}>
-          {activeAddr ? truncateLithoAddress(activeAddr, 14, 8) : '—'}
-        </div>
-        <button className="btn-primary" onClick={copy} style={{ marginTop: 14, width: '100%' }} disabled={!activeAddr}>
-          {copied ? '✓ Copied!' : 'Copy address'}
-        </button>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.6 }}>
-          Both forms resolve to the same account. Only send assets on supported networks.
+        <div style={{
+          maxHeight: 460, overflowY: 'auto',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          {filtered.map(n => (
+            <div
+              key={n.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 8px',
+                borderBottom: '1px solid var(--border-subtle)',
+              }}
+            >
+              <TokenIcon sym={n.symbol} color={n.color} size={36}/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{n.name}</span>
+                  {n.badge && (
+                    <span style={{
+                      fontSize: 9, letterSpacing: 1, padding: '2px 5px',
+                      background: 'var(--bg-elevated)', borderRadius: 4,
+                      color: 'var(--text-secondary)', fontWeight: 600,
+                    }}>{n.badge}</span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: 11, color: 'var(--text-muted)',
+                  fontFamily: 'Geist Mono, monospace',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {n.address.length > 18
+                    ? `${n.address.slice(0, 8)}…${n.address.slice(-5)}`
+                    : n.address}
+                </div>
+              </div>
+              <button
+                aria-label={`Copy ${n.name} address`}
+                title="Copy address"
+                onClick={() => copy(n)}
+                style={iconRowBtn}
+              >
+                {copiedId === n.id
+                  ? <span style={{ fontSize: 11, color: 'var(--green)' }}>✓</span>
+                  : <CopyIcon size={16}/>}
+              </button>
+              <button
+                aria-label={`Show QR for ${n.name}`}
+                title="Show QR"
+                onClick={() => { setActive(n); setView('qr'); }}
+                style={iconRowBtn}
+              >
+                <QrCodeIcon size={16}/>
+              </button>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{ padding: '28px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              No networks match "{search}".
+            </div>
+          )}
         </div>
       </div>
     </Modal>
   );
 }
+
+const iconRowBtn: React.CSSProperties = {
+  background: 'transparent', border: 'none', cursor: 'pointer',
+  color: 'var(--text-secondary)', padding: 8,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  borderRadius: 8,
+};
 
 type SwapStage = 'compose' | 'executing' | 'bridging' | 'settling' | 'completed' | 'failed';
 
