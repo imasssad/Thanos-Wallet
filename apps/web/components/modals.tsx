@@ -28,6 +28,8 @@ import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendErro
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { EVM_CHAINS } from '../lib/evm-chains';
+import { classifyRecipient } from '../lib/phishing';
+import { PhishingBanner } from './PhishingBanner';
 import * as RadixSelect from '@radix-ui/react-select';
 import { QrCode, Check, ChevronDown } from 'lucide-react';
 
@@ -173,6 +175,17 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     if (direct) return direct;
     return dnnsResolved;
   }, [to, dnnsResolved]);
+
+  /* Phishing / scam-recipient lookup. Runs on every EVM recipient
+     (including the resolved 0x of a litho1 / DNNS input). Skipped on
+     non-EVM chains since their scam-address space is different. */
+  const recipientVerdict = useMemo(() => {
+    if (isSolanaSend || isBitcoinSend) return null;
+    const addr = canonicalEvm || (isEvmSend ? to.trim() : '');
+    if (!addr) return null;
+    return classifyRecipient(addr);
+  }, [canonicalEvm, isSolanaSend, isBitcoinSend, isEvmSend, to]);
+  const recipientBlocked = recipientVerdict?.risk === 'critical';
 
   /* Debounced DNNS resolution. Only fires when the input looks like a
      name (contains '.', not a raw address). Sets state to drive the inline
@@ -767,6 +780,9 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           onResult={(decoded) => { setTo(decoded); setShowQr(false); }}
         />
 
+        {recipientVerdict && recipientVerdict.risk !== 'safe' && (
+          <PhishingBanner verdict={recipientVerdict} compact/>
+        )}
 
         <div className="fee-row" style={{ marginTop: 14, fontSize: 13 }}>
           <span>Network fee</span>
@@ -780,10 +796,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             fontSize: 15, fontWeight: 700,
             borderRadius: 12,
           }}
-          disabled={!recipientValidation.valid || !amount || (!wallet?.seed?.length && !wallet?.privateKey)}
+          disabled={!recipientValidation.valid || !amount || recipientBlocked || (!wallet?.seed?.length && !wallet?.privateKey)}
           onClick={onSubmit}
+          title={recipientBlocked ? 'Recipient flagged as high-risk — sending is blocked.' : undefined}
         >
-          Send {coin}
+          {recipientBlocked ? 'Recipient blocked' : `Send ${coin}`}
         </button>
         {!wallet?.seed?.length && !wallet?.privateKey && (
           <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6, textAlign: 'center' }}>
