@@ -28,9 +28,11 @@ export const MAKALU_CHAIN_ID = _CHAIN_ID;
 
 const HD_PATH = "m/44'/60'/0'/0/0";
 
-/* Minimal ABI — just transfer() for send, balanceOf() for refresh. */
+/* Minimal ABI — transfer() for send, approve() for spend allowance management,
+   balanceOf() for refresh. */
 const LEP100_TRANSFER_ABI = [
   'function transfer(address to, uint256 value) returns (bool)',
+  'function approve(address spender, uint256 value) returns (bool)',
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
 ];
@@ -306,6 +308,72 @@ export async function estimateSendFee(walletInput: WalletInput, input: SendInput
   } catch {
     return null;
   }
+}
+
+/* ─── Allowance management (approve / revoke) ─────────────────────────── */
+
+export interface ApproveInput {
+  /** ERC-20 / LEP-100 contract address. */
+  tokenAddress: string;
+  /** Spender to approve. */
+  spender:      string;
+  /** Raw amount (smallest unit). Pass 0n to revoke. */
+  amountRaw:    bigint;
+}
+
+/**
+ * Set the allowance the wallet grants `spender` for `tokenAddress` on
+ * Makalu. Pass `amountRaw = 0n` to revoke. Returns a hash + wait()
+ * matching the SendResult shape so the UI can reuse pending-confirmed
+ * states.
+ *
+ * Common pitfall: some legacy ERC-20s reject `approve(spender, X)` when
+ * the current allowance is non-zero and `X != 0`. The recommended
+ * pattern there is approve(0) then approve(X). LEP-100 doesn't have
+ * that limitation, so we don't double-tx here — single approve is fine.
+ */
+export async function setAllowance(walletInput: WalletInput, input: ApproveInput): Promise<SendResult> {
+  if (!/^0x[a-fA-F0-9]{40}$/.test(input.tokenAddress.trim())) {
+    throw new SendError('invalid_token', 'Token address must be a 0x address');
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(input.spender.trim())) {
+    throw new SendError('invalid_address', 'Spender must be a 0x address');
+  }
+  if (input.amountRaw < 0n) {
+    throw new SendError('invalid_amount', 'Allowance amount must be ≥ 0');
+  }
+
+  const provider = makeProvider();
+  const wallet   = walletFromInput(walletInput, provider);
+  const contract = new Contract(input.tokenAddress, LEP100_TRANSFER_ABI, wallet);
+
+  let tx: TransactionResponse;
+  try {
+    tx = await contract.approve(input.spender, input.amountRaw);
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (/insufficient funds/i.test(msg)) throw new SendError('insufficient', 'Not enough LITHO for gas');
+    if (/user rejected/i.test(msg))      throw new SendError('rejected', 'You cancelled the transaction');
+    throw new SendError('rpc_error', msg || 'Network error while broadcasting');
+  }
+
+  return {
+    hash:   tx.hash,
+    symbol: '',                  // not a token-symbol-aware tx
+    to:     input.spender,
+    value:  input.amountRaw,
+    kind:   'erc20',
+    wait:   async () => {
+      const receipt = await tx.wait();
+      if (!receipt) throw new SendError('rpc_error', 'Receipt unavailable');
+      return { blockNumber: receipt.blockNumber, status: Number(receipt.status ?? 0) };
+    },
+  };
+}
+
+/** Convenience: revoke = approve to zero. */
+export function revokeAllowance(walletInput: WalletInput, args: { tokenAddress: string; spender: string; }): Promise<SendResult> {
+  return setAllowance(walletInput, { ...args, amountRaw: 0n });
 }
 
 /* ─── Reading: live balance for a single token ─────────────────────────── */

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '../providers/ThemeProvider';
 import { useWallet } from './AppShell';
 import {
-  Search, Bell, ChevronDown, Sun, Moon, User, Copy, Settings as SettingsIcon, Lock, Menu,
+  Search, Bell, ChevronDown, Sun, Moon, User, Copy, Settings as SettingsIcon, Lock, Menu, KeyRound,
 } from 'lucide-react';
 
 const ACCOUNT_NAME = 'RobbyWallet';
@@ -137,6 +137,9 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
                   </button>
                 </div>
                 <div className="menu-divider"/>
+                <button className="menu-item" onClick={() => { router.push('/app/permissions'); setAccountMenu(false); }}>
+                  <KeyRound size={18}/> Permissions
+                </button>
                 <button className="menu-item" onClick={() => { router.push('/app/settings'); setAccountMenu(false); }}>
                   <SettingsIcon size={18}/> Settings
                 </button>
