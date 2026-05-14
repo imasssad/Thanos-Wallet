@@ -373,19 +373,76 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     );
   }
 
-  /* ─── Compose state ──────────────────────────────────────────────── */
+  /* ─── Compose state — MM-style vertical flow ──────────────────────
+     Order top-to-bottom:
+       1) Amount HERO — big centered input + USD equivalent + asset chip
+       2) "To" recipient — input + QR scan, with autocomplete + DNNS
+       3) Network fee row
+       4) Big Send button
+     The asset chip beneath the amount opens the existing TokenSelect
+     dropdown so we don't lose chain-aware behaviour. */
+
+  const amountNum = parseFloat(amount || '0') || 0;
+  const tokenPrice = TOKENS.find(t => t.sym === coin)?.priceUsd ?? 0;
+  const usdEquivalent = amountNum > 0 && tokenPrice > 0
+    ? `$${(amountNum * tokenPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+    : '$0.00';
 
   return (
     <Modal title="Send" onClose={onClose}>
-      <div className="modal-body">
-        <label className="field-label">Asset</label>
-        <TokenSelect value={coin} onChange={setCoin} options={TOKEN_SYMBOLS} ariaLabel="Send asset"/>
+      <div className="modal-body" style={{ gap: 0 }}>
 
-        <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
+        {/* ── Amount hero (big, centered) ─────────────────────────── */}
+        <div style={{
+          padding: '20px 0 12px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+        }}>
+          <input
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            type="number"
+            placeholder="0"
+            inputMode="decimal"
+            style={{
+              background: 'transparent', border: 'none', outline: 'none',
+              color: 'var(--text-primary)',
+              fontSize: 48, fontWeight: 800, letterSpacing: '-0.04em',
+              textAlign: 'center', width: '100%', padding: 0,
+              fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{usdEquivalent}</div>
+        </div>
+
+        {/* Asset chip — opens the existing TokenSelect dropdown. */}
+        <div style={{ marginBottom: 12 }}>
+          <TokenSelect value={coin} onChange={setCoin} options={TOKEN_SYMBOLS} ariaLabel="Send asset"/>
+        </div>
+
+        {/* Balance + MAX */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontSize: 12, color: 'var(--text-muted)', marginBottom: 14,
+          padding: '0 2px',
+        }}>
+          <span>Balance: {balMap[coin] ?? '—'} {coin}</span>
+          <button
+            style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
+            onClick={() => setAmount(balMap[coin] ?? '')}
+          >
+            MAX
+          </button>
+        </div>
+
+        <label className="field-label">To</label>
         <div style={{ position: 'relative' }}>
           <input
             className="field-input"
-            placeholder="litho1… or 0x…"
+            placeholder={
+              isSolanaSend  ? 'Solana address…'  :
+              isBitcoinSend ? 'Bitcoin address…' :
+              'litho1… or 0x…'
+            }
             value={to}
             onChange={e => { setTo(e.target.value); setShowSuggest(true); }}
             onFocus={() => setShowSuggest(true)}
@@ -393,7 +450,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
-            style={{ fontFamily: to ? 'Geist Mono, monospace' : undefined, fontSize: to ? 12 : undefined, paddingRight: 40 }}
+            style={{ fontFamily: to ? 'Geist Mono, monospace' : undefined, fontSize: to ? 12 : 14, paddingRight: 44, paddingTop: 14, paddingBottom: 14 }}
           />
           <button
             type="button"
@@ -403,10 +460,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             style={{
               position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
               background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-              borderRadius: 6, padding: 4, cursor: 'pointer', display: 'flex',
+              borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex',
             }}
           >
-            <QrCode size={16} color="var(--text-secondary)"/>
+            <QrCode size={18} color="var(--text-secondary)"/>
           </button>
         </div>
 
@@ -498,25 +555,24 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         />
 
 
-        <label className="field-label" style={{ marginTop: 14 }}>Amount</label>
-        <div style={{ position: 'relative' }}>
-          <input className="field-input" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} type="number" style={{ paddingRight: 60 }}/>
-          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{coin}</span>
+        <div className="fee-row" style={{ marginTop: 14, fontSize: 13 }}>
+          <span>Network fee</span>
+          <span>{feeStr ? `≈ ${feeStr}` : '—'}</span>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-          Balance: {balMap[coin] ?? '—'} {coin}
-          <button style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }} onClick={() => setAmount(balMap[coin] ?? '')}>MAX</button>
-        </div>
-        <div className="fee-row"><span>Network fee</span><span>{feeStr ? `≈ ${feeStr}` : '—'}</span></div>
         <button
           className="btn-primary"
-          style={{ marginTop: 18 }}
-          disabled={!recipientValidation.valid || !amount || !wallet?.seed?.length}
+          style={{
+            marginTop: 18,
+            padding: '14px 16px',
+            fontSize: 15, fontWeight: 700,
+            borderRadius: 12,
+          }}
+          disabled={!recipientValidation.valid || !amount || (!wallet?.seed?.length && !wallet?.privateKey)}
           onClick={onSubmit}
         >
           Send {coin}
         </button>
-        {!wallet?.seed?.length && (
+        {!wallet?.seed?.length && !wallet?.privateKey && (
           <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6, textAlign: 'center' }}>
             Wallet locked — refresh to unlock
           </div>
