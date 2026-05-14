@@ -12,13 +12,15 @@
  *      requests come in via session_request events handled in the parent
  *      WalletConnectHost.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useWallet } from './shell/AppShell';
 import {
   approveSession, rejectSession, pair, onSessionProposal,
 } from '../lib/walletconnect';
 import type { WalletKitTypes } from '@reown/walletkit';
 import { Globe } from 'lucide-react';
+import { classifyOrigin } from '../lib/phishing';
+import { PhishingBanner } from './PhishingBanner';
 
 export function WalletConnectModal({ onClose }: { onClose: () => void }) {
   const wallet = useWallet();
@@ -28,6 +30,14 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
   const [pairing, setPairing]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [proposal, setProposal]     = useState<WalletKitTypes.SessionProposal | null>(null);
+  const [ackRisk, setAckRisk]       = useState(false);
+
+  /* Pre-classify the dApp URL while the user reads the connect screen. */
+  const originVerdict = useMemo(() => {
+    const url = proposal?.params.proposer.metadata.url ?? '';
+    return url ? classifyOrigin(url) : null;
+  }, [proposal]);
+  const requiresAck = originVerdict?.risk === 'warning' || originVerdict?.risk === 'critical';
 
   // Subscribe to incoming proposals while this modal is mounted.
   useEffect(() => {
@@ -133,6 +143,8 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
+            {originVerdict && <PhishingBanner verdict={originVerdict} hideSafe={false}/>}
+
             <div className="card" style={{ padding: 12, marginTop: 6, fontSize: 12 }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.4, color: 'var(--text-muted)', marginBottom: 6 }}>
                 THIS APP WILL BE ABLE TO
@@ -143,6 +155,23 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
                 • Send LITHO &amp; LEP100 transfers (only when you approve each one)
               </div>
             </div>
+
+            {requiresAck && (
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                marginTop: 12, fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={ackRisk}
+                  onChange={e => setAckRisk(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  I understand the risk and want to connect to this dApp anyway.
+                </span>
+              </label>
+            )}
 
             <div style={{
               fontSize: 11, color: 'var(--text-muted)',
@@ -161,7 +190,19 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button className="btn-outline" style={{ flex: 1 }} onClick={onReject}>Reject</button>
-              <button className="btn-primary" style={{ flex: 1 }} onClick={onApprove}>Connect</button>
+              <button
+                className="btn-primary"
+                style={{
+                  flex: 1,
+                  background: originVerdict?.risk === 'critical' ? 'var(--red)' : undefined,
+                  opacity: requiresAck && !ackRisk ? 0.45 : 1,
+                  cursor:  requiresAck && !ackRisk ? 'not-allowed' : 'pointer',
+                }}
+                disabled={requiresAck && !ackRisk}
+                onClick={onApprove}
+              >
+                {originVerdict?.risk === 'critical' ? 'Connect anyway' : 'Connect'}
+              </button>
             </div>
           </div>
         )}

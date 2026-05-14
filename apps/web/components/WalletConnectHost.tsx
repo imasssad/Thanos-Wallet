@@ -25,10 +25,18 @@ import { walletFromSeed, makeProvider } from '../lib/signer';
 import {
   signerSignMessage, signerSignTypedData, signerSignTransaction, SignerError,
 } from '../lib/signer-client';
+import {
+  classifyTransaction, classifyTypedData, type Verdict, type TxLike,
+} from '../lib/phishing';
+import { PhishingBanner } from './PhishingBanner';
 
 interface PendingRequest {
   request: WalletKitTypes.SessionRequest;
-  /** Auto-resolved by the user via the approval UI. */
+  /** Risk verdict so the confirm UI can render the banner. */
+  verdict: Verdict;
+  /** Short human-readable summary of the action — used in the modal. */
+  summary: string;
+  /** Approve resumes the original signing flow. */
   approve: () => Promise<void>;
   reject:  (reason?: string) => Promise<void>;
 }
@@ -55,6 +63,14 @@ export function WalletConnectHost() {
   };
 
   const [pending, setPending] = useState<PendingRequest | null>(null);
+  const [busy, setBusy]       = useState<'approve' | 'reject' | null>(null);
+
+  /* Hand a risky request to the user. We only allow one at a time —
+     concurrent dApp requests stack in dedup; the second tries again
+     when the user resolves the first. */
+  const queueForConfirm = (entry: PendingRequest) => {
+    setPending(entry);
+  };
 
   /* ─── Signature-spam dedup ──────────────────────────────────────────
      dApps occasionally fire two identical sign requests in quick
@@ -159,20 +175,40 @@ export function WalletConnectHost() {
             const { EIP712Domain, ...types } = typedData.types as Record<string, unknown>;
             void EIP712Domain;
             const cleanTypes = types as Record<string, Array<{ name: string; type: string }>>;
-            let sig: string;
-            try {
-              const r = await signerSignTypedData({ domain: typedData.domain, types: cleanTypes, message: typedData.message });
-              sig = r.signature;
-            } catch (wErr) {
-              const code = wErr instanceof SignerError ? wErr.code : '';
-              if (code === 'worker_locked' || code === 'worker_crashed') {
-                const wallet = currentWallet();
-                sig = await wallet.signTypedData(typedData.domain, cleanTypes, typedData.message);
-              } else {
-                throw wErr;
+
+            const doSign = async () => {
+              let sig: string;
+              try {
+                const r = await signerSignTypedData({ domain: typedData.domain, types: cleanTypes, message: typedData.message });
+                sig = r.signature;
+              } catch (wErr) {
+                const code = wErr instanceof SignerError ? wErr.code : '';
+                if (code === 'worker_locked' || code === 'worker_crashed') {
+                  const wallet = currentWallet();
+                  sig = await wallet.signTypedData(typedData.domain, cleanTypes, typedData.message);
+                } else {
+                  throw wErr;
+                }
               }
+              await sendOk(sig);
+            };
+
+            const verdict = classifyTypedData({
+              primaryType: typedData.primaryType,
+              domain:      typedData.domain as { name?: string; verifyingContract?: string },
+              message:     typedData.message,
+            });
+            if (verdict.risk === 'safe') {
+              await doSign();
+            } else {
+              // Hand to the confirm modal; resume on user approve.
+              await queueForConfirm({
+                request, verdict,
+                summary: `Sign typed data: ${typedData.primaryType || 'unknown'} on ${(typedData.domain as { name?: string })?.name ?? 'this dApp'}.`,
+                approve: doSign,
+                reject:  async () => { await sendErr(4001, 'User rejected the signature'); },
+              });
             }
-            await sendOk(sig);
             break;
           }
           case 'eth_sendTransaction': {
@@ -183,35 +219,54 @@ export function WalletConnectHost() {
             // Surface the Permit hint when the dApp is asking us to sign
             // an ERC-20 approve() — once per session topic, in console only.
             maybePermitHint(txParams.data, topic);
-            let hash: string;
-            try {
-              const r = await signerSignTransaction({
-                to:                   txParams.to,
-                value:                txParams.value,
-                data:                 txParams.data,
-                gasLimit:             txParams.gas ?? txParams.gasLimit,
-                maxFeePerGas:         txParams.maxFeePerGas,
-                maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
-              });
-              hash = r.hash;
-            } catch (wErr) {
-              const code = wErr instanceof SignerError ? wErr.code : '';
-              if (code === 'worker_locked' || code === 'worker_crashed') {
-                const w = currentWallet(makeProvider());
-                const tx = await w.sendTransaction({
-                  to:    txParams.to,
-                  value: txParams.value ? BigInt(txParams.value) : undefined,
-                  data:  txParams.data,
+
+            const doSend = async () => {
+              let hash: string;
+              try {
+                const r = await signerSignTransaction({
+                  to:                   txParams.to,
+                  value:                txParams.value,
+                  data:                 txParams.data,
                   gasLimit:             txParams.gas ?? txParams.gasLimit,
                   maxFeePerGas:         txParams.maxFeePerGas,
                   maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
                 });
-                hash = tx.hash;
-              } else {
-                throw wErr;
+                hash = r.hash;
+              } catch (wErr) {
+                const code = wErr instanceof SignerError ? wErr.code : '';
+                if (code === 'worker_locked' || code === 'worker_crashed') {
+                  const w = currentWallet(makeProvider());
+                  const tx = await w.sendTransaction({
+                    to:    txParams.to,
+                    value: txParams.value ? BigInt(txParams.value) : undefined,
+                    data:  txParams.data,
+                    gasLimit:             txParams.gas ?? txParams.gasLimit,
+                    maxFeePerGas:         txParams.maxFeePerGas,
+                    maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
+                  });
+                  hash = tx.hash;
+                } else {
+                  throw wErr;
+                }
               }
+              await sendOk(hash);
+            };
+
+            const verdict = classifyTransaction({
+              to:    txParams.to,
+              value: txParams.value,
+              data:  txParams.data,
+            } satisfies TxLike);
+            if (verdict.risk === 'safe') {
+              await doSend();
+            } else {
+              await queueForConfirm({
+                request, verdict,
+                summary: `Send transaction to ${txParams.to}`,
+                approve: doSend,
+                reject:  async () => { await sendErr(4001, 'User rejected the transaction'); },
+              });
             }
-            await sendOk(hash);
             break;
           }
           case 'eth_accounts':
@@ -238,7 +293,73 @@ export function WalletConnectHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount once; refs keep latest seed/address
 
-  // Future: render a per-request approval modal here using `pending`.
-  void pending; void setPending;
-  return null;
+  /* ─── Risky-request confirm modal ──────────────────────────────────
+     Only rendered when classifyTransaction / classifyTypedData flagged
+     a non-safe risk. Safe requests pass through silently. */
+  if (!pending) return null;
+
+  const close   = () => { setPending(null); setBusy(null); };
+  const onApprove = async () => {
+    if (busy) return;
+    setBusy('approve');
+    try { await pending.approve(); } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[wc] approve failed:', (e as Error).message);
+    }
+    close();
+  };
+  const onReject = async () => {
+    if (busy) return;
+    setBusy('reject');
+    try { await pending.reject(); } catch { /* dApp may already have given up */ }
+    close();
+  };
+
+  const peer = pending.request.params?.request as { method?: string } | undefined;
+  const dAppName = (pending.request as unknown as { verifyContext?: { verified?: { origin?: string } } })
+    .verifyContext?.verified?.origin ?? 'dApp';
+
+  return (
+    <div className="modal-backdrop" onClick={onReject}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <div className="modal-header">
+          <span className="modal-title">Confirm signing</span>
+          <button className="modal-close" onClick={onReject}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+            {dAppName} · {peer?.method}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, wordBreak: 'break-all' }}>
+            {pending.summary}
+          </div>
+          <PhishingBanner verdict={pending.verdict}/>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button
+              className="btn-outline"
+              style={{ flex: 1 }}
+              onClick={onReject}
+              disabled={busy === 'approve'}
+            >
+              {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+            </button>
+            <button
+              className="btn-primary"
+              style={{
+                flex: 1,
+                background: pending.verdict.risk === 'critical' ? 'var(--red)' : undefined,
+                opacity: busy ? 0.6 : 1,
+              }}
+              onClick={onApprove}
+              disabled={busy === 'reject'}
+            >
+              {busy === 'approve'
+                ? 'Signing…'
+                : pending.verdict.risk === 'critical' ? 'Sign anyway' : 'Approve & sign'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
