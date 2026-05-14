@@ -21,7 +21,7 @@ import { searchContacts, findContactByAddress, type Contact } from '../lib/addre
 import { looksLikeName, resolveName } from '../lib/dnns';
 import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
 import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
-import { signerSendBitcoin } from '../lib/signer-client';
+import { recordPendingTx } from '../lib/tx-store';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
@@ -193,49 +193,41 @@ export function SendModal({ onClose }: { onClose: () => void }) {
 
     /* ─── Bitcoin branch ───────────────────────────────────────────────
        BIP84 segwit (mnemonic) or single-keypair P2WPKH (private key),
-       UTXO + PSBT, broadcast via mempool.space. Mnemonic sends prefer
-       the WebWorker so the seed never re-enters main-thread scope. */
+       UTXO + PSBT (with RBF signaling), broadcast via mempool.space.
+       Always main-thread today because the RBF replacement flow needs
+       the inputs+outputs snapshot, which doesn't survive a worker
+       postMessage round-trip yet. */
     if (isBitcoinSend) {
       if (!wallet.seed?.length && !wallet.privateKey) {
         setError('Wallet is locked. Please refresh and unlock.');
         setStage('failed');
         return;
       }
+      const source = wallet.privateKey
+        ? { kind: 'privateKey' as const, privateKey: wallet.privateKey }
+        : { kind: 'mnemonic'   as const, mnemonic: wallet.seed.join(' ') };
       setStage('broadcasting');
       setError(null);
       try {
-        let txid: string;
-        // Mnemonic path: try the worker first, fall back to direct.
-        // PK path: direct only — the worker is mnemonic-flavoured.
-        if (wallet.seed?.length) {
-          try {
-            const r = await signerSendBitcoin({ recipient: to.trim(), amount });
-            txid = r.hash;
-          } catch (workerErr) {
-            const code = (workerErr as { code?: string }).code
-                       ?? (workerErr as Error).message;
-            if (code === 'worker_locked' || code === 'worker_crashed' || code === 'btc_requires_mnemonic') {
-              txid = await sendBitcoin({
-                source:    { kind: 'mnemonic', mnemonic: wallet.seed.join(' ') },
-                recipient: to.trim(),
-                amount,
-              });
-            } else {
-              throw workerErr;
-            }
-          }
-        } else {
-          // PK wallet — main-thread direct send.
-          txid = await sendBitcoin({
-            source:    { kind: 'privateKey', privateKey: wallet.privateKey! },
-            recipient: to.trim(),
-            amount,
-          });
-        }
-        setTxHash(txid);
-        // Bitcoin txs are "pending" until first confirmation (~10 min).
-        // We don't poll mempool.space here; the user can dismiss the
-        // modal and watch the explorer link.
+        const { hash, snapshot } = await sendBitcoin({
+          source,
+          recipient: to.trim(),
+          amount,
+        });
+        // Persist so the Transactions view can show this as pending and
+        // offer a "Bump fee" affordance until it confirms.
+        recordPendingTx({
+          id:           hash,
+          chain:        'bitcoin',
+          symbol:       'BTC',
+          recipient:    to.trim(),
+          amount,
+          status:       'broadcast',
+          broadcastAt:  Date.now(),
+          updatedAt:    Date.now(),
+          btc:          snapshot,
+        });
+        setTxHash(hash);
         setStage('pending');
       } catch (e) {
         const msg = e instanceof BitcoinSendError ? e.message : (e as Error).message || 'Failed to send';
