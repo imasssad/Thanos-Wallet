@@ -25,6 +25,7 @@ import { ethers } from 'ethers';
 import { getPortfolio, IndexerOffline, type IndexerAsset } from './indexer';
 import { getSolanaAddress,    getSolanaBalance    } from './solana';
 import { getBitcoinAddressFromSource, getBitcoinBalance } from './bitcoin';
+import { getCosmosAddress,    getCosmosBalance    } from './cosmos';
 import { getAllEvmNativeBalances, type EvmChain } from './evm-chains';
 import type { WalletSource } from './wallet-source';
 
@@ -131,6 +132,18 @@ async function loadOnce(
           }
         }
       } catch { /* mempool.space blip — skip */ }
+    }
+
+    /* ── Cosmos Hub (mnemonic only — secp256k1 BIP44 m/44'/118'/0'/0/0) ── */
+    if (source?.kind === 'mnemonic') {
+      try {
+        const addr = await getCosmosAddress(source.mnemonic);
+        const bal  = parseFloat(await getCosmosBalance(addr));
+        if (bal > 0) {
+          bySym.set('atom', bal.toLocaleString('en-US', { maximumFractionDigits: 6 }));
+          bySymNumber.set('atom', bal);
+        }
+      } catch { /* LCD blip — skip */ }
     }
 
     /* ── EVM native balances across every chain in EVM_CHAINS ─────

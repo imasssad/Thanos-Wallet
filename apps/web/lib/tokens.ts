@@ -16,7 +16,7 @@ export type Token = {
   /** Full name (e.g. 'Lithosphere'). */
   name:      string;
   /** Where it lives. 'native' for the chain coin. */
-  chain:     'Makalu' | 'Kamet' | 'Bitcoin' | 'EVM' | 'Solana';
+  chain:     'Makalu' | 'Kamet' | 'Bitcoin' | 'EVM' | 'Solana' | 'Cosmos';
   /** Contract address. `null` for native gas coin. */
   address:   string | null;
   /** Decimals — 18 for all LEP100 (ERC-20) tokens. */
@@ -165,6 +165,22 @@ export const TOKENS: Token[] = [
     color: '#f7931a',
     icon: '/images/tokens/btc.png',
     priceUsd: 63200,        // fetched live from CoinGecko via pricing.ts
+    balance: '0',
+    change24h: 0,
+  },
+  // ─── Cosmos Hub ───────────────────────────────────────────────────────
+  // ATOM at BIP44 path m/44'/118'/0'/0/0 → cosmos1… bech32. Send + sign
+  // via @cosmjs/stargate (see lib/cosmos.ts). Recipients on this row
+  // must be cosmos1-prefixed bech32 addresses.
+  {
+    sym: 'ATOM',
+    name: 'Cosmos Hub',
+    chain: 'Cosmos',
+    address: null, // native
+    decimals: 6,
+    color: '#2e3148',
+    icon: '/images/tokens/atom.png',
+    priceUsd: 8.50,         // fetched live from CoinGecko via pricing.ts
     balance: '0',
     change24h: 0,
   },

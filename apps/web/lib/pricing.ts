@@ -35,6 +35,7 @@ const COINGECKO_IDS: Record<string, string> = {
   COLLE:  'colle-ai',    // probably 404s today — fall back to placeholder
   SOL:    'solana',
   BTC:    'bitcoin',
+  ATOM:   'cosmos',
   // ─── EVM native coins ───────────────────────────────────────────
   ETH:    'ethereum',
   BNB:    'binancecoin',
