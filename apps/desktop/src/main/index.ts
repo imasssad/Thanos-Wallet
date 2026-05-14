@@ -2,6 +2,7 @@
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron') as typeof import('electron');
 const path = require('path') as typeof import('path');
+import { startAutoUpdater } from './updater';
 
 const SERVICE = 'thanos-wallet';
 
@@ -24,6 +25,10 @@ const createWindow = () => {
 
   if (process.env.NODE_ENV === 'development') win.loadURL('http://localhost:5173');
   else win.loadFile(path.join(__dirname, 'index.html'));
+
+  // electron-updater starts polling once the renderer is mounted so the
+  // banner UI is ready to receive `updater:event` IPC messages.
+  startAutoUpdater(win);
 };
 
 app.whenReady().then(() => {

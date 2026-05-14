@@ -14,6 +14,8 @@
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
     "electron": "^33.2.1",
+    "electron-log": "^5.2.4",
+    "electron-updater": "^6.3.9",
     "ethers": "^6.13.4",
     "hash-wasm": "^4.12.0",
     "keytar": "^7.9.0",

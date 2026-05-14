@@ -8,6 +8,18 @@ import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
 } from './vault';
+import { UpdateBanner } from './components/UpdateBanner';
+
+/** Bridge exposed by src/main/preload.ts. The updater fields are
+ *  optional so the renderer keeps working on older Electron shells
+ *  that predate the auto-update wiring. */
+type UpdaterEvent =
+  | { kind: 'checking' }
+  | { kind: 'available';   version: string; releaseNotes?: string | null }
+  | { kind: 'not-available' }
+  | { kind: 'progress';    percent: number; transferred: number; total: number; bytesPerSecond: number }
+  | { kind: 'downloaded';  version: string; releaseNotes?: string | null }
+  | { kind: 'error';       message: string };
 
 declare global {
   interface Window {
@@ -15,6 +27,9 @@ declare global {
       vaultGet(key: string): Promise<string | null>;
       vaultSet(key: string, value: string): Promise<void>;
       vaultRemove(key: string): Promise<void>;
+      onUpdateEvent?:     (cb: (ev: UpdaterEvent) => void) => () => void;
+      checkForUpdate?:    () => Promise<unknown>;
+      installAndRestart?: () => Promise<unknown>;
     };
   }
 }
@@ -1486,6 +1501,11 @@ function App() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Auto-update banner — mounts above the topnav so it's seen first
+          but never blocks app interaction. Renders null when there's
+          nothing to show. */}
+      <UpdateBanner/>
 
       {/* Top navigation */}
       <nav className="topnav">
