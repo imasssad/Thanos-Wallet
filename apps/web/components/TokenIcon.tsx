@@ -14,9 +14,9 @@
  * error, so a single token can attempt all four sources in one component
  * without re-renders cascading.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TOKEN_BY_SYM } from '../lib/tokens';
-import { getLogoUrl } from '../lib/token-logos';
+import { getLogoUrl, subscribeToLogoMap } from '../lib/token-logos';
 
 interface Props {
   /** Token ticker (e.g. 'LITHO'). Drives both icon lookup and avatar letter. */
@@ -37,18 +37,33 @@ export function TokenIcon({ sym, icon, color, size = 28, style, className }: Pro
   const canonical = TOKEN_BY_SYM[sym];
   const bgColor   = color || canonical?.color || '#52525b';
 
-  /* Build the candidate source chain ONCE per token. We step through it on
-     each onError until we run out, at which point the letter avatar wins. */
+  /* Re-evaluate when the live logo map updates. Without this, the
+     useMemo below captures the initial state of the map and never
+     refreshes, so a TokenIcon mounted before preloadTokenLogos resolves
+     would stay on the letter avatar forever. */
+  const [bumper, setBumper] = useState(0);
+  useEffect(() => {
+    return subscribeToLogoMap(() => setBumper(b => b + 1));
+  }, []);
+
+  /* Build the candidate source chain. We step through it on each <img>
+     onError until we run out, at which point the letter avatar wins. */
   const sources = React.useMemo(() => {
     const out: string[] = [];
     if (icon)            out.push(icon);
     if (canonical?.icon) out.push(canonical.icon);
     const live = getLogoUrl(sym);
-    if (live)            out.push(live);
+    if (live && !out.includes(live)) out.push(live);
     return out;
-  }, [icon, canonical?.icon, sym]);
+    // bumper is included so re-firing notifyListeners causes a recompute.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [icon, canonical?.icon, sym, bumper]);
 
+  /* Reset the cursor when the source list grows / changes (e.g. live
+     logo arrives after mount). Without this we'd be stuck at idx 0
+     pointing at a possibly-stale URL. */
   const [idx, setIdx] = useState(0);
+  useEffect(() => { setIdx(0); }, [sources.length]);
   const src       = sources[idx];
   const showImage = !!src;
 

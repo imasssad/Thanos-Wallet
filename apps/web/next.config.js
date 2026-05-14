@@ -16,7 +16,13 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://assets.coingecko.com https://raw.githubusercontent.com",
+  "img-src 'self' data: blob:"
+    + " https://assets.coingecko.com"
+    + " https://raw.githubusercontent.com"
+    + " https://dl.dropboxusercontent.com"
+    + " https://www.dropbox.com"
+    + " https://makalu.litho.ai"
+    + " https://explorer.solana.com",
   "font-src 'self' data:",
   "connect-src 'self'"
     + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://rpc.kamet.litho.ai"
