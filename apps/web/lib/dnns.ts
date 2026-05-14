@@ -3,19 +3,19 @@
  *
  * Resolves a human-readable name (e.g. "sora.litho") to an EVM address.
  *
- * Today this is a thin wrapper around sdk-core's DnnsService whose
- * on-chain resolution is still stubbed. The wallet UI calls into this
- * module so that swapping in the real resolver later is a one-file change.
+ * Resolution path:
+ *   1. Server-side endpoint (`/dnns/resolve`) — caches in `dnns_cache`
+ *      and proxies an on-chain `dnns_resolve` RPC call.  Fast, shared
+ *      across clients, and survives wallet refresh / app reinstall.
+ *   2. Fallback: sdk-core's `DnnsService` (direct RPC) when the API is
+ *      unreachable.  Keeps the wallet usable without the API.
  *
- * Lookup rules:
- *   - Inputs that already look like an address (0x… / litho1…) skip the
- *     resolver entirely.
- *   - A name with at least one dot is treated as a candidate name.
- *   - Resolution is cached for 5 minutes in memory so the user can switch
- *     between modals without re-resolving every keystroke.
+ * In-memory cache (5 min) layers on top of the server cache so rapid
+ * keystrokes in the Send modal don't re-fetch on every change.
  */
 import { DnnsService } from '@thanos/sdk-core';
 import { MAKALU_CHAIN_ID } from './rpc';
+import { apiClient } from './auth-client';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -40,6 +40,8 @@ export function looksLikeName(input: string): boolean {
   return trimmed.includes('.');
 }
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 /** Resolve a DNNS name → checksummed EVM address, or null if unknown. */
 export async function resolveName(name: string): Promise<string | null> {
   const key = name.trim().toLowerCase();
@@ -48,15 +50,40 @@ export async function resolveName(name: string): Promise<string | null> {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.address;
 
+  // 1. Try the API. It has its own dnns_cache table + RPC fallback,
+  //    so a 200 with `record.address: null` is an authoritative miss.
+  try {
+    const { record } = await apiClient.resolveDnnsName(key, MAKALU_CHAIN_ID);
+    if (record) {
+      const addr = record.address && record.address !== ZERO_ADDRESS ? record.address : null;
+      cache.set(key, { address: addr, at: Date.now() });
+      return addr;
+    }
+  } catch {
+    /* API unreachable — fall through to the SDK path. */
+  }
+
+  // 2. Direct RPC fallback via sdk-core. Same semantics — zero address
+  //    means "no record".
   try {
     const rec = await getService().resolve(MAKALU_CHAIN_ID, key);
-    const addr = rec.address && rec.address !== '0x0000000000000000000000000000000000000000'
-      ? rec.address
-      : null;
+    const addr = rec.address && rec.address !== ZERO_ADDRESS ? rec.address : null;
     cache.set(key, { address: addr, at: Date.now() });
     return addr;
   } catch {
     cache.set(key, { address: null, at: Date.now() });
+    return null;
+  }
+}
+
+/** Reverse-resolve an EVM address → DNNS name (e.g. for the "you're sending
+ *  to alice.litho" label in the Send modal). Returns null on miss. */
+export async function reverseLookup(address: string): Promise<string | null> {
+  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address.trim())) return null;
+  try {
+    const { record } = await apiClient.lookupDnnsAddress(address.trim(), MAKALU_CHAIN_ID);
+    return record?.name ?? null;
+  } catch {
     return null;
   }
 }

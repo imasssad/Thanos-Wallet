@@ -94,6 +94,49 @@ export class ApiError extends Error {
   }
 }
 
+/* ─── Address book (matches services/api/src/routes/contacts.ts) ───── */
+export type ContactAddressType = 'evm' | 'litho' | 'bitcoin' | 'solana' | 'cosmos';
+
+export interface ContactDto {
+  id:           string;
+  name:         string;
+  address:      string;
+  addressType:  ContactAddressType | null;
+  chainId:      number | null;
+  notes:        string | null;
+  isFavourite:  boolean;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export interface ContactCreate {
+  name:         string;
+  address:      string;
+  addressType?: ContactAddressType;
+  chainId?:     number;
+  notes?:       string;
+  isFavourite?: boolean;
+}
+
+export interface ContactPatch {
+  name?:        string;
+  notes?:       string | null;
+  isFavourite?: boolean;
+}
+
+/* ─── DNNS (matches services/api/src/routes/dnns.ts) ───────────────── */
+export interface DnnsRecord {
+  name:       string;
+  chainId:    number;
+  address:    string | null;
+  bech32?:    string | null;
+  resolver?:  string | null;
+  avatarUrl?: string | null;
+  bio?:       string | null;
+  cachedAt:   string;
+  source:     'cache' | 'chain';
+}
+
 /* ─── Client config ─────────────────────────────────────────────────── */
 export interface ThanosApiClientOptions {
   /** Base URL for the backend, e.g. '/api' or 'https://devapp.thanos.fi/api' */
@@ -159,6 +202,42 @@ export class ThanosApiClient {
 
   async revokeSession(sessionId: string): Promise<{ ok: true }> {
     return this.req('DELETE', `/auth/sessions/${encodeURIComponent(sessionId)}`, undefined, true);
+  }
+
+  /* ─── Address book (cloud-synced contacts) ───────────────────────
+     Wraps services/api/src/routes/contacts.ts. All four endpoints
+     require an auth'd session; the local-only fallback in
+     apps/web/lib/address-book.ts handles signed-out users. */
+
+  async listContacts(): Promise<{ items: ContactDto[] }> {
+    return this.req('GET', '/contacts', undefined, true);
+  }
+
+  async createContact(input: ContactCreate): Promise<{ item: ContactDto }> {
+    return this.req('POST', '/contacts', input, true);
+  }
+
+  async updateContact(id: string, patch: ContactPatch): Promise<{ item: ContactDto }> {
+    return this.req('PUT', `/contacts/${encodeURIComponent(id)}`, patch, true);
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    await this.req('DELETE', `/contacts/${encodeURIComponent(id)}`, undefined, true);
+  }
+
+  /* ─── DNNS resolver ──────────────────────────────────────────────
+     Public endpoints (no auth). Cached on the server side. */
+
+  async resolveDnnsName(name: string, chainId?: number): Promise<{ record: DnnsRecord | null }> {
+    const q = new URLSearchParams({ name });
+    if (chainId) q.set('chainId', String(chainId));
+    return this.req('GET', `/dnns/resolve?${q.toString()}`, undefined, false);
+  }
+
+  async lookupDnnsAddress(address: string, chainId?: number): Promise<{ record: DnnsRecord | null }> {
+    const q = new URLSearchParams({ address });
+    if (chainId) q.set('chainId', String(chainId));
+    return this.req('GET', `/dnns/lookup?${q.toString()}`, undefined, false);
   }
 
   /** Convenience — true if we have stored tokens. Doesn't validate them. */
