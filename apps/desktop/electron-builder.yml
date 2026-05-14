@@ -53,4 +53,16 @@ linux:
   category: Finance
   maintainer: Thanos Wallet <devs@thanos.fi>
 
-publish: never
+# ─── Auto-update channel ─────────────────────────────────────────────────────
+# Updates ship as GitHub Releases on the imasssad/Thanos-Wallet repo. The
+# main-process autoUpdater (electron-updater) polls /releases/latest at boot
+# and on a 1h interval. Operators publishing a private channel can override
+# via the GH_TOKEN + UPDATER_URL env vars (see ops/RELEASING.md).
+#
+# Switching to a self-hosted feed: replace `provider: github` with
+# `provider: generic` + a `url: https://updates.thanos.fi/${os}/${arch}/`.
+publish:
+  provider: github
+  owner: imasssad
+  repo: Thanos-Wallet
+  releaseType: release
