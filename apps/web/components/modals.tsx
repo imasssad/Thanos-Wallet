@@ -23,10 +23,10 @@ import { looksLikeName, resolveName } from '../lib/dnns';
 import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
 import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
 import { recordPendingTx } from '../lib/tx-store';
+import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
-const BAL_MAP: Record<string, string> = Object.fromEntries(TOKENS.map(t => [t.sym, t.balance]));
 
 export type ModalKind = 'send' | 'receive' | 'swap' | null;
 
@@ -78,7 +78,16 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     return evm ? findContactByAddress(evm) : null;
   }
 
-  const balMap = BAL_MAP;
+  /* Live balances for every chain the wallet has access to. Single
+     network call set, dedup'd across components via useLiveBalances'
+     module-level cache. */
+  const walletSource = wallet?.privateKey
+    ? { kind: 'privateKey' as const, privateKey: wallet.privateKey }
+    : wallet?.seed?.length
+      ? { kind: 'mnemonic' as const, mnemonic: wallet.seed.join(' ') }
+      : null;
+  const live = useLiveBalances(wallet?.evmAddress, walletSource);
+  const balanceFor = (sym: string) => live.bySym.get(sym.toLowerCase()) ?? '0';
 
   /* Lookup the token row for the currently selected symbol — drives
      chain-aware branches for validation, fee estimation and broadcast. */
@@ -425,10 +434,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           fontSize: 12, color: 'var(--text-muted)', marginBottom: 14,
           padding: '0 2px',
         }}>
-          <span>Balance: {balMap[coin] ?? '—'} {coin}</span>
+          <span>Balance: {balanceFor(coin)} {coin}</span>
           <button
             style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
-            onClick={() => setAmount(balMap[coin] ?? '')}
+            onClick={() => setAmount(balanceFor(coin).replace(/,/g, ''))}
           >
             MAX
           </button>

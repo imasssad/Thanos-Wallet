@@ -15,40 +15,108 @@ import { BumpFeeModal } from './BumpFeeModal';
 import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 
-// Market view leads with the Lithosphere ecosystem (canonical token list),
-// then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
-const MARKET = [
-  ...TOKENS.map(t => ({
-    sym:   t.sym,
-    name:  t.name,
-    price: `$${t.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}`,
-    chg24: t.change24h,
-    chg7:  +(t.change24h * 1.7).toFixed(1),
-    cap:   t.sym === 'LITHO' ? '$298M' : t.sym === 'LitBTC' ? '$540M' : t.sym === 'LAX' ? '$120M' : t.sym === 'JOT' ? '$24M' : t.sym === 'COLLE' ? '$8M' : '$12M',
-    vol:   t.sym === 'LITHO' ? '$24.5M' : t.sym === 'LitBTC' ? '$38M' : t.sym === 'LAX' ? '$9M' : '$2.4M',
-    color: t.color,
-  })),
-  { sym: 'BNB',    name: 'BNB',          price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
-  { sym: 'XRP',    name: 'XRP',          price: '$0.6280',    chg24: -3.4, chg7: -6.2, cap: '$34.8B',  vol: '$2.3B',  color: '#00aae4' },
-  { sym: 'ADA',    name: 'Cardano',      price: '$0.5140',    chg24: 1.1,  chg7: 3.8,  cap: '$18.2B',  vol: '$0.9B',  color: '#0033ad' },
-  { sym: 'AVAX',   name: 'Avalanche',    price: '$38.40',     chg24: 4.2,  chg7: 9.4,  cap: '$15.6B',  vol: '$0.7B',  color: '#e84142' },
-  { sym: 'DOT',    name: 'Polkadot',     price: '$8.720',     chg24: -0.6, chg7: 1.2,  cap: '$11.4B',  vol: '$0.4B',  color: '#e6007a' },
-  { sym: 'DOGE',   name: 'Dogecoin',     price: '$0.1024',    chg24: 6.3,  chg7: 18.2, cap: '$14.6B',  vol: '$1.1B',  color: '#c2a633' },
-  { sym: 'LINK',   name: 'Chainlink',    price: '$14.82',     chg24: 2.9,  chg7: 7.3,  cap: '$8.7B',   vol: '$0.5B',  color: '#2a5ada' },
-];
+/* Lithosphere rows shown at the top of the Market view. Prices come
+   from usePrices() at runtime; caps and volumes are intentionally
+   blank ("—") until a real market-data feed lands for these chain
+   assets. The mainstream rows (BTC/ETH/BNB/SOL/...) come live from
+   CoinGecko's /coins/markets endpoint — see useMainstreamMarkets. */
+interface MarketRow {
+  sym:   string;
+  name:  string;
+  price: string;
+  chg24: number;
+  chg7:  number | null;
+  cap:   string;
+  vol:   string;
+  color: string;
+  icon?: string;
+}
+
+interface CGMarket {
+  id: string; symbol: string; name: string;
+  current_price?:                      number;
+  price_change_percentage_24h?:        number;
+  price_change_percentage_7d_in_currency?: number;
+  market_cap?:                         number;
+  total_volume?:                       number;
+  image?:                              string;
+}
+
+function fmtUsd(n: number, fractionDigits = 4): string {
+  return `$${n.toLocaleString('en-US', { maximumFractionDigits: fractionDigits })}`;
+}
+function fmtCompactUsd(n: number | undefined | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
+  return `$${n.toFixed(2)}`;
+}
+
+/** Top mainstream markets — live from CoinGecko. We deliberately exclude
+ *  Bitcoin / Solana from this list when they're already in TOKENS so we
+ *  don't show them twice. */
+function useMainstreamMarkets(): MarketRow[] | null {
+  const [rows, setRows] = useState<MarketRow[] | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const url =
+          'https://api.coingecko.com/api/v3/coins/markets?'
+          + 'vs_currency=usd&order=market_cap_desc&per_page=15&page=1'
+          + '&price_change_percentage=24h,7d&sparkline=false';
+        const res = await fetch(url, { headers: { accept: 'application/json' } });
+        if (!res.ok) return;
+        const data = await res.json() as CGMarket[];
+        if (cancel) return;
+        const out: MarketRow[] = data.map(c => ({
+          sym:   (c.symbol || '').toUpperCase(),
+          name:  c.name,
+          price: typeof c.current_price === 'number' ? fmtUsd(c.current_price, 6) : '—',
+          chg24: typeof c.price_change_percentage_24h === 'number' ? +c.price_change_percentage_24h.toFixed(2) : 0,
+          chg7:  typeof c.price_change_percentage_7d_in_currency === 'number' ? +c.price_change_percentage_7d_in_currency.toFixed(2) : null,
+          cap:   fmtCompactUsd(c.market_cap),
+          vol:   fmtCompactUsd(c.total_volume),
+          color: '#52525b',
+          icon:  c.image,
+        }));
+        setRows(out);
+      } catch { /* network blip — UI shows Lithosphere rows only */ }
+    })();
+    return () => { cancel = true; };
+  }, []);
+  return rows;
+}
 
 export function MarketView() {
   const [search, setSearch] = useState('');
-  const prices = usePrices();
+  const prices       = usePrices();
+  const mainstream   = useMainstreamMarkets();
 
-  /* Overlay live CoinGecko prices on the canonical Lithosphere rows.
-     Mainstream-coin rows (BNB/XRP/etc.) keep their reference prices for now. */
-  const market = React.useMemo(() => MARKET.map(c => {
-    const live = prices?.[c.sym];
-    if (typeof live !== 'number') return c;
-    return { ...c, price: `$${live.toLocaleString('en-US', { maximumFractionDigits: 4 })}` };
+  /* Lithosphere rows derived from canonical TOKENS + live priceUsd.
+     No fabricated caps/vols — they show '—' until we have a real source. */
+  const lithoRows: MarketRow[] = React.useMemo(() => TOKENS.map(t => {
+    const live = prices?.[t.sym];
+    const p    = typeof live === 'number' ? live : t.priceUsd;
+    return {
+      sym:   t.sym,
+      name:  t.name,
+      price: fmtUsd(p, 4),
+      chg24: 0,    // no live 24h tracking for Litho ecosystem yet
+      chg7:  null,
+      cap:   '—',
+      vol:   '—',
+      color: t.color,
+    };
   }), [prices]);
 
+  /* Drop mainstream rows that duplicate Lithosphere rows (BTC/SOL appear
+     in TOKENS already; we don't want them twice). Comparison by symbol. */
+  const lithoSyms = new Set(lithoRows.map(r => r.sym.toUpperCase()));
+  const mainstreamFiltered = (mainstream ?? []).filter(r => !lithoSyms.has(r.sym));
+
+  const market = [...lithoRows, ...mainstreamFiltered];
   const filtered = market.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="main-area" style={{ width: '100%' }}>
@@ -90,7 +158,9 @@ export function MarketView() {
                     <span className={c.chg24 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg24 >= 0 ? '+' : ''}{c.chg24}%</span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <span className={c.chg7 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg7 >= 0 ? '+' : ''}{c.chg7}%</span>
+                    {c.chg7 === null
+                      ? <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      : <span className={c.chg7 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg7 >= 0 ? '+' : ''}{c.chg7}%</span>}
                   </td>
                   <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-secondary)' }}>{c.cap}</td>
                   <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{c.vol}</td>
@@ -502,62 +572,31 @@ export function TransactionsView() {
   );
 }
 
-const POOLS = [
-  { name: 'Lithosphere Validator',   sym: 'LITHO',  apy: '18.40%', minStake: '100 LITHO',  tvl: '$58M',  color: '#3b7af7', locked: false },
-  { name: 'LitBTC Liquidity Pool',   sym: 'LitBTC', apy: '6.50%',  minStake: '0.01 LitBTC',tvl: '$22M',  color: '#f7931a', locked: false },
-  { name: 'LAX Stable Yield',        sym: 'LAX',    apy: '8.20%',  minStake: '50 LAX',     tvl: '$14M',  color: '#06b6d4', locked: false },
-  { name: 'FurGPT Stake',            sym: 'FurGPT', apy: '32.50%', minStake: '1,000 FurGPT',tvl: '$8.4M',color: '#f59e0b', locked: true  },
-];
-
+/* Staking is a route stub today — the Lithosphere validator + LP pools
+ *  aren't deployed on Makalu testnet yet. Once a real staking contract +
+ *  position-query endpoint land, this view becomes a real list. Until
+ *  then it's an honest "Coming soon" instead of a Solstice mock. */
 export function StakingView() {
   return (
     <div className="main-area" style={{ width: '100%' }}>
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Staking</h1>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Earn passive yield on your assets</div>
         </div>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Active Position</div>
-          <div className="staking-card">
-            <div className="staking-brand">
-              <div className="staking-brand-icon">S</div>
-              Solstice
-            </div>
-            <div className="staking-row">
-              <div className="staking-token-icon">wL</div>
-              <div>
-                <div className="staking-token-name">wLITHO</div>
-                <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
-              </div>
-              <div className="staking-yield">
-                <div className="staking-yield-label">Annual yield</div>
-                <div className="staking-yield-val">14.20%</div>
-              </div>
-            </div>
-            <div className="staking-meta"><span>41 days left · 4 months total</span><span>68%</span></div>
-            <div className="staking-bar"><div className="staking-bar-fill" style={{ width: '68%' }}/></div>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Available Pools</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {POOLS.map(p => (
-              <div key={p.sym} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <TokenIcon sym={p.sym} color={p.color} size={38} style={{ borderRadius: 10 }}/>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>TVL {p.tvl} · Min {p.minStake}</div>
-                </div>
-                <div style={{ textAlign: 'right', marginRight: 16 }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)', letterSpacing: '-0.03em' }}>{p.apy}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>APY</div>
-                </div>
-                <button className="btn-primary" style={{ width: 90, height: 36, fontSize: 12, marginTop: 0 }}>
-                  {p.locked ? 'Locked' : 'Stake'}
-                </button>
-              </div>
-            ))}
+        <div style={{
+          padding: '40px 24px', textAlign: 'center',
+          background: 'var(--bg-elevated)',
+          border: '1px dashed var(--border-default)',
+          borderRadius: 16,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+          maxWidth: 480, margin: '20px auto 0',
+        }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Staking opens with the protocol rollout</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 380 }}>
+            Lithosphere validator staking, LITHO/LitBTC LP, and the LAX
+            stable-yield vault will appear here as soon as the staking
+            contract is deployed on Makalu. Your active positions will
+            show up automatically.
           </div>
         </div>
       </div>
