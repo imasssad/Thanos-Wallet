@@ -10,6 +10,8 @@ import { checkDbConnection } from './lib/db.js';
 import { checkRedisConnection } from './lib/redis.js';
 import { generalLimiter } from './middleware/rate-limit.js';
 import { authRouter } from './routes/auth.js';
+import { contactsRouter } from './routes/contacts.js';
+import { dnnsRouter } from './routes/dnns.js';
 import { metricsHandler, metricsMiddleware } from './lib/metrics.js';
 import { captureException } from './lib/sentry.js';
 
@@ -37,6 +39,8 @@ export function createApp(): express.Express {
   app.use(generalLimiter);
 
   app.use('/auth', authRouter);
+  app.use('/contacts', contactsRouter);
+  app.use('/dnns', dnnsRouter);
 
   app.get('/health', async (_req, res) => {
     const [db, cache] = await Promise.all([
