@@ -56,7 +56,7 @@ export const TOKENS: Token[] = [
     address: null, // native gas coin
     decimals: 18,
     color: '#3b7af7',
-    icon: '/images/tokens/litho.png',
+    icon: '/images/tokens/litho.jpg',
     priceUsd: 5.00,        // placeholder — see pricing.ts
     balance: '0',
     change24h: 0,
