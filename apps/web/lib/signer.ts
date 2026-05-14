@@ -13,8 +13,9 @@
 import {
   Contract, HDNodeWallet, Mnemonic, Wallet,
   formatEther, parseUnits,
-  type Provider, type TransactionResponse,
+  type Provider, type TransactionRequest, type TransactionResponse,
 } from 'ethers';
+import { estimateMakaluGas } from './gas';
 import { TOKEN_BY_SYM, type Token } from './tokens';
 import { resolveToEvm } from './address';
 
@@ -192,17 +193,26 @@ export async function estimateSendFee(walletInput: WalletInput, input: SendInput
   const wallet = walletFromInput(walletInput, provider);
 
   try {
-    const feeData = await provider.getFeeData();
-    const maxFee = feeData.maxFeePerGas ?? feeData.gasPrice ?? 0n;
-    let gasLimit: bigint;
+    // Build the unsigned tx the same way the send path will so the gas
+    // estimate matches the actual broadcast. estimateMakaluGas centralises
+    // the maxFeePerGas read so any oracle upgrade flows here automatically.
+    let tx: TransactionRequest;
     if (token.address === null) {
-      gasLimit = await wallet.estimateGas({ to, value: weiAmount });
+      tx = { from: wallet.address, to, value: weiAmount };
     } else {
       const contract = new Contract(token.address, LEP100_TRANSFER_ABI, wallet);
-      gasLimit = await contract.transfer.estimateGas(to, weiAmount);
+      // populateTransaction returns the calldata-encoded request without
+      // signing or broadcasting — exactly what estimateGas needs.
+      tx = await contract.transfer.populateTransaction(to, weiAmount);
+      tx.from = wallet.address;
     }
-    const totalWei = gasLimit * maxFee;
-    return { gasLimit, maxFeePerGas: maxFee, totalWei, totalLitho: formatEther(totalWei) };
+    const est = await estimateMakaluGas({ tx, provider });
+    return {
+      gasLimit:     est.gasLimit,
+      maxFeePerGas: est.maxFeePerGas,
+      totalWei:     est.totalWei,
+      totalLitho:   est.totalLitho,
+    };
   } catch {
     return null;
   }

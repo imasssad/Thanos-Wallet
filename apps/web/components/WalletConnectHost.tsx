@@ -56,6 +56,50 @@ export function WalletConnectHost() {
 
   const [pending, setPending] = useState<PendingRequest | null>(null);
 
+  /* ─── Signature-spam dedup ──────────────────────────────────────────
+     dApps occasionally fire two identical sign requests in quick
+     succession (race conditions in their state machines, double-clicks
+     on a Connect button, hot-reload glitches in dev, etc). The wallet
+     can't tell *intent* apart from *spam* — so we coalesce: any request
+     whose (method + JSON-serialised params) matches one we've seen in
+     the last 3 seconds gets a soft-reject with code -32002. The user
+     sees a single prompt instead of N stacked pop-ups. */
+  const recentSigsRef = useRef<Map<string, number>>(new Map());
+  const DEDUP_WINDOW_MS = 3000;
+  const dedupCheck = (method: string, params: unknown[]): { duplicate: boolean; key: string } => {
+    const key = `${method}::${JSON.stringify(params)}`;
+    const now = Date.now();
+    const last = recentSigsRef.current.get(key);
+    // Sweep old entries on the way through.
+    for (const [k, t] of recentSigsRef.current) {
+      if (now - t > DEDUP_WINDOW_MS) recentSigsRef.current.delete(k);
+    }
+    if (last !== undefined && now - last < DEDUP_WINDOW_MS) return { duplicate: true, key };
+    recentSigsRef.current.set(key, now);
+    return { duplicate: false, key };
+  };
+
+  /* ─── Permit-pattern detection ──────────────────────────────────────
+     If a dApp pushes an `eth_sendTransaction` whose `data` field is an
+     ERC-20 `approve(spender, amount)` call, log a one-time hint about
+     EIP-2612 Permit being a single-signature alternative. We don't
+     auto-translate — that's dApp work — but the hint surfaces in
+     devtools so integrators see it. */
+  const ERC20_APPROVE_SIG = '0x095ea7b3';
+  const permitHintShownRef = useRef<Set<string>>(new Set());
+  const maybePermitHint = (data: string | undefined, topic: string) => {
+    if (typeof data !== 'string' || !data.toLowerCase().startsWith(ERC20_APPROVE_SIG)) return;
+    if (permitHintShownRef.current.has(topic)) return;
+    permitHintShownRef.current.add(topic);
+    // eslint-disable-next-line no-console
+    console.info(
+      '[wc] dApp requested ERC-20 approve(). If this dApp adopts EIP-2612 '
+      + 'Permit or Uniswap Permit2, the user can authorise the same flow '
+      + 'with a single off-chain signature instead of two on-chain txs. '
+      + 'See https://eips.ethereum.org/EIPS/eip-2612.',
+    );
+  };
+
   useEffect(() => {
     let unsub: (() => void) | undefined;
 
@@ -67,6 +111,13 @@ export function WalletConnectHost() {
 
       const sendOk    = (result: unknown) => respondRequest({ topic, id, result });
       const sendErr   = (code: number, message: string) => respondError({ topic, id, code, message });
+
+      // Dedup signature spam BEFORE any heavy work / pop-up.
+      const dup = dedupCheck(method, params);
+      if (dup.duplicate) {
+        await sendErr(-32002, 'Duplicate request rejected (already submitted within 3s)');
+        return;
+      }
 
       try {
         switch (method) {
@@ -129,6 +180,9 @@ export function WalletConnectHost() {
               to: string; value?: string; data?: string; gas?: string; gasLimit?: string;
               maxFeePerGas?: string; maxPriorityFeePerGas?: string;
             };
+            // Surface the Permit hint when the dApp is asking us to sign
+            // an ERC-20 approve() — once per session topic, in console only.
+            maybePermitHint(txParams.data, topic);
             let hash: string;
             try {
               const r = await signerSignTransaction({
