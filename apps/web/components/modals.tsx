@@ -745,20 +745,27 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
               }
             </div>
 
-            <div
+            {/* Full address — tap to copy, also manually selectable. */}
+            <button
+              type="button"
+              onClick={() => copy(active)}
+              title={copiedId === active.id ? 'Copied!' : 'Click to copy'}
               style={{
                 fontSize: 12, color: 'var(--text-secondary)',
                 fontFamily: 'Geist Mono, monospace',
                 wordBreak: 'break-all', textAlign: 'center',
-                padding: '8px 10px',
+                padding: '10px 12px',
                 background: 'var(--bg-elevated)',
-                border: '1px solid var(--border-default)',
+                border: copiedId === active.id ? '1px solid var(--green)' : '1px solid var(--border-default)',
                 borderRadius: 10, width: '100%',
+                cursor: 'pointer',
+                userSelect: 'text',           // allow manual select too
+                WebkitUserSelect: 'text',
+                transition: 'border-color .15s ease',
               }}
-              title={active.address}
             >
               {active.address}
-            </div>
+            </button>
 
             <button className="btn-primary" style={{ width: '100%' }} onClick={() => copy(active)}>
               {copiedId === active.id ? '✓ Copied' : 'Copy address'}
@@ -810,7 +817,21 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
               }}
             >
               <TokenIcon sym={n.symbol} color={n.color} size={36}/>
-              <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Whole name+address column is a button that copies the
+                  address. Keeps the dedicated icon button for visual cue
+                  + a11y. The truncated address has userSelect:'text' so
+                  a long-press / drag-select also works on mobile. */}
+              <button
+                type="button"
+                onClick={() => copy(n)}
+                title={copiedId === n.id ? 'Copied!' : 'Click to copy address'}
+                style={{
+                  flex: 1, minWidth: 0,
+                  background: 'transparent', border: 'none', padding: 0,
+                  textAlign: 'left', cursor: 'pointer', color: 'inherit',
+                  display: 'flex', flexDirection: 'column', gap: 2,
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{n.name}</span>
                   {n.badge && (
@@ -822,18 +843,24 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
                 <div style={{
-                  fontSize: 11, color: 'var(--text-muted)',
+                  fontSize: 11,
+                  color: copiedId === n.id ? 'var(--green)' : 'var(--text-muted)',
                   fontFamily: 'Geist Mono, monospace',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  transition: 'color .15s ease',
                 }}>
-                  {n.address.length > 18
-                    ? `${n.address.slice(0, 8)}…${n.address.slice(-5)}`
-                    : n.address}
+                  {copiedId === n.id
+                    ? '✓ Copied'
+                    : n.address.length > 22
+                      ? `${n.address.slice(0, 10)}…${n.address.slice(-8)}`
+                      : n.address}
                 </div>
-              </div>
+              </button>
               <button
                 aria-label={`Copy ${n.name} address`}
-                title="Copy address"
+                title={copiedId === n.id ? 'Copied!' : 'Copy address'}
                 onClick={() => copy(n)}
                 style={iconRowBtn}
               >
