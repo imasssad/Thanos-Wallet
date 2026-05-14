@@ -25,6 +25,12 @@ import { searchContacts, findContactByAddress, type Contact } from '../lib/addre
 import { looksLikeName, resolveName } from '../lib/dnns';
 import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
 import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
+import { sendBitcoinWithLedger } from '../lib/ledger-btc';
+import { sendSolWithLedger } from '../lib/ledger-sol';
+import {
+  getActiveLedgerBtcAccount, getActiveLedgerSolAccount,
+} from '../lib/ledger-accounts';
+import { LedgerError } from '../lib/ledger-transport';
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { EVM_CHAINS } from '../lib/evm-chains';
@@ -143,6 +149,15 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   const isEvmSend     = network.startsWith('evm:');
   const isSolanaSend  = !isEvmSend && (network === 'solana'  || selectedToken?.chain === 'Solana');
   const isBitcoinSend = !isEvmSend && (network === 'bitcoin' || selectedToken?.chain === 'Bitcoin');
+
+  /* If the user has connected a Ledger for this coin, we route the
+     signature through the device instead of the in-vault key. The
+     wallet doesn't need to be unlocked at all in that case — `seed`
+     and `privateKey` can both be empty. */
+  const ledgerBtc = useMemo(() => isBitcoinSend ? getActiveLedgerBtcAccount() : null, [isBitcoinSend]);
+  const ledgerSol = useMemo(() => isSolanaSend  ? getActiveLedgerSolAccount() : null, [isSolanaSend]);
+  const usingLedger = !!(ledgerBtc || ledgerSol);
+  const walletReady = !!(wallet?.seed?.length || wallet?.privateKey || usingLedger);
 
   /* Validate the recipient against the chain of the selected token. */
   const recipientValidation = useMemo(() => {
@@ -282,20 +297,54 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isEvmSend, evmChainId, evmChain]);
 
   const onSubmit = async () => {
-    if (!wallet?.seed?.length && !wallet?.privateKey) {
+    if (!walletReady) {
       setError('Wallet is locked. Please refresh and unlock.');
       setStage('failed');
       return;
     }
 
     /* ─── Bitcoin branch ───────────────────────────────────────────────
-       BIP84 segwit (mnemonic) or single-keypair P2WPKH (private key),
-       UTXO + PSBT (with RBF signaling), broadcast via mempool.space.
-       Always main-thread today because the RBF replacement flow needs
-       the inputs+outputs snapshot, which doesn't survive a worker
-       postMessage round-trip yet. */
+       Three signing paths converge here:
+         (a) Ledger Bitcoin app — when an active LedgerBtcAccount is set
+             we hand the unsigned tx to the device for signing. No
+             wallet seed needed.
+         (b) BIP84 segwit (mnemonic) — derive from the unlocked seed.
+         (c) Single-keypair P2WPKH (private key import).
+       (b)/(c) build a PSBT locally, signal RBF, and broadcast via
+       mempool.space — same as the existing flow. */
     if (isBitcoinSend) {
-      if (!wallet.seed?.length && !wallet.privateKey) {
+      setStage('broadcasting');
+      setError(null);
+      if (ledgerBtc) {
+        try {
+          const r = await sendBitcoinWithLedger({
+            account:   ledgerBtc,
+            recipient: to.trim(),
+            amount,
+          });
+          recordPendingTx({
+            id:           r.hash,
+            chain:        'bitcoin',
+            symbol:       'BTC',
+            recipient:    to.trim(),
+            amount,
+            status:       'broadcast',
+            broadcastAt:  Date.now(),
+            updatedAt:    Date.now(),
+            /* No PSBT snapshot from Ledger flow — RBF requires the
+               same inputs+outputs which Ledger doesn't echo back. The
+               Transactions view will skip the Bump button for this row. */
+          });
+          setTxHash(r.hash);
+          setStage('pending');
+        } catch (e) {
+          const msg = e instanceof LedgerError ? e.message : (e as Error).message || 'Ledger send failed';
+          setError(msg);
+          setStage('failed');
+        }
+        return;
+      }
+      if (!wallet?.seed?.length && !wallet?.privateKey) {
         setError('Wallet is locked. Please refresh and unlock.');
         setStage('failed');
         return;
@@ -303,8 +352,6 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       const source = wallet.privateKey
         ? { kind: 'privateKey' as const, privateKey: wallet.privateKey }
         : { kind: 'mnemonic'   as const, mnemonic: wallet.seed.join(' ') };
-      setStage('broadcasting');
-      setError(null);
       try {
         const { hash, snapshot } = await sendBitcoin({
           source,
@@ -335,18 +382,42 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     }
 
     /* ─── Solana branch ─────────────────────────────────────────────────
-       Solana sends aren't routed through the EVM signing worker yet —
-       they handle the mnemonic on the main thread briefly. Mnemonic-only
-       (no private-key import support for Solana in v1). */
+       Two paths:
+         (a) Ledger Solana app — signs the compiled message on-device.
+             Currently native SOL only; SPL token transfers via Ledger
+             land in a follow-up that needs the Solana app's "blind
+             signing" toggle.
+         (b) Mnemonic-only main-thread flow (no private-key import). */
     if (isSolanaSend) {
-      if (!wallet.seed?.length) {
+      setStage('broadcasting');
+      setError(null);
+      if (ledgerSol) {
+        if (selectedToken && selectedToken.address !== null) {
+          setError('SPL token transfers via Ledger are not yet supported. Send native SOL or disconnect Ledger to use the in-vault key.');
+          setStage('failed');
+          return;
+        }
+        try {
+          const sig = await sendSolWithLedger({
+            account:   ledgerSol,
+            recipient: to.trim(),
+            amount,
+          });
+          setTxHash(sig);
+          setStage('confirmed');
+        } catch (e) {
+          const msg = e instanceof LedgerError ? e.message : (e as Error).message || 'Ledger send failed';
+          setError(msg);
+          setStage('failed');
+        }
+        return;
+      }
+      if (!wallet?.seed?.length) {
         setError('Solana send requires a recovery-phrase wallet (private-key import not yet supported for SOL).');
         setStage('failed');
         return;
       }
       if (!selectedToken) return;
-      setStage('broadcasting');
-      setError(null);
       try {
         const sig = selectedToken.address === null
           ? await sendSol({       mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount })
@@ -372,6 +443,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
        through that chain's RPC via getEvmProvider. ERC-20 catalogs per
        chain land in a follow-up commit. */
     if (isEvmSend && evmChainId !== null && evmChain) {
+      if (!wallet?.seed?.length && !wallet?.privateKey) {
+        setError('EVM send requires the in-vault wallet to be unlocked — Ledger EVM signing is a follow-up.');
+        setStage('failed');
+        return;
+      }
       setStage('broadcasting');
       setError(null);
       try {
@@ -396,6 +472,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     }
 
     /* ─── Makalu EVM branch (existing — LITHO + LEP100) ──────────────── */
+    if (!wallet?.seed?.length && !wallet?.privateKey) {
+      setError('Makalu send requires the in-vault wallet to be unlocked — Ledger EVM signing is a follow-up.');
+      setStage('failed');
+      return;
+    }
     setStage('broadcasting');
     setError(null);
     try {
@@ -796,13 +877,20 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             fontSize: 15, fontWeight: 700,
             borderRadius: 12,
           }}
-          disabled={!recipientValidation.valid || !amount || recipientBlocked || (!wallet?.seed?.length && !wallet?.privateKey)}
+          disabled={!recipientValidation.valid || !amount || recipientBlocked || !walletReady}
           onClick={onSubmit}
           title={recipientBlocked ? 'Recipient flagged as high-risk — sending is blocked.' : undefined}
         >
-          {recipientBlocked ? 'Recipient blocked' : `Send ${coin}`}
+          {recipientBlocked
+            ? 'Recipient blocked'
+            : usingLedger ? `Confirm on Ledger · Send ${coin}` : `Send ${coin}`}
         </button>
-        {!wallet?.seed?.length && !wallet?.privateKey && (
+        {usingLedger && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
+            Signing via Ledger · {(ledgerBtc?.address ?? ledgerSol?.address ?? '').slice(0, 8)}…{(ledgerBtc?.address ?? ledgerSol?.address ?? '').slice(-6)}
+          </div>
+        )}
+        {!walletReady && (
           <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 6, textAlign: 'center' }}>
             Wallet locked — refresh to unlock
           </div>
