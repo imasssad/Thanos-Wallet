@@ -1,0 +1,101 @@
+# Prometheus alert rules for Thanos Wallet.
+#
+# Loaded by prometheus.yml's `rule_files`. Alertmanager / Grafana
+# routes these to Slack / PagerDuty / email — set up the destination
+# in Grafana's contact-points UI.
+#
+# Thresholds are sized for a single-VPS deployment with the wallet
+# stack + observability stack co-resident; tighten or relax as load
+# changes.
+
+groups:
+  - name: thanos-availability
+    interval: 30s
+    rules:
+      - alert: ThanosServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Prometheus has been unable to scrape {{ $labels.job }} for >2 minutes. Check `docker ps` and the service logs."
+
+      - alert: ThanosApi5xxRateHigh
+        expr: |
+          (
+            sum by (job) (
+              rate(http_requests_total{job="thanos-api", status_code=~"5.."}[5m])
+            )
+          /
+            sum by (job) (
+              rate(http_requests_total{job="thanos-api"}[5m])
+            )
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx rate above 1% (5 min)"
+          description: "API is returning 5xx on more than 1% of requests sustained over 5 minutes. Likely a DB or RPC failure — check the Sentry feed and `/health`."
+
+      - alert: ThanosApiLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (job, le) (rate(http_request_duration_seconds_bucket{job="thanos-api"}[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p99 latency above 1s"
+          description: "p99 request latency on the API has been above 1 second for 10 minutes. Check downstream (Postgres, Redis) load."
+
+  - name: thanos-worker
+    interval: 30s
+    rules:
+      - alert: ThanosWorkerQueueBacklog
+        expr: |
+          max by (queue) (
+            thanos_worker_queue_depth{state="wait"}
+          ) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker queue {{ $labels.queue }} backlog > 100"
+          description: "BullMQ wait depth for {{ $labels.queue }} has exceeded 100 for 5 minutes — workers are falling behind."
+
+      - alert: ThanosWorkerFailedJobs
+        expr: |
+          increase(thanos_worker_jobs_total{status="failed"}[15m]) > 10
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker {{ $labels.queue }} failing > 10 jobs / 15 min"
+          description: "Sustained job-failure rate on {{ $labels.queue }} — inspect Sentry breadcrumbs + the job_audit table."
+
+  - name: thanos-indexer
+    interval: 30s
+    rules:
+      - alert: ThanosIndexerSyncGap
+        expr: thanos_indexer_sync_lag_blocks > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Indexer is {{ $value }} blocks behind chain head"
+          description: "Sync cursor has fallen >200 blocks behind head for 5 minutes. Check rpc.litho.ai availability and the indexer logs."
+
+      - alert: ThanosIndexerStalled
+        expr: |
+          delta(thanos_indexer_cursor_block[10m]) == 0
+          and thanos_indexer_sync_lag_blocks > 50
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Indexer cursor has not advanced in 10 min"
+          description: "Sync loop is stuck — either RPC outage or worker crash. Check `docker logs thanos-indexer`."
