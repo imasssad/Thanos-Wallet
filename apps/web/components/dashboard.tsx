@@ -1,7 +1,10 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ethers } from 'ethers';
-import { ArrowUpRight, ArrowDownLeft, Repeat, ChevronRight, ChevronDown, Maximize2 } from 'lucide-react';
+import {
+  ArrowUpRight, ArrowDownLeft, Repeat, DollarSign,
+  ChevronDown, MoreVertical, SlidersHorizontal, ExternalLink,
+} from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { TokenIcon } from './TokenIcon';
 import { useWallet } from './shell/AppShell';
@@ -468,152 +471,314 @@ export function Dashboard() {
     return m;
   }, [liveAssets, prices]);
 
+  /* MM-style home: centered vertical column. Hero balance → 4 big
+     action buttons → tabs (Tokens / DeFi / NFTs / Activity) → tab body.
+     The dense charts + Exchange widget + Staking from the prior layout
+     are folded under the DeFi tab so nothing is lost; Activity wraps
+     the Payment history table. */
+  const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity'>('tokens');
+
   return (
-    <div className="workspace" style={{ width: '100%' }}>
+    <div style={{ width: '100%', overflowY: 'auto', height: '100%' }}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
 
-      <div className="main-area">
-        <div className="balance-hero">
-          <div>
-            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              Total balance
-              {!indexerOk && (
-                <span style={{
-                  fontSize: 9, letterSpacing: 1, padding: '2px 6px',
-                  background: 'var(--bg-elevated)', borderRadius: 4,
-                  color: 'var(--text-secondary)', fontWeight: 600,
-                }}>OFFLINE · sample</span>
-              )}
-            </div>
-            <div className="balance-amount">
-              {totalDisplay}
-              <span className="balance-change-pill">
-                {change24h >= 0 ? '▲' : '▼'} {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
-              </span>
-            </div>
+      <div style={{
+        maxWidth: 760, margin: '0 auto',
+        padding: '32px 24px 64px',
+        display: 'flex', flexDirection: 'column', gap: 28,
+      }}>
+
+        {/* ── Hero: centered balance + change + Discover ─────────────── */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            fontSize: 12, fontWeight: 700, letterSpacing: 1.6,
+            color: 'var(--text-muted)',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            justifyContent: 'center',
+          }}>
+            TOTAL BALANCE
+            {!indexerOk && (
+              <span style={{
+                fontSize: 9, letterSpacing: 1.2, padding: '2px 6px',
+                background: 'var(--bg-elevated)', borderRadius: 4,
+                color: 'var(--text-secondary)', fontWeight: 600,
+              }}>OFFLINE · SAMPLE</span>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => setModal('send')} className="quick-action-btn">
-              <span className="quick-action-icon"><ArrowUpRight size={16} strokeWidth={2.5}/></span><span>Send</span>
-            </button>
-            <button onClick={() => setModal('receive')} className="quick-action-btn">
-              <span className="quick-action-icon"><ArrowDownLeft size={16} strokeWidth={2.5}/></span><span>Receive</span>
-            </button>
-            <button onClick={() => setModal('swap')} className="quick-action-btn">
-              <span className="quick-action-icon"><Repeat size={16} strokeWidth={2.5}/></span><span>Swap</span>
-            </button>
+          <div style={{
+            fontSize: 56, fontWeight: 800, letterSpacing: '-0.04em',
+            lineHeight: 1.05, marginTop: 8,
+          }}>
+            {totalDisplay}
+          </div>
+          <div style={{
+            marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 10,
+            fontSize: 15, color: 'var(--text-secondary)',
+          }}>
+            <span className={change24h >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 17, fontWeight: 700 }}>
+              {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+            </span>
+            <span style={{ color: 'var(--text-muted)' }}>·</span>
+            <a href="#" style={{
+              color: 'var(--blue)', textDecoration: 'none', fontWeight: 600,
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }} onClick={e => e.preventDefault()}>
+              Discover <ExternalLink size={13}/>
+            </a>
           </div>
         </div>
 
-        <div className="card" style={{ padding: '14px 18px' }}>
-          <div className="alloc-bar">
-            {COINS.map(c => (
-              <div key={c.sym} className="alloc-seg" style={{ flex: c.pct, background: c.color }}/>
-            ))}
-          </div>
-          <div className="alloc-coins">
-            {COINS.map(c => (
-              <div key={c.sym} className="alloc-coin">
-                <div className="alloc-coin-top">
-                  <div className="alloc-dot" style={{ background: c.color }}/>
-                  <span className="alloc-name">
-                    {c.name}{c.sym !== '···' ? ` (${c.sym})` : ''}
-                  </span>
+        {/* ── 4 action buttons (Buy / Swap / Send / Receive) ────────── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 12,
+        }}>
+          <ActionBtn
+            icon={<DollarSign size={26} strokeWidth={2}/>}
+            label="Buy"
+            disabled
+            onClick={() => { /* TODO on/off-ramp */ }}
+          />
+          <ActionBtn
+            icon={<Repeat size={26} strokeWidth={2}/>}
+            label="Swap"
+            onClick={() => setModal('swap')}
+          />
+          <ActionBtn
+            icon={<ArrowUpRight size={26} strokeWidth={2}/>}
+            label="Send"
+            onClick={() => setModal('send')}
+          />
+          <ActionBtn
+            icon={<ArrowDownLeft size={26} strokeWidth={2}/>}
+            label="Receive"
+            onClick={() => setModal('receive')}
+          />
+        </div>
+
+        {/* ── Tabs ──────────────────────────────────────────────────── */}
+        <div style={{
+          display: 'flex', gap: 28, alignItems: 'center',
+          borderBottom: '1px solid var(--border-subtle)',
+          paddingBottom: 0,
+        }}>
+          {(['tokens', 'defi', 'nfts', 'activity'] as const).map(t => {
+            const active = tab === t;
+            const label = t === 'tokens' ? 'Tokens'
+                        : t === 'defi'   ? 'DeFi'
+                        : t === 'nfts'   ? 'NFTs'
+                        : 'Activity';
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                  fontWeight: active ? 700 : 500,
+                  fontSize: 16,
+                  padding: '10px 0',
+                  borderBottom: active ? '2px solid var(--text-primary)' : '2px solid transparent',
+                  marginBottom: -1,
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Tab bodies ────────────────────────────────────────────── */}
+
+        {tab === 'tokens' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Network filter chip + filter/menu icons (MM parity) */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <button style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '8px 14px', borderRadius: 10,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                color: 'var(--text-primary)',
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>
+                Lithosphere Makalu <ChevronDown size={14}/>
+              </button>
+              <div style={{ display: 'flex', gap: 6, color: 'var(--text-muted)' }}>
+                <button style={iconBtnStyle}><SlidersHorizontal size={16}/></button>
+                <button style={iconBtnStyle}><MoreVertical    size={16}/></button>
+              </div>
+            </div>
+
+            {/* Big token rows */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {COINS.map(c => (
+                <div key={c.sym} style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 4px',
+                  borderBottom: '1px solid var(--border-subtle)',
+                }}>
+                  <TokenIcon sym={c.sym} color={c.color} size={44}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{c.sym}</div>
+                    <div style={{
+                      fontSize: 12, color: 'var(--text-muted)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {c.name}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{c.usd}</div>
+                    <div style={{
+                      fontSize: 12, color: 'var(--text-muted)',
+                      fontFamily: 'Geist Mono, monospace',
+                    }}>
+                      {c.bal} {c.sym}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <div className="alloc-val">{c.usd}</div>
-                  <div className={`alloc-chg ${c.chg >= 0 ? 'pos' : 'neg'}`}>{c.chg >= 0 ? '+' : ''}{c.chg}%</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === 'defi' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <ExchangeWidget liveBalances={liveBalances}/>
+            <StakingCard/>
+            <div className="charts-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="card price-analytics-card">
+                <div className="card-header"><span className="card-title">Price analytics</span></div>
+                <PriceSparkline/>
+                <div className="analytics-prices">
+                  <span className="analytics-price">$5,240.00</span>
+                  <span className="analytics-price">$12,900.00</span>
+                </div>
+                <div className="analytics-date"><span>1 Dec, 2025</span><span>31 Dec, 2025</span></div>
+              </div>
+              <div className="card perf-chart-card">
+                <div className="card-header">
+                  <span className="card-title">Asset performance</span>
+                  <button className="chart-selector">This week ▾</button>
+                </div>
+                <PerformanceChart/>
+                <div className="chart-xaxis">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d}>{d}</span>)}
                 </div>
               </div>
-            ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="charts-row">
-          <div className="card price-analytics-card">
-            <div className="card-header">
-              <span className="card-title">Price analytics</span>
-            </div>
-            <PriceSparkline/>
-            <div className="analytics-prices">
-              <span className="analytics-price">$5,240.00</span>
-              <span className="analytics-price">$12,900.00</span>
-            </div>
-            <div className="analytics-date">
-              <span>1 Dec, 2025</span>
-              <span>31 Dec, 2025</span>
+        {tab === 'nfts' && (
+          <div style={{
+            padding: '40px 0', textAlign: 'center',
+            color: 'var(--text-muted)', fontSize: 14,
+          }}>
+            No NFTs yet on this account.
+            <div style={{ fontSize: 11, marginTop: 6 }}>
+              NFT indexing for Lithosphere lands next session.
             </div>
           </div>
+        )}
 
-          <div className="card perf-chart-card">
-            <div className="card-header">
-              <span className="card-title">Asset performance</span>
-              <button className="chart-selector">This week ▾</button>
+        {tab === 'activity' && (
+          <div className="card">
+            <div className="table-top">
+              <span className="card-title">Payment history</span>
+              <button className="chart-selector">Last month ▾</button>
             </div>
-            <PerformanceChart/>
-            <div className="chart-xaxis">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
-                <span key={d}>{d}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="table-top">
-            <span className="card-title">Payment history</span>
-            <button className="chart-selector">Last month ▾</button>
-          </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Date</th>
-                <th>Price</th>
-                <th>Status</th>
+            <table className="data-table">
+              <thead><tr>
+                <th>Name</th><th>Date</th><th>Price</th><th>Status</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TXS.map((tx, i) => (
-                <tr key={i}>
-                  <td>
-                    <div className="tx-cell">
-                      <TokenIcon sym={tx.sym} color={tx.color} size={36} style={{ borderRadius: 10 }}/>
-                      <div>
-                        <div className="tx-name">{tx.name}</div>
-                        <div className="tx-sym">{tx.sym}</div>
+              </tr></thead>
+              <tbody>
+                {TXS.map((tx, i) => (
+                  <tr key={i}>
+                    <td>
+                      <div className="tx-cell">
+                        <TokenIcon sym={tx.sym} color={tx.color} size={36} style={{ borderRadius: 10 }}/>
+                        <div>
+                          <div className="tx-name">{tx.name}</div>
+                          <div className="tx-sym">{tx.sym}</div>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td>{tx.date}</td>
-                  <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 15 }}>{tx.price}</td>
-                  <td>
-                    <span className={`status-pill ${
-                      tx.status === 'Completed' ? 'status-completed' :
-                      tx.status === 'Pending'   ? 'status-pending'   : 'status-failed'
-                    }`}>
-                      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
-                      {tx.status}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span className={tx.pos ? 'amt-pos' : 'amt-neg'}>{tx.amount}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    </td>
+                    <td>{tx.date}</td>
+                    <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 15 }}>{tx.price}</td>
+                    <td>
+                      <span className={`status-pill ${
+                        tx.status === 'Completed' ? 'status-completed' :
+                        tx.status === 'Pending'   ? 'status-pending'   : 'status-failed'
+                      }`}>
+                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
+                        {tx.status}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span className={tx.pos ? 'amt-pos' : 'amt-neg'}>{tx.amount}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      <aside className="right-panel">
-        <ExchangeWidget liveBalances={liveBalances}/>
-        <PortfolioList coins={COINS}/>
-        <StakingCard/>
-      </aside>
+      </div>
     </div>
+  );
+}
+
+/* ─── Helpers ──────────────────────────────────────────────────────── */
+
+const iconBtnStyle: React.CSSProperties = {
+  background: 'transparent', border: 'none', cursor: 'pointer',
+  color: 'var(--text-muted)', padding: 6,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+};
+
+function ActionBtn({ icon, label, onClick, disabled }: {
+  icon:     React.ReactNode;
+  label:    string;
+  onClick:  () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 8,
+        padding: '20px 12px',
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-default)',
+        borderRadius: 14,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+        opacity: disabled ? 0.55 : 1,
+        minHeight: 92,
+        transition: 'background .12s ease, transform .08s ease',
+      }}
+      onMouseOver={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+      onMouseOut={e  => { e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+    >
+      <span style={{
+        width: 40, height: 40, borderRadius: 12,
+        background: 'rgba(59,122,247,0.10)',
+        color: 'var(--blue)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {icon}
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
+    </button>
   );
 }
