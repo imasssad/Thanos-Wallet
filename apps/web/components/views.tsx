@@ -10,7 +10,10 @@ import { TokenIcon } from './TokenIcon';
 import { Select } from './ui/Select';
 import { usePrices, priceOr } from '../lib/usePrices';
 import { loadContacts, addContact, deleteContact, type Contact } from '../lib/address-book';
-import { BookUser, Plus, Trash2 } from 'lucide-react';
+import { loadPendingTxs, type PendingTx } from '../lib/tx-store';
+import { BumpFeeModal } from './BumpFeeModal';
+import { bitcoinExplorerUrl } from '../lib/bitcoin';
+import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 
 // Market view leads with the Lithosphere ecosystem (canonical token list),
 // then appends BNB/XRP/ADA/AVAX/DOT/DOGE/LINK as broader-market reference rows.
@@ -329,6 +332,18 @@ export function TransactionsView() {
   const [live,   setLive]   = useState<IndexerActivityItem[] | null>(null);
   const [indexerOk, setIndexerOk] = useState<boolean>(true);
 
+  /* Pending (broadcast-but-unconfirmed) txs from local store. Currently
+     only BTC is persisted here — EVM / Solana pending state lands when
+     we wire those through tx-store too. */
+  const [pending, setPending] = useState<PendingTx[]>([]);
+  const [bumpTarget, setBumpTarget] = useState<PendingTx | null>(null);
+  useEffect(() => {
+    const refresh = () => setPending(loadPendingTxs().filter(t => t.status === 'broadcast'));
+    refresh();
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, []);
+
   useEffect(() => {
     if (!evmAddress) return;
     let cancel = false;
@@ -371,6 +386,86 @@ export function TransactionsView() {
             </div>
           </div>
         </div>
+        {/* Pending section — appears above the main table when there are
+            unconfirmed broadcasts. BTC pending txs get a "Bump fee" action;
+            other chains show a status pill only (no RBF surface yet). */}
+        {pending.length > 0 && (
+          <div className="card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
+            <div style={{
+              padding: '10px 14px',
+              borderBottom: '1px solid var(--border-default)',
+              fontSize: 11, fontWeight: 700, letterSpacing: 1.2,
+              color: 'var(--text-secondary)',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--orange)' }}/>
+              PENDING ({pending.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {pending.map(tx => (
+                <div
+                  key={tx.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 14px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <TokenIcon sym={tx.symbol} size={32} style={{ borderRadius: 10 }}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>
+                      Send {tx.amount} {tx.symbol}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      → {tx.recipient}
+                    </div>
+                    {tx.btc && (
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {tx.btc.feeRateSatPerVb} sat/vB · {(tx.btc.feeSats / 1e8).toFixed(8)} BTC fee
+                      </div>
+                    )}
+                  </div>
+                  {tx.chain === 'bitcoin' && (
+                    <a
+                      href={bitcoinExplorerUrl(tx.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="View on mempool.space"
+                      style={{
+                        fontSize: 11, color: 'var(--blue)',
+                        fontFamily: 'Geist Mono, monospace',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <ArrowUpRight size={14}/>
+                    </a>
+                  )}
+                  {tx.chain === 'bitcoin' && tx.btc && (
+                    <button
+                      onClick={() => setBumpTarget(tx)}
+                      className="settings-btn"
+                      style={{ padding: '6px 10px', fontSize: 11 }}
+                      title="Replace by fee"
+                    >
+                      <Zap size={12}/> Bump fee
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {bumpTarget && (
+          <BumpFeeModal
+            pending={bumpTarget}
+            onClose={() => {
+              setBumpTarget(null);
+              setPending(loadPendingTxs().filter(t => t.status === 'broadcast'));
+            }}
+          />
+        )}
+
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="data-table">
             <thead>

@@ -24,6 +24,8 @@
     "@thanos/ui": "workspace:*",
     "@walletconnect/core": "^2.23.9",
     "@walletconnect/utils": "^2.23.9",
+    "bip32": "^5.0.0",
+    "bip39": "^3.1.0",
     "bitcoinjs-lib": "^6.1.6",
     "ecpair": "^3.0.0",
     "ethers": "^6.13.4",
