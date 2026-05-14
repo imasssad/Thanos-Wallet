@@ -35,6 +35,12 @@ const COINGECKO_IDS: Record<string, string> = {
   COLLE:  'colle-ai',    // probably 404s today — fall back to placeholder
   SOL:    'solana',
   BTC:    'bitcoin',
+  // ─── EVM native coins ───────────────────────────────────────────
+  ETH:    'ethereum',
+  BNB:    'binancecoin',
+  POL:    'matic-network',   // Polygon's "POL" — Coingecko still lists under matic
+  MATIC:  'matic-network',
+  AVAX:   'avalanche-2',
 };
 
 const CACHE_TTL_MS = 60_000;

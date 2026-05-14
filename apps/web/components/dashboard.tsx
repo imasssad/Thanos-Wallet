@@ -14,6 +14,7 @@ import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityIt
 import { usePrices, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
+import { getAllEvmNativeBalances, type EvmChain } from '../lib/evm-chains';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -336,6 +337,10 @@ export function Dashboard() {
      (single P2WPKH keypair derived from the raw 32-byte key). */
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [btcBalance, setBtcBalance] = useState<number | null>(null);
+  /* Per-chain EVM native balances (ETH on mainnet + L2s, BNB, POL, AVAX).
+     Each chain is one parallel RPC call; one slow / dead endpoint doesn't
+     block the rest. */
+  const [evmChainBalances, setEvmChainBalances] = useState<Array<{ chain: EvmChain; balance: number }>>([]);
   const walletSeed = wallet?.seed;
   const walletPk   = wallet?.privateKey;
   useEffect(() => {
@@ -369,6 +374,25 @@ export function Dashboard() {
     return () => { cancel = true; };
   }, [walletSeed, walletPk]);
 
+  /* EVM-chain native balances — Ethereum, BNB, Polygon, Base, Arbitrum,
+     Linea, Optimism, Avalanche. Fired off in parallel via
+     getAllEvmNativeBalances and stored as per-chain rows so the
+     dashboard can show "ETH on Arbitrum" separately from "ETH on
+     mainnet". */
+  useEffect(() => {
+    if (!evmAddress) { setEvmChainBalances([]); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const rows = await getAllEvmNativeBalances(evmAddress);
+        if (!cancel) setEvmChainBalances(rows.filter(r => r.balance > 0));
+      } catch {
+        if (!cancel) setEvmChainBalances([]);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [evmAddress]);
+
   /* Build the coin rows STRICTLY from real chain state. No canonical
      fallback: if the indexer says zero and the non-EVM RPCs say zero,
      we show an empty list. This avoids the "wallet looks mocked" feel
@@ -392,9 +416,22 @@ export function Dashboard() {
     const btcRow = buildNonEvmRow('BTC', btcBalance);
     const extraRows = [solRow, btcRow].filter((r): r is NonNullable<typeof r> => r !== null);
 
+    /* One row per EVM chain with a non-zero native balance. Symbol is
+       displayed alone but `name` carries the chain context so the user
+       can tell ETH-on-Arbitrum from ETH-on-mainnet. */
+    const evmRows = evmChainBalances.map(({ chain, balance }) => ({
+      sym:    chain.nativeSymbol,
+      name:   chain.name,
+      bal:    balance.toLocaleString('en-US', { maximumFractionDigits: 6 }),
+      balNum: balance,
+      usdNum: balance * priceOr(prices, chain.nativeSymbol, 0),
+      chg:    0,
+      color:  chain.color,
+    }));
+
     const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
 
-    const combined = [...fromLive, ...extraRows];
+    const combined = [...fromLive, ...evmRows, ...extraRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,
@@ -402,7 +439,7 @@ export function Dashboard() {
       chg: c.chg, color: c.color,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [liveAssets, solBalance, btcBalance, prices]);
+  }, [liveAssets, solBalance, btcBalance, evmChainBalances, prices]);
 
   const TXS = useMemo(() => {
     if (!liveActivity || liveActivity.length === 0) return [];
