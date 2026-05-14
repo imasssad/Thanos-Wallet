@@ -167,11 +167,8 @@ function ExchangeWidget({ liveBalances }: { liveBalances: Map<string, number> })
   const toPrice   = toTok.priceUsd   || 1;
   const out = (parseFloat(fromAmt || '0') * (fromPrice / toPrice)).toFixed(4);
 
-  // Live balance if the indexer has reported one, otherwise canonical mock.
-  const fromBalNum =
-    liveBalances.get(fromSym.toLowerCase())
-    ?? parseFloat(fromTok.balance.replace(/,/g, ''))
-    ?? 0;
+  // Live balance only — zero if nothing reported. No canonical fallback.
+  const fromBalNum = liveBalances.get(fromSym.toLowerCase()) ?? 0;
   const fromBalDisplay = fromBalNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
 
   const flip = () => {

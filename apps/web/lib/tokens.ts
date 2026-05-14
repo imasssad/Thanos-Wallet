@@ -25,11 +25,15 @@ export type Token = {
   color:     string;
   /** Public path for the token icon (PNG/SVG). Falls back to avatar dot. */
   icon:      string;
-  /** Mock USD price (until pricing service is wired). */
+  /** USD price floor — used only as a fallback when the live oracle in
+   *  lib/pricing.ts can't resolve a symbol (e.g. obscure tokens not on
+   *  CoinGecko). Real prices come from usePrices() at runtime. */
   priceUsd:  number;
-  /** Mock balance, formatted. */
+  /** Deprecated — kept for legacy callers but always '0'. Live balances
+   *  come from useLiveBalances() (wallet RPC + indexer + mempool.space). */
   balance:   string;
-  /** Mock 24h % change. */
+  /** Deprecated — kept for legacy callers but always 0. Live 24h change
+   *  comes from CoinGecko via usePrices(). */
   change24h: number;
 };
 
@@ -54,8 +58,8 @@ export const TOKENS: Token[] = [
     color: '#3b7af7',
     icon: '/images/tokens/litho.png',
     priceUsd: 5.00,        // placeholder — see pricing.ts
-    balance: '50,000',
-    change24h: 18.40,
+    balance: '0',
+    change24h: 0,
   },
   {
     sym: 'LitBTC',
@@ -66,8 +70,8 @@ export const TOKENS: Token[] = [
     color: '#f7931a',
     icon: '/images/tokens/litbtc.png',
     priceUsd: 63200,        // fetched live — pricing.ts overrides this on load
-    balance: '0.85',
-    change24h: 2.40,
+    balance: '0',
+    change24h: 0,
   },
   {
     sym: 'JOT',
@@ -78,8 +82,8 @@ export const TOKENS: Token[] = [
     color: '#ef4444',
     icon: '/images/tokens/jot.png',
     priceUsd: 0.50,         // placeholder — see pricing.ts
-    balance: '12,400',
-    change24h: 11.20,
+    balance: '0',
+    change24h: 0,
   },
   {
     sym: 'LAX',
@@ -90,8 +94,8 @@ export const TOKENS: Token[] = [
     color: '#06b6d4',
     icon: '/images/tokens/lax.png',
     priceUsd: 1.0001,       // HARD-CODED — never fetched. see pricing.ts
-    balance: '4,200',
-    change24h: 0.01,
+    balance: '0',
+    change24h: 0,
   },
   {
     sym: 'COLLE',
@@ -103,8 +107,8 @@ export const TOKENS: Token[] = [
     color: '#9ca3af',
     icon: '/images/tokens/colle.png',
     priceUsd: 0.020,        // fetched live — pricing.ts overrides this on load
-    balance: '18,000',
-    change24h: 8.22,
+    balance: '0',
+    change24h: 0,
   },
   {
     sym: 'IMAGE',
@@ -115,8 +119,8 @@ export const TOKENS: Token[] = [
     color: '#22d3ee',
     icon: '/images/tokens/image.png',
     priceUsd: 0.025,        // placeholder — see pricing.ts
-    balance: '6,500',
-    change24h: 5.40,
+    balance: '0',
+    change24h: 0,
   },
   {
     sym: 'FurGPT',
@@ -127,8 +131,8 @@ export const TOKENS: Token[] = [
     color: '#f59e0b',
     icon: '/images/tokens/furgpt.png',
     priceUsd: 0.015,        // fetched live — pricing.ts overrides this on load
-    balance: '80,000',
-    change24h: 42.30,
+    balance: '0',
+    change24h: 0,
   },
   // ─── Solana ────────────────────────────────────────────────────────────
   // Native SOL: `address: null` follows the same convention as LITHO. The
