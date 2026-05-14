@@ -6,7 +6,10 @@ import {
   validateAddressForChain, resolveToEvm, truncateLithoAddress,
   MAKALU_CHAIN_ID,
 } from '../lib/address';
-import { sendTokens, estimateSendFee, SendError, makeProvider } from '../lib/signer';
+import {
+  sendTokens, estimateSendFee, SendError, makeProvider,
+  sendNativeEvm, estimateNativeEvmFee,
+} from '../lib/signer';
 import { signerSend, SignerError } from '../lib/signer-client';
 import {
   getQuote   as multxGetQuote,
@@ -25,9 +28,12 @@ import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendErro
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { EVM_CHAINS } from '../lib/evm-chains';
-import { QrCode } from 'lucide-react';
+import * as RadixSelect from '@radix-ui/react-select';
+import { QrCode, Check, ChevronDown } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
+/** Tokens sendable on Lithosphere Makalu (native LITHO + LEP100). */
+const MAKALU_SYMBOLS = TOKENS.filter(t => t.chain === 'Makalu').map(t => t.sym);
 
 export type ModalKind = 'send' | 'receive' | 'swap' | null;
 
@@ -47,11 +53,47 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 type SendStage = 'compose' | 'broadcasting' | 'pending' | 'confirmed' | 'failed';
 
+/** Send-screen networks: Lithosphere first (the primary chain), then
+ *  Bitcoin / Solana, then every EVM chain we support. Each carries an
+ *  identifier the send branch uses to route. */
+type SendNet =
+  | { id: 'makalu';  label: 'Lithosphere Makalu' }
+  | { id: 'bitcoin'; label: 'Bitcoin' }
+  | { id: 'solana';  label: 'Solana' }
+  | { id: `evm:${number}`; label: string };
+
+const SEND_NETWORKS: SendNet[] = [
+  { id: 'makalu',  label: 'Lithosphere Makalu' },
+  { id: 'bitcoin', label: 'Bitcoin' },
+  { id: 'solana',  label: 'Solana' },
+  ...EVM_CHAINS.map(c => ({ id: `evm:${c.chainId}` as const, label: c.name })),
+];
+
 export function SendModal({ onClose }: { onClose: () => void }) {
   const wallet = useWallet();
-  const [coin, setCoin]     = useState('LITHO');
-  const [to, setTo]         = useState('');
-  const [amount, setAmount] = useState('');
+  const [network, setNetwork] = useState<SendNet['id']>('makalu');
+  const [coin, setCoin]       = useState('LITHO');
+  const [to, setTo]           = useState('');
+  const [amount, setAmount]   = useState('');
+
+  /* When the user changes network, reset `coin` to the right default for
+     that chain. Each chain has exactly one sendable asset today
+     (Lithosphere is the exception — multiple LEP100 tokens via the
+     existing TokenSelect inside the asset row). */
+  useEffect(() => {
+    if (network === 'makalu')       setCoin('LITHO');
+    else if (network === 'bitcoin') setCoin('BTC');
+    else if (network === 'solana')  setCoin('SOL');
+    else if (network.startsWith('evm:')) {
+      const chainId = parseInt(network.slice(4), 10);
+      const chain   = EVM_CHAINS.find(c => c.chainId === chainId);
+      if (chain) setCoin(chain.nativeSymbol);
+    }
+  }, [network]);
+
+  const evmChainId: number | null =
+    network.startsWith('evm:') ? parseInt(network.slice(4), 10) : null;
+  const evmChain = evmChainId !== null ? EVM_CHAINS.find(c => c.chainId === evmChainId) ?? null : null;
 
   const [stage, setStage]   = useState<SendStage>('compose');
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -91,10 +133,14 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   const balanceFor = (sym: string) => live.bySym.get(sym.toLowerCase()) ?? '0';
 
   /* Lookup the token row for the currently selected symbol — drives
-     chain-aware branches for validation, fee estimation and broadcast. */
+     chain-aware branches for validation, fee estimation and broadcast.
+     Note: external EVM-native coins (ETH/BNB/POL/AVAX/…) aren't in TOKENS
+     because that file is the Lithosphere ecosystem registry. The
+     `isEvmSend` branch below is driven by `network`, not `selectedToken`. */
   const selectedToken = useMemo(() => TOKENS.find(t => t.sym === coin) ?? null, [coin]);
-  const isSolanaSend  = selectedToken?.chain === 'Solana';
-  const isBitcoinSend = selectedToken?.chain === 'Bitcoin';
+  const isEvmSend     = network.startsWith('evm:');
+  const isSolanaSend  = !isEvmSend && (network === 'solana'  || selectedToken?.chain === 'Solana');
+  const isBitcoinSend = !isEvmSend && (network === 'bitcoin' || selectedToken?.chain === 'Bitcoin');
 
   /* Validate the recipient against the chain of the selected token. */
   const recipientValidation = useMemo(() => {
@@ -110,9 +156,15 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         ? { valid: true,  format: 'btc' as const, reason: '' }
         : { valid: false, format: 'btc' as const, reason: 'Not a valid Bitcoin address (legacy / segwit / bech32 / taproot)' };
     }
+    if (isEvmSend) {
+      // External EVM chains take 0x addresses only — no litho1 form here.
+      return /^0x[a-fA-F0-9]{40}$/.test(trimmed)
+        ? { valid: true,  format: 'evm' as const, reason: '' }
+        : { valid: false, format: 'evm' as const, reason: `${evmChain?.name ?? 'EVM'} requires a 0x address` };
+    }
     const v = validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
     return { ...v, format: v.format as 'evm' | 'litho' | null };
-  }, [to, isSolanaSend, isBitcoinSend]);
+  }, [to, isSolanaSend, isBitcoinSend, isEvmSend, evmChain]);
 
   /* Canonical EVM form — what we'd actually broadcast to the chain.
      If the user typed a DNNS name and we resolved it, use that instead. */
@@ -127,7 +179,8 @@ export function SendModal({ onClose }: { onClose: () => void }) {
      "Resolved to 0x…" hint. */
   useEffect(() => {
     const trimmed = to.trim();
-    if (!looksLikeName(trimmed)) {
+    // DNNS is a Lithosphere-only registry — suppress for non-Makalu sends.
+    if (!looksLikeName(trimmed) || network !== 'makalu') {
       setDnnsResolved(null);
       setDnnsState('idle');
       return;
@@ -141,7 +194,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       setDnnsState(addr ? 'idle' : 'not-found');
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [to]);
+  }, [to, network]);
 
   /* Live fee estimate. EVM path uses gasLimit × maxFeePerGas via ethers.
      Solana txs cost a near-constant ~5_000 lamports (0.000005 SOL); we
@@ -154,6 +207,26 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       return;
     }
     if (isSolanaSend)  { setFeeStr('~0.000005 SOL'); return; }
+    if (isEvmSend && evmChainId !== null && evmChain) {
+      if (!wallet?.seed?.length && !wallet?.privateKey) {
+        setFeeStr(null);
+        return;
+      }
+      let cancelled = false;
+      setFeeStr('Estimating…');
+      const t = setTimeout(async () => {
+        try {
+          const est = await estimateNativeEvmFee(
+            wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+            { chainId: evmChainId, recipient: to.trim(), amount },
+          );
+          if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} ${evmChain.nativeSymbol}` : null);
+        } catch {
+          if (!cancelled) setFeeStr(null);
+        }
+      }, 350);
+      return () => { cancelled = true; clearTimeout(t); };
+    }
     if (isBitcoinSend) {
       // Live BTC fee estimate — fetches UTXOs + mempool fastest fee rate,
       // estimates vsize from inputs+outputs. ~0 cost since no signing.
@@ -193,7 +266,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend]);
+  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isEvmSend, evmChainId, evmChain]);
 
   const onSubmit = async () => {
     if (!wallet?.seed?.length && !wallet?.privateKey) {
@@ -280,7 +353,36 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    /* ─── EVM branch (existing) ─────────────────────────────────────── */
+    /* ─── External EVM branch ───────────────────────────────────────────
+       Native gas-coin send on Ethereum / BNB / Polygon / Base / Arbitrum /
+       Linea / Optimism / Avalanche. Same keypair as Makalu, just routed
+       through that chain's RPC via getEvmProvider. ERC-20 catalogs per
+       chain land in a follow-up commit. */
+    if (isEvmSend && evmChainId !== null && evmChain) {
+      setStage('broadcasting');
+      setError(null);
+      try {
+        const result = await sendNativeEvm(
+          wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+          { chainId: evmChainId, recipient: to.trim(), amount },
+        );
+        setTxHash(result.hash);
+        setStage('pending');
+        result.wait()
+          .then(r => {
+            setStage(r.status === 1 ? 'confirmed' : 'failed');
+            if (r.status !== 1) setError('Transaction reverted on-chain');
+          })
+          .catch(() => setStage('failed'));
+      } catch (e) {
+        const msg = e instanceof SendError ? e.message : (e as Error).message || 'Failed to send';
+        setError(msg);
+        setStage('failed');
+      }
+      return;
+    }
+
+    /* ─── Makalu EVM branch (existing — LITHO + LEP100) ──────────────── */
     setStage('broadcasting');
     setError(null);
     try {
@@ -341,6 +443,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     const explorer = txHash
       ? (isSolanaSend  ? solanaExplorerUrl(txHash)
        : isBitcoinSend ? bitcoinExplorerUrl(txHash)
+       : isEvmSend && evmChain ? `${evmChain.explorerUrl}/tx/${txHash}`
        : `https://makalu.litho.ai/tx/${txHash}`)
       : null;
     return (
@@ -398,9 +501,94 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     ? `$${(amountNum * tokenPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
     : '$0.00';
 
+  const currentNet = SEND_NETWORKS.find(n => n.id === network);
+
   return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body" style={{ gap: 0 }}>
+
+        {/* ── Network picker ─────────────────────────────────────── */}
+        <label className="field-label" style={{ marginBottom: 6 }}>Network</label>
+        <RadixSelect.Root value={network} onValueChange={v => setNetwork(v as SendNet['id'])}>
+          <RadixSelect.Trigger
+            aria-label="Send network"
+            className="field-select"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              width: '100%', cursor: 'pointer', textAlign: 'left',
+              appearance: 'none', backgroundImage: 'none',
+              marginBottom: 4,
+            }}
+          >
+            <TokenIcon
+              sym={
+                network === 'makalu'  ? 'LITHO' :
+                network === 'bitcoin' ? 'BTC' :
+                network === 'solana'  ? 'SOL' :
+                (evmChain?.nativeSymbol ?? 'LITHO')
+              }
+              color={evmChain?.color}
+              size={22}
+            />
+            <RadixSelect.Value asChild>
+              <span style={{ flex: 1, fontWeight: 600 }}>{currentNet?.label ?? 'Pick network'}</span>
+            </RadixSelect.Value>
+            <RadixSelect.Icon asChild>
+              <ChevronDown size={16} strokeWidth={2} style={{ color: 'var(--text-muted)' }}/>
+            </RadixSelect.Icon>
+          </RadixSelect.Trigger>
+          <RadixSelect.Portal>
+            <RadixSelect.Content
+              position="popper"
+              sideOffset={6}
+              className="card"
+              style={{
+                zIndex: 100,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 12, padding: 4,
+                minWidth: 'var(--radix-select-trigger-width)',
+                maxHeight: 'min(360px, var(--radix-select-content-available-height))',
+                boxShadow: '0 10px 28px rgba(0,0,0,0.24)',
+                overflow: 'hidden',
+              }}
+            >
+              <RadixSelect.Viewport style={{ padding: 2 }}>
+                {SEND_NETWORKS.map(n => {
+                  const evmId = n.id.startsWith('evm:') ? parseInt(n.id.slice(4), 10) : null;
+                  const chain = evmId !== null ? EVM_CHAINS.find(c => c.chainId === evmId) ?? null : null;
+                  const sym   =
+                    n.id === 'makalu'  ? 'LITHO' :
+                    n.id === 'bitcoin' ? 'BTC' :
+                    n.id === 'solana'  ? 'SOL' :
+                    (chain?.nativeSymbol ?? 'LITHO');
+                  return (
+                    <RadixSelect.Item
+                      key={n.id}
+                      value={n.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 10px', borderRadius: 8,
+                        cursor: 'pointer', outline: 'none', userSelect: 'none',
+                        fontSize: 13, fontWeight: 500, color: 'var(--text-primary)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <TokenIcon sym={sym} color={chain?.color} size={22}/>
+                      <RadixSelect.ItemText asChild>
+                        <span style={{ flex: 1 }}>{n.label}</span>
+                      </RadixSelect.ItemText>
+                      <RadixSelect.ItemIndicator>
+                        <Check size={14} strokeWidth={2.5} style={{ color: 'var(--blue)' }}/>
+                      </RadixSelect.ItemIndicator>
+                    </RadixSelect.Item>
+                  );
+                })}
+              </RadixSelect.Viewport>
+            </RadixSelect.Content>
+          </RadixSelect.Portal>
+        </RadixSelect.Root>
 
         {/* ── Amount hero (big, centered) ─────────────────────────── */}
         <div style={{
@@ -424,9 +612,22 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{usdEquivalent}</div>
         </div>
 
-        {/* Asset chip — opens the existing TokenSelect dropdown. */}
+        {/* Asset chip — Makalu has multiple sendable assets (LITHO + LEP100
+            tokens) so we keep the dropdown there. Every other chain has
+            exactly one native asset, so we show a static chip. */}
         <div style={{ marginBottom: 12 }}>
-          <TokenSelect value={coin} onChange={setCoin} options={TOKEN_SYMBOLS} ariaLabel="Send asset"/>
+          {network === 'makalu' ? (
+            <TokenSelect value={coin} onChange={setCoin} options={MAKALU_SYMBOLS} ariaLabel="Send asset"/>
+          ) : (
+            <div className="field-select" style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              cursor: 'default', opacity: 0.95,
+            }}>
+              <TokenIcon sym={coin} color={evmChain?.color} size={22}/>
+              <span style={{ flex: 1, fontWeight: 600 }}>{coin}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>native</span>
+            </div>
+          )}
         </div>
 
         {/* Balance + MAX */}
@@ -451,6 +652,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             placeholder={
               isSolanaSend  ? 'Solana address…'  :
               isBitcoinSend ? 'Bitcoin address…' :
+              isEvmSend     ? `${evmChain?.name ?? 'EVM'} address (0x…)` :
               'litho1… or 0x…'
             }
             value={to}
@@ -515,9 +717,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
               recipientValidation.format === 'litho'  ? 'litho1' :
               recipientValidation.format === 'solana' ? 'Solana' :
               recipientValidation.format === 'btc'    ? 'Bitcoin' :
+              isEvmSend && evmChain                   ? evmChain.name :
               'EVM'
             } address
-            {matchedContact && !isSolanaSend && !isBitcoinSend && (
+            {matchedContact && !isSolanaSend && !isBitcoinSend && !isEvmSend && (
               <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>· {matchedContact.name}</span>
             )}
             {recipientValidation.format === 'litho' && canonicalEvm && (
@@ -552,7 +755,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        {to.trim() && !recipientValidation.valid && !looksLikeName(to.trim()) && (
+        {to.trim() && !recipientValidation.valid && (!looksLikeName(to.trim()) || network !== 'makalu') && (
           <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4 }}>
             {recipientValidation.reason || 'Invalid address'}
           </div>
