@@ -4,8 +4,10 @@ import { ethers } from 'ethers';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, DollarSign,
   ChevronDown, MoreVertical, SlidersHorizontal, ExternalLink,
+  Image as ImageIcon, Sparkles, BadgeCheck,
 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
+import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
@@ -478,6 +480,41 @@ export function Dashboard() {
      the Payment history table. */
   const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity'>('tokens');
 
+  /* Network filter for the Tokens tab. The wallet today has assets on
+     four "kinds" of chain: Lithosphere Makalu, EVM-imported tokens,
+     Bitcoin, and Solana. 'all' keeps the current behaviour (everything). */
+  type NetFilter = 'all' | 'Makalu' | 'EVM' | 'Bitcoin' | 'Solana';
+  const [netFilter, setNetFilter] = useState<NetFilter>('all');
+
+  const filteredCoins = useMemo(() => {
+    if (netFilter === 'all') return COINS;
+    return COINS.filter(c => {
+      const t = TOKENS.find(x => x.sym === c.sym);
+      return t?.chain === netFilter;
+    });
+  }, [COINS, netFilter]);
+
+  /* Buy on-ramp. Today this redirects to Transak's hosted widget with
+     the wallet's EVM address pre-populated. Requires
+     NEXT_PUBLIC_TRANSAK_API_KEY to be set at build time; without it the
+     button stays disabled (no point opening a broken widget). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const transakApiKey = (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_TRANSAK_API_KEY) || '';
+  const onBuy = () => {
+    if (!transakApiKey || !evmAddress) return;
+    const url =
+      'https://global.transak.com/?'
+      + new URLSearchParams({
+          apiKey:                transakApiKey,
+          walletAddress:         evmAddress,
+          defaultCryptoCurrency: 'ETH',
+          fiatCurrency:          'USD',
+          themeColor:            '3b7af7',
+          hideMenu:              'true',
+        }).toString();
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div style={{ width: '100%', overflowY: 'auto', height: '100%' }}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
@@ -539,8 +576,9 @@ export function Dashboard() {
           <ActionBtn
             icon={<DollarSign size={26} strokeWidth={2}/>}
             label="Buy"
-            disabled
-            onClick={() => { /* TODO on/off-ramp */ }}
+            disabled={!transakApiKey}
+            title={transakApiKey ? 'Buy crypto via Transak (opens in new tab)' : 'Buy disabled — set NEXT_PUBLIC_TRANSAK_API_KEY to enable on-ramp'}
+            onClick={onBuy}
           />
           <ActionBtn
             icon={<Repeat size={26} strokeWidth={2}/>}
@@ -596,27 +634,41 @@ export function Dashboard() {
 
         {tab === 'tokens' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Network filter chip + filter/menu icons (MM parity) */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <button style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border-default)',
-                color: 'var(--text-primary)',
-                fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>
-                Lithosphere Makalu <ChevronDown size={14}/>
-              </button>
+            {/* Network filter — real Radix Select; filters the COINS list
+                by canonical token.chain. The right-side filter/menu icons
+                stay decorative for now (no sort or hide-small-balances yet). */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 200 }}>
+                <Select
+                  value={netFilter}
+                  onChange={v => setNetFilter(v as NetFilter)}
+                  options={[
+                    { value: 'all',     label: 'All networks' },
+                    { value: 'Makalu',  label: 'Lithosphere Makalu' },
+                    { value: 'EVM',     label: 'Ethereum & EVM' },
+                    { value: 'Bitcoin', label: 'Bitcoin' },
+                    { value: 'Solana',  label: 'Solana' },
+                  ]}
+                  ariaLabel="Filter tokens by network"
+                />
+              </div>
               <div style={{ display: 'flex', gap: 6, color: 'var(--text-muted)' }}>
-                <button style={iconBtnStyle}><SlidersHorizontal size={16}/></button>
-                <button style={iconBtnStyle}><MoreVertical    size={16}/></button>
+                <button style={iconBtnStyle} title="Coming soon"><SlidersHorizontal size={16}/></button>
+                <button style={iconBtnStyle} title="Coming soon"><MoreVertical    size={16}/></button>
               </div>
             </div>
 
             {/* Big token rows */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {COINS.map(c => (
+              {filteredCoins.length === 0 && (
+                <div style={{
+                  padding: '36px 0', textAlign: 'center',
+                  color: 'var(--text-muted)', fontSize: 13,
+                }}>
+                  No assets on this network.
+                </div>
+              )}
+              {filteredCoins.map(c => (
                 <div key={c.sym} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 4px',
@@ -648,27 +700,53 @@ export function Dashboard() {
         )}
 
         {tab === 'defi' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <ExchangeWidget liveBalances={liveBalances}/>
-            <StakingCard/>
-            <div className="charts-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div className="card price-analytics-card">
-                <div className="card-header"><span className="card-title">Price analytics</span></div>
-                <PriceSparkline/>
-                <div className="analytics-prices">
-                  <span className="analytics-price">$5,240.00</span>
-                  <span className="analytics-price">$12,900.00</span>
-                </div>
-                <div className="analytics-date"><span>1 Dec, 2025</span><span>31 Dec, 2025</span></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {/* Swap — primary DeFi action, top of the tab */}
+            <div>
+              <SectionHead title="Swap" sub="Bridge LITHO ecosystem tokens via MultX"/>
+              <ExchangeWidget liveBalances={liveBalances}/>
+            </div>
+
+            {/* Stake — Solstice (live position) + a "More pools coming" hint */}
+            <div>
+              <SectionHead title="Stake" sub="Earn passive yield on your assets"/>
+              <StakingCard/>
+              <div style={{
+                marginTop: 8, padding: '12px 14px',
+                background: 'var(--bg-elevated)',
+                border: '1px dashed var(--border-default)',
+                borderRadius: 12,
+                fontSize: 11, color: 'var(--text-muted)',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <Sparkles size={13}/>
+                More staking pools (LAX yield, LitBTC LP) launching with the
+                next protocol rollout.
               </div>
-              <div className="card perf-chart-card">
-                <div className="card-header">
-                  <span className="card-title">Asset performance</span>
-                  <button className="chart-selector">This week ▾</button>
+            </div>
+
+            {/* Charts — analytics on the user's portfolio */}
+            <div>
+              <SectionHead title="Analytics" sub="Portfolio performance over time"/>
+              <div className="charts-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="card price-analytics-card">
+                  <div className="card-header"><span className="card-title">Price analytics</span></div>
+                  <PriceSparkline/>
+                  <div className="analytics-prices">
+                    <span className="analytics-price">$5,240.00</span>
+                    <span className="analytics-price">$12,900.00</span>
+                  </div>
+                  <div className="analytics-date"><span>1 Dec, 2025</span><span>31 Dec, 2025</span></div>
                 </div>
-                <PerformanceChart/>
-                <div className="chart-xaxis">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d}>{d}</span>)}
+                <div className="card perf-chart-card">
+                  <div className="card-header">
+                    <span className="card-title">Asset performance</span>
+                    <button className="chart-selector">This week ▾</button>
+                  </div>
+                  <PerformanceChart/>
+                  <div className="chart-xaxis">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d}>{d}</span>)}
+                  </div>
                 </div>
               </div>
             </div>
@@ -677,13 +755,36 @@ export function Dashboard() {
 
         {tab === 'nfts' && (
           <div style={{
-            padding: '40px 0', textAlign: 'center',
-            color: 'var(--text-muted)', fontSize: 14,
+            padding: '36px 16px', textAlign: 'center',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 16,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
           }}>
-            No NFTs yet on this account.
-            <div style={{ fontSize: 11, marginTop: 6 }}>
-              NFT indexing for Lithosphere lands next session.
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: 'rgba(139,125,247,0.12)',
+              border: '1px solid rgba(139,125,247,0.25)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--purple500, #8b7df7)',
+            }}>
+              <ImageIcon size={26}/>
             </div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>No NFTs yet</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 380, lineHeight: 1.5 }}>
+              NFTs you receive on Lithosphere (LEP-721 / LEP-1155) will appear here.
+              Indexing pipeline ships with the next backend slice — until then,
+              browse and mint on the Lithosphere marketplace.
+            </div>
+            <a
+              href="https://makalu.litho.ai/nfts"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-btn"
+              style={{ marginTop: 4 }}
+            >
+              <BadgeCheck size={14}/> Browse marketplace
+            </a>
           </div>
         )}
 
@@ -744,16 +845,36 @@ const iconBtnStyle: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
 
-function ActionBtn({ icon, label, onClick, disabled }: {
+function SectionHead({ title, sub }: { title: string; sub?: string }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: 1.4,
+        color: 'var(--text-muted)', textTransform: 'uppercase',
+      }}>
+        {title}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionBtn({ icon, label, onClick, disabled, title }: {
   icon:     React.ReactNode;
   label:    string;
   onClick:  () => void;
   disabled?: boolean;
+  title?:   string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 8,

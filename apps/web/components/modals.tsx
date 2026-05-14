@@ -647,21 +647,21 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     return { btcAddr: btc, solAddr: sol };
   }, [wallet?.seed, wallet?.privateKey]);
 
-  /* The network list. EVM addresses are all the same `evm` value because
-     EVM accounts are chain-agnostic. */
+  /* The network list. We show ONLY the networks the wallet actually
+     transacts on today (Lithosphere Makalu × 2 formats, Bitcoin, Solana).
+     The EVM 0x… address WOULD work on Ethereum, BNB, Polygon, Base,
+     Arbitrum, Linea, Optimism etc. because EVM accounts are chain-
+     agnostic — but we don't have indexer / balance flows for those
+     chains yet, so listing them as "receivable" sets up an inconsistency
+     between Receive (advertises) and Tokens (doesn't show). The
+     same-address note at the bottom of the list signals to the user
+     that the 0x form is reusable on other EVM chains. */
   const networks: ReceiveNetwork[] = useMemo(() => {
     const out: ReceiveNetwork[] = [];
-    if (litho) out.push({ id: 'litho-bech32', name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: litho });
-    if (evm)   out.push({ id: 'litho-evm',    name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: evm, badge: 'EVM' });
-    if (evm)   out.push({ id: 'ethereum',     name: 'Ethereum',           symbol: 'ETH',   color: '#627eea', address: evm });
-    if (evm)   out.push({ id: 'bnb',          name: 'BNB Chain',          symbol: 'BNB',   color: '#f3ba2f', address: evm });
-    if (evm)   out.push({ id: 'polygon',      name: 'Polygon',            symbol: 'POL',   color: '#8247e5', address: evm });
-    if (evm)   out.push({ id: 'base',         name: 'Base',               symbol: 'BASE',  color: '#0052ff', address: evm });
-    if (evm)   out.push({ id: 'arbitrum',     name: 'Arbitrum',           symbol: 'ARB',   color: '#28a0f0', address: evm });
-    if (evm)   out.push({ id: 'linea',        name: 'Linea',              symbol: 'LINEA', color: '#62dfff', address: evm });
-    if (evm)   out.push({ id: 'optimism',     name: 'Optimism',           symbol: 'OP',    color: '#ff0420', address: evm });
-    if (btcAddr) out.push({ id: 'bitcoin',    name: 'Bitcoin',            symbol: 'BTC',   color: '#f7931a', address: btcAddr });
-    if (solAddr) out.push({ id: 'solana',     name: 'Solana',             symbol: 'SOL',   color: '#14f195', address: solAddr });
+    if (litho)   out.push({ id: 'litho-bech32', name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: litho });
+    if (evm)     out.push({ id: 'litho-evm',    name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: evm, badge: 'EVM' });
+    if (btcAddr) out.push({ id: 'bitcoin',      name: 'Bitcoin',            symbol: 'BTC',   color: '#f7931a', address: btcAddr });
+    if (solAddr) out.push({ id: 'solana',       name: 'Solana',             symbol: 'SOL',   color: '#14f195', address: solAddr });
     return out;
   }, [litho, evm, btcAddr, solAddr]);
 
@@ -848,6 +848,25 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
+
+        {/* Shared-address hint — the 0x form works on every other EVM
+            chain, but those flows aren't wired in the wallet yet so we
+            don't list them as separate rows. Setting expectations honestly. */}
+        {evm && (
+          <div style={{
+            marginTop: 10,
+            padding: '10px 12px',
+            background: 'var(--bg-elevated)',
+            border: '1px dashed var(--border-default)',
+            borderRadius: 10,
+            fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
+          }}>
+            The EVM (0x…) address above is also valid on Ethereum, BNB Chain,
+            Polygon, Base, Arbitrum, Linea, and Optimism. Sending tokens from
+            those chains will arrive at the same account; full Tokens / Send
+            support for other EVM chains lands in a follow-up.
+          </div>
+        )}
       </div>
     </Modal>
   );
