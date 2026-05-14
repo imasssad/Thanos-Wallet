@@ -19,6 +19,7 @@ import type { WalletKitTypes } from '@reown/walletkit';
 import { useWallet } from './shell/AppShell';
 import {
   onSessionRequest, respondRequest, respondError,
+  emitChainChanged,
 } from '../lib/walletconnect';
 import { Wallet as EthersWallet } from 'ethers';
 import { walletFromSeed, makeProvider } from '../lib/signer';
@@ -29,6 +30,8 @@ import {
   classifyTransaction, classifyTypedData, type Verdict, type TxLike,
 } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
+import { EVM_CHAINS } from '../lib/evm-chains';
+import { MAKALU_CHAIN_ID } from '../lib/rpc';
 
 interface PendingRequest {
   request: WalletKitTypes.SessionRequest;
@@ -61,6 +64,25 @@ export function WalletConnectHost() {
     }
     return walletFromSeed(seedRef.current, provider);
   };
+
+  /* ─── Per-session active chain ─────────────────────────────────────
+     WC v2 negotiates namespaces at session approval time. dApps that
+     want to switch chains mid-session call `wallet_switchEthereumChain`
+     — we honour it by storing the new chainId for that topic and
+     emitting a `chainChanged` event so the dApp re-reads. The
+     in-memory map is intentionally per-mount: WC sessions don't span
+     refreshes anyway, and on cold start dApps will re-negotiate. */
+  const SUPPORTED_CHAIN_IDS = new Set<number>([
+    MAKALU_CHAIN_ID,
+    ...EVM_CHAINS.map(c => c.chainId),
+  ]);
+  const sessionChainsRef = useRef<Map<string, number>>(new Map());
+  const getSessionChainId = (topic: string): number =>
+    sessionChainsRef.current.get(topic) ?? MAKALU_CHAIN_ID;
+  const setSessionChainId = (topic: string, chainId: number): void => {
+    sessionChainsRef.current.set(topic, chainId);
+  };
+  const toHexChainId = (n: number): string => `0x${n.toString(16)}`;
 
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [busy, setBusy]       = useState<'approve' | 'reject' | null>(null);
@@ -275,7 +297,41 @@ export function WalletConnectHost() {
             break;
           }
           case 'eth_chainId': {
-            await sendOk('0xab09f9'); // 700777
+            await sendOk(toHexChainId(getSessionChainId(topic)));
+            break;
+          }
+          case 'wallet_switchEthereumChain': {
+            // Spec: params is [{ chainId: '0xHEX' }]. Reply null on success;
+            // 4902 if the chain is unknown (dApp may follow with addEthereumChain).
+            const p = (params[0] as { chainId?: string } | undefined) ?? {};
+            const requested = typeof p.chainId === 'string' ? parseInt(p.chainId, 16) : NaN;
+            if (!Number.isFinite(requested)) {
+              await sendErr(-32602, 'Invalid chainId');
+              break;
+            }
+            if (!SUPPORTED_CHAIN_IDS.has(requested)) {
+              await sendErr(4902, `Unrecognised chain ${requested}. Call wallet_addEthereumChain first.`);
+              break;
+            }
+            setSessionChainId(topic, requested);
+            // Emit chainChanged so the dApp's provider can re-read state.
+            // Failure here is non-fatal — the dApp would just poll instead.
+            void emitChainChanged(topic, requested).catch(() => {});
+            await sendOk(null);
+            break;
+          }
+          case 'wallet_addEthereumChain': {
+            // We accept the call iff we already know the chain — there's no
+            // dynamic registry today. Spec returns null on success.
+            const p = (params[0] as { chainId?: string } | undefined) ?? {};
+            const requested = typeof p.chainId === 'string' ? parseInt(p.chainId, 16) : NaN;
+            if (!Number.isFinite(requested) || !SUPPORTED_CHAIN_IDS.has(requested)) {
+              await sendErr(4902, `Chain ${p.chainId} is not supported by this wallet.`);
+              break;
+            }
+            setSessionChainId(topic, requested);
+            void emitChainChanged(topic, requested).catch(() => {});
+            await sendOk(null);
             break;
           }
           default:
@@ -319,6 +375,19 @@ export function WalletConnectHost() {
   const dAppName = (pending.request as unknown as { verifyContext?: { verified?: { origin?: string } } })
     .verifyContext?.verified?.origin ?? 'dApp';
 
+  /* Chain badge — every WC v2 request carries its EIP-155 chainId in
+     `params.chainId` (e.g. "eip155:137"). Resolve to a human label so
+     the user sees the network at sign time. */
+  const reqChain = ((): { id: number; label: string } | null => {
+    const raw = (pending.request.params as { chainId?: string } | undefined)?.chainId;
+    if (typeof raw !== 'string' || !raw.startsWith('eip155:')) return null;
+    const id = parseInt(raw.slice('eip155:'.length), 10);
+    if (!Number.isFinite(id)) return null;
+    const known = EVM_CHAINS.find(c => c.chainId === id);
+    const label = known?.name ?? (id === MAKALU_CHAIN_ID ? 'Lithosphere Makalu' : `Chain ${id}`);
+    return { id, label };
+  })();
+
   return (
     <div className="modal-backdrop" onClick={onReject}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
@@ -327,8 +396,20 @@ export function WalletConnectHost() {
           <button className="modal-close" onClick={onReject}>✕</button>
         </div>
         <div className="modal-body">
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-            {dAppName} · {peer?.method}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+            <span>{dAppName} · {peer?.method}</span>
+            {reqChain && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 6px', borderRadius: 4,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                color: 'var(--text-secondary)',
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+              }}>
+                {reqChain.label.toUpperCase()}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, wordBreak: 'break-all' }}>
             {pending.summary}

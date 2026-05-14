@@ -33,6 +33,11 @@ import { sendSolWithLedger } from '../lib/ledger-sol';
 import {
   getActiveLedgerBtcAccount, getActiveLedgerSolAccount,
 } from '../lib/ledger-accounts';
+import { signAndBroadcastTx as ledgerSignEvmTx } from '../lib/ledger';
+import { getActiveLedgerAccount } from './LedgerModal';
+import { getMakaluProvider } from '../lib/rpc';
+import { getEvmProvider } from '../lib/evm-chains';
+import { parseUnits as ethersParseUnits } from 'ethers';
 import { LedgerError } from '../lib/ledger-transport';
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
@@ -160,10 +165,16 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   /* If the user has connected a Ledger for this coin, we route the
      signature through the device instead of the in-vault key. The
      wallet doesn't need to be unlocked at all in that case — `seed`
-     and `privateKey` can both be empty. */
+     and `privateKey` can both be empty.
+     EVM is unified: one ETH-path Ledger account signs across Makalu
+     and every external EVM chain since the keypair is chain-agnostic. */
   const ledgerBtc = useMemo(() => isBitcoinSend ? getActiveLedgerBtcAccount() : null, [isBitcoinSend]);
   const ledgerSol = useMemo(() => isSolanaSend  ? getActiveLedgerSolAccount() : null, [isSolanaSend]);
-  const usingLedger = !!(ledgerBtc || ledgerSol);
+  const ledgerEvm = useMemo(
+    () => (isEvmSend || network === 'makalu') ? getActiveLedgerAccount() : null,
+    [isEvmSend, network],
+  );
+  const usingLedger = !!(ledgerBtc || ledgerSol || ledgerEvm);
   const walletReady = !!(wallet?.seed?.length || wallet?.privateKey || usingLedger);
 
   /* Validate the recipient against the chain of the selected token. */
@@ -487,13 +498,47 @@ export function SendModal({ onClose }: { onClose: () => void }) {
        through that chain's RPC via getEvmProvider. ERC-20 catalogs per
        chain land in a follow-up commit. */
     if (isEvmSend && evmChainId !== null && evmChain) {
+      setStage('broadcasting');
+      setError(null);
+
+      /* Ledger EVM path — same keypair signs across all 8 chains. The
+         Ledger account holds a derivation path; ledger.ts handles
+         per-chain provider + EIP-1559 tx build. */
+      if (ledgerEvm) {
+        try {
+          const provider = getEvmProvider(evmChainId);
+          let value: bigint;
+          try { value = ethersParseUnits(amount, evmChain.decimals); }
+          catch { throw new Error('Invalid amount'); }
+          const hash = await ledgerSignEvmTx({
+            provider,
+            from:  ledgerEvm.address,
+            to:    to.trim(),
+            value,
+            path:  ledgerEvm.path,
+          });
+          setTxHash(hash);
+          setStage('pending');
+          provider.waitForTransaction(hash)
+            .then(r => {
+              if (!r) { setStage('failed'); return; }
+              setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
+              if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
+            })
+            .catch(() => setStage('failed'));
+        } catch (e) {
+          const msg = (e as Error).message || 'Ledger EVM send failed';
+          setError(msg);
+          setStage('failed');
+        }
+        return;
+      }
+
       if (!wallet?.seed?.length && !wallet?.privateKey) {
-        setError('EVM send requires the in-vault wallet to be unlocked — Ledger EVM signing is a follow-up.');
+        setError('Connect a Ledger or unlock your recovery-phrase wallet to send on EVM chains.');
         setStage('failed');
         return;
       }
-      setStage('broadcasting');
-      setError(null);
       try {
         const result = await sendNativeEvm(
           wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
@@ -515,14 +560,56 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    /* ─── Makalu EVM branch (existing — LITHO + LEP100) ──────────────── */
+    /* ─── Makalu EVM branch (LITHO + LEP100) ───────────────────────── */
+    setStage('broadcasting');
+    setError(null);
+
+    /* Ledger Makalu path — only native LITHO sends are supported via
+       Ledger today. LEP100 transfer() calldata via Ledger is a follow-
+       up that needs the ERC-20 ABI provided as a "clearsigning" plugin
+       on the Ethereum app, otherwise the device shows raw hex. */
+    if (ledgerEvm && selectedToken) {
+      if (selectedToken.address !== null) {
+        setError('LEP100 token sends via Ledger require clearsigning support — coming soon. Send native LITHO or disconnect Ledger.');
+        setStage('failed');
+        return;
+      }
+      try {
+        const provider = getMakaluProvider();
+        let value: bigint;
+        try { value = ethersParseUnits(amount, selectedToken.decimals); }
+        catch { throw new Error('Invalid amount'); }
+        // Recipient may be litho1… — convert to 0x first.
+        const evmRecipient = resolveToEvm(to.trim()) ?? to.trim();
+        const hash = await ledgerSignEvmTx({
+          provider,
+          from:  ledgerEvm.address,
+          to:    evmRecipient,
+          value,
+          path:  ledgerEvm.path,
+        });
+        setTxHash(hash);
+        setStage('pending');
+        provider.waitForTransaction(hash)
+          .then(r => {
+            if (!r) { setStage('failed'); return; }
+            setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
+            if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
+          })
+          .catch(() => setStage('failed'));
+      } catch (e) {
+        const msg = (e as Error).message || 'Ledger Makalu send failed';
+        setError(msg);
+        setStage('failed');
+      }
+      return;
+    }
+
     if (!wallet?.seed?.length && !wallet?.privateKey) {
-      setError('Makalu send requires the in-vault wallet to be unlocked — Ledger EVM signing is a follow-up.');
+      setError('Connect a Ledger or unlock your recovery-phrase wallet to send on Makalu.');
       setStage('failed');
       return;
     }
-    setStage('broadcasting');
-    setError(null);
     try {
       // Prefer the worker-isolated signing path. The worker holds the
       // secret in its own context; the main thread only sees the tx hash
@@ -934,7 +1021,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         </button>
         {usingLedger && (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
-            Signing via Ledger · {(ledgerBtc?.address ?? ledgerSol?.address ?? '').slice(0, 8)}…{(ledgerBtc?.address ?? ledgerSol?.address ?? '').slice(-6)}
+            Signing via Ledger · {(() => {
+              const a = ledgerBtc?.address ?? ledgerSol?.address ?? ledgerEvm?.address ?? '';
+              return `${a.slice(0, 8)}…${a.slice(-6)}`;
+            })()}
           </div>
         )}
         {!walletReady && (
