@@ -20,12 +20,23 @@ import type { SessionTypes, ProposalTypes } from '@walletconnect/types';
 const MAKALU_CHAIN_ID = 700777;
 const MAKALU_EIP155 = `eip155:${MAKALU_CHAIN_ID}`;
 
+/* Every EVM chain the wallet can sign on. Kept in sync with
+   apps/web/lib/evm-chains.ts; we keep the IDs inline here so this
+   module has no React/Next dependency. */
+const SUPPORTED_EVM_CHAIN_IDS: number[] = [
+  MAKALU_CHAIN_ID,
+  1, 56, 137, 8453, 42161, 59144, 10, 43114,
+];
+const SUPPORTED_EVM_NAMESPACE_CHAINS = SUPPORTED_EVM_CHAIN_IDS.map(id => `eip155:${id}`);
+
 const SUPPORTED_METHODS = [
   'eth_sendTransaction',
   'eth_signTransaction',
   'eth_sign',
   'personal_sign',
   'eth_signTypedData_v4',
+  'wallet_switchEthereumChain',
+  'wallet_addEthereumChain',
 ];
 const SUPPORTED_EVENTS = ['chainChanged', 'accountsChanged'];
 
@@ -81,15 +92,15 @@ export interface SessionProposalSummary {
   required: ProposalTypes.RequiredNamespace;
 }
 
-/** Build the namespaces object for an approval. Covers EIP-155 (Makalu only
- *  in this MVP — multi-chain support is a follow-up). */
+/** Build the namespaces object for an approval. Covers Makalu plus
+ *  every public EVM chain the wallet's signer knows how to sign on. */
 export function buildApprovalNamespaces(evmAddress: string): SessionTypes.Namespaces {
   return {
     eip155: {
-      chains:   [MAKALU_EIP155],
+      chains:   SUPPORTED_EVM_NAMESPACE_CHAINS,
       methods:  SUPPORTED_METHODS,
       events:   SUPPORTED_EVENTS,
-      accounts: [`${MAKALU_EIP155}:${evmAddress}`],
+      accounts: SUPPORTED_EVM_NAMESPACE_CHAINS.map(c => `${c}:${evmAddress}`),
     },
   };
 }
@@ -152,6 +163,20 @@ export async function respondError(args: {
   await kit.respondSessionRequest({
     topic: args.topic,
     response: { id: args.id, jsonrpc: '2.0', error: { code: args.code, message: args.message } },
+  });
+}
+
+/* ─── Session-event emit ─────────────────────────────────────────────── */
+
+/** Push a `chainChanged` event into an active session so the dApp's
+ *  injected provider re-reads chain state.  EIP-1193 spec — the data is
+ *  the hex chainId string. */
+export async function emitChainChanged(topic: string, chainId: number): Promise<void> {
+  const kit = await getWalletKit();
+  await kit.emitSessionEvent({
+    topic,
+    event: { name: 'chainChanged', data: `0x${chainId.toString(16)}` },
+    chainId: `eip155:${chainId}`,
   });
 }
 
