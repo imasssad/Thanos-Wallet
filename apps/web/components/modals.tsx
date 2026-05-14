@@ -24,6 +24,7 @@ import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExp
 import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
+import { EVM_CHAINS } from '../lib/evm-chains';
 import { QrCode } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
@@ -885,9 +886,11 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* Shared-address hint — the 0x form works on every other EVM
-            chain, but those flows aren't wired in the wallet yet so we
-            don't list them as separate rows. Setting expectations honestly. */}
+        {/* Same-address note — every EVM row above resolves to the same
+            0x… string because EVM accounts are chain-agnostic. The
+            wallet now fetches balances on every chain in the list so
+            this isn't aspirational any more, just a UX reminder that
+            you don't need to keep separate keypairs per chain. */}
         {evm && (
           <div style={{
             marginTop: 10,
@@ -897,10 +900,9 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
             borderRadius: 10,
             fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
           }}>
-            The EVM (0x…) address above is also valid on Ethereum, BNB Chain,
-            Polygon, Base, Arbitrum, Linea, and Optimism. Sending tokens from
-            those chains will arrive at the same account; full Tokens / Send
-            support for other EVM chains lands in a follow-up.
+            All EVM rows above share the same 0x… address — one keypair,
+            many chains. The wallet fetches balances on each chain
+            separately so funds never get conflated.
           </div>
         )}
       </div>

@@ -25,13 +25,25 @@ import { ethers } from 'ethers';
 import { getPortfolio, IndexerOffline, type IndexerAsset } from './indexer';
 import { getSolanaAddress,    getSolanaBalance    } from './solana';
 import { getBitcoinAddressFromSource, getBitcoinBalance } from './bitcoin';
+import { getAllEvmNativeBalances, type EvmChain } from './evm-chains';
 import type { WalletSource } from './wallet-source';
 
+/** Per-EVM-chain native-coin entry. Each row is its own balance even
+ *  if multiple chains share a symbol (ETH on mainnet vs ETH on
+ *  Arbitrum/Base/OP are NOT the same balance). */
+export interface EvmChainBalance {
+  chain:   EvmChain;
+  balance: number;       // native coin in human-readable decimal
+}
+
 export interface LiveBalances {
-  /** Lower-cased ticker → balance as human-readable decimal string. */
+  /** Lower-cased ticker → balance as human-readable decimal string.
+   *  This is symbol-aggregated; for the per-chain breakdown use `evm`. */
   bySym:        Map<string, string>;
   /** Lower-cased ticker → balance as a float for math. Zero if missing. */
   bySymNumber:  Map<string, number>;
+  /** Per-chain EVM native balances. Empty when nothing's fetched yet. */
+  evm:          EvmChainBalance[];
   /** True until the first set of fetches resolves. */
   loading:      boolean;
   /** Set to true when the indexer call fails with IndexerOffline. */
@@ -53,6 +65,7 @@ function emptyBalances(): LiveBalances {
   return {
     bySym:       new Map(),
     bySymNumber: new Map(),
+    evm:         [],
     loading:     false,
     indexerOk:   true,
   };
@@ -120,7 +133,31 @@ async function loadOnce(
       } catch { /* mempool.space blip — skip */ }
     }
 
-    const result: LiveBalances = { bySym, bySymNumber, loading: false, indexerOk };
+    /* ── EVM native balances across every chain in EVM_CHAINS ─────
+       (Ethereum, BNB, Polygon, Base, Arbitrum, Linea, Optimism, Avalanche)
+       Each RPC is hit in parallel via Promise.allSettled — one slow / dead
+       endpoint doesn't block the others. Symbol-aggregated balances feed
+       bySym (so the Send modal can read "ETH balance"); the per-chain
+       breakdown lives in `evm` for the dashboard's chain rows. */
+    let evm: EvmChainBalance[] = [];
+    if (evmAddress) {
+      try {
+        evm = await getAllEvmNativeBalances(evmAddress);
+        for (const { chain, balance } of evm) {
+          if (balance <= 0) continue;
+          const sym = chain.nativeSymbol.toLowerCase();
+          // Sum across chains for the symbol view (ETH on mainnet + ETH
+          // on Arbitrum + ETH on Base etc. → single "ETH" line if anyone
+          // needs symbol-level aggregation). bySymNumber tracks the sum.
+          const prevNum = bySymNumber.get(sym) ?? 0;
+          const next    = prevNum + balance;
+          bySymNumber.set(sym, next);
+          bySym.set(sym, next.toLocaleString('en-US', { maximumFractionDigits: 8 }));
+        }
+      } catch { /* network-wide blip — leave evm empty */ }
+    }
+
+    const result: LiveBalances = { bySym, bySymNumber, evm, loading: false, indexerOk };
     cache.set(key, { at: Date.now(), result });
     return result;
   })().finally(() => { inFlight.delete(key); });
