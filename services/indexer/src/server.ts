@@ -1,3 +1,6 @@
+import { initSentry, captureException } from './lib/sentry.js';
+initSentry('thanos-indexer');
+
 import cors from 'cors';
 import express from 'express';
 import {
@@ -10,8 +13,11 @@ import {
   seededApprovals,
   startBackgroundSync,
 } from './lep100-sync.js';
+import { metricsHandler, metricsMiddleware } from './lib/metrics.js';
 
 const app = express();
+app.use(metricsMiddleware);
+app.get('/metrics', metricsHandler);
 app.use(cors());
 app.use(express.json());
 
@@ -117,9 +123,19 @@ app.post('/lep100/sync', async (req, res) => {
     const result = await runMakaluSync(mode);
     res.json(result);
   } catch (err) {
+    captureException(err, { route: '/lep100/sync', mode });
     res.status(500).json({ error: (err as Error).message });
   }
 });
+
+/* ─── Last-resort error handler — catches anything else, ships to Sentry. */
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  captureException(err, { route: req.originalUrl, method: req.method });
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
+
+process.on('uncaughtException',  err => { captureException(err); });
+process.on('unhandledRejection', err => { captureException(err); });
 
 /* ─── Boot ─────────────────────────────────────────────────────────── */
 

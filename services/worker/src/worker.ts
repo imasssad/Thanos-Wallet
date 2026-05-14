@@ -15,6 +15,12 @@
  * cleanly drains every worker and queue before exit.
  */
 import 'dotenv/config';
+import { initSentry, captureException } from './lib/sentry.js';
+// Initialise Sentry FIRST — before anything else loads — so the SDK can
+// wrap process-level uncaughtException / unhandledRejection hooks that
+// connections.ts already registers.
+initSentry('thanos-worker');
+
 import { Worker, type Job } from 'bullmq';
 import {
   QUEUES,
@@ -29,6 +35,7 @@ import {
   redis, cacheRedis, pool,
   getQueue, registerForShutdown,
 } from './lib/connections.js';
+import { trackWorker, startMetricsServer } from './lib/metrics.js';
 import {
   HARD_PRICES, PLACEHOLDER_PRICES, COINGECKO_IDS, DEFAULT_REFRESH_SYMBOLS,
 } from './lib/symbol-map.js';
@@ -119,8 +126,10 @@ const walletSyncWorker = new Worker<WalletSyncJob>(
   { connection: redis, concurrency: 5, limiter: { max: 20, duration: 1000 } },
 );
 registerForShutdown(walletSyncWorker);
+trackWorker(QUEUES.WALLET_SYNC, walletSyncWorker);
 walletSyncWorker.on('failed', (job, err) => {
   log.error({ jobId: job?.id, err: err.message }, 'wallet sync failed');
+  captureException(err, { queue: QUEUES.WALLET_SYNC, jobId: job?.id });
   if (job) void logJobAudit(QUEUES.WALLET_SYNC, job.id!, 'wallet_sync', 'failed', job.data, undefined, err.message);
 });
 
@@ -147,8 +156,10 @@ const lep100Worker = new Worker<Lep100SyncJob>(
   { connection: redis, concurrency: 3 },
 );
 registerForShutdown(lep100Worker);
+trackWorker(QUEUES.LEP100_SYNC, lep100Worker);
 lep100Worker.on('failed', (job, err) => {
   log.error({ jobId: job?.id, err: err.message }, 'lep100 sync failed');
+  captureException(err, { queue: QUEUES.LEP100_SYNC, jobId: job?.id });
   if (job) void logJobAudit(QUEUES.LEP100_SYNC, job.id!, 'lep100_sync', 'failed', job.data, undefined, err.message);
 });
 
@@ -195,8 +206,10 @@ const bridgePollWorker = new Worker<BridgePollJob>(
   { connection: redis, concurrency: 10 },
 );
 registerForShutdown(bridgePollWorker);
+trackWorker(QUEUES.BRIDGE_POLL, bridgePollWorker);
 bridgePollWorker.on('failed', (job, err) => {
   log.error({ jobId: job?.id, err: err.message }, 'bridge poll failed');
+  captureException(err, { queue: QUEUES.BRIDGE_POLL, jobId: job?.id });
   if (job) void logJobAudit(QUEUES.BRIDGE_POLL, job.id!, 'bridge_poll', 'failed', job.data, undefined, err.message);
 });
 
@@ -270,8 +283,10 @@ const priceWorker = new Worker<PriceRefreshJob>(
   { connection: redis, concurrency: 1 },
 );
 registerForShutdown(priceWorker);
+trackWorker(QUEUES.PRICE_REFRESH, priceWorker);
 priceWorker.on('failed', (job, err) => {
   log.error({ jobId: job?.id, err: err.message }, 'price refresh failed');
+  captureException(err, { queue: QUEUES.PRICE_REFRESH, jobId: job?.id });
   if (job) void logJobAudit(QUEUES.PRICE_REFRESH, job.id!, 'price_refresh', 'failed', job.data, undefined, err.message);
 });
 
@@ -359,8 +374,10 @@ const portfolioWorker = new Worker<PortfolioRefreshJob>(
   { connection: redis, concurrency: 10 },
 );
 registerForShutdown(portfolioWorker);
+trackWorker(QUEUES.PORTFOLIO_REFRESH, portfolioWorker);
 portfolioWorker.on('failed', (job, err) => {
   log.error({ jobId: job?.id, err: err.message }, 'portfolio refresh failed');
+  captureException(err, { queue: QUEUES.PORTFOLIO_REFRESH, jobId: job?.id });
   if (job) void logJobAudit(QUEUES.PORTFOLIO_REFRESH, job.id!, 'portfolio_refresh', 'failed', job.data, undefined, err.message);
 });
 
@@ -470,8 +487,10 @@ const txConfirmWorker = new Worker<TxConfirmJob>(
   { connection: redis, concurrency: 20 },
 );
 registerForShutdown(txConfirmWorker);
+trackWorker(QUEUES.TX_CONFIRM, txConfirmWorker);
 txConfirmWorker.on('failed', (job, err) => {
   log.error({ jobId: job?.id, err: err.message }, 'tx confirm failed');
+  captureException(err, { queue: QUEUES.TX_CONFIRM, jobId: job?.id });
   if (job) void logJobAudit(QUEUES.TX_CONFIRM, job.id!, 'tx_confirm', 'failed', job.data, undefined, err.message);
 });
 
@@ -515,3 +534,9 @@ setInterval(() => { void enqueuePortfolioFanout(); }, 5 * 60_000);
 
 log.info('worker booted — processors: wallet:sync, lep100:sync, bridge:poll, price:refresh, portfolio:refresh, tx:confirm');
 log.info('scheduled: price refresh 60s, portfolio fanout 5min');
+
+// HTTP listener for Prometheus /metrics + /health probes. Bound to
+// METRICS_PORT (default 4020). Skipped if METRICS_PORT=0.
+if (Number(process.env.METRICS_PORT ?? '4020') > 0) {
+  startMetricsServer();
+}

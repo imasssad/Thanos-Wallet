@@ -87,19 +87,58 @@ Then:
 - **Prometheus** at `http://localhost:9090` (bind to localhost only; reverse-proxy if you need remote access)
 - **Grafana** at `http://localhost:3001` (default login `admin / admin`, change immediately)
 
-Prometheus self-scrapes plus scrapes the api / indexer / worker services
-once each exposes `/metrics`. The scrape config is in
-`ops/observability/prometheus.yml` — add new targets there.
+Prometheus self-scrapes plus scrapes the three Node services on:
 
-Alerts to add (route via Grafana → Alerting):
-  - RPC failover triggered (FallbackProvider rotation count climbing)
-  - Indexer sync gap > 5 min (block cursor stalling)
-  - Queue backlog > 100 (BullMQ workers behind)
-  - API p99 latency > 1s
-  - 5xx rate > 1% sustained 5 min
+- `host.docker.internal:4000/metrics` — API (Express middleware on the
+  main app port)
+- `host.docker.internal:4010/metrics` — indexer
+- `host.docker.internal:4020/metrics` — worker (separate Express
+  listener; the worker is otherwise headless). Override via
+  `METRICS_PORT`; set `METRICS_PORT=0` to disable.
 
-Each alert routes to Slack webhook / PagerDuty / email — set up in the
-Grafana contact-points UI.
+Each service ships the default Node metrics (heap, event-loop lag, GC,
+CPU) plus service-specific gauges:
+
+- API + indexer: `http_requests_total{method,route,status_code}` and
+  `http_request_duration_seconds_bucket{…}` for SLO histograms.
+- Indexer: `thanos_indexer_head_block`,
+  `thanos_indexer_cursor_block`, `thanos_indexer_sync_lag_blocks`,
+  `thanos_indexer_events_total`.
+- Worker: `thanos_worker_jobs_total{queue,status}`,
+  `thanos_worker_job_duration_seconds_bucket{queue,status}`,
+  `thanos_worker_queue_depth{queue,state}` (polled every 15s).
+
+### Alert rules
+
+Rules live in `ops/observability/alerts.yml` and are loaded by
+Prometheus via the `rule_files:` directive. Current rules:
+
+- `ThanosServiceDown` — any scrape target down for 2 min (critical)
+- `ThanosApi5xxRateHigh` — > 1% 5xx for 5 min (critical)
+- `ThanosApiLatencyHigh` — p99 > 1 s for 10 min (warning)
+- `ThanosWorkerQueueBacklog` — wait depth > 100 per queue for 5 min
+- `ThanosWorkerFailedJobs` — > 10 failed jobs / 15 min per queue
+- `ThanosIndexerSyncGap` — cursor > 200 blocks behind head for 5 min
+- `ThanosIndexerStalled` — cursor not advanced in 10 min while > 50 blocks behind (critical)
+
+Route them to Slack / PagerDuty / email via Grafana's contact-points
+UI (or wire Alertmanager directly). Tighten thresholds on
+single-tenant deployments; relax them for low-traffic environments.
+
+### Sentry on the Node services
+
+`services/{api,indexer,worker}/src/lib/sentry.ts` each call
+`initSentry()` as the very first import. No-op when `SENTRY_DSN` is
+unset (local dev / CI). Production env vars to set on the VPS:
+
+```bash
+SENTRY_DSN=https://<key>@<org>.ingest.sentry.io/<project>
+SENTRY_TRACES_SAMPLE_RATE=0.05   # default
+```
+
+The same `(mnemonic|password|seed|...)` scrub patterns apply
+recursively to every captured event + breadcrumb, mirroring
+`apps/web/sentry.client.config.ts`.
 
 ## Redis persistence
 

@@ -10,9 +10,18 @@ import { checkDbConnection } from './lib/db.js';
 import { checkRedisConnection } from './lib/redis.js';
 import { generalLimiter } from './middleware/rate-limit.js';
 import { authRouter } from './routes/auth.js';
+import { metricsHandler, metricsMiddleware } from './lib/metrics.js';
+import { captureException } from './lib/sentry.js';
 
 export function createApp(): express.Express {
   const app = express();
+
+  /* Metrics middleware MUST run before everything else so route timing
+     covers any rate-limit / CORS rejection latency too. The /metrics
+     endpoint is exposed unauthenticated (Prometheus scrapes via the
+     Docker network; not exposed publicly via nginx). */
+  app.use(metricsMiddleware);
+  app.get('/metrics', metricsHandler);
 
   const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000').split(',');
 
@@ -43,7 +52,8 @@ export function createApp(): express.Express {
     });
   });
 
-  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    captureException(err, { route: req.originalUrl, method: req.method });
     // Lazy import so app.ts doesn't depend on log.ts at module load (test ergonomics).
     import('./lib/log.js').then(({ log }) => log.error({ err: err.message, stack: err.stack }, 'unhandled error'));
     res.status(500).json({ error: 'Internal server error' });

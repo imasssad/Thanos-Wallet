@@ -22,6 +22,7 @@ import {
   ZERO_ADDRESS,
   type TokenSpec,
 } from './chain.js';
+import { setSyncMetrics } from './lib/metrics.js';
 
 const TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'; // keccak('Transfer(address,address,uint256)')
@@ -238,11 +239,13 @@ export async function runMakaluSync(mode: 'bootstrap' | 'incremental' | 'backfil
     if (mode === 'incremental') break;
   }
 
+  const cursorAfter = Math.min(from - 1, head);
+  setSyncMetrics({ head, cursor: cursorAfter, eventsThisPass: processed });
   return {
     ok: true,
     processed,
     headBlock: head,
-    cursorAfter: Math.min(from - 1, head),
+    cursorAfter,
     tokens: tokens.length,
     startedAt,
     finishedAt: new Date().toISOString(),
