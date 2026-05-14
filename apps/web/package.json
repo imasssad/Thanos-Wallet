@@ -22,6 +22,7 @@
     "@thanos/sdk-core": "workspace:*",
     "@thanos/sdk-react": "workspace:*",
     "@thanos/ui": "workspace:*",
+    "@types/qrcode": "^1.5.6",
     "@walletconnect/core": "^2.23.9",
     "@walletconnect/utils": "^2.23.9",
     "bip32": "^5.0.0",
@@ -33,6 +34,7 @@
     "lucide-react": "^1.14.0",
     "next": "15.0.0",
     "qr-scanner": "^1.4.2",
+    "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "tiny-secp256k1": "^2.2.3"
