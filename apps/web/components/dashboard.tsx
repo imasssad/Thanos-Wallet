@@ -17,36 +17,6 @@ import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } fro
 
 import { TOKENS } from '../lib/tokens';
 
-/* Default fallback coin rows derived from the canonical TOKENS list. Used
-   on cold start and whenever the indexer is unreachable. */
-const FALLBACK_COINS = (() => {
-  const raw = TOKENS.map(t => {
-    const balNum = parseFloat(t.balance.replace(/,/g, ''));
-    const usdNum = balNum * t.priceUsd;
-    return { ...t, balNum, usdNum };
-  });
-  const total = raw.reduce((s, c) => s + c.usdNum, 0) || 1;
-  return raw.map(c => ({
-    sym:   c.sym,
-    name:  c.name,
-    bal:   c.balance,
-    usdNum: c.usdNum,
-    usd:   `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-    chg:   c.change24h,
-    color: c.color,
-    pct:   Math.max(1, Math.round((c.usdNum / total) * 100)),
-  }));
-})();
-
-const FALLBACK_TXS = [
-  { sym: 'LITHO',  name: 'Lithosphere',                  date: 'Jan 22, 2026', price: '$0.30',   status: 'Completed', amount: '+1,200 LITHO',  pos: true,  color: '#3b7af7' },
-  { sym: 'LitBTC', name: 'Bitcoin (Lithosphere)',        date: 'Jan 20, 2026', price: '$63,200', status: 'Completed', amount: '+0.142 LitBTC', pos: true,  color: '#f7931a' },
-  { sym: 'JOT',    name: 'Jot Art',                      date: 'Jan 19, 2026', price: '$0.085', status: 'Completed', amount: '+850 JOT',      pos: true,  color: '#ef4444' },
-  { sym: 'LAX',    name: 'Lithosphere Algorithmic',      date: 'Jan 18, 2026', price: '$1.00',   status: 'Completed', amount: '-200 LAX',      pos: false, color: '#06b6d4' },
-  { sym: 'COLLE',  name: 'Colle AI',                     date: 'Jan 17, 2026', price: '$0.020',  status: 'Completed', amount: '+5,000 COLLE',  pos: true,  color: '#9ca3af' },
-  { sym: 'FurGPT', name: 'FurGPT',                       date: 'Jan 15, 2026', price: '$0.015',  status: 'Pending',   amount: '-2,000 FurGPT', pos: false, color: '#f59e0b' },
-];
-
 /* Project an indexer asset onto a dashboard coin row, using canonical TOKENS
    for icon/color/price (the indexer doesn't ship that metadata).
    `prices` is the live CoinGecko snapshot; we prefer that over canonical. */
@@ -95,11 +65,54 @@ function projectActivity(item: IndexerActivityItem) {
   };
 }
 
-const PERF_LINE = 'M 22,165 C 48,160 72,156 96,152 C 120,148 145,144 168,138 C 191,132 214,116 238,100 C 262,84 285,76 308,68 C 331,60 358,47 382,40 C 402,34 428,24 452,17 C 468,13 482,9 498,7';
-const PERF_AREA = `${PERF_LINE} L 498,185 L 22,185 Z`;
-const ANALYTICS_LINE = 'M 6,72 L 12,68 L 18,74 L 24,60 L 30,54 L 36,62 L 42,56 L 48,66 L 54,58 L 60,42 L 66,38 L 70,48 L 76,32 L 82,26 L 88,34 L 94,20 L 100,30 L 106,38 L 112,28 L 118,16 L 124,22 L 130,14 L 136,10 L 142,18 L 148,12 L 154,22 L 160,16 L 165,20';
+/* Build an SVG path "M x0,y0 L x1,y1 …" from a series of [time, price]
+   pairs. Auto-scaled to the viewBox. */
+function pricesToPath(prices: Array<[number, number]>, w: number, h: number): { line: string; area: string } | null {
+  if (prices.length < 2) return null;
+  const ys = prices.map(p => p[1]);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const range = (maxY - minY) || 1;
+  const stepX = w / (prices.length - 1);
+  const points = prices.map((p, i) => [i * stepX, h - ((p[1] - minY) / range) * h * 0.85 - h * 0.075] as const);
+  const line = points.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${w.toFixed(1)},${h.toFixed(1)} L 0,${h.toFixed(1)} Z`;
+  return { line, area };
+}
+
+/** Live BTC price chart via CoinGecko market_chart endpoint. Cached
+ *  in-memory for 5 minutes — same shape as usePrices. Used as a proxy
+ *  for "the chain" until we have a real Lithosphere price oracle. */
+function useMarketChart(coingeckoId: string, days = 7) {
+  const [data, setData] = useState<Array<[number, number]> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coingeckoId)}/market_chart?vs_currency=usd&days=${days}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const json = await res.json() as { prices?: Array<[number, number]> };
+        if (!cancelled && Array.isArray(json.prices)) setData(json.prices);
+      } catch {
+        /* swallow — UI shows empty state */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [coingeckoId, days]);
+  return data;
+}
 
 function PerformanceChart() {
+  const points = useMarketChart('bitcoin', 7);
+  const path = useMemo(() => points ? pricesToPath(points, 520, 192) : null, [points]);
+  if (!path) {
+    return (
+      <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+        Loading market data…
+      </div>
+    );
+  }
   return (
     <svg width="100%" viewBox="0 0 520 192" style={{ display: 'block', overflow: 'visible' }}>
       <defs>
@@ -115,21 +128,18 @@ function PerformanceChart() {
       {[42, 84, 126, 168].map(y => (
         <line key={y} x1="0" y1={y} x2="520" y2={y} stroke="currentColor" opacity="0.06" strokeWidth="1"/>
       ))}
-      <path d={PERF_AREA} fill="url(#areaG)"/>
-      <path d={PERF_LINE} fill="none" stroke="url(#lineG)" strokeWidth="2.25" strokeLinejoin="round"/>
-      <line x1="238" y1="110" x2="238" y2="185" stroke="rgba(59,122,247,0.28)" strokeWidth="1" strokeDasharray="3 3"/>
-      <circle cx="238" cy="100" r="10" fill="rgba(59,122,247,0.15)"/>
-      <circle cx="238" cy="100" r="4.5" fill="#3b7af7" stroke="#fff" strokeWidth="2"/>
-      <g transform="translate(148, 70)">
-        <rect width="122" height="22" rx="6" fill="#3b7af7"/>
-        <text x="61" y="14" textAnchor="middle" fill="#fff" fontSize="10" fontFamily="Geist Mono,monospace" fontWeight="600">$920.00 · Jan 22</text>
-      </g>
+      <path d={path.area} fill="url(#areaG)"/>
+      <path d={path.line} fill="none" stroke="url(#lineG)" strokeWidth="2.25" strokeLinejoin="round"/>
     </svg>
   );
 }
 
 function PriceSparkline() {
-  const area = `${ANALYTICS_LINE} L 165,82 L 6,82 Z`;
+  const points = useMarketChart('bitcoin', 30);
+  const path = useMemo(() => points ? pricesToPath(points, 172, 90) : null, [points]);
+  if (!path) {
+    return <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 10 }}>Loading…</div>;
+  }
   return (
     <svg width="100%" viewBox="0 0 172 90" style={{ display: 'block' }}>
       <defs>
@@ -139,10 +149,8 @@ function PriceSparkline() {
           <stop offset="100%" stopColor="rgba(139,125,247,0.0)"/>
         </linearGradient>
       </defs>
-      <path d={area} fill="url(#sparkG)"/>
-      <path d={ANALYTICS_LINE} fill="none" stroke="#8b7df7" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
-      <circle cx="6" cy="72" r="3.5" fill="#8b7df7" stroke="var(--bg-card)" strokeWidth="1.5"/>
-      <circle cx="136" cy="10" r="3.5" fill="#8b7df7" stroke="var(--bg-card)" strokeWidth="1.5"/>
+      <path d={path.area} fill="url(#sparkG)"/>
+      <path d={path.line} fill="none" stroke="#8b7df7" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
     </svg>
   );
 }
@@ -272,58 +280,19 @@ function TokenPicker({ exclude, onPick }: { exclude: string; onPick: (sym: strin
   );
 }
 
-function PortfolioList({ coins }: { coins: typeof FALLBACK_COINS }) {
-  return (
-    <div className="card">
-      <div className="card-header">
-        <span className="card-title">My Assets</span>
-        <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}>View all</button>
-      </div>
-      <div className="portfolio-list">
-        {coins.filter(c => c.sym !== '···').map(c => (
-          <div key={c.sym} className="portfolio-row">
-            <TokenIcon sym={c.sym} color={c.color} size={32}/>
-            <div>
-              <div className="portfolio-name">{c.name}</div>
-              <div className="portfolio-sym">{c.bal} {c.sym}</div>
-            </div>
-            <div className="portfolio-right">
-              <div className="portfolio-price">{c.usd}</div>
-              <div className={`portfolio-chg ${c.chg >= 0 ? 'pos' : 'neg'}`}>
-                {c.chg >= 0 ? '+' : ''}{c.chg}%
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function StakingCard() {
   return (
-    <div className="staking-card">
-      <div className="staking-brand">
-        <div className="staking-brand-icon">S</div>
-        Solstice
-      </div>
-      <div className="staking-row">
-        <div className="staking-token-icon">wL</div>
-        <div>
-          <div className="staking-token-name">wLITHO</div>
-          <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
-        </div>
-        <div className="staking-yield">
-          <div className="staking-yield-label">Annual yield</div>
-          <div className="staking-yield-val">14.20%</div>
-        </div>
-      </div>
-      <div className="staking-meta">
-        <span>41 days left · 4 months total</span>
-        <span>68%</span>
-      </div>
-      <div className="staking-bar">
-        <div className="staking-bar-fill" style={{ width: '68%' }}/>
+    <div style={{
+      padding: '20px 16px', textAlign: 'center',
+      background: 'var(--bg-elevated)',
+      border: '1px dashed var(--border-default)',
+      borderRadius: 12,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 600 }}>No active stakes</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 360, lineHeight: 1.5 }}>
+        Lithosphere validator + LP staking opens with the next protocol
+        rollout. Your active positions will appear here.
       </div>
     </div>
   );
@@ -403,15 +372,15 @@ export function Dashboard() {
     return () => { cancel = true; };
   }, [walletSeed, walletPk]);
 
-  /* Build the coin rows: prefer live indexer data, fall back to canonical
-     TOKENS so the dashboard renders the moment the user lands on it. Both
-     paths use live CoinGecko prices when available. SOL is appended
-     separately because the indexer is EVM-only. */
+  /* Build the coin rows STRICTLY from real chain state. No canonical
+     fallback: if the indexer says zero and the non-EVM RPCs say zero,
+     we show an empty list. This avoids the "wallet looks mocked" feel
+     when the user is on a fresh testnet account. */
   const COINS = useMemo(() => {
     const buildNonEvmRow = (sym: 'SOL' | 'BTC', balance: number | null) => {
       const tok = TOKENS.find(t => t.sym === sym);
-      if (balance === null || !tok) return null;
-      const decimals = sym === 'BTC' ? 6 : 4; // BTC display precision is tighter
+      if (balance === null || balance <= 0 || !tok) return null;
+      const decimals = sym === 'BTC' ? 6 : 4;
       return {
         sym,
         name:   tok.name,
@@ -427,24 +396,7 @@ export function Dashboard() {
     const extraRows = [solRow, btcRow].filter((r): r is NonNullable<typeof r> => r !== null);
 
     const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
-    if (fromLive.length === 0) {
-      // Recompute the canonical fallback with live prices overlaid.
-      const raw = TOKENS.filter(t => t.sym !== 'SOL' && t.sym !== 'BTC').map(t => {
-        const balNum = parseFloat(t.balance.replace(/,/g, ''));
-        const usdNum = balNum * priceOr(prices, t.sym, t.priceUsd);
-        return {
-          sym: t.sym, name: t.name, bal: t.balance, usdNum, chg: t.change24h, color: t.color,
-        };
-      });
-      // Drop in real non-EVM rows if we have them, alongside the canonical fallback rows.
-      for (const r of extraRows) raw.push({ sym: r.sym, name: r.name, bal: r.bal, usdNum: r.usdNum, chg: r.chg, color: r.color });
-      const total = raw.reduce((s, c) => s + c.usdNum, 0) || 1;
-      return raw.map(c => ({
-        ...c,
-        usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
-        pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
-      }));
-    }
+
     const combined = [...fromLive, ...extraRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
@@ -453,10 +405,10 @@ export function Dashboard() {
       chg: c.chg, color: c.color,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [liveAssets, prices]);
+  }, [liveAssets, solBalance, btcBalance, prices]);
 
   const TXS = useMemo(() => {
-    if (!liveActivity || liveActivity.length === 0) return FALLBACK_TXS;
+    if (!liveActivity || liveActivity.length === 0) return [];
     return liveActivity.slice(0, 6).map(projectActivity);
   }, [liveActivity]);
 
@@ -662,10 +614,35 @@ export function Dashboard() {
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {filteredCoins.length === 0 && (
                 <div style={{
-                  padding: '36px 0', textAlign: 'center',
-                  color: 'var(--text-muted)', fontSize: 13,
+                  padding: '32px 16px', textAlign: 'center',
+                  background: 'var(--bg-elevated)',
+                  border: '1px dashed var(--border-default)',
+                  borderRadius: 12,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
                 }}>
-                  No assets on this network.
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {netFilter === 'all' ? 'No assets yet' : 'Nothing on this network'}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 360, lineHeight: 1.5 }}>
+                    {netFilter === 'all'
+                      ? <>Receive LITHO, BTC, SOL or any LEP100 token to this wallet to see it here. Balances refresh automatically.</>
+                      : <>Switch the filter back to <b>All networks</b> to see what you do have.</>}
+                  </div>
+                  {netFilter === 'all' && evmAddress && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button className="settings-btn" onClick={() => setModal('receive')}>
+                        Receive
+                      </button>
+                      <a
+                        href="https://faucet.litho.ai"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="settings-btn"
+                      >
+                        Get testnet LITHO
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
               {filteredCoins.map(c => (
@@ -788,7 +765,23 @@ export function Dashboard() {
           </div>
         )}
 
-        {tab === 'activity' && (
+        {tab === 'activity' && TXS.length === 0 && (
+          <div style={{
+            padding: '36px 16px', textAlign: 'center',
+            background: 'var(--bg-elevated)',
+            border: '1px dashed var(--border-default)',
+            borderRadius: 12,
+            color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5,
+          }}>
+            No activity yet on this account.
+            <div style={{ fontSize: 11, marginTop: 6 }}>
+              Every Send / Receive on Lithosphere will land here once the indexer
+              picks it up (sync runs every 15s).
+            </div>
+          </div>
+        )}
+
+        {tab === 'activity' && TXS.length > 0 && (
           <div className="card">
             <div className="table-top">
               <span className="card-title">Payment history</span>

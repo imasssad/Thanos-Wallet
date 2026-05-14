@@ -165,19 +165,9 @@ export function PortfolioView() {
   }
 
   // Pick which dataset to render:
-  //  - Real indexer data when we have any non-zero row
-  //  - Otherwise canonical TOKENS so the UI is never blank
-  const fromIndexer = (liveAssets ?? []).map(mergeRow).filter(r => r.balNum > 0);
-  const fromCanonical = TOKENS.map(t => {
-    const balNum = parseFloat(t.balance.replace(/,/g, ''));
-    const liveP  = priceOr(prices, t.sym, t.priceUsd);
-    return {
-      sym: t.sym, name: t.name, bal: t.balance, balNum,
-      usd: Math.round(balNum * liveP),
-      chg: t.change24h, color: t.color, priceUsd: liveP,
-    };
-  });
-  const _raw = fromIndexer.length > 0 ? fromIndexer : fromCanonical;
+  //  - STRICTLY real indexer data. No canonical fallback — if the indexer
+  //    has no rows we render an empty state below.
+  const _raw = (liveAssets ?? []).map(mergeRow).filter(r => r.balNum > 0);
   const _total = _raw.reduce((s, r) => s + r.usd, 0) || 1;
 
   const coins = _raw.map(r => ({
@@ -364,7 +354,7 @@ export function TransactionsView() {
     return () => { cancel = true; };
   }, [evmAddress]);
 
-  const rows = live && live.length > 0 ? live.map(activityToRow) : ALL_TXS;
+  const rows = live && live.length > 0 ? live.map(activityToRow) : [];
   const filtered = filter === 'All' ? rows : rows.filter(t => t.type === filter);
   return (
     <div className="main-area" style={{ width: '100%' }}>
