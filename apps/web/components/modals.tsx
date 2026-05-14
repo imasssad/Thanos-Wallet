@@ -25,6 +25,9 @@ import { searchContacts, findContactByAddress, type Contact } from '../lib/addre
 import { looksLikeName, resolveName } from '../lib/dnns';
 import { isValidSolanaAddress, sendSol, sendSplToken, SolanaSendError, solanaExplorerUrl } from '../lib/solana';
 import { isValidBitcoinAddress, sendBitcoin, estimateBitcoinFee, BitcoinSendError, bitcoinExplorerUrl } from '../lib/bitcoin';
+import {
+  isValidCosmosAddress, sendCosmos, estimateCosmosFee, CosmosSendError, cosmosExplorerUrl,
+} from '../lib/cosmos';
 import { sendBitcoinWithLedger } from '../lib/ledger-btc';
 import { sendSolWithLedger } from '../lib/ledger-sol';
 import {
@@ -68,12 +71,14 @@ type SendNet =
   | { id: 'makalu';  label: 'Lithosphere Makalu' }
   | { id: 'bitcoin'; label: 'Bitcoin' }
   | { id: 'solana';  label: 'Solana' }
+  | { id: 'cosmos';  label: 'Cosmos Hub' }
   | { id: `evm:${number}`; label: string };
 
 const SEND_NETWORKS: SendNet[] = [
   { id: 'makalu',  label: 'Lithosphere Makalu' },
   { id: 'bitcoin', label: 'Bitcoin' },
   { id: 'solana',  label: 'Solana' },
+  { id: 'cosmos',  label: 'Cosmos Hub' },
   ...EVM_CHAINS.map(c => ({ id: `evm:${c.chainId}` as const, label: c.name })),
 ];
 
@@ -92,6 +97,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     if (network === 'makalu')       setCoin('LITHO');
     else if (network === 'bitcoin') setCoin('BTC');
     else if (network === 'solana')  setCoin('SOL');
+    else if (network === 'cosmos')  setCoin('ATOM');
     else if (network.startsWith('evm:')) {
       const chainId = parseInt(network.slice(4), 10);
       const chain   = EVM_CHAINS.find(c => c.chainId === chainId);
@@ -149,6 +155,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   const isEvmSend     = network.startsWith('evm:');
   const isSolanaSend  = !isEvmSend && (network === 'solana'  || selectedToken?.chain === 'Solana');
   const isBitcoinSend = !isEvmSend && (network === 'bitcoin' || selectedToken?.chain === 'Bitcoin');
+  const isCosmosSend  = !isEvmSend && (network === 'cosmos'  || selectedToken?.chain === 'Cosmos');
 
   /* If the user has connected a Ledger for this coin, we route the
      signature through the device instead of the in-vault key. The
@@ -162,7 +169,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   /* Validate the recipient against the chain of the selected token. */
   const recipientValidation = useMemo(() => {
     const trimmed = to.trim();
-    if (!trimmed) return { valid: false, format: null as 'evm' | 'litho' | 'solana' | 'btc' | null, reason: '' };
+    if (!trimmed) return { valid: false, format: null as 'evm' | 'litho' | 'solana' | 'btc' | 'cosmos' | null, reason: '' };
     if (isSolanaSend) {
       return isValidSolanaAddress(trimmed)
         ? { valid: true,  format: 'solana' as const, reason: '' }
@@ -173,6 +180,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         ? { valid: true,  format: 'btc' as const, reason: '' }
         : { valid: false, format: 'btc' as const, reason: 'Not a valid Bitcoin address (legacy / segwit / bech32 / taproot)' };
     }
+    if (isCosmosSend) {
+      return isValidCosmosAddress(trimmed)
+        ? { valid: true,  format: 'cosmos' as const, reason: '' }
+        : { valid: false, format: 'cosmos' as const, reason: 'Not a valid Cosmos address (cosmos1…)' };
+    }
     if (isEvmSend) {
       // External EVM chains take 0x addresses only — no litho1 form here.
       return /^0x[a-fA-F0-9]{40}$/.test(trimmed)
@@ -181,7 +193,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     }
     const v = validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
     return { ...v, format: v.format as 'evm' | 'litho' | null };
-  }, [to, isSolanaSend, isBitcoinSend, isEvmSend, evmChain]);
+  }, [to, isSolanaSend, isBitcoinSend, isCosmosSend, isEvmSend, evmChain]);
 
   /* Canonical EVM form — what we'd actually broadcast to the chain.
      If the user typed a DNNS name and we resolved it, use that instead. */
@@ -235,6 +247,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       return;
     }
     if (isSolanaSend)  { setFeeStr('~0.000005 SOL'); return; }
+    if (isCosmosSend)  {
+      const est = estimateCosmosFee();
+      setFeeStr(`~${est.atom} ATOM`);
+      return;
+    }
     if (isEvmSend && evmChainId !== null && evmChain) {
       if (!wallet?.seed?.length && !wallet?.privateKey) {
         setFeeStr(null);
@@ -294,7 +311,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isEvmSend, evmChainId, evmChain]);
+  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isCosmosSend, isEvmSend, evmChainId, evmChain]);
 
   const onSubmit = async () => {
     if (!walletReady) {
@@ -375,6 +392,33 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         setStage('pending');
       } catch (e) {
         const msg = e instanceof BitcoinSendError ? e.message : (e as Error).message || 'Failed to send';
+        setError(msg);
+        setStage('failed');
+      }
+      return;
+    }
+
+    /* ─── Cosmos branch ─────────────────────────────────────────────────
+       Mnemonic-only — sign + broadcast a MsgSend via @cosmjs/stargate.
+       Ledger Cosmos support is its own follow-up. */
+    if (isCosmosSend) {
+      if (!wallet?.seed?.length) {
+        setError('Cosmos send requires a recovery-phrase wallet (private-key import not yet supported for ATOM).');
+        setStage('failed');
+        return;
+      }
+      setStage('broadcasting');
+      setError(null);
+      try {
+        const hash = await sendCosmos({
+          mnemonic:  wallet.seed.join(' '),
+          recipient: to.trim(),
+          amount,
+        });
+        setTxHash(hash);
+        setStage('confirmed');
+      } catch (e) {
+        const msg = e instanceof CosmosSendError ? e.message : (e as Error).message || 'Failed to send';
         setError(msg);
         setStage('failed');
       }
@@ -537,6 +581,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     const explorer = txHash
       ? (isSolanaSend  ? solanaExplorerUrl(txHash)
        : isBitcoinSend ? bitcoinExplorerUrl(txHash)
+       : isCosmosSend  ? cosmosExplorerUrl(txHash)
        : isEvmSend && evmChain ? `${evmChain.explorerUrl}/tx/${txHash}`
        : `https://makalu.litho.ai/tx/${txHash}`)
       : null;
@@ -746,6 +791,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             placeholder={
               isSolanaSend  ? 'Solana address…'  :
               isBitcoinSend ? 'Bitcoin address…' :
+              isCosmosSend  ? 'cosmos1…'         :
               isEvmSend     ? `${evmChain?.name ?? 'EVM'} address (0x…)` :
               'litho1… or 0x…'
             }
@@ -811,6 +857,7 @@ export function SendModal({ onClose }: { onClose: () => void }) {
               recipientValidation.format === 'litho'  ? 'litho1' :
               recipientValidation.format === 'solana' ? 'Solana' :
               recipientValidation.format === 'btc'    ? 'Bitcoin' :
+              recipientValidation.format === 'cosmos' ? 'Cosmos' :
               isEvmSend && evmChain                   ? evmChain.name :
               'EVM'
             } address
@@ -920,6 +967,7 @@ import { Copy as CopyIcon, QrCode as QrCodeIcon, ChevronLeft, Search } from 'luc
 import QRCode from 'qrcode';
 import { getSolanaAddress } from '../lib/solana';
 import { getBitcoinAddressFromSource } from '../lib/bitcoin';
+import { getCosmosAddress } from '../lib/cosmos';
 
 interface ReceiveNetwork {
   id:      string;
@@ -945,7 +993,9 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
   const evm   = wallet?.addresses?.evm   ?? '';
 
   /* Derive non-EVM addresses on demand. Same code path as the dashboard
-     uses to display SOL / BTC balances; safe to call repeatedly. */
+     uses to display SOL / BTC balances; safe to call repeatedly.
+     Cosmos derivation is async (CosmJS does I/O-free crypto behind a
+     Promise) so it lands via a separate useEffect. */
   const { btcAddr, solAddr } = useMemo(() => {
     const seedAvailable = !!wallet?.seed?.length;
     const pk = wallet?.privateKey;
@@ -965,6 +1015,17 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     return { btcAddr: btc, solAddr: sol };
   }, [wallet?.seed, wallet?.privateKey]);
 
+  const [atomAddr, setAtomAddr] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setAtomAddr('');
+    if (!wallet?.seed?.length) return;
+    getCosmosAddress(wallet.seed.join(' '))
+      .then(a => { if (!cancelled) setAtomAddr(a); })
+      .catch(() => { /* swallow — malformed seed shows no row */ });
+    return () => { cancelled = true; };
+  }, [wallet?.seed]);
+
   /* The network list. We show ONLY the networks the wallet actually
      transacts on today (Lithosphere Makalu × 2 formats, Bitcoin, Solana).
      The EVM 0x… address WOULD work on Ethereum, BNB, Polygon, Base,
@@ -978,10 +1039,11 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     const out: ReceiveNetwork[] = [];
     if (litho)   out.push({ id: 'litho-bech32', name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: litho });
     if (evm)     out.push({ id: 'litho-evm',    name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: evm, badge: 'EVM' });
-    if (btcAddr) out.push({ id: 'bitcoin',      name: 'Bitcoin',            symbol: 'BTC',   color: '#f7931a', address: btcAddr });
-    if (solAddr) out.push({ id: 'solana',       name: 'Solana',             symbol: 'SOL',   color: '#14f195', address: solAddr });
+    if (btcAddr)  out.push({ id: 'bitcoin',      name: 'Bitcoin',            symbol: 'BTC',   color: '#f7931a', address: btcAddr });
+    if (solAddr)  out.push({ id: 'solana',       name: 'Solana',             symbol: 'SOL',   color: '#14f195', address: solAddr });
+    if (atomAddr) out.push({ id: 'cosmos',       name: 'Cosmos Hub',         symbol: 'ATOM',  color: '#2e3148', address: atomAddr });
     return out;
-  }, [litho, evm, btcAddr, solAddr]);
+  }, [litho, evm, btcAddr, solAddr, atomAddr]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1080,7 +1142,12 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
               {copiedId === active.id ? '✓ Copied' : 'Copy address'}
             </button>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, maxWidth: 320 }}>
-              Only send {active.symbol === 'BTC' ? 'Bitcoin' : active.symbol === 'SOL' ? 'Solana / SPL' : active.name} assets to this address.
+              Only send {
+                active.symbol === 'BTC'  ? 'Bitcoin'      :
+                active.symbol === 'SOL'  ? 'Solana / SPL' :
+                active.symbol === 'ATOM' ? 'Cosmos Hub (ATOM)' :
+                active.name
+              } assets to this address.
               Sending tokens from another chain will result in lost funds.
             </div>
           </div>

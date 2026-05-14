@@ -25,6 +25,7 @@ export const COINGECKO_IDS: Record<string, string> = {
   COLLE:  'colle-ai',
   SOL:    'solana',
   BTC:    'bitcoin',
+  ATOM:   'cosmos',
   ETH:    'ethereum',
   BNB:    'binancecoin',
   POL:    'matic-network',
