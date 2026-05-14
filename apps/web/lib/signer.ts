@@ -16,6 +16,7 @@ import {
   type Provider, type TransactionRequest, type TransactionResponse,
 } from 'ethers';
 import { estimateMakaluGas } from './gas';
+import { getEvmChain, getEvmProvider } from './evm-chains';
 import { TOKEN_BY_SYM, type Token } from './tokens';
 import { resolveToEvm } from './address';
 
@@ -67,6 +68,95 @@ export function walletFromInput(input: WalletInput, provider?: Provider): HDNode
     return provider ? (w.connect(provider) as Wallet) : w;
   }
   return walletFromSeed(input.seed, provider);
+}
+
+/* ─── Chain-aware native EVM send ─────────────────────────────────────
+   `sendTokens` above is hard-wired to Makalu (LITHO + LEP100 tokens).
+   For other EVM chains (Ethereum, BNB, Polygon, Base, Arbitrum, Linea,
+   Optimism, Avalanche) we use the same keypair but route through that
+   chain's RPC via getEvmProvider.
+
+   This path only supports native gas-coin transfers today
+   (ETH / BNB / POL / AVAX). ERC-20 catalogs per chain land in a
+   follow-up commit. */
+
+export interface NativeSendInput {
+  chainId:   number;
+  recipient: string;        // 0x… address; bech32 only valid on Makalu
+  amount:    string;        // human-readable, parsed against 18 decimals
+}
+
+export async function sendNativeEvm(walletInput: WalletInput, input: NativeSendInput): Promise<SendResult> {
+  const chain = getEvmChain(input.chainId);
+  if (!chain) throw new SendError('invalid_chain', `Unsupported chain: ${input.chainId}`);
+
+  const to = input.recipient.trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+    throw new SendError('invalid_address', `${chain.name} requires a 0x EVM address`);
+  }
+
+  let weiAmount: bigint;
+  try { weiAmount = parseUnits(input.amount, chain.decimals); }
+  catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
+  if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
+
+  const provider = getEvmProvider(input.chainId);
+  const wallet   = walletFromInput(walletInput, provider);
+
+  let tx: TransactionResponse;
+  try {
+    tx = await wallet.sendTransaction({ to, value: weiAmount });
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (/insufficient funds/i.test(msg))  throw new SendError('insufficient', `Insufficient ${chain.nativeSymbol} for amount + gas`);
+    if (/user rejected/i.test(msg))       throw new SendError('rejected', 'You cancelled the transaction');
+    throw new SendError('rpc_error', msg || 'Network error while broadcasting');
+  }
+
+  return {
+    hash:   tx.hash,
+    symbol: chain.nativeSymbol,
+    to,
+    value:  weiAmount,
+    kind:   'native',
+    wait:   async () => {
+      const r = await tx.wait();
+      if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
+      return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
+    },
+  };
+}
+
+/** Cheap gas estimate for a native send on the given EVM chain. Same
+ *  shape FeeEstimate as the Makalu path so the SendModal can render it
+ *  with the same UI. */
+export async function estimateNativeEvmFee(walletInput: WalletInput, input: NativeSendInput): Promise<FeeEstimate | null> {
+  const chain = getEvmChain(input.chainId);
+  if (!chain) return null;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(input.recipient.trim())) return null;
+  let weiAmount: bigint;
+  try { weiAmount = parseUnits(input.amount || '0', chain.decimals); }
+  catch { return null; }
+  if (weiAmount <= 0n) return null;
+
+  const provider = getEvmProvider(input.chainId);
+  const wallet   = walletFromInput(walletInput, provider);
+
+  try {
+    const est = await estimateMakaluGas({
+      tx: { from: wallet.address, to: input.recipient.trim(), value: weiAmount },
+      provider,
+    });
+    return {
+      gasLimit:     est.gasLimit,
+      maxFeePerGas: est.maxFeePerGas,
+      totalWei:     est.totalWei,
+      // formatUnits for the chain's native — same call signature as Makalu.
+      totalLitho:   est.totalLitho,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /* ─── Send flows ───────────────────────────────────────────────────────── */
