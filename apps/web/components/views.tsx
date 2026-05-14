@@ -1,8 +1,9 @@
 'use client';
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ethers } from 'ethers';
 import { TOKENS } from '../lib/tokens';
-import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon } from 'lucide-react';
+import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon, KeyRound } from 'lucide-react';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
@@ -881,6 +882,11 @@ export function SettingsView() {
         <AddressBookSection Section={Section} Row={Row}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
+          <Row label="Permissions" sub="Token allowances + connected dApps">
+            <Link href="/app/permissions" className="settings-btn settings-btn-link">
+              <KeyRound size={14}/> Manage <ChevronRight size={14}/>
+            </Link>
+          </Row>
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
             <Select
               value={autoLock}
