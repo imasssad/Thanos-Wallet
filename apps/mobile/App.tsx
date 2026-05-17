@@ -19,6 +19,7 @@ import {
   type BiometricKind,
 } from './lib/biometric';
 import { makeAddressQrSvg } from './lib/qr';
+import { tokenIconSource } from './lib/token-icons';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -162,11 +163,28 @@ const TXS = [
 
 /* ─────────────────────────── Reusable bits ─────────────────────────── */
 
+/* Token avatar — renders the branded coin icon composited over the
+   brand-colour circle (same model as the web TokenIcon). Falls back to
+   the colour + initial when no icon is available, and again if the
+   <Image> errors at runtime (e.g. a remote CDN logo 404s). */
 function Avatar({ symbol, color, size = 36 }: { symbol: string; color: string; size?: number }) {
   const styles = useStyles();
+  const [failed, setFailed] = useState(false);
+  const source = failed ? null : tokenIconSource(symbol);
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
       <Text style={[styles.avatarText, { fontSize: size * 0.36 }]}>{symbol.slice(0, 1)}</Text>
+      {source && (
+        <Image
+          source={source}
+          onError={() => setFailed(true)}
+          resizeMode="cover"
+          style={{
+            position: 'absolute', width: size, height: size,
+            borderRadius: size / 2,
+          }}
+        />
+      )}
     </View>
   );
 }
