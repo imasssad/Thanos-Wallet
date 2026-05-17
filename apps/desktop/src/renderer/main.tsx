@@ -83,6 +83,59 @@ const TXS = [
   { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 15, 2026', price: '$1.00',   status: 'Pending',   amount: '+840 USDC',    pos: true,  color: '#2775ca' },
 ];
 
+/* ──────────────────────── Token icon ──────────────────────── */
+
+/* Bundled client icon pack — public/images/tokens/, served at app root.
+   Mainstream coins fall through to a CoinGecko CDN logo. Same model as
+   the web TokenIcon + mobile/extension resolvers. */
+const BUNDLED_ICONS: Record<string, string> = {
+  litho:  '/images/tokens/litho.jpg',
+  jot:    '/images/tokens/jot.png',
+  lax:    '/images/tokens/lax.png',
+  colle:  '/images/tokens/colle.png',
+  furgpt: '/images/tokens/furgpt.png',
+  ignite: '/images/tokens/ignite.png',
+  quantt: '/images/tokens/quantt.png',
+};
+const REMOTE_ICONS: Record<string, string> = {
+  btc:    'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+  litbtc: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+  eth:    'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+  sol:    'https://assets.coingecko.com/coins/images/4128/small/solana.png',
+  usdc:   'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+};
+function iconFor(sym: string): string | null {
+  const k = (sym || '').toLowerCase();
+  return BUNDLED_ICONS[k] ?? REMOTE_ICONS[k] ?? null;
+}
+
+/** Coin icon composited over the brand-colour circle; ticker initial is
+ *  the fallback when no icon resolves or the image errors. `className`
+ *  carries the size/shape from the existing CSS (portfolio-icon etc). */
+function TokenAvatar({ sym, color, className, label, style }: {
+  sym: string; color: string; className: string;
+  /** Fallback text — defaults to the first letter; tx rows used 2. */
+  label?: string;
+  /** Extra style merged onto the wrapper (e.g. tx-avatar size overrides). */
+  style?: React.CSSProperties;
+}) {
+  const [failed, setFailed] = useState(false);
+  const src = failed ? null : iconFor(sym);
+  return (
+    <div className={className} style={{ background: color, position: 'relative', overflow: 'hidden', ...style }}>
+      <span>{label ?? sym.slice(0, 1)}</span>
+      {src && (
+        <img
+          src={src}
+          alt={sym}
+          onError={() => setFailed(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ──────────────────────── Chart paths ──────────────────────── */
 // Performance chart: Mon→Sun, generally upward
 const PERF_LINE = 'M 22,165 C 48,160 72,156 96,152 C 120,148 145,144 168,138 C 191,132 214,116 238,100 C 262,84 285,76 308,68 C 331,60 358,47 382,40 C 402,34 428,24 452,17 C 468,13 482,9 498,7';
@@ -198,9 +251,7 @@ function PortfolioList() {
       <div className="portfolio-list">
         {COINS.filter(c => c.sym !== '···').map(c => (
           <div key={c.sym} className="portfolio-row">
-            <div className="portfolio-icon" style={{ background: c.color }}>
-              {c.sym.slice(0,1)}
-            </div>
+            <TokenAvatar sym={c.sym} color={c.color} className="portfolio-icon"/>
             <div>
               <div className="portfolio-name">{c.name}</div>
               <div className="portfolio-sym">{c.bal} {c.sym}</div>
@@ -383,9 +434,7 @@ function DashboardView({ onAction, isFreshWallet, liveEth }: { onAction: (a: 'se
               <tr key={i}>
                 <td>
                   <div className="tx-cell">
-                    <div className="tx-avatar" style={{ background: tx.color }}>
-                      {tx.sym.slice(0, 2)}
-                    </div>
+                    <TokenAvatar sym={tx.sym} color={tx.color} className="tx-avatar" label={tx.sym.slice(0, 2)}/>
                     <div>
                       <div className="tx-name">{tx.name}</div>
                       <div className="tx-sym">{tx.sym}</div>
@@ -657,7 +706,7 @@ function MarketView() {
                 <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
                 <td>
                   <div className="tx-cell">
-                    <div className="tx-avatar" style={{ background: c.color }}>{c.sym.slice(0,2)}</div>
+                    <TokenAvatar sym={c.sym} color={c.color} className="tx-avatar" label={c.sym.slice(0,2)}/>
                     <div>
                       <div className="tx-name">{c.name}</div>
                       <div className="tx-sym">{c.sym}</div>
@@ -753,7 +802,7 @@ function PortfolioView() {
                 <tr key={c.sym}>
                   <td>
                     <div className="tx-cell">
-                      <div className="tx-avatar" style={{ background: c.color }}>{c.sym.slice(0,2)}</div>
+                      <TokenAvatar sym={c.sym} color={c.color} className="tx-avatar" label={c.sym.slice(0,2)}/>
                       <div>
                         <div className="tx-name">{c.name}</div>
                         <div className="tx-sym">{c.sym}</div>
@@ -831,7 +880,7 @@ function TransactionsView() {
               <tr key={i}>
                 <td>
                   <div className="tx-cell">
-                    <div className="tx-avatar" style={{ background: tx.color }}>{tx.sym.slice(0,2)}</div>
+                    <TokenAvatar sym={tx.sym} color={tx.color} className="tx-avatar" label={tx.sym.slice(0,2)}/>
                     <div>
                       <div className="tx-name">{tx.name}</div>
                       <div className="tx-sym">{tx.sym}</div>
@@ -889,7 +938,7 @@ function StakingView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {POOLS.map(p => (
             <div key={p.sym} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div className="tx-avatar" style={{ background: p.color, width: 38, height: 38, fontSize: 12, borderRadius: 10, flexShrink: 0 }}>{p.sym.slice(0,2)}</div>
+              <TokenAvatar sym={p.sym} color={p.color} className="tx-avatar" label={p.sym.slice(0,2)} style={{ width: 38, height: 38, fontSize: 12, borderRadius: 10, flexShrink: 0 }}/>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>TVL {p.tvl} · Min {p.minStake}</div>
