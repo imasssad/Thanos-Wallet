@@ -1,21 +1,26 @@
 # Token icon assets
 
-Drop the LITHO ecosystem token icons here. File names must match the `icon`
-path in `apps/web/lib/tokens.ts`:
+Bundled icons for the LITHO ecosystem. File names match the `icon` path
+in `apps/web/lib/tokens.ts`.
 
-| File           | Source                                                                     |
-|----------------|----------------------------------------------------------------------------|
-| `litho.png`    | https://www.dropbox.com/scl/fo/k5g6wqtldaanbxx8fj4nt/ (Litho gradient sq.) |
-| `litbtc.png`   | https://en.wikipedia.org/wiki/Bitcoin#/media/File:Bitcoin.svg              |
-| `jot.png`      | https://www.dropbox.com/scl/fo/0jpbjvy6ptbky6ltmbutu/ (Jot-red.png)        |
-| `lax.png`      | https://www.dropbox.com/scl/fo/glmmtpacaro46l6z5mhpj/ (Lax_Logo.png)       |
-| `colle.png`    | https://www.dropbox.com/scl/fi/yvzczjga5yrtqnfop03b8/ (Only Logo, Black BG)|
-| `furgpt.png`   | https://www.dropbox.com/scl/fo/90t7b0lw4r46fny5bus76/ (FurGPT Transparent) |
+| File          | Token  | Notes                                          |
+|---------------|--------|------------------------------------------------|
+| `litho.jpg`   | LITHO  | full blue-gradient square                      |
+| `jot.png`     | JOT    | full pink coin                                 |
+| `lax.png`     | LAX    | full blue coin (the "X" mark)                  |
+| `colle.png`   | COLLE  | dark-navy square, teal circuit glyph           |
+| `furgpt.png`  | FurGPT | transparent — composited on the purple circle  |
+| `ignite.png`  | IGNITE | full green coin                                |
+| `quantt.png`  | QUANTT | full blue coin                                 |
 
-Dropbox URLs end with `dl=0` (preview) — when downloading, swap to `dl=1`
-or open the share and grab the actual image. The wallet currently renders
-a colored avatar fallback (per-token brand color) when the file is missing,
-so it stays presentable until the icons are placed.
+Tokens **without** a file here resolve their logo at runtime via
+`lib/token-logos.ts` (CoinGecko CDN): BTC, SOL, ATOM, and LitBTC
+(maps to the Bitcoin logo). IMAGE has no asset yet and shows the
+brand-colour circle fallback.
 
-Recommended size: 256×256 PNG with transparent background. The wallet
-displays them at 24–60 px depending on context, so PNG is fine.
+The full client icon pack — numbered background variants + animated
+GIFs — lives in `Thanos_Wallet_Pack/coin-icons-source/` (kept out of
+`public/` so unused art isn't deployed).
+
+Recommended size: 256×256. The wallet renders icons at 24–60 px;
+`TokenIcon` composites them over the token's brand-colour circle.

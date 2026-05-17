@@ -5,9 +5,15 @@
  * NOTE: COLLE is intentionally truncated to 32 hex chars in the source the
  * client provided — flagging for verification on the explorer.
  *
- * Icon paths point at `apps/web/public/images/tokens/{file}.png`. The actual
- * image assets still need to be downloaded from the Dropbox / Wikipedia URLs
- * the client shared and committed to that public/ directory.
+ * Icon paths point at `apps/web/public/images/tokens/{file}`. The client
+ * icon pack (litho/jot/lax/colle/furgpt/ignite/quantt) is committed there.
+ * Tokens with `icon: ''` have no bundled asset and resolve their logo at
+ * runtime via lib/token-logos.ts (CoinGecko CDN) — BTC, SOL, ATOM, LitBTC.
+ * IMAGE has neither yet, so it shows the brand-color circle fallback.
+ *
+ * `color` is the brand-circle fallback AND the backdrop a transparent
+ * icon (e.g. furgpt) is composited onto — so it MUST match the icon's
+ * actual hue, not an arbitrary value.
  */
 
 export type Token = {
@@ -68,7 +74,7 @@ export const TOKENS: Token[] = [
     address: '0xC4645CA5411D6E27556780AB4cdd0DF7e609df74',
     decimals: 18,
     color: '#f7931a',
-    icon: '/images/tokens/litbtc.png',
+    icon: '',               // no bundled asset — token-logos resolves litbtc → bitcoin CDN
     priceUsd: 63200,        // fetched live — pricing.ts overrides this on load
     balance: '0',
     change24h: 0,
@@ -79,7 +85,7 @@ export const TOKENS: Token[] = [
     chain: 'Makalu',
     address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e',
     decimals: 18,
-    color: '#ef4444',
+    color: '#ec4899',       // pink — matches the jot.png coin background
     icon: '/images/tokens/jot.png',
     priceUsd: 0.50,         // placeholder — see pricing.ts
     balance: '0',
@@ -91,7 +97,7 @@ export const TOKENS: Token[] = [
     chain: 'Makalu',
     address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d',
     decimals: 18,
-    color: '#06b6d4',
+    color: '#2f6bff',       // blue — matches the full-bg lax.png coin
     icon: '/images/tokens/lax.png',
     priceUsd: 1.0001,       // HARD-CODED — never fetched. see pricing.ts
     balance: '0',
@@ -104,7 +110,7 @@ export const TOKENS: Token[] = [
     address: '0x10D4BB600c96e9243E2f50baFED8b247',
     chain: 'Makalu',
     decimals: 18,
-    color: '#9ca3af',
+    color: '#29b6d8',       // teal — matches the colle.png circuit accent
     icon: '/images/tokens/colle.png',
     priceUsd: 0.020,        // fetched live — pricing.ts overrides this on load
     balance: '0',
@@ -117,7 +123,7 @@ export const TOKENS: Token[] = [
     address: '0xAcD98E323968647936887aD4934e64B01060727e',
     decimals: 18,
     color: '#22d3ee',
-    icon: '/images/tokens/image.png',
+    icon: '',               // no bundled asset yet — brand-circle fallback
     priceUsd: 0.025,        // placeholder — see pricing.ts
     balance: '0',
     change24h: 0,
@@ -128,7 +134,8 @@ export const TOKENS: Token[] = [
     chain: 'Makalu',
     address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D',
     decimals: 18,
-    color: '#f59e0b',
+    color: '#a855f7',       // purple — matches the furgpt.png glyph (icon is transparent,
+                            //          so this is the circle it's composited onto)
     icon: '/images/tokens/furgpt.png',
     priceUsd: 0.015,        // fetched live — pricing.ts overrides this on load
     balance: '0',
@@ -146,7 +153,7 @@ export const TOKENS: Token[] = [
     address: null, // native
     decimals: 9,
     color: '#14f195',
-    icon: '/images/tokens/sol.png',
+    icon: '',               // no bundled asset — token-logos resolves sol → CoinGecko CDN
     priceUsd: 150.00,       // fetched live from CoinGecko via pricing.ts
     balance: '0',
     change24h: 0,
@@ -163,7 +170,7 @@ export const TOKENS: Token[] = [
     address: null, // native
     decimals: 8,
     color: '#f7931a',
-    icon: '/images/tokens/btc.png',
+    icon: '',               // no bundled asset — token-logos resolves btc → CoinGecko CDN
     priceUsd: 63200,        // fetched live from CoinGecko via pricing.ts
     balance: '0',
     change24h: 0,
@@ -178,9 +185,38 @@ export const TOKENS: Token[] = [
     chain: 'Cosmos',
     address: null, // native
     decimals: 6,
-    color: '#2e3148',
-    icon: '/images/tokens/atom.png',
+    color: '#6f7390',
+    icon: '',               // no bundled asset — token-logos resolves atom → CoinGecko CDN
     priceUsd: 8.50,         // fetched live from CoinGecko via pricing.ts
+    balance: '0',
+    change24h: 0,
+  },
+  // ─── Ignite + Quantt ──────────────────────────────────────────────────
+  // Lithosphere-ecosystem tokens shipped with the client icon pack.
+  // Listed so they render with their branded icons across the wallet.
+  // TODO(client): supply the real LEP100 contract addresses + decimals —
+  // the zero-address placeholder makes Send fail safely until then.
+  {
+    sym: 'IGNITE',
+    name: 'Ignite',
+    chain: 'Makalu',
+    address: '0x0000000000000000000000000000000000000000', // PLACEHOLDER — client to supply
+    decimals: 18,
+    color: '#22c55e',       // green — matches ignite.png
+    icon: '/images/tokens/ignite.png',
+    priceUsd: 0,            // unknown until listed
+    balance: '0',
+    change24h: 0,
+  },
+  {
+    sym: 'QUANTT',
+    name: 'Quantt',
+    chain: 'Makalu',
+    address: '0x0000000000000000000000000000000000000000', // PLACEHOLDER — client to supply
+    decimals: 18,
+    color: '#3b7af7',       // blue — matches quantt.png
+    icon: '/images/tokens/quantt.png',
+    priceUsd: 0,            // unknown until listed
     balance: '0',
     change24h: 0,
   },
