@@ -53,6 +53,52 @@ const TXS = [
   { type: 'Received', sym: 'USDC',   amt: '+840',   time: 'Yesterday', pos: true,  color: '#2775ca' },
 ];
 
+/* ──────────────────────── Token icon ──────────────────────── */
+
+/* Bundled client icon pack lives in public/images/tokens/ (served at
+   the extension root). Mainstream coins fall through to a CoinGecko
+   CDN logo. Mirrors the web TokenIcon + mobile token-icons resolver. */
+const BUNDLED_ICONS: Record<string, string> = {
+  litho:  '/images/tokens/litho.jpg',
+  jot:    '/images/tokens/jot.png',
+  lax:    '/images/tokens/lax.png',
+  colle:  '/images/tokens/colle.png',
+  furgpt: '/images/tokens/furgpt.png',
+  ignite: '/images/tokens/ignite.png',
+  quantt: '/images/tokens/quantt.png',
+};
+const REMOTE_ICONS: Record<string, string> = {
+  btc:    'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+  litbtc: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
+  eth:    'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
+  sol:    'https://assets.coingecko.com/coins/images/4128/small/solana.png',
+  usdc:   'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+};
+function iconFor(sym: string): string | null {
+  const k = (sym || '').toLowerCase();
+  return BUNDLED_ICONS[k] ?? REMOTE_ICONS[k] ?? null;
+}
+
+/** Coin avatar — icon composited over the brand-colour circle, with the
+ *  ticker initial as the fallback when no icon resolves or it errors. */
+function TokenAvatar({ sym, color }: { sym: string; color: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = failed ? null : iconFor(sym);
+  return (
+    <div className="row-avatar" style={{ background: color, position: 'relative', overflow: 'hidden' }}>
+      <span>{sym.slice(0, 1)}</span>
+      {src && (
+        <img
+          src={src}
+          alt={sym}
+          onError={() => setFailed(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ──────────────────────── Onboarding ──────────────────────── */
 
 type OnboardStep = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm' | 'create-pwd'
@@ -364,7 +410,7 @@ function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap
       <div className="card list">
         {ASSETS.map((a, i) => (
           <div key={a.sym} className={`row ${i < ASSETS.length - 1 ? 'row-border' : ''}`}>
-            <div className="row-avatar" style={{ background: a.color }}>{a.sym.slice(0,1)}</div>
+            <TokenAvatar sym={a.sym} color={a.color}/>
             <div className="row-mid">
               <div className="row-name">{a.name}</div>
               <div className="row-sub">{a.price} <span className={a.chg >= 0 ? 'pos' : 'neg'}>{a.chg >= 0 ? '+' : ''}{a.chg}%</span></div>
