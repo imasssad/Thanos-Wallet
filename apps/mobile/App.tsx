@@ -18,7 +18,8 @@ import {
   readProtectedKey,
   type BiometricKind,
 } from './lib/biometric';
-import { makeAddressQrSvg } from './lib/qr';
+import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
+import { QrScannerModal } from './components/QrScannerModal';
 import { tokenIconSource } from './lib/token-icons';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
@@ -26,7 +27,7 @@ import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
-  Copy, Share2, Eye, EyeOff, ScanFace,
+  Copy, Share2, Eye, EyeOff, ScanFace, ScanLine,
 } from 'lucide-react-native';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -287,6 +288,7 @@ function SendScreen({ goBack }: { goBack: () => void }) {
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
   const [coin] = useState(ASSETS[0]); // LITHO
+  const [scanOpen, setScanOpen] = useState(false);
   const usd = parseFloat(amt || '0') * 0.30;
 
   return (
@@ -337,16 +339,38 @@ function SendScreen({ goBack }: { goBack: () => void }) {
       {/* Recipient */}
       <View style={styles.assetSelectCard}>
         <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>RECIPIENT</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14, fontFamily: 'monospace' }]}
-          placeholder="litho1… or name.litho"
-          placeholderTextColor={C.textMuted}
-          value={to}
-          onChangeText={setTo}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TextInput
+            style={[styles.input, { flex: 1, backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14, fontFamily: 'monospace' }]}
+            placeholder="litho1… or name.litho"
+            placeholderTextColor={C.textMuted}
+            value={to}
+            onChangeText={setTo}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            onPress={() => setScanOpen(true)}
+            hitSlop={12}
+            style={styles.scanBtn}
+            accessibilityLabel="Scan QR code"
+          >
+            <ScanLine size={20} color={C.blue} strokeWidth={2.2}/>
+          </Pressable>
+        </View>
       </View>
+
+      {/* Camera QR scanner — decodes a recipient address (or bare 0x /
+          litho1 / bc1 / base58) and drops it into the field. */}
+      <QrScannerModal
+        visible={scanOpen}
+        title="Scan recipient address"
+        onClose={() => setScanOpen(false)}
+        onResult={(data) => {
+          setTo(parseScannedAddress(data));
+          setScanOpen(false);
+        }}
+      />
 
       {!!amt && (
         <View style={[styles.feeRowCard]}>
@@ -1559,6 +1583,12 @@ function makeStyles(C: Colors) {
       borderRadius: 999,
     },
     maxBtnText: { color: C.blue, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+    scanBtn: {
+      width: 36, height: 36, borderRadius: 9,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: C.blueDim,
+      borderColor: 'rgba(59,122,247,0.22)', borderWidth: 1,
+    },
 
     bigAmountInput: {
       color: C.textPrimary, fontSize: 32, fontWeight: '800', letterSpacing: -1,
