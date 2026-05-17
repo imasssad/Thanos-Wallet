@@ -1,7 +1,22 @@
 import React from 'react';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { ThemeProvider } from '../components/providers/ThemeProvider';
 import './globals.css';
+
+/**
+ * Explicit viewport — pins the page at fit-to-width with initial-scale 1
+ * so the wallet renders at device width and never starts zoomed.
+ * `viewportFit: 'cover'` lets the dark background bleed under iOS
+ * notches / home indicators. Pinch-to-zoom is intentionally left
+ * enabled (accessibility); the unwanted auto-zoom that used to happen
+ * on input focus is killed by the >=16px form-control rule in
+ * globals.css, not by disabling user scaling.
+ */
+export const viewport: Viewport = {
+  width:        'device-width',
+  initialScale: 1,
+  viewportFit:  'cover',
+};
 
 export const metadata: Metadata = {
   title: 'Thanos Wallet — Web4 wallet for Lithosphere, Bitcoin, EVM',

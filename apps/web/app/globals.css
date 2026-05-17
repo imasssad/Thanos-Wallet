@@ -185,6 +185,31 @@ body {
   zoom: 1;
 }
 
+/* ── Mobile input zoom guard ─────────────────────────────────────────
+   iOS Safari (and every iOS in-app WebView) auto-zooms the whole page
+   when a focused <input>/<select>/<textarea> has a computed font-size
+   below 16px — and crucially does NOT zoom back out on blur. One tap on
+   a 14-15px field therefore leaves every subsequent screen zoomed-in,
+   which is exactly the "UI scales after login / after any action" bug.
+
+   Forcing every form control to 16px at phone widths removes the
+   trigger entirely. !important is required so it also wins over the
+   small inline font-sizes some modal inputs set (e.g. the Send
+   recipient field). The Send "amount hero" is a bare <input> with no
+   form-control class and a 48px inline size — already far above the
+   threshold — so it is intentionally not matched here. */
+@media (max-width: 768px) {
+  .field-input,
+  .field-select,
+  .search-field-input,
+  .settings-select,
+  input:not([type="number"]):not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
