@@ -20,7 +20,10 @@ services:
   indexer:
     environment:
       NODE_ENV: production
-    # No host port — indexer is internal-only (see base compose).
+    # Published on localhost only — nginx proxies /indexer/ to it, and
+    # the web app calls /indexer for portfolio / token data.
+    ports:
+      - "127.0.0.1:4010:4010"
 
   worker:
     environment:
