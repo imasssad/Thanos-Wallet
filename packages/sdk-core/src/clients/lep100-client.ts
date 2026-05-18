@@ -23,7 +23,7 @@ const LEP100_METHODS = {
 
 export const DEFAULT_LEP100_INDEXER_SPEC: Lep100IndexerSpec = {
   standard: 'lep100',
-  chainIds: [700777, 700778],
+  chainIds: [700777, 900523], // Makalu, Kamet
   metadataMethodNames: {
     name: LEP100_METHODS.name,
     symbol: LEP100_METHODS.symbol,

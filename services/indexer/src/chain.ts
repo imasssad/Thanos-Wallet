@@ -12,10 +12,12 @@ export const MAKALU_CHAIN_ID = 700777;
 export const KAMET_CHAIN_ID  = 900523;
 
 function readIndexerRpcUrls(): string[] {
+  // The indexer prefers rpc-2 as its primary so sync traffic doesn't
+  // compete with user requests on rpc.litho.ai; rpc.litho.ai is the
+  // fallback. LITHO_RPC_INDEXER (comma-separated) overrides the list.
   const raw =
     process.env.LITHO_RPC_INDEXER
-    || process.env.LITHO_RPC_PRIMARY
-    || 'https://rpc-2.litho.ai,https://rpc.litho.ai,https://rpc-3.litho.ai';
+    || 'https://rpc-2.litho.ai,https://rpc.litho.ai';
   return String(raw).split(',').map(s => s.trim()).filter(Boolean);
 }
 

@@ -18,10 +18,11 @@ import { FallbackProvider, JsonRpcProvider, type Networkish } from 'ethers';
 
 export const MAKALU_CHAIN_ID = 700777;
 
+// Makalu: primary then fallback. rpc-3 belongs to Kamet now — not
+// listed here. ethers' FallbackProvider rotates primary → fallback.
 const DEFAULT_RPC_URLS = [
   'https://rpc.litho.ai',
   'https://rpc-2.litho.ai',
-  'https://rpc-3.litho.ai',
 ];
 
 function readRpcUrls(): string[] {

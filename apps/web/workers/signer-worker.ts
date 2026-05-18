@@ -37,10 +37,11 @@ let cachedAddress: string | null = null;
 
 const HD_PATH = "m/44'/60'/0'/0/0";
 const MAKALU_CHAIN_ID = 700777;
+// Makalu [primary, fallback] — rpc-3 is Kamet's now. FallbackProvider
+// below rotates primary → fallback on a stall.
 const DEFAULT_RPC_URLS = [
   'https://rpc.litho.ai',
   'https://rpc-2.litho.ai',
-  'https://rpc-3.litho.ai',
 ];
 
 /* ─── Provider (FallbackProvider in worker scope) ────────────────────── */
