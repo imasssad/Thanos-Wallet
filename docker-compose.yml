@@ -142,8 +142,8 @@ services:
       MAKALU_LEP100_BLDR_ADDRESS:   ${MAKALU_LEP100_BLDR_ADDRESS:-}
       MAKALU_LEP100_FGPT_ADDRESS:   ${MAKALU_LEP100_FGPT_ADDRESS:-}
       MAKALU_LEP100_MUSA_ADDRESS:   ${MAKALU_LEP100_MUSA_ADDRESS:-}
-    ports:
-      - "4010:4010"
+    # Internal-only — the worker and api reach it on the Docker network
+    # as http://indexer:4010. No host port published.
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4010/health || exit 1"]
       interval: 10s
