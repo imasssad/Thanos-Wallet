@@ -80,6 +80,14 @@ services:
       LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-2.litho.ai}
       KAMET_RPC_PRIMARY:   ${KAMET_RPC_PRIMARY:-https://rpc.kamet.litho.ai}
       KAMET_RPC_FALLBACK:  ${KAMET_RPC_FALLBACK:-https://rpc-3.litho.ai}
+      KAMET_CHAIN_ID:      ${KAMET_CHAIN_ID:-900523}
+      # DNNS contracts on Kamet — the resolver reads name/reverse records
+      # through these (ENS-style Registry + Resolver). See .env.example.
+      DNNS_NAME_WRAPPER_ADDRESS:     ${DNNS_NAME_WRAPPER_ADDRESS:-0xc47E49259b8dDa2C9D57941E1a52747E4c721Cb9}
+      DNNS_REGISTRY_ADDRESS:         ${DNNS_REGISTRY_ADDRESS:-0x316dc15bF377F7187e5BE38BA19e673Ca823d1ab}
+      DNNS_BASE_REGISTRAR_ADDRESS:   ${DNNS_BASE_REGISTRAR_ADDRESS:-0xB3D1a8e92FFAD73Ab8a07BF37A8E1374df8B3722}
+      DNNS_METADATA_SERVICE_ADDRESS: ${DNNS_METADATA_SERVICE_ADDRESS:-0x9138E4CD9c5EBAc6964Fd28516BD5B0E83E5AA51}
+      DNNS_METADATA_URI:             ${DNNS_METADATA_URI:-https://names.litho.ai/metadata/{id}}
     ports:
       - "4000:4000"
     volumes:

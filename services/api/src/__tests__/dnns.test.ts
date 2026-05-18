@@ -1,18 +1,20 @@
 /**
  * DNNS resolver integration tests.
  *
- * Covers the three branches in services/api/src/routes/dnns.ts:
- *   1. Cache hit  → DB row returned with `source: 'cache'`, no RPC call.
- *   2. Cache miss → JSON-RPC call against the chain's RPC URL, result
+ * Covers the branches in services/api/src/routes/dnns.ts:
+ *   1. Cache hit  → DB row returned with `source: 'cache'`, no chain call.
+ *   2. Cache miss → on-chain resolution via the DNNS contracts, result
  *                   written back to dnns_cache, returned with
  *                   `source: 'chain'`.
- *   3. RPC fail   → cache writeback with the zero address (negative
+ *   3. Not found  → cache writeback with the zero address (negative
  *                   TTL), `record.address === null`.
  *
- * Plus the reverse lookup which is cache-only today.
+ * Plus reverse lookup: cache hit, cache-miss → on-chain reverse
+ * resolution, and the no-record case.
  *
- * Fetch is mocked at the global level so the upstream RPC POST never
- * leaves the test process.
+ * The on-chain layer (services/api/src/lib/dnns-chain.ts) is mocked so
+ * tests never open an RPC socket — the ENS contract calls themselves
+ * are exercised by that module's own concerns, not here.
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
@@ -29,6 +31,11 @@ const { dbQuery, dbQueryOne } = vi.hoisted(() => ({
   dbQueryOne: vi.fn() as ReturnType<typeof vi.fn>,
 }));
 
+const { resolveName, reverseResolve } = vi.hoisted(() => ({
+  resolveName:    vi.fn() as ReturnType<typeof vi.fn>,
+  reverseResolve: vi.fn() as ReturnType<typeof vi.fn>,
+}));
+
 vi.mock('../lib/db.js', () => ({
   query:             (...args: unknown[]) => dbQuery(...args),
   queryOne:          (...args: unknown[]) => dbQueryOne(...args),
@@ -38,6 +45,11 @@ vi.mock('../lib/db.js', () => ({
 vi.mock('../lib/redis.js', () => ({
   checkRedisConnection: () => Promise.resolve(true),
   redis: { get: vi.fn(), set: vi.fn() },
+}));
+vi.mock('../lib/dnns-chain.js', () => ({
+  DNNS_CHAIN_ID:  900523,
+  resolveName:    (...args: unknown[]) => resolveName(...args),
+  reverseResolve: (...args: unknown[]) => reverseResolve(...args),
 }));
 
 import request from 'supertest';
@@ -52,19 +64,23 @@ beforeAll(() => {
 beforeEach(() => {
   dbQuery.mockReset();
   dbQueryOne.mockReset();
-  vi.unstubAllGlobals();
+  resolveName.mockReset();
+  reverseResolve.mockReset();
 });
 
-const ALICE      = '0x1234567890123456789012345678901234567890';
-const ZERO       = '0x0000000000000000000000000000000000000000';
+const ALICE = '0x1234567890123456789012345678901234567890';
+const ZERO  = '0x0000000000000000000000000000000000000000';
+
+/** DNNS lives on Kamet — chain 900523. */
+const DNNS_CHAIN = 900523;
 
 function cachedRow(over: Partial<Record<string, unknown>> = {}) {
   return {
     name:            'alice.litho',
-    chain_id:        '700777',
+    chain_id:        String(DNNS_CHAIN),
     address:         ALICE,
-    address_bech32:  'litho1alice',
-    resolver:        'thanos-default-resolver',
+    address_bech32:  null,
+    resolver:        '0x9999999999999999999999999999999999999999',
     avatar_url:      null,
     bio:             null,
     cached_at:       '2026-05-01T00:00:00Z',
@@ -81,89 +97,59 @@ describe('GET /dnns/resolve', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns a cache hit without calling the RPC', async () => {
+  it('returns a cache hit without touching the chain', async () => {
     dbQueryOne.mockResolvedValueOnce(cachedRow());
-    const spy = vi.fn();
-    vi.stubGlobal('fetch', spy);
 
     const res = await request(app).get('/dnns/resolve?name=alice.litho');
     expect(res.status).toBe(200);
     expect(res.body.record).toMatchObject({
       name:    'alice.litho',
       address: ALICE,
-      chainId: 700777,
+      chainId: DNNS_CHAIN,
       source:  'cache',
     });
-    expect(spy).not.toHaveBeenCalled();
+    expect(resolveName).not.toHaveBeenCalled();
   });
 
   it('treats the zero address in cache as a "not found"', async () => {
-    dbQueryOne.mockResolvedValueOnce(cachedRow({ address: ZERO, address_bech32: null }));
-    vi.stubGlobal('fetch', vi.fn());
+    dbQueryOne.mockResolvedValueOnce(cachedRow({ address: ZERO }));
     const res = await request(app).get('/dnns/resolve?name=missing.litho');
     expect(res.status).toBe(200);
     expect(res.body.record.address).toBeNull();
     expect(res.body.record.source).toBe('cache');
   });
 
-  it('falls back to the RPC on a cache miss, then writes back the result', async () => {
+  it('resolves on-chain on a cache miss, then writes back the result', async () => {
     dbQueryOne.mockResolvedValueOnce(null);              // cache miss
     dbQuery.mockResolvedValueOnce([]);                   // writeback insert
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok:   true,
-      json: () => Promise.resolve({ jsonrpc: '2.0', id: 1, result: ALICE }),
-    }));
+    resolveName.mockResolvedValueOnce({
+      address:   ALICE,
+      resolver:  '0xResolver',
+      avatarUrl: 'https://example/avatar.png',
+      bio:       'Hi from Lithosphere',
+    });
 
     const res = await request(app).get('/dnns/resolve?name=fresh.litho');
     expect(res.status).toBe(200);
     expect(res.body.record).toMatchObject({
-      name:    'fresh.litho',
-      address: ALICE,
-      source:  'chain',
-    });
-    // Writeback INSERT happened — first parameter is name, second is chainId.
-    expect(dbQuery).toHaveBeenCalledWith(
-      expect.stringContaining('insert into dnns_cache'),
-      expect.arrayContaining(['fresh.litho', 700777, ALICE]),
-    );
-  });
-
-  it('accepts an object-shaped RPC response (full record)', async () => {
-    dbQueryOne.mockResolvedValueOnce(null);
-    dbQuery.mockResolvedValueOnce([]);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({
-        jsonrpc: '2.0', id: 1,
-        result: {
-          address:  ALICE,
-          bech32:   'litho1full',
-          resolver: 'custom-resolver',
-          avatarUrl: 'https://example/avatar.png',
-          bio:      'Hi from Lithosphere',
-        },
-      }),
-    }));
-
-    const res = await request(app).get('/dnns/resolve?name=full.litho');
-    expect(res.status).toBe(200);
-    expect(res.body.record).toMatchObject({
+      name:      'fresh.litho',
       address:   ALICE,
-      bech32:    'litho1full',
-      resolver:  'custom-resolver',
       avatarUrl: 'https://example/avatar.png',
       bio:       'Hi from Lithosphere',
       source:    'chain',
     });
+    expect(resolveName).toHaveBeenCalledWith('fresh.litho');
+    // Writeback INSERT happened — keyed on the Kamet DNNS chain.
+    expect(dbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('insert into dnns_cache'),
+      expect.arrayContaining(['fresh.litho', DNNS_CHAIN, ALICE]),
+    );
   });
 
-  it('returns address: null on an RPC fail (and writes a negative cache row)', async () => {
+  it('returns address: null when the name is unregistered (negative cache)', async () => {
     dbQueryOne.mockResolvedValueOnce(null);     // cache miss
     dbQuery.mockResolvedValueOnce([]);          // writeback still happens
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ jsonrpc: '2.0', id: 1, error: { message: 'name not registered' } }),
-    }));
+    resolveName.mockResolvedValueOnce({ address: null, resolver: null, avatarUrl: null, bio: null });
 
     const res = await request(app).get('/dnns/resolve?name=nobody.litho');
     expect(res.status).toBe(200);
@@ -176,15 +162,12 @@ describe('GET /dnns/resolve', () => {
     );
   });
 
-  it('rejects junk-shaped RPC responses (string but not an address)', async () => {
+  it('returns address: null when the on-chain call throws (RPC down)', async () => {
     dbQueryOne.mockResolvedValueOnce(null);
     dbQuery.mockResolvedValueOnce([]);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ jsonrpc: '2.0', id: 1, result: 'definitely-not-an-address' }),
-    }));
+    resolveName.mockRejectedValueOnce(new Error('all endpoints failed'));
 
-    const res = await request(app).get('/dnns/resolve?name=junk.litho');
+    const res = await request(app).get('/dnns/resolve?name=flaky.litho');
     expect(res.status).toBe(200);
     expect(res.body.record.address).toBeNull();
   });
@@ -198,13 +181,6 @@ describe('GET /dnns/lookup', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns null when no cache row matches', async () => {
-    dbQueryOne.mockResolvedValueOnce(null);
-    const res = await request(app).get(`/dnns/lookup?address=${ALICE}`);
-    expect(res.status).toBe(200);
-    expect(res.body.record).toBeNull();
-  });
-
   it('returns the cached record on a hit', async () => {
     dbQueryOne.mockResolvedValueOnce(cachedRow());
     const res = await request(app).get(`/dnns/lookup?address=${ALICE}`);
@@ -214,5 +190,36 @@ describe('GET /dnns/lookup', () => {
       address: ALICE,
       source:  'cache',
     });
+    expect(reverseResolve).not.toHaveBeenCalled();
+  });
+
+  it('returns null when no cache row matches and the chain has no name', async () => {
+    dbQueryOne.mockResolvedValueOnce(null);   // cache miss
+    reverseResolve.mockResolvedValueOnce(null);
+    const res = await request(app).get(`/dnns/lookup?address=${ALICE}`);
+    expect(res.status).toBe(200);
+    expect(res.body.record).toBeNull();
+  });
+
+  it('reverse-resolves on-chain on a cache miss, then writes back', async () => {
+    dbQueryOne.mockResolvedValueOnce(null);   // cache miss
+    dbQuery.mockResolvedValueOnce([]);        // writeback insert
+    reverseResolve.mockResolvedValueOnce('alice.litho');
+    resolveName.mockResolvedValueOnce({
+      address: ALICE, resolver: '0xResolver', avatarUrl: null, bio: null,
+    });
+
+    const res = await request(app).get(`/dnns/lookup?address=${ALICE}`);
+    expect(res.status).toBe(200);
+    expect(res.body.record).toMatchObject({
+      name:    'alice.litho',
+      address: ALICE,
+      source:  'chain',
+    });
+    expect(reverseResolve).toHaveBeenCalledWith(ALICE.toLowerCase());
+    expect(dbQuery).toHaveBeenCalledWith(
+      expect.stringContaining('insert into dnns_cache'),
+      expect.arrayContaining(['alice.litho', DNNS_CHAIN, ALICE]),
+    );
   });
 });
