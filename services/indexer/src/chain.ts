@@ -7,6 +7,7 @@
  * dead RPC doesn't pause the sync loop.
  */
 import { Contract, FallbackProvider, JsonRpcProvider, ZeroAddress, type Provider } from 'ethers';
+import { LEP100_ABI } from './abi/lep100.js';
 
 export const MAKALU_CHAIN_ID = 700777;
 export const KAMET_CHAIN_ID  = 900523;
@@ -40,18 +41,11 @@ function buildProvider(): Provider {
  *  configured endpoint list. */
 export const makaluProvider: Provider = buildProvider();
 
-/** Standard ERC-20 / LEP-100 ABI. LEP-100 = ERC-20 + burn/burnFrom, but
- *  burn doesn't emit a distinct event — it shows as a Transfer to 0x0 —
- *  so this minimal subset is enough for balance/activity sync. */
-export const LEP100_ABI = [
-  'event Transfer(address indexed from, address indexed to, uint256 value)',
-  'event Approval(address indexed owner, address indexed spender, uint256 value)',
-  'function name() view returns (string)',
-  'function symbol() view returns (string)',
-  'function decimals() view returns (uint8)',
-  'function totalSupply() view returns (uint256)',
-  'function balanceOf(address) view returns (uint256)',
-] as const;
+/** The canonical full LEP100 ABI (ERC-20 + ERC20Burnable + Ownable) is
+ *  defined once in ./abi/lep100.ts — sourced from the LEP100Token.json
+ *  artifact — and re-exported here for existing importers. burn shows
+ *  as a Transfer to 0x0, so the sync loop needs no burn-specific event. */
+export { LEP100_ABI } from './abi/lep100.js';
 
 export interface TokenSpec {
   chainId: number;

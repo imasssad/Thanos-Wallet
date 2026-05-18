@@ -2,7 +2,10 @@ import type {
   Lep100Allowance,
   Lep100ApproveRequest,
   Lep100Balance,
+  Lep100BurnRequest,
+  Lep100BurnFromRequest,
   Lep100IndexerSpec,
+  Lep100OwnershipRequest,
   Lep100ReadRequest,
   Lep100TokenMetadata,
   Lep100TransferRequest,
@@ -10,15 +13,30 @@ import type {
 } from '../types';
 import { LithicClient } from './lithic-client';
 
+/**
+ * LEP100 method names. LEP100 = standard ERC-20 + ERC20Burnable
+ * (burn / burnFrom) + Ownable (owner / transferOwnership /
+ * renounceOwnership) — nothing custom. The full ABI is the canonical
+ * artifact at
+ * contracts/artifacts/contracts/LEP100Token.sol/LEP100Token.json;
+ * this client calls by method name through LithicClient's JSON-RPC,
+ * so it needs the names rather than the ABI array.
+ */
 const LEP100_METHODS = {
-  name: 'name',
-  symbol: 'symbol',
-  decimals: 'decimals',
-  totalSupply: 'totalSupply',
-  balanceOf: 'balanceOf',
-  allowance: 'allowance',
-  transfer: 'transfer',
-  approve: 'approve'
+  name:              'name',
+  symbol:            'symbol',
+  decimals:          'decimals',
+  totalSupply:       'totalSupply',
+  balanceOf:         'balanceOf',
+  allowance:         'allowance',
+  transfer:          'transfer',
+  approve:           'approve',
+  transferFrom:      'transferFrom',
+  burn:              'burn',
+  burnFrom:          'burnFrom',
+  owner:             'owner',
+  transferOwnership: 'transferOwnership',
+  renounceOwnership: 'renounceOwnership'
 } as const;
 
 export const DEFAULT_LEP100_INDEXER_SPEC: Lep100IndexerSpec = {
@@ -86,11 +104,12 @@ export class Lep100Client {
   }
 
   async transfer(request: Lep100TransferRequest) {
+    // Standard ERC-20 transfer(to, amount) — two args, no memo.
     return this.lithic.callContract({
       chainId: request.chainId,
       contract: request.contractAddress,
       method: LEP100_METHODS.transfer,
-      args: [request.to, request.amount, request.memo || '']
+      args: [request.to, request.amount]
     });
   }
 
@@ -100,6 +119,58 @@ export class Lep100Client {
       contract: request.contractAddress,
       method: LEP100_METHODS.approve,
       args: [request.spender, request.amount]
+    });
+  }
+
+  /* ─── ERC20Burnable ──────────────────────────────────────────────── */
+
+  /** burn(amount) — burns from the caller's own balance. */
+  async burn(request: Lep100BurnRequest) {
+    return this.lithic.callContract({
+      chainId: request.chainId,
+      contract: request.contractAddress,
+      method: LEP100_METHODS.burn,
+      args: [request.amount]
+    });
+  }
+
+  /** burnFrom(account, amount) — burns from `account` against the
+   *  caller's allowance. */
+  async burnFrom(request: Lep100BurnFromRequest) {
+    return this.lithic.callContract({
+      chainId: request.chainId,
+      contract: request.contractAddress,
+      method: LEP100_METHODS.burnFrom,
+      args: [request.account, request.amount]
+    });
+  }
+
+  /* ─── Ownable ────────────────────────────────────────────────────── */
+
+  /** owner() — current contract owner address. */
+  async getOwner(chainId: number, contractAddress: string): Promise<string> {
+    const owner = await this.read(chainId, contractAddress, LEP100_METHODS.owner);
+    return String(owner ?? '0x0000000000000000000000000000000000000000');
+  }
+
+  /** transferOwnership(newOwner). */
+  async transferOwnership(request: Lep100OwnershipRequest) {
+    if (!request.newOwner) throw new Error('newOwner is required for transferOwnership');
+    return this.lithic.callContract({
+      chainId: request.chainId,
+      contract: request.contractAddress,
+      method: LEP100_METHODS.transferOwnership,
+      args: [request.newOwner]
+    });
+  }
+
+  /** renounceOwnership() — leaves the contract without an owner. */
+  async renounceOwnership(request: Lep100OwnershipRequest) {
+    return this.lithic.callContract({
+      chainId: request.chainId,
+      contract: request.contractAddress,
+      method: LEP100_METHODS.renounceOwnership,
+      args: []
     });
   }
 }
