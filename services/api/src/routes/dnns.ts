@@ -26,7 +26,7 @@
  * Public: no auth required. Anti-abuse is the general rate limiter
  * applied at app.use() level.
  */
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { query, queryOne } from '../lib/db.js';
 import { log } from '../lib/log.js';
@@ -133,9 +133,28 @@ async function writeCache(args: {
   );
 }
 
+/* ─── Async error guard ──────────────────────────────────────────── */
+
+/** Wrap an async handler so a rejection — most importantly the DB or an
+ *  RPC endpoint being unreachable — becomes a 503 response instead of an
+ *  unhandled promise rejection that crashes the whole api process. */
+function wrap(handler: (req: Request, res: Response) => Promise<void>) {
+  return (req: Request, res: Response): void => {
+    handler(req, res).catch((err: unknown) => {
+      log.error(
+        { err: (err as Error)?.message, route: req.originalUrl },
+        'dnns route failed',
+      );
+      if (!res.headersSent) {
+        res.status(503).json({ error: 'DNNS resolver temporarily unavailable' });
+      }
+    });
+  };
+}
+
 /* ─── GET /dnns/resolve ─────────────────────────────────────────── */
 
-dnnsRouter.get('/resolve', async (req, res: Response) => {
+dnnsRouter.get('/resolve', wrap(async (req, res: Response) => {
   const parse = ResolveSchema.safeParse(req.query);
   if (!parse.success) {
     res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
@@ -175,11 +194,11 @@ dnnsRouter.get('/resolve', async (req, res: Response) => {
       source:    'chain' as const,
     } satisfies DnnsRecord,
   });
-});
+}));
 
 /* ─── GET /dnns/lookup ──────────────────────────────────────────── */
 
-dnnsRouter.get('/lookup', async (req, res: Response) => {
+dnnsRouter.get('/lookup', wrap(async (req, res: Response) => {
   const parse = LookupSchema.safeParse(req.query);
   if (!parse.success) {
     res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
@@ -245,4 +264,4 @@ dnnsRouter.get('/lookup', async (req, res: Response) => {
       source:    'chain' as const,
     } satisfies DnnsRecord,
   });
-});
+}));
