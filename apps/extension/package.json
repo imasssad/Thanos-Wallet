@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "build:safari": "wxt build -b safari",
     "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "zip:safari": "wxt zip -b safari",
+    "safari:convert": "bash safari/convert.sh",
     "typecheck": "wxt prepare && tsc --noEmit",
     "lint": "echo 'no lint configured'"
   },
