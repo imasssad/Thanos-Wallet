@@ -668,7 +668,7 @@ export function Dashboard() {
                         Receive
                       </button>
                       <a
-                        href="https://faucet.litho.ai"
+                        href="https://makalu.litho.ai/tokens"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="settings-btn"
