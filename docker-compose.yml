@@ -89,8 +89,9 @@ services:
       DNNS_BASE_REGISTRAR_ADDRESS:   ${DNNS_BASE_REGISTRAR_ADDRESS:-0xB3D1a8e92FFAD73Ab8a07BF37A8E1374df8B3722}
       DNNS_METADATA_SERVICE_ADDRESS: ${DNNS_METADATA_SERVICE_ADDRESS:-0x9138E4CD9c5EBAc6964Fd28516BD5B0E83E5AA51}
       DNNS_METADATA_URI:             ${DNNS_METADATA_URI:-https://names.litho.ai/metadata/{id}}
-    ports:
-      - "4000:4000"
+    # No host port in base — docker-compose.prod.yml publishes the api on
+    # 127.0.0.1:4100 for nginx to proxy. For a local host port in dev,
+    # add a docker-compose.override.yml.
     volumes:
       - ./services/api/src:/app/src:ro   # hot-reload in dev
     healthcheck:
