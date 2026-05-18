@@ -107,6 +107,8 @@ export interface Lep100TransferRequest {
   to: string;
   amount: string;
   decimals?: number;
+  /** @deprecated LEP100 is standard ERC-20 — `transfer` takes (to,
+   *  amount) only. This field is no longer sent on-chain. */
   memo?: string;
 }
 
@@ -117,6 +119,32 @@ export interface Lep100ApproveRequest {
   spender: string;
   amount: string;
   decimals?: number;
+}
+
+/** ERC20Burnable.burn(amount) — burns from the caller's own balance. */
+export interface Lep100BurnRequest {
+  chainId: number;
+  contractAddress: string;
+  amount: string;
+  decimals?: number;
+}
+
+/** ERC20Burnable.burnFrom(account, amount) — burns from `account`
+ *  against the caller's allowance. */
+export interface Lep100BurnFromRequest {
+  chainId: number;
+  contractAddress: string;
+  account: string;
+  amount: string;
+  decimals?: number;
+}
+
+/** Ownable.transferOwnership(newOwner) / renounceOwnership(). */
+export interface Lep100OwnershipRequest {
+  chainId: number;
+  contractAddress: string;
+  /** Required for transferOwnership; omitted for renounceOwnership. */
+  newOwner?: string;
 }
 
 export interface Lep100TokenMetadata {
