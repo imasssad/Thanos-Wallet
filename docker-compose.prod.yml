@@ -20,8 +20,7 @@ services:
   indexer:
     environment:
       NODE_ENV: production
-    ports:
-      - "127.0.0.1:4010:4010"
+    # No host port — indexer is internal-only (see base compose).
 
   worker:
     environment:
