@@ -146,8 +146,7 @@ services:
       DATABASE_URL:     postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD:-thanos_dev_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet}
       REDIS_URL:        redis://:${REDIS_PASSWORD:-redis_dev_secret}@redis:6379
       INDEXER_URL:      http://indexer:4010
-      MULTX_API_URL:    ${MULTX_API_URL:-}
-      MULTX_API_KEY:    ${MULTX_API_KEY:-}
+      MULTX_API_URL:    ${MULTX_API_URL:-https://bridge.litho.ai}
       PRICE_API_URL:    ${PRICE_API_URL:-https://api.coingecko.com/api/v3}
 
   # ─── Monitoring (local dev) ──────────────────────────────────────────────────
