@@ -1,72 +1,38 @@
 /**
- * RPC failover for Makalu.
+ * Makalu RPC provider for the web app.
  *
- * Builds an ethers FallbackProvider over multiple Makalu RPC endpoints so
- * any single endpoint going down doesn't break send/balance/estimate calls.
+ * The failover logic now lives in @thanos/sdk-core (chains/provider.ts)
+ * so every client — web, desktop, extension, mobile — shares one
+ * implementation. This module is a thin web-specific adapter: it reads
+ * the NEXT_PUBLIC_LITHO_RPC env override and injects it into the shared
+ * factory, then re-exports the Makalu provider.
  *
- * Endpoint list resolution order:
- *   1. NEXT_PUBLIC_LITHO_RPC env var (comma-separated)
- *   2. Hardcoded default list (rpc, rpc-2, rpc-3 — all litho.ai)
- *
- * FallbackProvider config:
- *   - quorum: 1   (any one provider's answer is fine — we're prioritising
- *                  availability over consensus)
- *   - priority: 1 for all (first-answer-wins)
- *   - stallTimeout: 1500ms before trying the next
+ * FallbackProvider behaviour (in sdk-core): quorum 1, all endpoints
+ * priority 1, 1500ms stall timeout before rotating to the next.
  */
-import { FallbackProvider, JsonRpcProvider, type Networkish } from 'ethers';
+import {
+  getMakaluProvider as sdkGetMakaluProvider,
+  listRpcUrls as sdkListRpcUrls,
+  setRpcUrls,
+} from '@thanos/sdk-core';
 
 export const MAKALU_CHAIN_ID = 700777;
 
-// Makalu: primary then fallback. rpc-3 belongs to Kamet now — not
-// listed here. ethers' FallbackProvider rotates primary → fallback.
-const DEFAULT_RPC_URLS = [
-  'https://rpc.litho.ai',
-  'https://rpc-2.litho.ai',
-];
+// If NEXT_PUBLIC_LITHO_RPC is set (comma-separated), override the shared
+// endpoint list for Makalu. Runs once at module load — before any
+// getMakaluProvider() call, which is when the provider is memoised.
+const envRpc =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_LITHO_RPC) || '';
+const envUrls = String(envRpc).split(',').map((s) => s.trim()).filter(Boolean);
+if (envUrls.length > 0) setRpcUrls(MAKALU_CHAIN_ID, envUrls);
 
-function readRpcUrls(): string[] {
-  const env =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_LITHO_RPC) || '';
-  const parsed = String(env).split(',').map(s => s.trim()).filter(Boolean);
-  return parsed.length > 0 ? parsed : DEFAULT_RPC_URLS;
-}
-
-/**
- * Singleton provider for the Makalu network with automatic failover.
- *
- * Memoised so we don't build a new FallbackProvider tree on every call —
- * ethers FallbackProvider keeps internal state for health tracking.
- */
-let _provider: FallbackProvider | JsonRpcProvider | null = null;
-
-export function getMakaluProvider(): FallbackProvider | JsonRpcProvider {
-  if (_provider) return _provider;
-
-  const urls = readRpcUrls();
-  const network: Networkish = MAKALU_CHAIN_ID;
-
-  if (urls.length === 1) {
-    // FallbackProvider needs >= 2 providers; with a single URL, use plain JSON-RPC.
-    _provider = new JsonRpcProvider(urls[0], network);
-    return _provider;
-  }
-
-  _provider = new FallbackProvider(
-    urls.map((url, i) => ({
-      provider:     new JsonRpcProvider(url, network),
-      priority:     1,
-      weight:       1,
-      stallTimeout: 1500,
-    })),
-    network,
-    { quorum: 1 },
-  );
-  return _provider;
+/** Singleton Makalu provider with automatic RPC failover. */
+export function getMakaluProvider() {
+  return sdkGetMakaluProvider();
 }
 
 /** Read-only access to the URL list, for diagnostics / health badges. */
 export function listRpcUrls(): string[] {
-  return readRpcUrls();
+  return sdkListRpcUrls(MAKALU_CHAIN_ID);
 }

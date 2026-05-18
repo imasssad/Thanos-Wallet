@@ -1,5 +1,6 @@
 export * from './types';
 export * from './chains/networks';
+export * from './chains/provider';
 export * from './tokens/registry';
 export * from './tokens/lep100-registry';
 export * from './tokens/makalu-lep100-source';
