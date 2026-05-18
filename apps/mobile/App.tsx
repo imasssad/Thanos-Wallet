@@ -20,6 +20,7 @@ import {
 } from './lib/biometric';
 import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
 import { QrScannerModal } from './components/QrScannerModal';
+import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
@@ -562,6 +563,7 @@ function SettingsScreen() {
   const [bioReady, setBioReady] = useState(false);
   const [bioOn, setBioOn]       = useState(false);
   const [copied, setCopied]     = useState(false);
+  const [wcOpen, setWcOpen]     = useState(false);
 
   const refreshBio = async () => {
     const cap = await getBiometricCapability();
@@ -640,7 +642,8 @@ function SettingsScreen() {
   const NETWORK_OPTS: SettingItem[] = [
     { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
     { label: 'Custom RPC',        desc: 'rpc.litho.ai',                    Icon: Server },
-    { label: 'Connected dApps',   desc: 'WalletConnect — coming soon',     Icon: Zap },
+    { label: 'Connected dApps',   desc: 'Pair via WalletConnect',          Icon: Zap,
+      onPress: () => setWcOpen(true) },
   ];
 
   // Premium-pattern section header — icon tile + title + sub.
@@ -726,6 +729,13 @@ function SettingsScreen() {
       </View>
 
       <Text style={styles.versionText}>Thanos Wallet · v0.8.1 · Makalu</Text>
+
+      {/* WalletConnect pairing + connected-dApp management. */}
+      <WalletConnectModal
+        visible={wcOpen}
+        onClose={() => setWcOpen(false)}
+        evmAddress={walletAddr}
+      />
     </ScrollView>
   );
 }
@@ -1302,6 +1312,10 @@ export default function App() {
         <WalletAddrCtx.Provider value={walletAddr}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
+
+            {/* Always-mounted WalletConnect listener — pops an approve/
+                reject sheet whenever a paired dApp sends a sign request. */}
+            <WalletConnectRequestHost seed={walletSeed}/>
 
             {/* Top header */}
             <View style={styles.topbar}>
