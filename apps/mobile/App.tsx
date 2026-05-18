@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  Alert, Animated, Easing, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
-  StyleSheet, Text, TextInput, View,
+  Alert, Animated, Easing, Image, Pressable, RefreshControl, SafeAreaView, ScrollView,
+  StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
+import { Wallet, HDNodeWallet, Mnemonic, formatUnits } from 'ethers';
 import {
   createVault, openVault, openVaultWithKey,
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
@@ -22,6 +22,8 @@ import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
+import { getPortfolio } from './lib/indexer';
+import { fetchEcosystemPrices } from './lib/pricing';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -163,6 +165,91 @@ const TXS = [
   { type: 'Received', sym: 'USDC',   amt: '+840',   time: 'Yesterday', pos: true  },
 ];
 
+/* ─────────────────────────── Live portfolio ─────────────────────────── */
+
+/* Replaces the ASSETS mock for HomeScreen — fetches real balances from
+   the indexer (services/indexer) and prices them via CoinGecko. The
+   indexer + pricing modules are local detached copies (EAS Cloud can't
+   resolve workspace packages). */
+
+/** Brand colour per token symbol, for the Avatar circle. */
+const ASSET_COLORS: Record<string, string> = {
+  LITHO: '#8b7df7', WLITHO: '#a395f8', BTC: '#f7931a', LITBTC: '#f7931a',
+  ETH: '#627eea', SOL: '#14f195', USDC: '#2775ca', USDT: '#26a17b',
+  BNB: '#f3ba2f', JOT: '#3b7af7', IMAGE: '#10b981', LAX: '#a3e635',
+  FGPT: '#10b981', FURGPT: '#10b981', COLLE: '#a3e635', AGII: '#8b7df7',
+  BLDR: '#f97316', MUSA: '#eab308',
+};
+function assetColor(sym: string): string {
+  return ASSET_COLORS[(sym || '').toUpperCase()] ?? '#8b7df7';
+}
+
+/** Compact number format — commas, trims trailing zeros. */
+function formatAmount(n: number): string {
+  if (!isFinite(n) || n === 0) return '0';
+  return n.toLocaleString('en-US', { maximumFractionDigits: n >= 1 ? 4 : 8 });
+}
+
+/** USD format — $1,234.56 */
+function formatUsd(n: number): string {
+  return '$' + (isFinite(n) ? n : 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+}
+
+interface DisplayAsset {
+  sym: string; name: string; chainId: number;
+  balanceText: string; priceUsd: number; usdValue: number; color: string;
+}
+interface PortfolioState {
+  assets: DisplayAsset[]; totalUsd: number; loading: boolean; offline: boolean;
+  reload: () => void;
+}
+
+/** Fetch + price the wallet's portfolio from the indexer. */
+function usePortfolio(address: string): PortfolioState {
+  const [nonce, setNonce]   = useState(0);
+  const [assets, setAssets] = useState<DisplayAsset[]>([]);
+  const [totalUsd, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
+
+  useEffect(() => {
+    if (!address) { setAssets([]); setTotal(0); setLoading(false); setOffline(false); return; }
+    let cancelled = false;
+    setLoading(true); setOffline(false);
+    (async () => {
+      try {
+        const [portfolio, prices] = await Promise.all([
+          getPortfolio(address),
+          fetchEcosystemPrices(),
+        ]);
+        if (cancelled) return;
+        const next: DisplayAsset[] = portfolio.assets.map((a) => {
+          let bal = 0;
+          try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
+          const priceUsd = prices[a.symbol] ?? 0;
+          return {
+            sym: a.symbol, name: a.name, chainId: a.chainId,
+            balanceText: formatAmount(bal),
+            priceUsd, usdValue: bal * priceUsd,
+            color: assetColor(a.symbol),
+          };
+        });
+        setAssets(next);
+        setTotal(next.reduce((s, a) => s + a.usdValue, 0));
+        setLoading(false);
+      } catch {
+        if (cancelled) return;
+        setAssets([]); setTotal(0); setLoading(false); setOffline(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [address, nonce]);
+
+  return { assets, totalUsd, loading, offline, reload: () => setNonce((n) => n + 1) };
+}
+
 /* ─────────────────────────── Reusable bits ─────────────────────────── */
 
 /* Token avatar — renders the branded coin icon composited over the
@@ -201,6 +288,9 @@ function SectionTitle({ children }: { children: string }) {
 function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
   const C = useColors();
   const styles = useStyles();
+  const addr = useWalletAddr();
+  const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr);
+  const networks = new Set(assets.map((a) => a.chainId)).size;
 
   const QuickAction = ({ Icon, label, onPress }: { Icon: any; label: string; onPress?: () => void }) => (
     <Pressable style={styles.qaBtn} onPress={onPress}>
@@ -210,12 +300,19 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
   );
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={reload} tintColor={C.textSecondary} />
+      }
+    >
       {/* Network pill */}
       <View style={styles.netPillRow}>
         <View style={styles.netPill}>
-          <View style={styles.netDot}/>
-          <Text style={styles.netText}>Makalu · synced</Text>
+          <View style={[styles.netDot, offline && { backgroundColor: C.red }]}/>
+          <Text style={styles.netText}>{offline ? 'Makalu · offline' : 'Makalu · synced'}</Text>
         </View>
       </View>
 
@@ -223,26 +320,22 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
       <View style={styles.balanceCard}>
         <View style={styles.balanceCardOverlay}/>
         <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
-        <Text style={styles.balanceAmt}>$9,357.00</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <View style={styles.changePill}>
-            <Text style={styles.changePillText}>▲ 2.34%</Text>
-          </View>
-          <Text style={styles.balanceSub}>+$214.32 today</Text>
-        </View>
+        <Text style={styles.balanceAmt}>{loading ? '···' : formatUsd(totalUsd)}</Text>
         <View style={styles.balanceDivider}/>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <View>
             <Text style={styles.balanceMetricLabel}>Assets</Text>
-            <Text style={styles.balanceMetricValue}>{ASSETS.length}</Text>
+            <Text style={styles.balanceMetricValue}>{assets.length}</Text>
           </View>
           <View>
             <Text style={styles.balanceMetricLabel}>Networks</Text>
-            <Text style={styles.balanceMetricValue}>4</Text>
+            <Text style={styles.balanceMetricValue}>{Math.max(networks, 1)}</Text>
           </View>
           <View>
-            <Text style={styles.balanceMetricLabel}>Best 24h</Text>
-            <Text style={[styles.balanceMetricValue, { color: C.green }]}>+8.22%</Text>
+            <Text style={styles.balanceMetricLabel}>Status</Text>
+            <Text style={[styles.balanceMetricValue, { color: offline ? C.red : C.green }]}>
+              {offline ? 'Offline' : 'Live'}
+            </Text>
           </View>
         </View>
       </View>
@@ -259,21 +352,30 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
       <View>
         <View style={styles.assetsHeader}>
           <Text style={styles.sectionTitle}>Assets</Text>
-          <Text style={styles.assetsCount}>{ASSETS.length}</Text>
+          <Text style={styles.assetsCount}>{assets.length}</Text>
         </View>
         <View style={styles.card}>
-          {ASSETS.map((a, i) => (
-            <Pressable key={`${a.sym}-${a.chain}`} style={[styles.row, i < ASSETS.length - 1 && styles.rowBorder]}>
+          {loading && (
+            <Text style={[styles.rowSub, { padding: 16 }]}>Loading balances…</Text>
+          )}
+          {!loading && offline && (
+            <Text style={[styles.rowSub, { padding: 16 }]}>
+              Couldn’t reach the indexer — pull down to retry.
+            </Text>
+          )}
+          {!loading && !offline && assets.length === 0 && (
+            <Text style={[styles.rowSub, { padding: 16 }]}>No assets yet.</Text>
+          )}
+          {assets.map((a, i) => (
+            <Pressable key={`${a.sym}-${a.chainId}`} style={[styles.row, i < assets.length - 1 && styles.rowBorder]}>
               <Avatar symbol={a.sym} color={a.color} />
               <View style={styles.rowMid}>
                 <Text style={styles.rowSymbol}>{a.name}</Text>
-                <Text style={styles.rowSub}>
-                  {a.price} <Text style={{ color: a.chg >= 0 ? C.green : C.red, fontWeight: '600' }}>{a.chg >= 0 ? '+' : ''}{a.chg.toFixed(2)}%</Text>
-                </Text>
+                <Text style={styles.rowSub}>{a.priceUsd > 0 ? formatUsd(a.priceUsd) : '—'}</Text>
               </View>
               <View style={styles.rowRight}>
-                <Text style={styles.rowAmt}>{a.usd}</Text>
-                <Text style={styles.rowBal}>{a.bal} {a.sym}</Text>
+                <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
+                <Text style={styles.rowBal}>{a.balanceText} {a.sym}</Text>
               </View>
             </Pressable>
           ))}
