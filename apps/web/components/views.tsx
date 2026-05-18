@@ -3,7 +3,9 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ethers } from 'ethers';
 import { TOKENS } from '../lib/tokens';
-import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon, KeyRound } from 'lucide-react';
+import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon, KeyRound, Usb } from 'lucide-react';
+import { LedgerModal } from './LedgerModal';
+import { TrezorModal } from './TrezorModal';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
@@ -820,6 +822,7 @@ export function SettingsView() {
   const [currency, setCurrency] = useState('USD');
   const [language, setLanguage] = useState('English');
   const [autoLock, setAutoLock] = useState('5 minutes');
+  const [hwModal,  setHwModal]  = useState<'ledger' | 'trezor' | null>(null);
 
   const Section = ({
     icon: Icon, title, sub, children,
@@ -887,6 +890,16 @@ export function SettingsView() {
               <KeyRound size={14}/> Manage <ChevronRight size={14}/>
             </Link>
           </Row>
+          <Row label="Hardware wallet" sub="Sign with a Ledger or Trezor device">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="settings-btn" onClick={() => setHwModal('ledger')}>
+                <Usb size={14}/> Ledger
+              </button>
+              <button className="settings-btn" onClick={() => setHwModal('trezor')}>
+                <Usb size={14}/> Trezor
+              </button>
+            </div>
+          </Row>
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
             <Select
               value={autoLock}
@@ -928,6 +941,10 @@ export function SettingsView() {
           </Row>
         </Section>
       </div>
+
+      {/* Hardware-wallet connect modals */}
+      {hwModal === 'ledger' && <LedgerModal onClose={() => setHwModal(null)}/>}
+      {hwModal === 'trezor' && <TrezorModal onClose={() => setHwModal(null)}/>}
     </div>
   );
 }

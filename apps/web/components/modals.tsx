@@ -35,6 +35,12 @@ import {
 } from '../lib/ledger-accounts';
 import { signAndBroadcastTx as ledgerSignEvmTx } from '../lib/ledger';
 import { getActiveLedgerAccount } from './LedgerModal';
+import {
+  sendEvmWithTrezor, sendBitcoinWithTrezor, sendSolWithTrezor, TrezorError,
+} from '../lib/trezor';
+import {
+  getActiveTrezorEvmAccount, getActiveTrezorBtcAccount, getActiveTrezorSolAccount,
+} from '../lib/trezor-accounts';
 import { getMakaluProvider } from '../lib/rpc';
 import { getEvmProvider } from '../lib/evm-chains';
 import { parseUnits as ethersParseUnits } from 'ethers';
@@ -174,8 +180,19 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     () => (isEvmSend || network === 'makalu') ? getActiveLedgerAccount() : null,
     [isEvmSend, network],
   );
+  /* Trezor — same per-coin model. Ledger takes precedence if somehow
+     both are connected for the same coin (one device at a time is the
+     expected case). */
+  const trezorBtc = useMemo(() => (isBitcoinSend && !ledgerBtc) ? getActiveTrezorBtcAccount() : null, [isBitcoinSend, ledgerBtc]);
+  const trezorSol = useMemo(() => (isSolanaSend  && !ledgerSol) ? getActiveTrezorSolAccount() : null, [isSolanaSend, ledgerSol]);
+  const trezorEvm = useMemo(
+    () => ((isEvmSend || network === 'makalu') && !ledgerEvm) ? getActiveTrezorEvmAccount() : null,
+    [isEvmSend, network, ledgerEvm],
+  );
   const usingLedger = !!(ledgerBtc || ledgerSol || ledgerEvm);
-  const walletReady = !!(wallet?.seed?.length || wallet?.privateKey || usingLedger);
+  const usingTrezor = !!(trezorBtc || trezorSol || trezorEvm);
+  const usingHardware = usingLedger || usingTrezor;
+  const walletReady = !!(wallet?.seed?.length || wallet?.privateKey || usingHardware);
 
   /* Validate the recipient against the chain of the selected token. */
   const recipientValidation = useMemo(() => {
@@ -372,6 +389,22 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         }
         return;
       }
+      if (trezorBtc) {
+        try {
+          const hash = await sendBitcoinWithTrezor({ account: trezorBtc, recipient: to.trim(), amount });
+          recordPendingTx({
+            id: hash, chain: 'bitcoin', symbol: 'BTC', recipient: to.trim(), amount,
+            status: 'broadcast', broadcastAt: Date.now(), updatedAt: Date.now(),
+          });
+          setTxHash(hash);
+          setStage('pending');
+        } catch (e) {
+          const msg = e instanceof TrezorError ? e.message : (e as Error).message || 'Trezor send failed';
+          setError(msg);
+          setStage('failed');
+        }
+        return;
+      }
       if (!wallet?.seed?.length && !wallet?.privateKey) {
         setError('Wallet is locked. Please refresh and unlock.');
         setStage('failed');
@@ -467,6 +500,23 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         }
         return;
       }
+      if (trezorSol) {
+        if (selectedToken && selectedToken.address !== null) {
+          setError('SPL token transfers via Trezor are not yet supported. Send native SOL or disconnect Trezor.');
+          setStage('failed');
+          return;
+        }
+        try {
+          const sig = await sendSolWithTrezor({ account: trezorSol, recipient: to.trim(), amount });
+          setTxHash(sig);
+          setStage('confirmed');
+        } catch (e) {
+          const msg = e instanceof TrezorError ? e.message : (e as Error).message || 'Trezor send failed';
+          setError(msg);
+          setStage('failed');
+        }
+        return;
+      }
       if (!wallet?.seed?.length) {
         setError('Solana send requires a recovery-phrase wallet (private-key import not yet supported for SOL).');
         setStage('failed');
@@ -534,8 +584,32 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         return;
       }
 
+      /* Trezor EVM path — sendEvmWithTrezor builds the EIP-1559 tx,
+         the device signs, we broadcast on the chain's provider. */
+      if (trezorEvm) {
+        try {
+          const hash = await sendEvmWithTrezor({
+            account: trezorEvm, chainId: evmChainId, recipient: to.trim(), amount,
+          });
+          setTxHash(hash);
+          setStage('pending');
+          getEvmProvider(evmChainId).waitForTransaction(hash)
+            .then(r => {
+              if (!r) { setStage('failed'); return; }
+              setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
+              if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
+            })
+            .catch(() => setStage('failed'));
+        } catch (e) {
+          const msg = e instanceof TrezorError ? e.message : (e as Error).message || 'Trezor EVM send failed';
+          setError(msg);
+          setStage('failed');
+        }
+        return;
+      }
+
       if (!wallet?.seed?.length && !wallet?.privateKey) {
-        setError('Connect a Ledger or unlock your recovery-phrase wallet to send on EVM chains.');
+        setError('Connect a hardware wallet or unlock your recovery-phrase wallet to send on EVM chains.');
         setStage('failed');
         return;
       }
@@ -605,8 +679,38 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       return;
     }
 
+    /* Trezor Makalu path — native LITHO only, same clearsigning caveat
+       as Ledger for LEP100 tokens. */
+    if (trezorEvm && selectedToken) {
+      if (selectedToken.address !== null) {
+        setError('LEP100 token sends via Trezor are not yet supported. Send native LITHO or disconnect Trezor.');
+        setStage('failed');
+        return;
+      }
+      try {
+        const evmRecipient = resolveToEvm(to.trim()) ?? to.trim();
+        const hash = await sendEvmWithTrezor({
+          account: trezorEvm, chainId: MAKALU_CHAIN_ID, recipient: evmRecipient, amount,
+        });
+        setTxHash(hash);
+        setStage('pending');
+        getMakaluProvider().waitForTransaction(hash)
+          .then(r => {
+            if (!r) { setStage('failed'); return; }
+            setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
+            if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
+          })
+          .catch(() => setStage('failed'));
+      } catch (e) {
+        const msg = e instanceof TrezorError ? e.message : (e as Error).message || 'Trezor Makalu send failed';
+        setError(msg);
+        setStage('failed');
+      }
+      return;
+    }
+
     if (!wallet?.seed?.length && !wallet?.privateKey) {
-      setError('Connect a Ledger or unlock your recovery-phrase wallet to send on Makalu.');
+      setError('Connect a hardware wallet or unlock your recovery-phrase wallet to send on Makalu.');
       setStage('failed');
       return;
     }
@@ -1017,12 +1121,15 @@ export function SendModal({ onClose }: { onClose: () => void }) {
         >
           {recipientBlocked
             ? 'Recipient blocked'
-            : usingLedger ? `Confirm on Ledger · Send ${coin}` : `Send ${coin}`}
+            : usingLedger ? `Confirm on Ledger · Send ${coin}`
+            : usingTrezor ? `Confirm on Trezor · Send ${coin}`
+            : `Send ${coin}`}
         </button>
-        {usingLedger && (
+        {usingHardware && (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
-            Signing via Ledger · {(() => {
-              const a = ledgerBtc?.address ?? ledgerSol?.address ?? ledgerEvm?.address ?? '';
+            Signing via {usingLedger ? 'Ledger' : 'Trezor'} · {(() => {
+              const a = ledgerBtc?.address ?? ledgerSol?.address ?? ledgerEvm?.address
+                     ?? trezorBtc?.address ?? trezorSol?.address ?? trezorEvm?.address ?? '';
               return `${a.slice(0, 8)}…${a.slice(-6)}`;
             })()}
           </div>
