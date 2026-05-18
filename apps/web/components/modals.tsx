@@ -18,6 +18,12 @@ import {
   type Quote as MultXQuote,
   MultXUnavailable,
 } from '../lib/multx';
+import {
+  getQuote   as igniteGetQuote,
+  execute    as igniteExecute,
+  getStatus  as igniteGetStatus,
+  IgniteUnavailable,
+} from '../lib/ignite';
 import { TokenSelect } from './ui/TokenSelect';
 import { TokenIcon } from './TokenIcon';
 import { QrScannerModal } from './QrScannerModal';
@@ -1496,8 +1502,11 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const [to, setTo]     = useState('LitBTC');
   const [amt, setAmt]   = useState('100');
 
-  /** Live MultX quote (or null while loading / unavailable). */
+  /** Best live quote across MultX (cross-chain bridge) and Ignite
+   *  (same-chain DEX). `provider` records which route won so execute +
+   *  status polling go to the right service. */
   const [quote, setQuote]               = useState<MultXQuote | null>(null);
+  const [provider, setProvider]         = useState<'multx' | 'ignite' | null>(null);
   const [quoteError, setQuoteError]     = useState<string | null>(null);
   const [bridgeOffline, setBridgeOffline] = useState(false);
 
@@ -1517,31 +1526,49 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const fallbackRate = priceOf(from) / priceOf(to);
   const fallbackOut  = fallbackRate * parseFloat(amt || '0');
 
-  /* Debounced quote fetch. Cancels in-flight fetches when the inputs change. */
+  /* Debounced quote fetch — route optimisation. Quote MultX and Ignite
+     in parallel and keep whichever returns the larger output. MultX is
+     a cross-chain bridge, Ignite a same-chain DEX; for a given pair one
+     or both may quote, and we always show the user the better deal. */
   useEffect(() => {
     const trimmed = amt.trim();
     if (!trimmed || parseFloat(trimmed) <= 0 || from === to) {
-      setQuote(null); setQuoteError(null);
+      setQuote(null); setProvider(null); setQuoteError(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(async () => {
-      try {
-        const q = await multxGetQuote(from, to, trimmed);
-        if (!cancelled) {
-          setQuote(q); setQuoteError(null); setBridgeOffline(false);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setQuote(null);
-          if (e instanceof MultXUnavailable) {
-            setBridgeOffline(true);
-            setQuoteError('Bridge offline — showing indicative rate');
-          } else {
-            setQuoteError((e as Error).message || 'Quote failed');
-          }
-        }
+      const [multxRes, igniteRes] = await Promise.allSettled([
+        multxGetQuote(from, to, trimmed),
+        igniteGetQuote(from, to, trimmed),
+      ]);
+      if (cancelled) return;
+
+      const candidates: Array<{ provider: 'multx' | 'ignite'; quote: MultXQuote }> = [];
+      if (multxRes.status  === 'fulfilled') candidates.push({ provider: 'multx',  quote: multxRes.value });
+      if (igniteRes.status === 'fulfilled') candidates.push({ provider: 'ignite', quote: igniteRes.value });
+
+      if (candidates.length === 0) {
+        // Both routes down — fall back to the indicative price-table rate.
+        setQuote(null); setProvider(null);
+        const bridgeDown = multxRes.status === 'rejected' && multxRes.reason instanceof MultXUnavailable;
+        const dexDown    = igniteRes.status === 'rejected' && igniteRes.reason instanceof IgniteUnavailable;
+        setBridgeOffline(bridgeDown && dexDown);
+        setQuoteError(
+          bridgeDown && dexDown ? 'Bridge + DEX offline — showing indicative rate'
+          : (multxRes.status === 'rejected' ? (multxRes.reason as Error)?.message : null)
+            ?? 'Quote failed',
+        );
+        return;
       }
+
+      // Pick the route with the highest output amount.
+      candidates.sort((a, b) => Number(b.quote.toAmount) - Number(a.quote.toAmount));
+      const best = candidates[0];
+      setQuote(best.quote);
+      setProvider(best.provider);
+      setQuoteError(null);
+      setBridgeOffline(false);
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
   }, [from, to, amt]);
@@ -1559,12 +1586,15 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     const tick = async () => {
       try {
-        const s = await multxGetStatus(executionId);
+        // Poll the service that executed the swap.
+        const s = provider === 'ignite'
+          ? await igniteGetStatus(executionId)
+          : await multxGetStatus(executionId);
         if (cancelled) return;
         if (s.sourceHash) setSourceHash(s.sourceHash);
-        if (s.destHash)   setDestHash(s.destHash);
+        if ('destHash' in s && s.destHash) setDestHash(s.destHash);
         if (s.state === 'completed') setStage('completed');
-        else if (s.state === 'failed') { setStage('failed'); setExecError(s.error || 'Bridge reported failure'); }
+        else if (s.state === 'failed') { setStage('failed'); setExecError(s.error || 'Swap reported failure'); }
         else if (s.state === 'settling')  setStage('settling');
         else if (s.state === 'bridging')  setStage('bridging');
       } catch {
@@ -1583,19 +1613,27 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
      either path through the polling effect above. Once the spec lands the
      signedTx construction goes here. */
   const onSwap = async () => {
-    if (!quote) return;
+    if (!quote || !provider) return;
     setStage('executing');
     setExecError(null);
     try {
-      const exec = await multxExecute(quote.quoteId, /* signedTx */ '0x');
+      // Execute on the route that won the quote race.
+      const exec = provider === 'ignite'
+        ? await igniteExecute(quote.quoteId, /* signedTx */ '0x')
+        : await multxExecute(quote.quoteId, /* signedTx */ '0x');
       setExecutionId(exec.executionId);
       setSourceHash(exec.sourceHash ?? null);
-      setStage(exec.state === 'pending' ? 'bridging' : exec.state);
+      // MultX goes pending → bridging; an Ignite DEX swap is one tx so
+      // pending maps straight to a short settling wait.
+      setStage(exec.state === 'pending'
+        ? (provider === 'ignite' ? 'settling' : 'bridging')
+        : exec.state);
     } catch (e) {
       setStage('failed');
-      setExecError(e instanceof MultXUnavailable
-        ? 'Bridge is unavailable — try again in a moment.'
-        : (e as Error).message || 'Bridge execute failed');
+      const offline = e instanceof MultXUnavailable || e instanceof IgniteUnavailable;
+      setExecError(offline
+        ? `${provider === 'ignite' ? 'Ignite DEX' : 'Bridge'} is unavailable — try again in a moment.`
+        : (e as Error).message || 'Swap execute failed');
     }
   };
 
@@ -1671,9 +1709,22 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
           <span>1 {from} ≈ {displayedRate.toLocaleString('en-US', { maximumFractionDigits: 6 })} {to}</span>
         </div>
         <div className="fee-row">
-          <span>Bridge fee</span>
+          <span>{provider === 'ignite' ? 'DEX fee' : 'Bridge fee'}</span>
           <span>{feeLine}</span>
         </div>
+        {provider && (
+          <div className="fee-row">
+            <span>Route</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: provider === 'ignite' ? 'var(--green)' : 'var(--blue)',
+              }}/>
+              {provider === 'ignite' ? 'Ignite DEX' : 'MultX bridge'}
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>· best of 2</span>
+            </span>
+          </div>
+        )}
         {(quoteError || bridgeOffline) && (
           <div style={{ fontSize: 11, color: bridgeOffline ? 'var(--text-muted)' : 'var(--red)', marginTop: 6 }}>
             {bridgeOffline ? '⚠ ' : ''}{quoteError}
