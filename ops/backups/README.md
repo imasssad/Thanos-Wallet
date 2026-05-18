@@ -10,10 +10,9 @@ pushes the latest dump off-site to S3.
    ```bash
    sudo tee /root/.thanos-backup.env > /dev/null <<'EOF'
    PGUSER=thanos
-   PGPASSWORD=<the password>
    PGDATABASE=thanos_wallet
-   PGHOST=127.0.0.1
    BACKUP_DIR=/var/backups/thanos-wallet
+   # PG_CONTAINER defaults to thanos-postgres — only set if you renamed it.
    # Optional off-site push — uncomment if AWS CLI + creds are configured
    # S3_BUCKET=s3://thanos-backups/postgres
    EOF
@@ -54,15 +53,15 @@ Pick the dump you want and pipe it into `psql`:
 
 ```bash
 # 1) Stop the services that talk to the DB (so the restore can DROP cleanly)
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml stop api indexer worker
+docker compose -f docker-compose.yml -f docker-compose.prod.yml stop api indexer worker
 
 # 2) Restore — the dump was taken with --clean --if-exists, so it drops and
-#    recreates each table.
+#    recreates each table. Piped into psql inside the Postgres container.
 gunzip -c /var/backups/thanos-wallet/daily/thanos-wallet-YYYYMMDDTHHMMSSZ.sql.gz \
-  | PGPASSWORD=… psql -h 127.0.0.1 -U thanos -d thanos_wallet
+  | docker exec -i thanos-postgres psql -U thanos -d thanos_wallet
 
 # 3) Bring services back
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml up -d api indexer worker
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api indexer worker
 
 # 4) Watch logs until the indexer reports "schema ready" + "background poll"
 docker logs --tail=20 thanos-indexer

@@ -34,9 +34,11 @@ jobs:
           ssh-keyscan -H "${{ secrets.VPS_SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Pull + rebuild + restart
-        # Rebuilds web + api + indexer so backend changes ship alongside the
-        # frontend. Docker caches unchanged layers, so when only the web image
-        # actually changed the api/indexer rebuilds are near-instant.
+        # Rebuilds web + api + indexer + worker so backend changes ship
+        # alongside the frontend. Docker caches unchanged layers, so when
+        # only the web image actually changed the other rebuilds are
+        # near-instant. Postgres + Redis run as Docker-network-only
+        # containers (base compose) — no host-db override.
         run: |
           ssh -i ~/.ssh/id_ed25519 \
             "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_SSH_HOST }}" \
@@ -46,18 +48,15 @@ jobs:
              docker compose \
                -f docker-compose.yml \
                -f docker-compose.prod.yml \
-               -f docker-compose.host-db.yml \
-               build web api indexer
+               build web api indexer worker
              docker compose \
                -f docker-compose.yml \
                -f docker-compose.prod.yml \
-               -f docker-compose.host-db.yml \
-               up -d web api indexer
+               up -d web api indexer worker
              docker compose \
                -f docker-compose.yml \
                -f docker-compose.prod.yml \
-               -f docker-compose.host-db.yml \
-               ps web api indexer'
+               ps web api indexer worker'
 
       - name: Smoke-check
         run: |

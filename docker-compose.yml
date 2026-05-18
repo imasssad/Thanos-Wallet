@@ -24,8 +24,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./services/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-    ports:
-      - "5432:5432"
+    # No host port published — the DB is reached only on the Docker
+    # network as `postgres:5432`. Avoids clashing with any host-installed
+    # Postgres and keeps it off the host's network surface. For ad-hoc
+    # access use: docker exec -it thanos-postgres psql -U thanos thanos_wallet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thanos} -d ${POSTGRES_DB:-thanos_wallet}"]
       interval: 5s
@@ -43,8 +45,7 @@ services:
       --appendfsync everysec
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # Docker-network-only — reached as `redis:6379`. No host port published.
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_secret}", "ping"]
       interval: 5s

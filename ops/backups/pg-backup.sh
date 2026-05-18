@@ -2,8 +2,10 @@
 #
 # Thanos Wallet — Postgres backup script.
 #
-# Runs pg_dump against the host Postgres, gzips, rotates daily/weekly/monthly,
-# and optionally pushes the latest dump to off-site storage.
+# Runs pg_dump inside the Postgres container (via docker exec), gzips,
+# rotates daily/weekly/monthly, and optionally pushes the latest dump
+# off-site. The DB has no host port — it's Docker-network-only — so the
+# dump runs from within the container.
 #
 # Wiring (cron, on the VPS):
 #   crontab -e
@@ -11,10 +13,10 @@
 #
 # Required env (set in /etc/default/thanos-pg-backup or /root/.thanos-backup.env):
 #   PGUSER       — typically 'thanos'
-#   PGPASSWORD   — Postgres password
 #   PGDATABASE   — 'thanos_wallet'
-#   PGHOST       — '127.0.0.1' on the host
 #   BACKUP_DIR   — '/var/backups/thanos-wallet'
+# Optional:
+#   PG_CONTAINER — Postgres container name (default 'thanos-postgres')
 # Optional:
 #   S3_BUCKET    — 's3://bucket/path' for off-site upload via aws cli
 #   RETAIN_DAILY   — default 7
@@ -29,7 +31,7 @@ set -euo pipefail
 
 : "${PGUSER:?PGUSER must be set}"
 : "${PGDATABASE:?PGDATABASE must be set}"
-: "${PGHOST:=127.0.0.1}"
+: "${PG_CONTAINER:=thanos-postgres}"
 : "${BACKUP_DIR:=/var/backups/thanos-wallet}"
 : "${RETAIN_DAILY:=7}"
 : "${RETAIN_WEEKLY:=4}"
@@ -46,9 +48,9 @@ OUT="$BACKUP_DIR/daily/thanos-wallet-${TS}.sql.gz"
 echo "[$(date -u +%FT%TZ)] starting backup → $OUT"
 
 # pg_dump with custom format would be more flexible, but plain SQL is more
-# portable across Postgres versions and easier to inspect.
-PGPASSWORD="${PGPASSWORD:-}" pg_dump \
-  --host="$PGHOST" \
+# portable across Postgres versions and easier to inspect. The dump runs
+# inside the container — local socket auth, so no password is needed.
+docker exec "$PG_CONTAINER" pg_dump \
   --username="$PGUSER" \
   --dbname="$PGDATABASE" \
   --no-owner \

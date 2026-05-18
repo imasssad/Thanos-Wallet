@@ -10,9 +10,9 @@ known-good state in under 5 minutes.
 cd /var/www/thanos-wallet
 git log --oneline -10                       # pick the last good commit hash
 git checkout <good-commit-hash>             # detached HEAD, fine
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   build web api indexer
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   up -d web api indexer
 curl -fsS https://devapp.thanos.fi/ -o /dev/null && echo "✓ site is up"
 ```
@@ -50,7 +50,7 @@ docker images thanos-wallet-<service>
 docker tag <image-id> thanos-wallet-<service>:rollback
 
 # 3) Force-restart the container using that image
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   up -d --no-deps --no-build <service>
 ```
 
@@ -71,7 +71,7 @@ forward-only — there's no `down()` migration. If a deploy corrupts data:
 2. Stop the services that write to the DB:
 
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
      stop api indexer worker
    ```
 
@@ -79,13 +79,13 @@ forward-only — there's no `down()` migration. If a deploy corrupts data:
 
    ```bash
    gunzip -c /var/backups/thanos-wallet/daily/<dump>.sql.gz \
-     | PGPASSWORD=… psql -h 127.0.0.1 -U thanos -d thanos_wallet
+     | docker exec -i thanos-postgres psql -U thanos -d thanos_wallet
    ```
 
 4. Bring services back, watch logs:
 
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
      up -d api indexer worker
    docker logs --tail=20 thanos-indexer
    ```
