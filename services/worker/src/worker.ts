@@ -171,11 +171,10 @@ const bridgePollWorker = new Worker<BridgePollJob>(
     const { bridgeJobId, executionId, provider, attemptCount } = job.data;
     const flog = log.child({ queue: QUEUES.BRIDGE_POLL, jobId: job.id, executionId });
 
-    const multxUrl = process.env.MULTX_API_URL;
-    if (!multxUrl) {
-      flog.warn('MULTX_API_URL not configured — skipping poll');
-      return { skipped: true };
-    }
+    // MultX (bridge.litho.ai) is an internal Litho service — no auth,
+    // no API key. The URL is fixed; env only overrides for a staging
+    // bridge. We never skip the poll any more.
+    const multxUrl = (process.env.MULTX_API_URL || 'https://bridge.litho.ai').replace(/\/$/, '');
 
     const res = await fetch(`${multxUrl}/v1/status/${executionId}`, {
       headers: { accept: 'application/json' },
