@@ -22,7 +22,7 @@ import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
-import { getPortfolio } from './lib/indexer';
+import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices } from './lib/pricing';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
@@ -157,14 +157,6 @@ const ASSETS = [
   { sym: 'COLLE',  name: 'Colle AI',            chain: 'Makalu',  bal: '18,000', usd: '$360.00',    price: '$0.020',  chg:  8.22, color: '#a3e635' },
 ];
 
-const TXS = [
-  { type: 'Received', sym: 'LITHO',  amt: '+1,200', time: '2 min ago', pos: true  },
-  { type: 'Sent',     sym: 'BTC',    amt: '-0.012', time: '1 hr ago',  pos: false },
-  { type: 'Swap',     sym: 'wLITHO', amt: '+500',   time: '3 hr ago',  pos: true  },
-  { type: 'Sent',     sym: 'FGPT',   amt: '-2,000', time: '5 hr ago',  pos: false },
-  { type: 'Received', sym: 'USDC',   amt: '+840',   time: 'Yesterday', pos: true  },
-];
-
 /* ─────────────────────────── Live portfolio ─────────────────────────── */
 
 /* Replaces the ASSETS mock for HomeScreen — fetches real balances from
@@ -248,6 +240,55 @@ function usePortfolio(address: string): PortfolioState {
   }, [address, nonce]);
 
   return { assets, totalUsd, loading, offline, reload: () => setNonce((n) => n + 1) };
+}
+
+/** Relative "x min ago" label from an ISO timestamp. */
+function relativeTime(iso?: string): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (isNaN(t)) return '';
+  const m = Math.floor((Date.now() - t) / 60_000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+/** Map an indexer activity type to a display label + direction. */
+function txDisplay(type: string): { label: string; positive: boolean } {
+  switch (type) {
+    case 'receive': case 'mint': return { label: 'Received', positive: true  };
+    case 'send':    case 'burn': return { label: 'Sent',     positive: false };
+    case 'swap':                 return { label: 'Swap',     positive: false };
+    case 'approval':             return { label: 'Approval', positive: false };
+    default: return { label: type ? type[0].toUpperCase() + type.slice(1) : 'Activity', positive: false };
+  }
+}
+
+interface ActivityState {
+  items: IndexerActivityItem[]; loading: boolean; offline: boolean; reload: () => void;
+}
+
+/** Fetch the wallet's recent on-chain activity from the indexer. */
+function useActivity(address: string): ActivityState {
+  const [nonce, setNonce]   = useState(0);
+  const [items, setItems]   = useState<IndexerActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
+
+  useEffect(() => {
+    if (!address) { setItems([]); setLoading(false); setOffline(false); return; }
+    let cancelled = false;
+    setLoading(true); setOffline(false);
+    getActivity(address)
+      .then((list) => { if (!cancelled) { setItems(list); setLoading(false); } })
+      .catch(()    => { if (!cancelled) { setItems([]); setLoading(false); setOffline(true); } });
+    return () => { cancelled = true; };
+  }, [address, nonce]);
+
+  return { items, loading, offline, reload: () => setNonce((n) => n + 1) };
 }
 
 /* ─────────────────────────── Reusable bits ─────────────────────────── */
@@ -587,8 +628,18 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
 function ActivityScreen() {
   const C = useColors();
   const styles = useStyles();
+  const addr = useWalletAddr();
+  const { items, loading, offline, reload } = useActivity(addr);
+
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={reload} tintColor={C.textSecondary} />
+      }
+    >
       <Text style={styles.pageTitleLarge}>Activity</Text>
       <Text style={styles.pageSubtitle}>Recent transactions across all your wallets</Text>
 
@@ -601,48 +652,41 @@ function ActivityScreen() {
         ))}
       </View>
 
-      <Text style={styles.dateHeader}>Today</Text>
+      <Text style={styles.dateHeader}>Recent</Text>
       <View style={styles.card}>
-        {TXS.slice(0, 2).map((t, i) => {
-          const TxIcon = t.type === 'Sent' ? ArrowUpRight : t.type === 'Received' ? ArrowDownLeft : Repeat;
+        {loading && (
+          <Text style={[styles.rowSub, { padding: 16 }]}>Loading activity…</Text>
+        )}
+        {!loading && offline && (
+          <Text style={[styles.rowSub, { padding: 16 }]}>
+            Couldn’t reach the indexer — pull down to retry.
+          </Text>
+        )}
+        {!loading && !offline && items.length === 0 && (
+          <Text style={[styles.rowSub, { padding: 16 }]}>No transactions yet.</Text>
+        )}
+        {items.map((t, i) => {
+          const d = txDisplay(t.type);
+          const TxIcon = d.label === 'Sent' ? ArrowUpRight
+                       : d.label === 'Received' ? ArrowDownLeft
+                       : Repeat;
+          const amount = String(t.amount ?? '').replace(/^[+-]/, '');
           return (
-            <Pressable key={i} style={[styles.row, i < 1 && styles.rowBorder]}>
-              <View style={[styles.txIcon, { backgroundColor: t.pos ? C.greenDim : C.blueDim }]}>
-                <TxIcon size={16} color={t.pos ? C.green : C.blue} strokeWidth={2.4}/>
+            <Pressable key={t.id || `${i}`} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
+              <View style={[styles.txIcon, { backgroundColor: d.positive ? C.greenDim : C.blueDim }]}>
+                <TxIcon size={16} color={d.positive ? C.green : C.blue} strokeWidth={2.4}/>
               </View>
               <View style={styles.rowMid}>
-                <Text style={styles.rowSymbol}>{t.type} {t.sym}</Text>
-                <Text style={styles.rowSub}>{t.time}</Text>
+                <Text style={styles.rowSymbol}>{d.label} {t.symbol}</Text>
+                <Text style={styles.rowSub}>{relativeTime(t.ts) || (t.status ?? '')}</Text>
               </View>
               <View style={styles.rowRight}>
-                <Text style={[styles.rowAmt, { color: t.pos ? C.green : C.textPrimary }]}>
-                  {t.amt} {t.sym}
+                <Text style={[styles.rowAmt, { color: d.positive ? C.green : C.textPrimary }]}>
+                  {d.positive ? '+' : ''}{amount} {t.symbol}
                 </Text>
-                <Text style={styles.rowBal}>≈ ${(Math.random() * 1000).toFixed(2)}</Text>
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Text style={styles.dateHeader}>Earlier this week</Text>
-      <View style={styles.card}>
-        {TXS.slice(2).map((t, i, arr) => {
-          const TxIcon = t.type === 'Sent' ? ArrowUpRight : t.type === 'Received' ? ArrowDownLeft : Repeat;
-          return (
-            <Pressable key={i} style={[styles.row, i < arr.length - 1 && styles.rowBorder]}>
-              <View style={[styles.txIcon, { backgroundColor: t.pos ? C.greenDim : C.blueDim }]}>
-                <TxIcon size={16} color={t.pos ? C.green : C.blue} strokeWidth={2.4}/>
-              </View>
-              <View style={styles.rowMid}>
-                <Text style={styles.rowSymbol}>{t.type} {t.sym}</Text>
-                <Text style={styles.rowSub}>{t.time}</Text>
-              </View>
-              <View style={styles.rowRight}>
-                <Text style={[styles.rowAmt, { color: t.pos ? C.green : C.textPrimary }]}>
-                  {t.amt} {t.sym}
-                </Text>
-                <Text style={styles.rowBal}>≈ ${(Math.random() * 1000).toFixed(2)}</Text>
+                {t.txHash ? (
+                  <Text style={styles.rowBal}>{t.txHash.slice(0, 10)}…</Text>
+                ) : null}
               </View>
             </Pressable>
           );
