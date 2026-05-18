@@ -10,11 +10,14 @@
  * the real endpoint shapes land we can drop them in without touching the
  * SwapModal.
  *
- * Expected endpoints (subject to confirmation when full API docs land):
- *   POST /v1/quote        — { from, to, fromAmount } -> Quote
- *   POST /v1/execute      — { quoteId, signedTx }    -> Execution
- *   GET  /v1/status/:id   —                          -> Status
- *   GET  /v1/health       —                          -> { ok: true }
+ * Endpoints — status + health are verified against bridge.litho.ai/docs;
+ * quote/execute are unconfirmed (the live bridge API is validator-
+ * signature based and exposes no quote/execute REST flow yet), so those
+ * two degrade gracefully via MultXUnavailable until that API lands:
+ *   POST /bridge/quote          — { from, to, fromAmount } -> Quote
+ *   POST /bridge/execute        — { quoteId, signedTx }    -> Execution
+ *   GET  /bridge/status/:txHash —                          -> Status
+ *   GET  /health                —                          -> { ok: true }
  */
 
 const DEFAULT_BASE = 'https://bridge.litho.ai';
@@ -99,20 +102,21 @@ async function json<T>(method: string, path: string, body?: unknown, timeoutMs =
 /* ─── Public API ──────────────────────────────────────────────────────── */
 
 export async function getQuote(from: string, to: string, fromAmount: string): Promise<Quote> {
-  return json<Quote>('POST', '/v1/quote', { from, to, fromAmount });
+  return json<Quote>('POST', '/bridge/quote', { from, to, fromAmount });
 }
 
 export async function execute(quoteId: string, signedTx: string): Promise<Execution> {
-  return json<Execution>('POST', '/v1/execute', { quoteId, signedTx });
+  return json<Execution>('POST', '/bridge/execute', { quoteId, signedTx });
 }
 
-export async function getStatus(executionId: string): Promise<Status> {
-  return json<Status>('GET', `/v1/status/${encodeURIComponent(executionId)}`);
+/** Bridge status — keyed on the source-chain tx hash (pass it as `txHash`). */
+export async function getStatus(txHash: string): Promise<Status> {
+  return json<Status>('GET', `/bridge/status/${encodeURIComponent(txHash)}`);
 }
 
 export async function isHealthy(): Promise<boolean> {
   try {
-    await json<{ ok: boolean }>('GET', '/v1/health', undefined, 3_000);
+    await json<{ ok: boolean }>('GET', '/health', undefined, 3_000);
     return true;
   } catch {
     return false;
