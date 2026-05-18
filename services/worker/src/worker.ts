@@ -176,17 +176,31 @@ const bridgePollWorker = new Worker<BridgePollJob>(
     // bridge. We never skip the poll any more.
     const multxUrl = (process.env.MULTX_API_URL || 'https://bridge.litho.ai').replace(/\/$/, '');
 
-    const res = await fetch(`${multxUrl}/v1/status/${executionId}`, {
+    // MultX keys bridge state on the source-chain tx hash, so
+    // `executionId` must carry that hash. See the MultX OpenAPI at
+    // bridge.litho.ai/docs — `GET /bridge/status/{txHash}`.
+    const res = await fetch(`${multxUrl}/bridge/status/${executionId}`, {
       headers: { accept: 'application/json' },
     });
-    if (!res.ok) throw new Error(`MultX status check failed: ${res.status}`);
-    const status = await res.json() as { state?: string };
 
-    const internalStatus =
-      status.state === 'completed' ? 'completed' :
-      status.state === 'failed'    ? 'failed'    :
-      status.state === 'settling'  ? 'settling'  :
-      'bridging';
+    // A 404 means the bridge hasn't observed the source tx yet — that's
+    // an in-flight poll, not a failure; fall through and let the
+    // re-queue below try again.
+    let status: { status?: string } = {};
+    let internalStatus: 'completed' | 'failed' | 'settling' | 'bridging';
+    if (res.status === 404) {
+      internalStatus = 'bridging';
+    } else if (!res.ok) {
+      throw new Error(`MultX status check failed: ${res.status}`);
+    } else {
+      status = await res.json() as { status?: string };
+      // MultX status enum: pending | signing | completed | failed.
+      internalStatus =
+        status.status === 'completed' ? 'completed' :
+        status.status === 'failed'    ? 'failed'    :
+        status.status === 'signing'   ? 'settling'  :
+        'bridging';
+    }
 
     await updateBridgeJob(executionId, internalStatus, status);
 
