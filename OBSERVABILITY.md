@@ -25,8 +25,8 @@ SENTRY_PROJECT=thanos-wallet-web
 Then rebuild the web image:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
-  build web && docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.host-db.yml \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  build web && docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   up -d web
 ```
 
@@ -144,21 +144,9 @@ recursively to every captured event + breadcrumb, mirroring
 
 The bundled `redis` container in `docker-compose.yml` already runs with
 `--appendonly yes --appendfsync everysec` — AOF persistence enabled, ~1s
-durability window.
-
-The **host Redis** the production stack uses (via
-`docker-compose.host-db.yml`) needs the same enabled manually. Run once
-on the VPS:
-
-```bash
-# Append the directive if it's not already there
-grep -q '^appendonly yes' /etc/redis/redis.conf \
-  || echo 'appendonly yes' | sudo tee -a /etc/redis/redis.conf
-grep -q '^appendfsync' /etc/redis/redis.conf \
-  || echo 'appendfsync everysec' | sudo tee -a /etc/redis/redis.conf
-sudo systemctl restart redis-server
-ls -la /var/lib/redis/   # appendonly.aof should appear
-```
+durability window. Production uses this same container (the stack is
+fully containerised — no host Redis), so AOF is on with no manual step.
+The AOF file lives in the `redis_data` Docker volume.
 
 ## Uptime / external probes
 

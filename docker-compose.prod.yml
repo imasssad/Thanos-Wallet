@@ -3,15 +3,9 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 services:
-  postgres:
-    # Bind only to localhost — never expose Postgres to the internet.
-    ports:
-      - "127.0.0.1:5432:5432"
-
-  redis:
-    # Same: localhost only.
-    ports:
-      - "127.0.0.1:6379:6379"
+  # postgres + redis intentionally have no override here — they run as
+  # Docker-network-only containers (no host port), defined fully in the
+  # base docker-compose.yml.
 
   api:
     environment:
