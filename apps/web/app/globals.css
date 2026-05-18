@@ -210,6 +210,42 @@ body {
   }
 }
 
+/* ── Mobile interaction polish ────────────────────────────────────────
+   Touch devices otherwise treat a tap on a button / chrome element as
+   the start of a text-selection gesture, leaving the label highlighted
+   (the "Get testnet LITHO" selection bug). They also paint a grey/blue
+   tap-flash rectangle. Neither belongs in an app-style UI.
+
+     - tap-highlight cleared everywhere
+     - buttons / links / role=button / nav chrome are NOT selectable and
+       suppress the iOS long-press callout
+     - real content opts back in: inputs, textareas, contenteditable, and
+       anything marked .selectable (used for addresses / tx hashes the
+       user genuinely wants to copy) */
+* { -webkit-tap-highlight-color: transparent; }
+
+button,
+a,
+label,
+[role="button"],
+.nav-tab, .account-chip, .menu-item, .card-action, .modal-close,
+.btn-primary, .btn-outline, .btn-secondary {
+  -webkit-user-select: none;
+  -moz-user-select:    none;
+  user-select:         none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.selectable {
+  -webkit-user-select: text;
+  -moz-user-select:    text;
+  user-select:         text;
+  -webkit-touch-callout: default;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -219,11 +255,18 @@ body {
 /* Selection */
 ::selection { background: rgba(139,125,247,0.25); color: var(--accent-200); }
 
-/* Focus */
+/* Focus — keyboard navigation only. :focus-visible already excludes
+   pointer/touch in spec-compliant browsers, so a tap never paints this. */
 :focus-visible {
   outline: 2px solid var(--accent-500);
   outline-offset: 2px;
   border-radius: var(--radius-xs);
+}
+/* Belt-and-braces: a plain :focus (mouse / touch) on a button must not
+   show the keyboard ring — only :focus-visible does. */
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* Utilities */
