@@ -75,6 +75,11 @@ services:
       CORS_ORIGINS:      ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60000}
       RATE_LIMIT_MAX:    ${RATE_LIMIT_MAX:-100}
+      # Lithosphere RPC — the DNNS resolver fails over primary → fallback.
+      LITHO_RPC_PRIMARY:   ${LITHO_RPC_PRIMARY:-https://rpc.litho.ai}
+      LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-2.litho.ai}
+      KAMET_RPC_PRIMARY:   ${KAMET_RPC_PRIMARY:-https://rpc.kamet.litho.ai}
+      KAMET_RPC_FALLBACK:  ${KAMET_RPC_FALLBACK:-https://rpc-3.litho.ai}
     ports:
       - "4000:4000"
     volumes:
@@ -101,10 +106,16 @@ services:
       PORT:             4010
       DATABASE_URL:     postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD:-thanos_dev_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet}
       REDIS_URL:        redis://:${REDIS_PASSWORD:-redis_dev_secret}@redis:6379
-      # Lithosphere RPC
+      # Lithosphere RPC — Makalu (700777) + Kamet (900523), each with a
+      # fallback. The indexer prefers rpc-2 (LITHO_RPC_INDEXER) so its
+      # sync load doesn't compete with user traffic on rpc.litho.ai.
       LITHO_RPC_PRIMARY:   ${LITHO_RPC_PRIMARY:-https://rpc.litho.ai}
-      LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-fallback.litho.ai}
+      LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-2.litho.ai}
+      LITHO_RPC_INDEXER:   ${LITHO_RPC_INDEXER:-https://rpc-2.litho.ai,https://rpc.litho.ai}
       LITHO_CHAIN_ID:      ${LITHO_CHAIN_ID:-700777}
+      KAMET_RPC_PRIMARY:   ${KAMET_RPC_PRIMARY:-https://rpc.kamet.litho.ai}
+      KAMET_RPC_FALLBACK:  ${KAMET_RPC_FALLBACK:-https://rpc-3.litho.ai}
+      KAMET_CHAIN_ID:      ${KAMET_CHAIN_ID:-900523}
       # EVM RPCs
       ETH_RPC_URL:         ${ETH_RPC_URL:-https://eth.llamarpc.com}
       BNB_RPC_URL:         ${BNB_RPC_URL:-https://bsc-dataseed.binance.org}
@@ -148,6 +159,12 @@ services:
       INDEXER_URL:      http://indexer:4010
       MULTX_API_URL:    ${MULTX_API_URL:-https://bridge.litho.ai}
       PRICE_API_URL:    ${PRICE_API_URL:-https://api.coingecko.com/api/v3}
+      # Lithosphere RPC — worker tx-confirm builds a FallbackProvider
+      # over primary + fallback for both Makalu and Kamet.
+      LITHO_RPC_PRIMARY:   ${LITHO_RPC_PRIMARY:-https://rpc.litho.ai}
+      LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-2.litho.ai}
+      KAMET_RPC_PRIMARY:   ${KAMET_RPC_PRIMARY:-https://rpc.kamet.litho.ai}
+      KAMET_RPC_FALLBACK:  ${KAMET_RPC_FALLBACK:-https://rpc-3.litho.ai}
 
   # ─── Monitoring (local dev) ──────────────────────────────────────────────────
 

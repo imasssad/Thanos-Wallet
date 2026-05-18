@@ -16,11 +16,29 @@
  * The seed never leaves this module; a fresh HDNodeWallet is built per
  * call and discarded.
  */
-import { HDNodeWallet, Mnemonic, JsonRpcProvider, getBytes, toUtf8Bytes, isHexString } from 'ethers';
+import {
+  HDNodeWallet, Mnemonic, JsonRpcProvider, FallbackProvider,
+  getBytes, toUtf8Bytes, isHexString, type Provider,
+} from 'ethers';
 
 const HD_PATH = "m/44'/60'/0'/0/0";
 const MAKALU_CHAIN_ID = 700777;
-const MAKALU_RPC = 'https://rpc.litho.ai';
+// Makalu [primary, fallback] — failover via FallbackProvider.
+const MAKALU_RPCS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
+
+/** Makalu provider with primary→fallback failover. */
+function makaluProvider(): Provider {
+  return new FallbackProvider(
+    MAKALU_RPCS.map(url => ({
+      provider:     new JsonRpcProvider(url, MAKALU_CHAIN_ID),
+      priority:     1,
+      weight:       1,
+      stallTimeout: 1500,
+    })),
+    MAKALU_CHAIN_ID,
+    { quorum: 1 },
+  );
+}
 
 export class WcSignerError extends Error {
   constructor(public readonly code: number, message: string) {
@@ -29,7 +47,7 @@ export class WcSignerError extends Error {
   }
 }
 
-function walletFromSeed(seed: string[], provider?: JsonRpcProvider): HDNodeWallet {
+function walletFromSeed(seed: string[], provider?: Provider): HDNodeWallet {
   const mnemonic = Mnemonic.fromPhrase(seed.join(' '));
   const hd = HDNodeWallet.fromMnemonic(mnemonic, HD_PATH);
   return provider ? (hd.connect(provider) as HDNodeWallet) : hd;
@@ -114,8 +132,7 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         gas?: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       });
-      const provider = new JsonRpcProvider(MAKALU_RPC, MAKALU_CHAIN_ID);
-      const wallet = walletFromSeed(seed, provider);
+      const wallet = walletFromSeed(seed, makaluProvider());
       try {
         const sent = await wallet.sendTransaction({
           to:                   tx.to,

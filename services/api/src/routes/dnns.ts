@@ -35,13 +35,18 @@ const POSITIVE_TTL_SEC =
 const NEGATIVE_TTL_SEC =
   Number(process.env.DNNS_NEGATIVE_TTL_SEC || 30);
 
-/** Per-chain RPC URLs. Mirrors the indexer's chain config — we read
- *  the env if set, fall back to the public Lithosphere RPC. */
-const CHAIN_RPC: Record<number, string> = {
-  700777: process.env.LITHO_RPC_PRIMARY?.split(',')[0]?.trim()
-       || 'https://rpc.litho.ai',
-  900523: process.env.KAMET_RPC?.split(',')[0]?.trim()
-       || 'https://rpc.kamet.litho.ai',
+/** Per-chain RPC URLs as [primary, fallback]. callDnnsRpc tries them
+ *  in order — if the primary fails the fallback is hit before we give
+ *  up. Env overrides each leg independently. */
+const CHAIN_RPC: Record<number, string[]> = {
+  700777: [
+    process.env.LITHO_RPC_PRIMARY?.split(',')[0]?.trim()  || 'https://rpc.litho.ai',
+    process.env.LITHO_RPC_FALLBACK?.split(',')[0]?.trim() || 'https://rpc-2.litho.ai',
+  ],
+  900523: [
+    process.env.KAMET_RPC_PRIMARY?.split(',')[0]?.trim()  || 'https://rpc.kamet.litho.ai',
+    process.env.KAMET_RPC_FALLBACK?.split(',')[0]?.trim() || 'https://rpc-3.litho.ai',
+  ],
 };
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -85,53 +90,63 @@ interface CacheRow {
 
 /* ─── Chain call (JSON-RPC) ──────────────────────────────────────── */
 
-async function callDnnsRpc(chainId: number, name: string): Promise<{
+interface DnnsRpcResult {
   address?: string;
   bech32?:  string;
   resolver?: string;
   avatarUrl?: string;
   bio?: string;
-} | null> {
-  const rpcUrl = CHAIN_RPC[chainId];
-  if (!rpcUrl) return null;
-  try {
-    const res = await fetch(rpcUrl, {
-      method:  'POST',
-      headers: { 'content-type': 'application/json' },
-      body:    JSON.stringify({
-        jsonrpc: '2.0',
-        id:      Date.now(),
-        method:  'dnns_resolve',
-        params:  [name],
-      }),
-      signal:  AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) return null;
-    const json = await res.json() as { result?: unknown; error?: { message?: string } };
-    if (json.error) {
-      log.debug({ chainId, name, err: json.error.message }, 'dnns_resolve rpc error');
-      return null;
-    }
-    /* Two response shapes accepted: a bare address string OR a full
-       record object. Both are valid against the current resolver. */
-    if (typeof json.result === 'string') {
-      return /^0x[a-fA-F0-9]{40}$/.test(json.result) ? { address: json.result } : null;
-    }
-    if (json.result && typeof json.result === 'object') {
-      const r = json.result as Record<string, unknown>;
-      return {
-        address:   typeof r.address   === 'string' ? r.address   : undefined,
-        bech32:    typeof r.bech32    === 'string' ? r.bech32    : undefined,
-        resolver:  typeof r.resolver  === 'string' ? r.resolver  : undefined,
-        avatarUrl: typeof r.avatarUrl === 'string' ? r.avatarUrl : undefined,
-        bio:       typeof r.bio       === 'string' ? r.bio       : undefined,
-      };
-    }
-    return null;
-  } catch (e) {
-    log.debug({ chainId, name, err: (e as Error).message }, 'dnns rpc fetch failed');
+}
+
+/** One JSON-RPC `dnns_resolve` call against a single endpoint. Returns
+ *  a parsed result, or throws so callDnnsRpc can fail over. */
+async function dnnsRpcOnce(rpcUrl: string, name: string): Promise<DnnsRpcResult | null> {
+  const res = await fetch(rpcUrl, {
+    method:  'POST',
+    headers: { 'content-type': 'application/json' },
+    body:    JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: 'dnns_resolve', params: [name] }),
+    signal:  AbortSignal.timeout(5_000),
+  });
+  if (!res.ok) throw new Error(`rpc ${res.status}`);
+  const json = await res.json() as { result?: unknown; error?: { message?: string } };
+  if (json.error) {
+    // A resolver-level error (e.g. name unregistered) is authoritative —
+    // not a transport failure, so don't fail over for it.
     return null;
   }
+  if (typeof json.result === 'string') {
+    return /^0x[a-fA-F0-9]{40}$/.test(json.result) ? { address: json.result } : null;
+  }
+  if (json.result && typeof json.result === 'object') {
+    const r = json.result as Record<string, unknown>;
+    return {
+      address:   typeof r.address   === 'string' ? r.address   : undefined,
+      bech32:    typeof r.bech32    === 'string' ? r.bech32    : undefined,
+      resolver:  typeof r.resolver  === 'string' ? r.resolver  : undefined,
+      avatarUrl: typeof r.avatarUrl === 'string' ? r.avatarUrl : undefined,
+      bio:       typeof r.bio       === 'string' ? r.bio       : undefined,
+    };
+  }
+  return null;
+}
+
+/** Resolve a name on-chain with RPC failover: try the primary, and on
+ *  a transport failure (timeout / 5xx / network) fall through to the
+ *  fallback endpoint before giving up. */
+async function callDnnsRpc(chainId: number, name: string): Promise<DnnsRpcResult | null> {
+  const endpoints = CHAIN_RPC[chainId];
+  if (!endpoints || endpoints.length === 0) return null;
+  let lastErr: unknown = null;
+  for (const rpcUrl of endpoints) {
+    try {
+      return await dnnsRpcOnce(rpcUrl, name);
+    } catch (e) {
+      lastErr = e;
+      log.debug({ chainId, name, rpcUrl, err: (e as Error).message }, 'dnns rpc endpoint failed — failing over');
+    }
+  }
+  log.warn({ chainId, name, err: (lastErr as Error)?.message }, 'dnns rpc — all endpoints failed');
+  return null;
 }
 
 /* ─── Cache helpers ──────────────────────────────────────────────── */

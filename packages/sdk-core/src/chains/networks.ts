@@ -1,21 +1,24 @@
 import type { NetworkConfig } from '../types';
 
+// rpcUrls is ordered [primary, fallback] — every consumer builds an
+// ethers FallbackProvider over the list so a stalled primary rotates
+// to the fallback transparently.
 export const MAKALU_TESTNET: NetworkConfig = {
   id: 'lithosphere-makalu',
   chainId: 700777,
   name: 'Lithosphere Makalu',
   kind: 'lithic',
-  rpcUrls: ['https://rpc.litho.ai'],
+  rpcUrls: ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'],
   blockExplorerUrl: 'https://explorer.litho.ai',
   nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 }
 };
 
 export const KAMET_TESTNET: NetworkConfig = {
   id: 'lithosphere-kamet',
-  chainId: 700778,
+  chainId: 900523,
   name: 'Lithosphere Kamet',
   kind: 'lithic',
-  rpcUrls: ['https://rpc.kamet.litho.ai'],
+  rpcUrls: ['https://rpc.kamet.litho.ai', 'https://rpc-3.litho.ai'],
   blockExplorerUrl: 'https://kamet.litho.ai',
   nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 }
 };
