@@ -1,14 +1,15 @@
 /**
- * Live portfolio data for the desktop wallet.
+ * Live portfolio + activity data for the desktop wallet.
  *
- * Fetches real balances from the indexer (services/indexer) and prices
- * them via @thanos/sdk-core's CoinGecko pricing. Replaces the COINS mock
- * the renderer shipped with.
+ * Fetches real balances and recent activity from the indexer
+ * (services/indexer) and prices assets via @thanos/sdk-core's CoinGecko
+ * pricing. Replaces the COINS / TXS / ALL_TXS mocks the renderer
+ * shipped with.
  *
  * sdk-core's IndexerClient is intentionally not used for the typed
- * portfolio call — its PortfolioSnapshot type predates the indexer's
- * current response shape — so this module does a directly-typed fetch
- * against the real /portfolio response instead.
+ * call — its PortfolioSnapshot type predates the indexer's current
+ * response shape — so this module does a directly-typed fetch against
+ * the real /portfolio response instead.
  */
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices } from '@thanos/sdk-core';
@@ -30,10 +31,20 @@ interface IndexerAsset {
   native?:       boolean;
   tokenAddress?: string;
 }
+interface IndexerActivityItem {
+  id:       string;
+  type:     string;
+  symbol:   string;
+  amount:   string;
+  txHash?:  string;
+  ts?:      string;
+  status?:  string;
+}
 interface IndexerPortfolio {
   walletAddress: string;
   updatedAt:     string;
   assets:        IndexerAsset[];
+  activity?:     IndexerActivityItem[];
 }
 
 /* ─── Display helpers ────────────────────────────────────────────────── */
@@ -60,7 +71,30 @@ export function formatAmount(n: number): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: n >= 1 ? 4 : 8 });
 }
 
-/* ─── Hook ───────────────────────────────────────────────────────────── */
+function formatDate(iso?: string): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (isNaN(t)) return '—';
+  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Map an indexer activity type to a display type + direction. */
+function txType(type: string): { type: 'Send' | 'Receive' | 'Swap' | 'Other'; pos: boolean } {
+  switch (type) {
+    case 'receive': case 'mint': return { type: 'Receive', pos: true  };
+    case 'send':    case 'burn': return { type: 'Send',    pos: false };
+    case 'swap':                 return { type: 'Swap',    pos: true  };
+    default:                     return { type: 'Other',   pos: true  };
+  }
+}
+
+function txStatus(status?: string): 'Completed' | 'Pending' | 'Failed' {
+  if (status === 'failed')  return 'Failed';
+  if (status === 'pending') return 'Pending';
+  return 'Completed';
+}
+
+/* ─── Types ──────────────────────────────────────────────────────────── */
 
 export interface DisplayCoin {
   sym: string; name: string;
@@ -69,13 +103,25 @@ export interface DisplayCoin {
   tokenAddress?: string; native: boolean;
 }
 
+export interface DisplayTx {
+  id: string; sym: string; name: string;
+  type: 'Send' | 'Receive' | 'Swap' | 'Other';
+  date: string;
+  status: 'Completed' | 'Pending' | 'Failed';
+  amount: string; pos: boolean; color: string;
+  txHash?: string;
+}
+
 export interface PortfolioState {
   coins:    DisplayCoin[];
+  activity: DisplayTx[];
   totalUsd: number;
   loading:  boolean;
   offline:  boolean;
   reload:   () => void;
 }
+
+/* ─── Fetch ──────────────────────────────────────────────────────────── */
 
 async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
   const ctrl  = new AbortController();
@@ -91,16 +137,16 @@ async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
   }
 }
 
-/** Fetch + price the wallet's portfolio. Re-runs when `address` changes. */
+/** Fetch + price the wallet's portfolio and activity. Re-runs on address change. */
 export function usePortfolio(address: string): PortfolioState {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Omit<PortfolioState, 'reload'>>({
-    coins: [], totalUsd: 0, loading: true, offline: false,
+    coins: [], activity: [], totalUsd: 0, loading: true, offline: false,
   });
 
   useEffect(() => {
     if (!/^0x[0-9a-fA-F]{40}$/.test(address || '')) {
-      setState({ coins: [], totalUsd: 0, loading: false, offline: false });
+      setState({ coins: [], activity: [], totalUsd: 0, loading: false, offline: false });
       return;
     }
     let cancelled = false;
@@ -109,6 +155,7 @@ export function usePortfolio(address: string): PortfolioState {
       try {
         const [pf, prices] = await Promise.all([fetchPortfolio(address), fetchEcosystemPrices()]);
         if (cancelled) return;
+
         const priced = pf.assets.map((a) => {
           let bal = 0;
           try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
@@ -124,10 +171,23 @@ export function usePortfolio(address: string): PortfolioState {
           color: coinColor(a.symbol),
           tokenAddress: a.tokenAddress, native: !!a.native,
         }));
-        setState({ coins, totalUsd, loading: false, offline: false });
+
+        const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {
+          const { type, pos } = txType(t.type);
+          const amt = String(t.amount ?? '').replace(/^[+-]/, '');
+          return {
+            id: t.id || `tx-${i}`,
+            sym: t.symbol, name: t.symbol,
+            type, date: formatDate(t.ts), status: txStatus(t.status),
+            amount: `${pos ? '+' : '-'}${amt} ${t.symbol}`,
+            pos, color: coinColor(t.symbol), txHash: t.txHash,
+          };
+        });
+
+        setState({ coins, activity, totalUsd, loading: false, offline: false });
       } catch {
         if (cancelled) return;
-        setState({ coins: [], totalUsd: 0, loading: false, offline: true });
+        setState({ coins: [], activity: [], totalUsd: 0, loading: false, offline: true });
       }
     })();
     return () => { cancelled = true; };
@@ -139,7 +199,7 @@ export function usePortfolio(address: string): PortfolioState {
 /* ─── Context — App fetches once, every view reads it ────────────────── */
 
 export const PortfolioContext = createContext<PortfolioState>({
-  coins: [], totalUsd: 0, loading: false, offline: false, reload: () => {},
+  coins: [], activity: [], totalUsd: 0, loading: false, offline: false, reload: () => {},
 });
 export function usePortfolioCtx(): PortfolioState {
   return useContext(PortfolioContext);

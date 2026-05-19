@@ -64,17 +64,8 @@ const KeyIcon   = Ic(<><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.
 const Lock2     = Ic(<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>);
 const ChevRight2 = Ic(<polyline points="9 18 15 12 9 6"/>);
 
-/* ──────────────────────── Mock data ──────────────────────── */
-const ACCOUNT = { name: 'RobbyWallet', address: '0x70cA2F2B7' };
-
-const TXS = [
-  { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 22, 2026', price: '$0.30',   status: 'Completed', amount: '+1,200 LITHO', pos: true,  color: '#8b7df7' },
-  { sym: 'BTC',    name: 'Bitcoin',             date: 'Jan 20, 2026', price: '$63,200', status: 'Completed', amount: '+0.142 BTC',   pos: true,  color: '#f7931a' },
-  { sym: 'ETH',    name: 'Ethereum',            date: 'Jan 19, 2026', price: '$2,814',  status: 'Completed', amount: '-1.500 ETH',   pos: false, color: '#627eea' },
-  { sym: 'wLITHO', name: 'Wrapped Lithosphere', date: 'Jan 18, 2026', price: '$0.30',   status: 'Completed', amount: '+500 wLITHO',  pos: true,  color: '#a395f8' },
-  { sym: 'FGPT',   name: 'FractalGPT',          date: 'Jan 17, 2026', price: '$0.015',  status: 'Completed', amount: '-2,000 FGPT',  pos: false, color: '#10b981' },
-  { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 15, 2026', price: '$1.00',   status: 'Pending',   amount: '+840 USDC',    pos: true,  color: '#2775ca' },
-];
+/* ──────────────────────── Account ──────────────────────── */
+const ACCOUNT = { name: 'Thanos Wallet', address: '0x0000000000000000000000000000000000000000' };
 
 /* ──────────────────────── Token icon ──────────────────────── */
 
@@ -313,7 +304,7 @@ function StakingCard() {
 /* ──────────────────────── Dashboard ──────────────────────── */
 
 function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null }) {
-  const { coins, totalUsd, loading } = usePortfolioCtx();
+  const { coins, activity, totalUsd, loading } = usePortfolioCtx();
   const balance = loading ? '···' : formatUsd(totalUsd);
   const liveLine = liveEth !== null
     ? `Live ETH: ${parseFloat(liveEth).toFixed(6)} ETH`
@@ -411,21 +402,19 @@ function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'
       <div className="card">
         <div className="table-top">
           <span className="card-title">Payment history</span>
-          <button className="chart-selector">Last month <ChevDown size={11}/></button>
         </div>
         <table className="data-table">
           <thead>
             <tr>
               <th>Name</th>
               <th>Date</th>
-              <th>Price</th>
               <th>Status</th>
               <th style={{ textAlign: 'right' }}>Amount</th>
             </tr>
           </thead>
           <tbody>
-            {TXS.map((tx, i) => (
-              <tr key={i}>
+            {activity.slice(0, 6).map((tx) => (
+              <tr key={tx.id}>
                 <td>
                   <div className="tx-cell">
                     <TokenAvatar sym={tx.sym} color={tx.color} className="tx-avatar" label={tx.sym.slice(0, 2)}/>
@@ -436,12 +425,8 @@ function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'
                   </div>
                 </td>
                 <td>{tx.date}</td>
-                <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{tx.price}</td>
                 <td>
-                  <span className={`status-pill ${
-                    tx.status === 'Completed' ? 'status-completed' :
-                    tx.status === 'Pending'   ? 'status-pending'   : 'status-failed'
-                  }`}>
+                  <span className={`status-pill status-${tx.status.toLowerCase()}`}>
                     <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
                     {tx.status}
                   </span>
@@ -453,6 +438,9 @@ function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'
             ))}
           </tbody>
         </table>
+        {!loading && activity.length === 0 && (
+          <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No transactions yet.</div>
+        )}
       </div>
     </>
   );
@@ -828,23 +816,10 @@ function PortfolioView() {
 }
 
 /* ──────────────────────── Transactions view ──────────────────────── */
-const ALL_TXS = [
-  { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 22, 2026', price: '$0.30',   type: 'Receive', status: 'Completed', amount: '+1,200 LITHO',  pos: true,  color: '#8b7df7' },
-  { sym: 'BTC',    name: 'Bitcoin',             date: 'Jan 20, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 BTC',    pos: true,  color: '#f7931a' },
-  { sym: 'ETH',    name: 'Ethereum',            date: 'Jan 19, 2026', price: '$2,814',  type: 'Send',    status: 'Completed', amount: '-1.500 ETH',    pos: false, color: '#627eea' },
-  { sym: 'wLITHO', name: 'Wrapped Lithosphere', date: 'Jan 18, 2026', price: '$0.30',   type: 'Swap',    status: 'Completed', amount: '+500 wLITHO',   pos: true,  color: '#a395f8' },
-  { sym: 'FGPT',   name: 'FractalGPT',          date: 'Jan 17, 2026', price: '$0.015',  type: 'Send',    status: 'Completed', amount: '-2,000 FGPT',   pos: false, color: '#10b981' },
-  { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 15, 2026', price: '$1.00',   type: 'Receive', status: 'Pending',   amount: '+840 USDC',     pos: true,  color: '#2775ca' },
-  { sym: 'ETH',    name: 'Ethereum',            date: 'Jan 14, 2026', price: '$3,100',  type: 'Swap',    status: 'Completed', amount: '+4.20 ETH',     pos: true,  color: '#627eea' },
-  { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 12, 2026', price: '$0.28',   type: 'Send',    status: 'Failed',    amount: '-500 LITHO',    pos: false, color: '#8b7df7' },
-  { sym: 'BNB',    name: 'BNB',                 date: 'Jan 10, 2026', price: '$398.20', type: 'Receive', status: 'Completed', amount: '+2.50 BNB',     pos: true,  color: '#f3ba2f' },
-  { sym: 'BTC',    name: 'Bitcoin',             date: 'Jan 8, 2026',  price: '$59,400', type: 'Receive', status: 'Completed', amount: '+0.080 BTC',    pos: true,  color: '#f7931a' },
-  { sym: 'USDC',   name: 'USD Coin',            date: 'Jan 5, 2026',  price: '$1.00',   type: 'Send',    status: 'Completed', amount: '-250 USDC',     pos: false, color: '#2775ca' },
-];
-
 function TransactionsView() {
+  const { activity, loading, offline } = usePortfolioCtx();
   const [filter, setFilter] = useState<'All'|'Send'|'Receive'|'Swap'>('All');
-  const filtered = filter === 'All' ? ALL_TXS : ALL_TXS.filter(t => t.type === filter);
+  const filtered = filter === 'All' ? activity : activity.filter(t => t.type === filter);
 
   return (
     <div className="page-wrap">
@@ -864,14 +839,13 @@ function TransactionsView() {
               <th>Asset</th>
               <th>Type</th>
               <th>Date</th>
-              <th>Price</th>
               <th>Status</th>
               <th style={{ textAlign: 'right' }}>Amount</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((tx, i) => (
-              <tr key={i}>
+            {filtered.map((tx) => (
+              <tr key={tx.id}>
                 <td>
                   <div className="tx-cell">
                     <TokenAvatar sym={tx.sym} color={tx.color} className="tx-avatar" label={tx.sym.slice(0,2)}/>
@@ -885,7 +859,6 @@ function TransactionsView() {
                   <span className={`type-pill type-${tx.type.toLowerCase()}`}>{tx.type}</span>
                 </td>
                 <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tx.date}</td>
-                <td style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{tx.price}</td>
                 <td>
                   <span className={`status-pill status-${tx.status.toLowerCase()}`}>
                     <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
@@ -899,6 +872,11 @@ function TransactionsView() {
             ))}
           </tbody>
         </table>
+        {loading && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading transactions…</div>}
+        {!loading && offline && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Indexer offline.</div>}
+        {!loading && !offline && filtered.length === 0 && (
+          <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No transactions.</div>
+        )}
       </div>
     </div>
   );
