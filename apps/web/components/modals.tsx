@@ -1179,9 +1179,18 @@ interface ReceiveNetwork {
   symbol:  string;
   /** Brand color for the avatar fallback. */
   color:   string;
+  /** Primary address — what the list row and the QR show by default. */
   address: string;
   /** Optional badge — shown as a small label after the name (e.g. "EVM"). */
   badge?:  string;
+  /** Optional alternate address format (Lithosphere has dual addresses:
+   *  the native litho1… bech32 and the same wallet's 0x EVM form). The
+   *  QR view shows a primary/alt toggle when this is set. */
+  altAddress?: string;
+  /** Label shown in the toggle for the primary address (e.g. "Native"). */
+  primaryLabel?: string;
+  /** Label shown in the toggle for the alternate address (e.g. "EVM"). */
+  altLabel?: string;
 }
 
 export function ReceiveModal({ onClose }: { onClose: () => void }) {
@@ -1191,6 +1200,7 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
   const [search, setSearch] = useState('');
   const [qrSvg, setQrSvg]   = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAlt,  setShowAlt]  = useState(false);
 
   const litho = wallet?.addresses?.litho ?? '';
   const evm   = wallet?.addresses?.evm   ?? '';
@@ -1229,22 +1239,29 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; };
   }, [wallet?.seed]);
 
-  /* The network list. We show ONLY the networks the wallet actually
-     transacts on today (Lithosphere Makalu × 2 formats, Bitcoin, Solana).
-     The EVM 0x… address WOULD work on Ethereum, BNB, Polygon, Base,
-     Arbitrum, Linea, Optimism etc. because EVM accounts are chain-
-     agnostic — but we don't have indexer / balance flows for those
-     chains yet, so listing them as "receivable" sets up an inconsistency
-     between Receive (advertises) and Tokens (doesn't show). The
-     same-address note at the bottom of the list signals to the user
-     that the 0x form is reusable on other EVM chains. */
+  /* The network list. Lithosphere has dual address formats (litho1… and
+     0x) for the same keypair — we collapse them into ONE row carrying
+     both, and the QR view exposes a toggle. The previous design showed
+     two separate Makalu rows, which made it look like the user had to
+     pick a "side" of the same wallet. We only list networks the wallet
+     actually transacts on (Lithosphere, Bitcoin, Solana, Cosmos Hub). */
   const networks: ReceiveNetwork[] = useMemo(() => {
     const out: ReceiveNetwork[] = [];
-    if (litho)   out.push({ id: 'litho-bech32', name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: litho });
-    if (evm)     out.push({ id: 'litho-evm',    name: 'Lithosphere Makalu', symbol: 'LITHO', color: '#3b7af7', address: evm, badge: 'EVM' });
-    if (btcAddr)  out.push({ id: 'bitcoin',      name: 'Bitcoin',            symbol: 'BTC',   color: '#f7931a', address: btcAddr });
-    if (solAddr)  out.push({ id: 'solana',       name: 'Solana',             symbol: 'SOL',   color: '#14f195', address: solAddr });
-    if (atomAddr) out.push({ id: 'cosmos',       name: 'Cosmos Hub',         symbol: 'ATOM',  color: '#2e3148', address: atomAddr });
+    if (litho || evm) {
+      out.push({
+        id:           'lithosphere',
+        name:         'Lithosphere Makalu',
+        symbol:       'LITHO',
+        color:        '#3b7af7',
+        address:      litho || evm,
+        altAddress:   litho && evm ? evm : undefined,
+        primaryLabel: 'Litho1',
+        altLabel:     'EVM',
+      });
+    }
+    if (btcAddr)  out.push({ id: 'bitcoin', name: 'Bitcoin',    symbol: 'BTC',  color: '#f7931a', address: btcAddr });
+    if (solAddr)  out.push({ id: 'solana',  name: 'Solana',     symbol: 'SOL',  color: '#14f195', address: solAddr });
+    if (atomAddr) out.push({ id: 'cosmos',  name: 'Cosmos Hub', symbol: 'ATOM', color: '#2e3148', address: atomAddr });
     return out;
   }, [litho, evm, btcAddr, solAddr, atomAddr]);
 
@@ -1260,8 +1277,9 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
      not user input, so injection risk is nil. */
   useEffect(() => {
     if (view !== 'qr' || !active) { setQrSvg(null); return; }
+    const target = active.altAddress && showAlt ? active.altAddress : active.address;
     let cancelled = false;
-    QRCode.toString(active.address, {
+    QRCode.toString(target, {
       type:    'svg',
       margin:  1,
       width:   220,
@@ -1269,17 +1287,23 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     }).then(svg => { if (!cancelled) setQrSvg(svg); })
       .catch(() => { if (!cancelled) setQrSvg(null); });
     return () => { cancelled = true; };
-  }, [view, active]);
+  }, [view, active, showAlt]);
 
-  const copy = (n: ReceiveNetwork) => {
-    if (!n.address) return;
-    navigator.clipboard?.writeText(n.address).catch(() => {});
+  // Reset the dual-format toggle when the active network changes, so
+  // each network's QR view opens on its primary format.
+  useEffect(() => { setShowAlt(false); }, [active]);
+
+  const copy = (n: ReceiveNetwork, addressOverride?: string) => {
+    const a = addressOverride ?? n.address;
+    if (!a) return;
+    navigator.clipboard?.writeText(a).catch(() => {});
     setCopiedId(n.id);
     setTimeout(() => setCopiedId(prev => prev === n.id ? null : prev), 1500);
   };
 
   /* ─── QR sub-view ───────────────────────────────────────────────────── */
   if (view === 'qr' && active) {
+    const displayedAddress = active.altAddress && showAlt ? active.altAddress : active.address;
     return (
       <Modal title="Receive" onClose={onClose}>
         <div className="modal-body" style={{ padding: '4px 4px 8px' }}>
@@ -1308,6 +1332,36 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
+            {active.altAddress && (
+              <div style={{
+                display: 'inline-flex',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 999, padding: 3,
+              }}>
+                {[
+                  { key: 'primary' as const, label: active.primaryLabel ?? 'Native', isAlt: false },
+                  { key: 'alt'     as const, label: active.altLabel     ?? 'Alt',    isAlt: true  },
+                ].map(o => {
+                  const selected = o.isAlt === showAlt;
+                  return (
+                    <button
+                      key={o.key}
+                      onClick={() => setShowAlt(o.isAlt)}
+                      style={{
+                        background: selected ? 'var(--bg-card)' : 'transparent',
+                        border: 'none', cursor: 'pointer',
+                        padding: '6px 14px', borderRadius: 999,
+                        fontSize: 12, fontWeight: 600,
+                        color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        transition: 'background .15s ease, color .15s ease',
+                      }}
+                    >{o.label}</button>
+                  );
+                })}
+              </div>
+            )}
+
             <div style={{
               padding: 14, background: 'var(--bg-elevated)',
               border: '1px solid var(--border-default)', borderRadius: 14,
@@ -1322,7 +1376,7 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
             {/* Full address — tap to copy, also manually selectable. */}
             <button
               type="button"
-              onClick={() => copy(active)}
+              onClick={() => copy(active, displayedAddress)}
               title={copiedId === active.id ? 'Copied!' : 'Click to copy'}
               style={{
                 fontSize: 12, color: 'var(--text-secondary)',
@@ -1338,10 +1392,10 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
                 transition: 'border-color .15s ease',
               }}
             >
-              {active.address}
+              {displayedAddress}
             </button>
 
-            <button className="btn-primary" style={{ width: '100%' }} onClick={() => copy(active)}>
+            <button className="btn-primary" style={{ width: '100%' }} onClick={() => copy(active, displayedAddress)}>
               {copiedId === active.id ? '✓ Copied' : 'Copy address'}
             </button>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, maxWidth: 320 }}>
@@ -1478,9 +1532,9 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
             borderRadius: 10,
             fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
           }}>
-            All EVM rows above share the same 0x… address — one keypair,
-            many chains. The wallet fetches balances on each chain
-            separately so funds never get conflated.
+            Lithosphere has two address formats — <strong>litho1…</strong> (native) and
+            <strong> 0x…</strong> (EVM). They're the same wallet; open the QR to switch
+            formats. Other chains have their own keypairs.
           </div>
         )}
       </div>
