@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
 import './styles.css';
@@ -12,6 +12,7 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
+import { evmToLitho } from '@thanos/sdk-core';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -564,14 +565,27 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   const ad = addresses ?? fallback;
   const [chain, setChain] = useState<'evm'|'btc'|'sol'>('evm');
   const [copied, setCopied] = useState(false);
+  const [showAlt, setShowAlt] = useState(false);   // EVM tab: false=litho1, true=0x
+
+  // Derive the Lithosphere bech32 form from the same 0x keypair.
+  const lithoAddr = useMemo(() => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(ad.evm)) return '';
+    try { return evmToLitho(ad.evm); } catch { return ''; }
+  }, [ad.evm]);
+
+  // Reset the dual-format toggle when switching chains.
+  useEffect(() => { setShowAlt(false); }, [chain]);
 
   const meta = {
-    evm: { label: 'Ethereum / EVM',  network: 'Mainnet · ETH/ERC-20 · wLITHO', color: '#627eea' },
+    evm: { label: 'Lithosphere / Ethereum / EVM',  network: 'Lithosphere Makalu + every EVM chain', color: '#627eea' },
     btc: { label: 'Bitcoin',          network: 'Mainnet · Native SegWit',       color: '#f7931a' },
     sol: { label: 'Lithosphere',      network: 'Makalu · LITHO/FGPT',           color: '#8b7df7' },
   } as const;
 
-  const addr = ad[chain];
+  // For the EVM tab, prefer the litho1 form (Lithosphere's chain-native
+  // format) and let the user toggle to the 0x form. The two are the
+  // same wallet — one keypair, two formats.
+  const addr = chain === 'evm' && lithoAddr && !showAlt ? lithoAddr : ad[chain];
 
   const copy = () => {
     navigator.clipboard.writeText(addr).catch(() => {});
@@ -583,13 +597,43 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
     <Modal title="Receive" onClose={onClose}>
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
         {/* Chain selector */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 16, width: '100%' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, width: '100%' }}>
           {(['evm','btc','sol'] as const).map(c => (
             <button key={c} onClick={() => setChain(c)} className={`filter-pill ${chain === c ? 'active' : ''}`} style={{ flex: 1, fontSize: 11 }}>
-              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : 'LITHO'}
+              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : 'SOL'}
             </button>
           ))}
         </div>
+
+        {/* Lithosphere dual-format toggle — only on the EVM tab. */}
+        {chain === 'evm' && lithoAddr && (
+          <div style={{
+            display: 'inline-flex',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 999, padding: 3, marginBottom: 12,
+          }}>
+            {[
+              { isAlt: false, label: 'Litho1' },
+              { isAlt: true,  label: 'EVM'    },
+            ].map(o => {
+              const selected = o.isAlt === showAlt;
+              return (
+                <button
+                  key={o.label}
+                  onClick={() => setShowAlt(o.isAlt)}
+                  style={{
+                    background: selected ? 'var(--bg-card)' : 'transparent',
+                    border: 'none', cursor: 'pointer',
+                    padding: '5px 14px', borderRadius: 999,
+                    fontSize: 11, fontWeight: 600,
+                    color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  }}
+                >{o.label}</button>
+              );
+            })}
+          </div>
+        )}
 
         {/* QR placeholder */}
         <div className="qr-box">

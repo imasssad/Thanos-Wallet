@@ -24,7 +24,7 @@ import { WalletConnectModal, WalletConnectRequestHost } from './components/Walle
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices } from './lib/pricing';
-import { resolveRecipient } from './lib/address';
+import { resolveRecipient, evmToLitho } from './lib/address';
 import { sendAsset } from './lib/wc-signer';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
@@ -657,21 +657,31 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const walletAddr = useWalletAddr();
   const [copied, setCopied]   = useState(false);
   const [qrSvg, setQrSvg]     = useState<string | null>(null);
+  const [showAlt, setShowAlt] = useState(false);   // false = litho1, true = 0x
 
-  /* Generate a real QR for the actual derived 0x address. Re-renders if
-     the address ever changes (account-switch in a follow-up commit). */
+  // Derive the Lithosphere bech32 form from the same 0x keypair — one
+  // wallet, two formats. Defaults to showing the chain-native litho1.
+  const lithoAddr = useMemo(() => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(walletAddr)) return '';
+    try { return evmToLitho(walletAddr); } catch { return ''; }
+  }, [walletAddr]);
+
+  const displayed = lithoAddr && !showAlt ? lithoAddr : walletAddr;
+
+  /* Generate a real QR for the currently-displayed address. Re-renders
+     when the format toggle flips so the QR encodes the right form. */
   useEffect(() => {
     let cancelled = false;
     setQrSvg(null);
-    if (!walletAddr) return;
-    makeAddressQrSvg(walletAddr, { size: 220, darkColor: '#0a0a0f', lightColor: '#ffffff' })
+    if (!displayed) return;
+    makeAddressQrSvg(displayed, { size: 220, darkColor: '#0a0a0f', lightColor: '#ffffff' })
       .then(svg => { if (!cancelled) setQrSvg(svg); });
     return () => { cancelled = true; };
-  }, [walletAddr]);
+  }, [displayed]);
 
   const copy = async () => {
-    if (!walletAddr) return;
-    try { await Clipboard.setStringAsync(walletAddr); } catch {}
+    if (!displayed) return;
+    try { await Clipboard.setStringAsync(displayed); } catch {}
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -694,6 +704,39 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
           <ChevronRight size={18} color={C.textMuted}/>
         </Pressable>
 
+        {/* Litho1 / EVM toggle — same wallet, two address formats. */}
+        {!!lithoAddr && (
+          <View style={{
+            flexDirection: 'row', alignSelf: 'center',
+            backgroundColor: C.bgElevated,
+            borderWidth: 1, borderColor: C.borderDefault,
+            borderRadius: 999, padding: 3, marginTop: 12,
+          }}>
+            {[
+              { isAlt: false, label: 'Litho1' },
+              { isAlt: true,  label: 'EVM'    },
+            ].map(o => {
+              const selected = o.isAlt === showAlt;
+              return (
+                <Pressable
+                  key={o.label}
+                  onPress={() => setShowAlt(o.isAlt)}
+                  style={{
+                    backgroundColor: selected ? C.bgCard : 'transparent',
+                    borderRadius: 999,
+                    paddingHorizontal: 16, paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 12, fontWeight: '600',
+                    color: selected ? C.textPrimary : C.textSecondary,
+                  }}>{o.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
         {/* QR with brand corners */}
         <View style={styles.qrFrame}>
           <View style={styles.qrCornerTL}/>
@@ -714,7 +757,7 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
         <Pressable onPress={copy} style={styles.addrCard}>
           <Text style={styles.fieldLabel}>YOUR ADDRESS · TAP TO COPY</Text>
           <Text style={styles.addrTextLarge} numberOfLines={1} ellipsizeMode="middle">
-            {walletAddr || '—'}
+            {displayed || '—'}
           </Text>
         </Pressable>
 
