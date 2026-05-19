@@ -17,8 +17,8 @@
  * call and discarded.
  */
 import {
-  HDNodeWallet, Mnemonic, JsonRpcProvider, FallbackProvider,
-  getBytes, toUtf8Bytes, isHexString, type Provider,
+  HDNodeWallet, Mnemonic, JsonRpcProvider, FallbackProvider, Contract,
+  getBytes, toUtf8Bytes, isHexString, parseUnits, type Provider,
 } from 'ethers';
 
 const HD_PATH = "m/44'/60'/0'/0/0";
@@ -152,5 +152,56 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
 
     default:
       throw new WcSignerError(4200, `Method not supported: ${method}`);
+  }
+}
+
+/* ─── Direct asset transfer (the Send screen) ────────────────────────── */
+
+const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
+
+export interface SendAssetArgs {
+  /** Unlocked BIP-39 seed words. */
+  seed: string[];
+  /** Resolved 0x recipient address. */
+  to: string;
+  /** Human-readable amount, e.g. "12.5". */
+  amount: string;
+  /** Token decimals — 18 for native LITHO. */
+  decimals: number;
+  /** LEP100 / ERC-20 contract address; omit for a native LITHO send. */
+  tokenAddress?: string;
+}
+
+/**
+ * Sign + broadcast a transfer on Makalu — a native LITHO send when
+ * `tokenAddress` is absent, otherwise a LEP100 `transfer(to, amount)`.
+ * Returns the broadcast transaction hash. Throws WcSignerError.
+ */
+export async function sendAsset(args: SendAssetArgs): Promise<string> {
+  if (!args.seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
+
+  let value: bigint;
+  try {
+    value = parseUnits(args.amount, args.decimals);
+  } catch {
+    throw new WcSignerError(-32602, 'Invalid amount');
+  }
+  if (value <= 0n) throw new WcSignerError(-32602, 'Amount must be greater than zero');
+
+  const wallet = walletFromSeed(args.seed, makaluProvider());
+  try {
+    if (args.tokenAddress) {
+      const token = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
+      const sent = await token.transfer(args.to, value);
+      return sent.hash as string;
+    }
+    const sent = await wallet.sendTransaction({ to: args.to, value });
+    return sent.hash;
+  } catch (e) {
+    const msg = (e as Error).message || 'Broadcast failed';
+    if (/insufficient funds/i.test(msg)) {
+      throw new WcSignerError(-32000, 'Insufficient balance for amount + gas');
+    }
+    throw new WcSignerError(-32603, msg);
   }
 }
