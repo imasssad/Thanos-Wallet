@@ -24,6 +24,8 @@ import { WalletConnectModal, WalletConnectRequestHost } from './components/Walle
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices } from './lib/pricing';
+import { resolveRecipient } from './lib/address';
+import { sendAsset } from './lib/wc-signer';
 import { SvgXml } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -145,6 +147,11 @@ function AnimatedSwitch({ keyName, children, style }: {
 const WalletAddrCtx = createContext<string>('');
 function useWalletAddr(): string { return useContext(WalletAddrCtx); }
 
+/* Unlocked BIP-39 seed words — provided by App, consumed by SendScreen
+   for transaction signing. Empty array while the wallet is locked. */
+const WalletSeedCtx = createContext<string[]>([]);
+function useWalletSeed(): string[] { return useContext(WalletSeedCtx); }
+
 /* ─────────────────────────── Live portfolio ─────────────────────────── */
 
 /* Real wallet data for Home / Send / Activity — fetches balances from
@@ -179,8 +186,11 @@ function formatUsd(n: number): string {
 
 interface DisplayAsset {
   sym: string; name: string; chainId: number;
-  balance: number; balanceText: string;
+  balance: number; balanceText: string; decimals: number;
   priceUsd: number; usdValue: number; color: string;
+  /** LEP100 contract address; absent for the native LITHO asset. */
+  tokenAddress?: string;
+  native: boolean;
 }
 interface PortfolioState {
   assets: DisplayAsset[]; totalUsd: number; loading: boolean; offline: boolean;
@@ -212,9 +222,10 @@ function usePortfolio(address: string): PortfolioState {
           const priceUsd = prices[a.symbol] ?? 0;
           return {
             sym: a.symbol, name: a.name, chainId: a.chainId,
-            balance: bal, balanceText: formatAmount(bal),
+            balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
             priceUsd, usdValue: bal * priceUsd,
             color: assetColor(a.symbol),
+            tokenAddress: a.tokenAddress, native: !!a.native,
           };
         });
         setAssets(next);
@@ -429,34 +440,59 @@ function SendScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
+  const seed = useWalletSeed();
   const { assets, loading } = usePortfolio(addr);
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
   const [selectedSym, setSelectedSym] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const coin = assets.find((a) => a.sym === selectedSym) ?? assets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
   const usd = coin ? amtNum * coin.priceUsd : 0;
   const overBalance = !!coin && amtNum > coin.balance;
   const recipientOk = isValidRecipient(to);
-  const canReview = !!coin && amtNum > 0 && !overBalance && !!to && recipientOk;
+  const canReview = !!coin && amtNum > 0 && !overBalance && !!to && recipientOk && !sending;
+
+  const doSend = async () => {
+    if (!coin || sending) return;
+    if (!coin.native && !coin.tokenAddress) {
+      Alert.alert('Cannot send', `${coin.sym} has no contract address available.`);
+      return;
+    }
+    setSending(true);
+    try {
+      const recipient = await resolveRecipient(to);
+      const hash = await sendAsset({
+        seed,
+        to:           recipient,
+        amount:       amt,
+        decimals:     coin.decimals,
+        tokenAddress: coin.native ? undefined : coin.tokenAddress,
+      });
+      setSending(false);
+      setAmt(''); setTo('');
+      Alert.alert(
+        'Transaction sent ✓',
+        `${amt} ${coin.sym} broadcast on Makalu.\n\nTx hash:\n${hash}`,
+        [{ text: 'Done', onPress: goBack }],
+      );
+    } catch (e) {
+      setSending(false);
+      Alert.alert('Send failed', (e as Error)?.message || 'Could not broadcast the transaction.');
+    }
+  };
 
   const onReview = () => {
     if (!coin) return;
     Alert.alert(
-      'Review send',
-      `Send ${amt} ${coin.sym}\nTo: ${to}\n≈ ${formatUsd(usd)}`,
+      'Confirm send',
+      `Send ${amt} ${coin.sym}\nTo: ${to}\n≈ ${formatUsd(usd)}\n\nThis broadcasts a real transaction on Makalu and cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: () => Alert.alert(
-            'Almost there',
-            'Inputs are validated. Transaction signing & broadcast is the next wiring step.',
-          ),
-        },
+        { text: 'Send', style: 'destructive', onPress: doSend },
       ],
     );
   };
@@ -609,7 +645,7 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         disabled={!canReview}
         onPress={onReview}
       >
-        <Text style={styles.btnPrimaryText}>Review send</Text>
+        <Text style={styles.btnPrimaryText}>{sending ? 'Sending…' : 'Review send'}</Text>
       </Pressable>
     </ScrollView>
   );
@@ -1532,6 +1568,7 @@ export default function App() {
       <StylesCtx.Provider value={styles}>
         <ToggleCtx.Provider value={toggle}>
         <WalletAddrCtx.Provider value={walletAddr}>
+        <WalletSeedCtx.Provider value={walletSeed}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
 
@@ -1592,6 +1629,7 @@ export default function App() {
               })}
             </View>
           </SafeAreaView>
+        </WalletSeedCtx.Provider>
         </WalletAddrCtx.Provider>
         </ToggleCtx.Provider>
       </StylesCtx.Provider>
