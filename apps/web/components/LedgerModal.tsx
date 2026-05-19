@@ -46,7 +46,7 @@ export function setActiveLedgerAccount(acc: LedgerAccount | null): void {
 
 type Coin = 'eth' | 'btc' | 'sol';
 const TABS: { id: Coin; label: string; subtitle: string }[] = [
-  { id: 'eth', label: 'Ethereum',  subtitle: 'Open the Ethereum app' },
+  { id: 'eth', label: 'Lithosphere / Ethereum / EVM',  subtitle: 'Open the Ethereum app' },
   { id: 'btc', label: 'Bitcoin',   subtitle: 'Open the Bitcoin app'  },
   { id: 'sol', label: 'Solana',    subtitle: 'Open the Solana app'   },
 ];

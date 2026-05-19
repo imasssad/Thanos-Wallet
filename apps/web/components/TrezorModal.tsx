@@ -26,7 +26,7 @@ type Coin  = 'evm' | 'btc' | 'sol';
 type Stage = 'idle' | 'connecting' | 'picker' | 'done';
 
 const TABS: { id: Coin; label: string; hint: string }[] = [
-  { id: 'evm', label: 'Ethereum / EVM', hint: 'EVM accounts — works on Makalu and every EVM chain' },
+  { id: 'evm', label: 'Lithosphere / Ethereum / EVM', hint: 'Lithosphere Makalu + every EVM chain — Ethereum, BNB, Polygon, etc.' },
   { id: 'btc', label: 'Bitcoin',        hint: 'Native segwit (BIP84) accounts' },
   { id: 'sol', label: 'Solana',         hint: 'Solana accounts' },
 ];
