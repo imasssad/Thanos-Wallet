@@ -10,6 +10,7 @@ import {
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
+import { useMarket, formatMarketPrice, formatCompact } from './market';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -640,24 +641,12 @@ function SwapModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ──────────────────────── Market view ──────────────────────── */
-const MARKET = [
-  { sym: 'LITHO',  name: 'Lithosphere',         price: '$0.300',     chg24: 18.4, chg7: 32.1, cap: '$298M',   vol: '$24.5M', color: '#8b7df7' },
-  { sym: 'BTC',    name: 'Bitcoin',             price: '$63,200.00', chg24: 2.4,  chg7: 8.1,  cap: '$1.24T',  vol: '$38.2B', color: '#f7931a' },
-  { sym: 'ETH',    name: 'Ethereum',            price: '$3,892.00',  chg24: -1.2, chg7: 4.3,  cap: '$468B',   vol: '$18.4B', color: '#627eea' },
-  { sym: 'wLITHO', name: 'Wrapped Lithosphere', price: '$0.300',     chg24: 18.4, chg7: 32.1, cap: '$84M',    vol: '$6.8M',  color: '#a395f8' },
-  { sym: 'FGPT',   name: 'FractalGPT',          price: '$0.0150',    chg24: 42.3, chg7: 88.7, cap: '$24M',    vol: '$3.2M',  color: '#10b981' },
-  { sym: 'BNB',    name: 'BNB',                 price: '$418.30',    chg24: 0.8,  chg7: 2.1,  cap: '$62.1B',  vol: '$1.8B',  color: '#f3ba2f' },
-  { sym: 'XRP',  name: 'XRP',          price: '$0.6280',    chg24: -3.4, chg7: -6.2, cap: '$34.8B',  vol: '$2.3B',  color: '#00aae4' },
-  { sym: 'ADA',  name: 'Cardano',      price: '$0.5140',    chg24: 1.1,  chg7: 3.8,  cap: '$18.2B',  vol: '$0.9B',  color: '#0033ad' },
-  { sym: 'AVAX', name: 'Avalanche',    price: '$38.40',     chg24: 4.2,  chg7: 9.4,  cap: '$15.6B',  vol: '$0.7B',  color: '#e84142' },
-  { sym: 'DOT',  name: 'Polkadot',     price: '$8.720',     chg24: -0.6, chg7: 1.2,  cap: '$11.4B',  vol: '$0.4B',  color: '#e6007a' },
-  { sym: 'DOGE', name: 'Dogecoin',     price: '$0.1024',    chg24: 6.3,  chg7: 18.2, cap: '$14.6B',  vol: '$1.1B',  color: '#c2a633' },
-  { sym: 'LINK', name: 'Chainlink',    price: '$14.82',     chg24: 2.9,  chg7: 7.3,  cap: '$8.7B',   vol: '$0.5B',  color: '#2a5ada' },
-];
-
 function MarketView() {
+  const { rows, loading, offline } = useMarket();
   const [search, setSearch] = useState('');
-  const filtered = MARKET.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
+  const filtered = rows.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.sym.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="page-wrap">
@@ -684,7 +673,7 @@ function MarketView() {
           </thead>
           <tbody>
             {filtered.map((c, i) => (
-              <tr key={c.sym} style={{ cursor: 'pointer' }}>
+              <tr key={c.id} style={{ cursor: 'pointer' }}>
                 <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
                 <td>
                   <div className="tx-cell">
@@ -695,19 +684,24 @@ function MarketView() {
                     </div>
                   </div>
                 </td>
-                <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 12, fontWeight: 600 }}>{c.price}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 12, fontWeight: 600 }}>{formatMarketPrice(c.price)}</td>
                 <td style={{ textAlign: 'right' }}>
-                  <span className={c.chg24 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg24 >= 0 ? '+' : ''}{c.chg24}%</span>
+                  <span className={c.chg24 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg24 >= 0 ? '+' : ''}{c.chg24.toFixed(1)}%</span>
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  <span className={c.chg7 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg7 >= 0 ? '+' : ''}{c.chg7}%</span>
+                  <span className={c.chg7 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg7 >= 0 ? '+' : ''}{c.chg7.toFixed(1)}%</span>
                 </td>
-                <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-secondary)' }}>{c.cap}</td>
-                <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{c.vol}</td>
+                <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-secondary)' }}>{formatCompact(c.cap)}</td>
+                <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>{formatCompact(c.vol)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {loading && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading market data…</div>}
+        {!loading && offline && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Market data unavailable — CoinGecko may be rate-limiting.</div>}
+        {!loading && !offline && filtered.length === 0 && (
+          <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No coins match your search.</div>
+        )}
       </div>
     </div>
   );
