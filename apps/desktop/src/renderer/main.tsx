@@ -715,13 +715,7 @@ function MarketView() {
 
 /* ──────────────────────── Portfolio view ──────────────────────── */
 function PortfolioView() {
-  const coins = [
-    { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: 15000,  chg: 18,  color: '#8b7df7', pct: 28, price: '$0.30' },
-    { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: 320250, chg: 24,  color: '#f7931a', pct: 44, price: '$63,200' },
-    { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: 178150, chg: -6,  color: '#627eea', pct: 16, price: '$3,892' },
-    { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: 1500,   chg: 18,  color: '#a395f8', pct: 7,  price: '$0.30' },
-    { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: 1200,   chg: 42,  color: '#10b981', pct: 5,  price: '$0.015' },
-  ];
+  const { coins, totalUsd, loading, offline } = usePortfolioCtx();
 
   // Donut chart
   let offset = 0;
@@ -754,7 +748,7 @@ function PortfolioView() {
             </svg>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total</div>
-              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>$3.15M</div>
+              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>{loading ? '···' : formatUsd(totalUsd)}</div>
             </div>
           </div>
           {coins.map(c => (
@@ -775,7 +769,6 @@ function PortfolioView() {
                 <th style={{ textAlign: 'right' }}>Price</th>
                 <th style={{ textAlign: 'right' }}>Holdings</th>
                 <th style={{ textAlign: 'right' }}>Value</th>
-                <th style={{ textAlign: 'right' }}>24h</th>
                 <th style={{ textAlign: 'right' }}>Allocation</th>
               </tr>
             </thead>
@@ -791,12 +784,9 @@ function PortfolioView() {
                       </div>
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.price}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.bal} {c.sym}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, fontSize: 12 }}>${c.usd.toLocaleString()}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg >= 0 ? '+' : ''}{c.chg}%</span>
-                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.balanceText} {c.sym}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, fontSize: 12 }}>{formatUsd(c.usdValue)}</td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
                       <div style={{ width: 60, height: 4, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
@@ -809,6 +799,11 @@ function PortfolioView() {
               ))}
             </tbody>
           </table>
+          {loading && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading holdings…</div>}
+          {!loading && offline && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Indexer offline.</div>}
+          {!loading && !offline && coins.length === 0 && (
+            <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No holdings yet.</div>
+          )}
         </div>
       </div>
     </div>
