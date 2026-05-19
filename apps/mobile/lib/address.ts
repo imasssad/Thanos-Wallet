@@ -82,6 +82,43 @@ function wordsToBytes(words: number[]): Uint8Array {
   return Uint8Array.from(out);
 }
 
+/** 8-bit bytes → 5-bit bech32 words (with right-pad). */
+function bytesToWords(bytes: Uint8Array): number[] {
+  let acc = 0;
+  let bits = 0;
+  const out: number[] = [];
+  for (const b of bytes) {
+    acc = (acc << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      out.push((acc >> bits) & 0x1f);
+    }
+  }
+  if (bits > 0) out.push((acc << (5 - bits)) & 0x1f);
+  return out;
+}
+
+/** The 6-word checksum that follows the data part of a bech32 string. */
+function bech32CreateChecksum(hrp: string, words: number[]): number[] {
+  const values = [...hrpExpand(hrp), ...words, 0, 0, 0, 0, 0, 0];
+  const mod = bech32Polymod(values) ^ 1;
+  const out: number[] = [];
+  for (let i = 0; i < 6; i++) out.push((mod >> (5 * (5 - i))) & 0x1f);
+  return out;
+}
+
+/** Convert a 0x EVM address to its Lithosphere litho1… bech32 form. */
+export function evmToLitho(evm: string): string {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(evm)) throw new Error('Invalid EVM address');
+  const hex = evm.slice(2).toLowerCase();
+  const bytes = new Uint8Array(20);
+  for (let i = 0; i < 20; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  const words = bytesToWords(bytes);
+  const checksum = bech32CreateChecksum('litho', words);
+  return 'litho1' + [...words, ...checksum].map((w) => BECH32_CHARSET[w]).join('');
+}
+
 /** Convert a litho1… bech32 address to a checksummed 0x EVM address. */
 export function lithoToEvm(litho: string): string {
   const { hrp, words } = bech32Decode(litho);

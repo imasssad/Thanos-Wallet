@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
 import {
@@ -17,6 +17,7 @@ import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
+import { evmToLitho } from '@thanos/sdk-core';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -633,12 +634,21 @@ function SendModal({ onClose }: { onClose: () => void }) {
 }
 
 function ReceiveModal({ onClose, address }: { onClose: () => void; address: string }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]     = useState(false);
+  const [showAlt, setShowAlt]   = useState(false);   // false = litho1, true = 0x
+
+  const lithoAddr = useMemo(() => {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return '';
+    try { return evmToLitho(address); } catch { return ''; }
+  }, [address]);
+
+  const displayed = lithoAddr && !showAlt ? lithoAddr : address;
+
   const copy = async () => {
     let ok = false;
-    try { await navigator.clipboard.writeText(address); ok = true; } catch {}
+    try { await navigator.clipboard.writeText(displayed); ok = true; } catch {}
     if (!ok) {
-      const ta = document.createElement('textarea'); ta.value = address;
+      const ta = document.createElement('textarea'); ta.value = displayed;
       document.body.appendChild(ta); ta.select();
       try { ok = document.execCommand('copy'); } catch {}
       document.body.removeChild(ta);
@@ -648,6 +658,35 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
   return (
     <Modal title="Receive" onClose={onClose}>
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
+        {/* Lithosphere dual-format toggle — same wallet, two formats. */}
+        {lithoAddr && (
+          <div style={{
+            display: 'inline-flex', marginBottom: 12,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 999, padding: 3,
+          }}>
+            {[
+              { isAlt: false, label: 'Litho1' },
+              { isAlt: true,  label: 'EVM'    },
+            ].map(o => {
+              const selected = o.isAlt === showAlt;
+              return (
+                <button
+                  key={o.label}
+                  onClick={() => setShowAlt(o.isAlt)}
+                  style={{
+                    background: selected ? 'var(--bg-card)' : 'transparent',
+                    border: 'none', cursor: 'pointer',
+                    padding: '5px 14px', borderRadius: 999,
+                    fontSize: 11, fontWeight: 600,
+                    color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  }}
+                >{o.label}</button>
+              );
+            })}
+          </div>
+        )}
         <div className="qr-box">
           <svg viewBox="0 0 100 100" width="160" height="160">
             <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
@@ -663,7 +702,7 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
             )}
           </svg>
         </div>
-        <div className="addr-box">{address.slice(0, 16)}…{address.slice(-6)}</div>
+        <div className="addr-box">{displayed.slice(0, 16)}…{displayed.slice(-6)}</div>
         <button className="btn-primary" onClick={copy}>{copied ? '✓ Copied' : 'Copy address'}</button>
       </div>
     </Modal>
