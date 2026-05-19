@@ -9,6 +9,7 @@ import {
   hasLegacyPlaintext, migrateLegacyPlaintext,
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
+import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -65,14 +66,6 @@ const ChevRight2 = Ic(<polyline points="9 18 15 12 9 6"/>);
 
 /* ──────────────────────── Mock data ──────────────────────── */
 const ACCOUNT = { name: 'RobbyWallet', address: '0x70cA2F2B7' };
-
-const COINS = [
-  { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000', usd: '$15,000.00',  chg:  18, color: '#8b7df7', pct: 28 },
-  { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: '$320,250.00', chg:  24, color: '#f7931a', pct: 44 },
-  { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: '$178,150.00', chg:  -6, color: '#627eea', pct: 16 },
-  { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500.00',   chg:  18, color: '#a395f8', pct:  7 },
-  { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: '$1,200.00',   chg:  42, color: '#10b981', pct:  5 },
-];
 
 const TXS = [
   { sym: 'LITHO',  name: 'Lithosphere',         date: 'Jan 22, 2026', price: '$0.30',   status: 'Completed', amount: '+1,200 LITHO', pos: true,  color: '#8b7df7' },
@@ -242,6 +235,7 @@ function ExchangeWidget() {
 }
 
 function PortfolioList() {
+  const { coins, loading, offline } = usePortfolioCtx();
   return (
     <div className="card">
       <div className="card-header">
@@ -249,18 +243,21 @@ function PortfolioList() {
         <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}>View all</button>
       </div>
       <div className="portfolio-list">
-        {COINS.filter(c => c.sym !== '···').map(c => (
+        {loading && <div className="portfolio-sym" style={{ padding: 12 }}>Loading balances…</div>}
+        {!loading && offline && <div className="portfolio-sym" style={{ padding: 12 }}>Indexer offline</div>}
+        {!loading && !offline && coins.length === 0 && (
+          <div className="portfolio-sym" style={{ padding: 12 }}>No assets yet</div>
+        )}
+        {coins.map(c => (
           <div key={c.sym} className="portfolio-row">
             <TokenAvatar sym={c.sym} color={c.color} className="portfolio-icon"/>
             <div>
               <div className="portfolio-name">{c.name}</div>
-              <div className="portfolio-sym">{c.bal} {c.sym}</div>
+              <div className="portfolio-sym">{c.balanceText} {c.sym}</div>
             </div>
             <div className="portfolio-right">
-              <div className="portfolio-price">{c.usd}</div>
-              <div className={`portfolio-chg ${c.chg >= 0 ? 'pos' : 'neg'}`}>
-                {c.chg >= 0 ? '+' : ''}{c.chg}%
-              </div>
+              <div className="portfolio-price">{formatUsd(c.usdValue)}</div>
+              <div className="portfolio-chg">{c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</div>
             </div>
           </div>
         ))}
@@ -315,9 +312,9 @@ function StakingCard() {
 
 /* ──────────────────────── Dashboard ──────────────────────── */
 
-function DashboardView({ onAction, isFreshWallet, liveEth }: { onAction: (a: 'send'|'receive'|'swap') => void; isFreshWallet: boolean; liveEth: string | null }) {
-  const balance = isFreshWallet ? '$0.00' : '$3,150,298.00';
-  const change  = isFreshWallet ? null    : '+2.34% · 24h';
+function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null }) {
+  const { coins, totalUsd, loading } = usePortfolioCtx();
+  const balance = loading ? '···' : formatUsd(totalUsd);
   const liveLine = liveEth !== null
     ? `Live ETH: ${parseFloat(liveEth).toFixed(6)} ETH`
     : null;
@@ -329,7 +326,6 @@ function DashboardView({ onAction, isFreshWallet, liveEth }: { onAction: (a: 'se
           <div className="balance-label">Total balance</div>
           <div className="balance-amount">
             {balance}
-            {change && <span className="balance-change-pill">▲ {change}</span>}
           </div>
           {liveLine && (
             <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 8, fontFamily: 'Geist Mono, monospace', fontWeight: 500 }}>
@@ -354,22 +350,20 @@ function DashboardView({ onAction, isFreshWallet, liveEth }: { onAction: (a: 'se
       {/* Allocation: bar + per-coin grid wrapped in card */}
       <div className="card" style={{ padding: '14px 18px' }}>
         <div className="alloc-bar">
-          {COINS.map(c => (
-            <div key={c.sym} className="alloc-seg" style={{ flex: c.pct, background: c.color }}/>
+          {coins.map(c => (
+            <div key={c.sym} className="alloc-seg" style={{ flex: c.pct || 1, background: c.color }}/>
           ))}
         </div>
         <div className="alloc-coins">
-          {COINS.map(c => (
+          {coins.map(c => (
             <div key={c.sym} className="alloc-coin">
               <div className="alloc-coin-top">
                 <div className="alloc-dot" style={{ background: c.color }}/>
-                <span className="alloc-name">
-                  {c.name}{c.sym !== '···' ? ` (${c.sym})` : ''}
-                </span>
+                <span className="alloc-name">{c.name} ({c.sym})</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <div className="alloc-val">{c.usd}</div>
-                <div className={`alloc-chg ${c.chg >= 0 ? 'pos' : 'neg'}`}>{c.chg >= 0 ? '+' : ''}{c.chg}%</div>
+                <div className="alloc-val">{formatUsd(c.usdValue)}</div>
+                <div className="alloc-chg">{c.pct}%</div>
               </div>
             </div>
           ))}
@@ -1477,6 +1471,7 @@ function App() {
     : { evm: ACCOUNT.address, btc: 'bc1q…', sol: '11111…', short: ACCOUNT.address };
   const walletAddr = addrs.evm;
   const shortAddr  = addrs.short;
+  const portfolio  = usePortfolio(walletAddr);
 
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;
@@ -1674,9 +1669,10 @@ function App() {
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
 
       {/* Workspace */}
+      <PortfolioContext.Provider value={portfolio}>
       <div className="workspace">
         <div className="main-area">
-          {view === 'dashboard'    && <DashboardView onAction={setModal} isFreshWallet={walletSeed.length > 0 && !localStorage.getItem('thanos.has_data')} liveEth={liveEth}/>}
+          {view === 'dashboard'    && <DashboardView onAction={setModal} liveEth={liveEth}/>}
           {view === 'market'       && <MarketView/>}
           {view === 'portfolio'    && <PortfolioView/>}
           {view === 'transactions' && <TransactionsView/>}
@@ -1693,6 +1689,7 @@ function App() {
           </aside>
         )}
       </div>
+      </PortfolioContext.Provider>
 
     </div>
   );
