@@ -16,6 +16,7 @@ import {
 import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
 } from './portfolio';
+import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -550,16 +551,82 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function SendModal({ onClose }: { onClose: () => void }) {
-  const [to, setTo] = useState(''); const [amt, setAmt] = useState('');
+  const { coins } = usePortfolioCtx();
+  const seed = useWalletSeed();
+  const [selectedSym, setSelectedSym] = useState('');
+  const [to, setTo] = useState('');
+  const [amt, setAmt] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+
+  const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
+  const amtNum = parseFloat(amt || '0');
+  const overBalance = !!coin && amtNum > coin.balance;
+  const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending;
+
+  const doSend = async () => {
+    if (!coin) return;
+    if (!coin.native && !coin.tokenAddress) {
+      setError(`${coin.sym} has no contract address available.`);
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const recipient = await resolveRecipient(to);
+      const hash = await sendAsset({
+        seed,
+        to:           recipient,
+        amount:       amt,
+        decimals:     coin.decimals,
+        tokenAddress: coin.native ? undefined : coin.tokenAddress,
+      });
+      setTxHash(hash);
+      setSending(false);
+    } catch (e) {
+      setSending(false);
+      setError((e as Error)?.message || 'Could not broadcast the transaction.');
+    }
+  };
+
+  if (txHash) return (
+    <Modal title="Send" onClose={onClose}>
+      <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
+        <div style={{ fontSize: 28 }}>✓</div>
+        <div style={{ fontWeight: 700 }}>Transaction sent</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{amt} {coin?.sym} broadcast on Makalu</div>
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', margin: '8px 0' }}>{txHash}</div>
+        <button className="btn-primary" onClick={onClose}>Done</button>
+      </div>
+    </Modal>
+  );
+
   return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body">
-        <label className="field-label">RECIPIENT</label>
-        <input className="field" placeholder="0x… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
+        <label className="field-label">ASSET</label>
+        <select className="field" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
+          {coins.length === 0 && <option value="">No assets available</option>}
+          {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
+        </select>
+        <label className="field-label" style={{ marginTop: 14 }}>RECIPIENT</label>
+        <input className="field" placeholder="0x… , litho1… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
         <label className="field-label" style={{ marginTop: 14 }}>AMOUNT</label>
         <input className="field" placeholder="0.00" type="number" value={amt} onChange={e => setAmt(e.target.value)}/>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Balance: 4,280.00 LITHO · ~$0.04 fee</div>
-        <button className="btn-primary" disabled={!to || !amt} style={{ marginTop: 16 }}>Review</button>
+        <div style={{ fontSize: 11, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 6 }}>
+          {overBalance ? 'Amount exceeds balance' : `Balance: ${coin?.balanceText ?? '—'} ${coin?.sym ?? ''}`}
+          {coin && (
+            <button
+              style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}
+              onClick={() => setAmt(String(coin.balance))}
+            >MAX</button>
+          )}
+        </div>
+        {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 8 }}>{error}</div>}
+        <button className="btn-primary" disabled={!canSend} style={{ marginTop: 16 }} onClick={doSend}>
+          {sending ? 'Sending…' : `Send ${coin?.sym ?? ''}`}
+        </button>
       </div>
     </Modal>
   );
@@ -834,6 +901,7 @@ function App() {
   }
 
   return (
+    <WalletSeedContext.Provider value={seed}>
     <PortfolioContext.Provider value={portfolio}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} address={evmAddr}/>}
@@ -859,6 +927,7 @@ function App() {
         </div>
       </div>
     </PortfolioContext.Provider>
+    </WalletSeedContext.Provider>
   );
 }
 
