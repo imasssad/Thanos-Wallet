@@ -516,7 +516,7 @@ export function Dashboard() {
         {/* ── Hero: centered balance + change + Discover ─────────────── */}
         <div style={{ textAlign: 'center' }}>
           <div style={{
-            fontSize: 12, fontWeight: 700, letterSpacing: 1.6,
+            fontSize: 14, fontWeight: 700, letterSpacing: 1.8,
             color: 'var(--text-muted)',
             display: 'inline-flex', alignItems: 'center', gap: 8,
             justifyContent: 'center',
@@ -531,16 +531,16 @@ export function Dashboard() {
             )}
           </div>
           <div style={{
-            fontSize: 56, fontWeight: 800, letterSpacing: '-0.04em',
-            lineHeight: 1.05, marginTop: 8,
+            fontSize: 68, fontWeight: 800, letterSpacing: '-0.04em',
+            lineHeight: 1.05, marginTop: 10,
           }}>
             {totalDisplay}
           </div>
           <div style={{
-            marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 10,
-            fontSize: 15, color: 'var(--text-secondary)',
+            marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 12,
+            fontSize: 17, color: 'var(--text-secondary)',
           }}>
-            <span className={change24h >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 17, fontWeight: 700 }}>
+            <span className={change24h >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 19, fontWeight: 700 }}>
               {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
             </span>
             <span style={{ color: 'var(--text-muted)' }}>·</span>
@@ -548,7 +548,7 @@ export function Dashboard() {
               color: 'var(--blue)', textDecoration: 'none', fontWeight: 600,
               display: 'inline-flex', alignItems: 'center', gap: 4,
             }} onClick={e => e.preventDefault()}>
-              Discover <ExternalLink size={13}/>
+              Discover <ExternalLink size={16}/>
             </a>
           </div>
         </div>
@@ -560,24 +560,24 @@ export function Dashboard() {
           gap: 12,
         }}>
           <ActionBtn
-            icon={<DollarSign size={26} strokeWidth={2}/>}
+            icon={<DollarSign size={30} strokeWidth={2}/>}
             label="Buy"
             disabled={!transakApiKey}
             title={transakApiKey ? 'Buy crypto via Transak (opens in new tab)' : 'Buy disabled — set NEXT_PUBLIC_TRANSAK_API_KEY to enable on-ramp'}
             onClick={onBuy}
           />
           <ActionBtn
-            icon={<Repeat size={26} strokeWidth={2}/>}
+            icon={<Repeat size={30} strokeWidth={2}/>}
             label="Swap"
             onClick={() => setModal('swap')}
           />
           <ActionBtn
-            icon={<ArrowUpRight size={26} strokeWidth={2}/>}
+            icon={<ArrowUpRight size={30} strokeWidth={2}/>}
             label="Send"
             onClick={() => setModal('send')}
           />
           <ActionBtn
-            icon={<ArrowDownLeft size={26} strokeWidth={2}/>}
+            icon={<ArrowDownLeft size={30} strokeWidth={2}/>}
             label="Receive"
             onClick={() => setModal('receive')}
           />
@@ -604,8 +604,8 @@ export function Dashboard() {
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   color: active ? 'var(--text-primary)' : 'var(--text-muted)',
                   fontWeight: active ? 700 : 500,
-                  fontSize: 16,
-                  padding: '10px 0',
+                  fontSize: 19,
+                  padding: '12px 0',
                   borderBottom: active ? '2px solid var(--text-primary)' : '2px solid transparent',
                   marginBottom: -1,
                 }}
@@ -668,7 +668,7 @@ export function Dashboard() {
                         Receive
                       </button>
                       <a
-                        href="https://makalu.litho.ai/tokens"
+                        href="https://makalu.litho.ai/faucet"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="settings-btn"
@@ -904,29 +904,29 @@ function ActionBtn({ icon, label, onClick, disabled, title }: {
       title={title}
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 8,
-        padding: '20px 12px',
+        gap: 10,
+        padding: '24px 14px',
         background: 'var(--bg-elevated)',
         border: '1px solid var(--border-default)',
         borderRadius: 14,
         cursor: disabled ? 'not-allowed' : 'pointer',
         color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
         opacity: disabled ? 0.55 : 1,
-        minHeight: 92,
+        minHeight: 108,
         transition: 'background .12s ease, transform .08s ease',
       }}
       onMouseOver={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-hover)'; }}
       onMouseOut={e  => { e.currentTarget.style.background = 'var(--bg-elevated)'; }}
     >
       <span style={{
-        width: 40, height: 40, borderRadius: 12,
+        width: 48, height: 48, borderRadius: 14,
         background: 'rgba(59,122,247,0.10)',
         color: 'var(--blue)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {icon}
       </span>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 16, fontWeight: 600 }}>{label}</span>
     </button>
   );
 }
