@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  Alert, Animated, Easing, Image, Pressable, RefreshControl, SafeAreaView, ScrollView,
-  StatusBar, StyleSheet, Text, TextInput, View,
+  Alert, Animated, Easing, Image, Modal, Pressable, RefreshControl, SafeAreaView,
+  ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits } from 'ethers';
@@ -145,24 +145,12 @@ function AnimatedSwitch({ keyName, children, style }: {
 const WalletAddrCtx = createContext<string>('');
 function useWalletAddr(): string { return useContext(WalletAddrCtx); }
 
-/* ─────────────────────────── Mock data ─────────────────────────── */
-
-const ASSETS = [
-  { sym: 'LITHO',  name: 'Lithosphere',         chain: 'Makalu',  bal: '50,000', usd: '$15,000.00', price: '$0.300',  chg: 18.40, color: '#8b7df7' },
-  { sym: 'BTC',    name: 'Bitcoin',             chain: 'Bitcoin', bal: '0.04821',usd: '$2,891.00',  price: '$59,962', chg: -1.17, color: '#f7931a' },
-  { sym: 'wLITHO', name: 'Wrapped Lithosphere', chain: 'EVM',     bal: '5,000',  usd: '$1,500.00',  price: '$0.300',  chg: 18.40, color: '#a395f8' },
-  { sym: 'ETH',    name: 'Ethereum',            chain: 'EVM',     bal: '0.6142', usd: '$2,210.00',  price: '$3,598',  chg:  0.54, color: '#627eea' },
-  { sym: 'FGPT',   name: 'FractalGPT',          chain: 'Makalu',  bal: '80,000', usd: '$1,200.00',  price: '$0.015',  chg: 42.30, color: '#10b981' },
-  { sym: 'USDC',   name: 'USD Coin',            chain: 'EVM',     bal: '840.00', usd: '$840.00',    price: '$1.00',   chg:  0.01, color: '#2775ca' },
-  { sym: 'COLLE',  name: 'Colle AI',            chain: 'Makalu',  bal: '18,000', usd: '$360.00',    price: '$0.020',  chg:  8.22, color: '#a3e635' },
-];
-
 /* ─────────────────────────── Live portfolio ─────────────────────────── */
 
-/* Replaces the ASSETS mock for HomeScreen — fetches real balances from
+/* Real wallet data for Home / Send / Activity — fetches balances from
    the indexer (services/indexer) and prices them via CoinGecko. The
    indexer + pricing modules are local detached copies (EAS Cloud can't
-   resolve workspace packages). */
+   resolve workspace packages). Replaced the ASSETS / TXS mocks. */
 
 /** Brand colour per token symbol, for the Avatar circle. */
 const ASSET_COLORS: Record<string, string> = {
@@ -191,7 +179,8 @@ function formatUsd(n: number): string {
 
 interface DisplayAsset {
   sym: string; name: string; chainId: number;
-  balanceText: string; priceUsd: number; usdValue: number; color: string;
+  balance: number; balanceText: string;
+  priceUsd: number; usdValue: number; color: string;
 }
 interface PortfolioState {
   assets: DisplayAsset[]; totalUsd: number; loading: boolean; offline: boolean;
@@ -223,7 +212,7 @@ function usePortfolio(address: string): PortfolioState {
           const priceUsd = prices[a.symbol] ?? 0;
           return {
             sym: a.symbol, name: a.name, chainId: a.chainId,
-            balanceText: formatAmount(bal),
+            balance: bal, balanceText: formatAmount(bal),
             priceUsd, usdValue: bal * priceUsd,
             color: assetColor(a.symbol),
           };
@@ -265,6 +254,16 @@ function txDisplay(type: string): { label: string; positive: boolean } {
     case 'approval':             return { label: 'Approval', positive: false };
     default: return { label: type ? type[0].toUpperCase() + type.slice(1) : 'Activity', positive: false };
   }
+}
+
+/** Accept an EVM 0x address, a litho1 bech32 address, or a .litho name. */
+function isValidRecipient(v: string): boolean {
+  const s = (v || '').trim();
+  if (!s) return false;
+  if (/^0x[0-9a-fA-F]{40}$/.test(s)) return true;   // EVM
+  if (/^litho1[0-9a-z]{6,}$/.test(s)) return true;  // bech32
+  if (/^[a-z0-9-]+\.litho$/i.test(s)) return true;  // DNNS name
+  return false;
 }
 
 interface ActivityState {
@@ -429,11 +428,38 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
 function SendScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
+  const addr = useWalletAddr();
+  const { assets, loading } = usePortfolio(addr);
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
-  const [coin] = useState(ASSETS[0]); // LITHO
+  const [selectedSym, setSelectedSym] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
-  const usd = parseFloat(amt || '0') * 0.30;
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const coin = assets.find((a) => a.sym === selectedSym) ?? assets[0] ?? null;
+  const amtNum = parseFloat(amt || '0');
+  const usd = coin ? amtNum * coin.priceUsd : 0;
+  const overBalance = !!coin && amtNum > coin.balance;
+  const recipientOk = isValidRecipient(to);
+  const canReview = !!coin && amtNum > 0 && !overBalance && !!to && recipientOk;
+
+  const onReview = () => {
+    if (!coin) return;
+    Alert.alert(
+      'Review send',
+      `Send ${amt} ${coin.sym}\nTo: ${to}\n≈ ${formatUsd(usd)}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: () => Alert.alert(
+            'Almost there',
+            'Inputs are validated. Transaction signing & broadcast is the next wiring step.',
+          ),
+        },
+      ],
+    );
+  };
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -448,12 +474,25 @@ function SendScreen({ goBack }: { goBack: () => void }) {
       {/* From asset card */}
       <View style={styles.assetSelectCard}>
         <Text style={styles.fieldLabel}>FROM</Text>
-        <Pressable style={styles.assetSelectRow}>
-          <Avatar symbol={coin.sym} color={coin.color} size={40}/>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.assetSelectName}>{coin.name}</Text>
-            <Text style={styles.assetSelectBal}>Balance: {coin.bal} {coin.sym}</Text>
-          </View>
+        <Pressable
+          style={styles.assetSelectRow}
+          onPress={() => assets.length > 0 && setPickerOpen(true)}
+        >
+          {coin ? (
+            <>
+              <Avatar symbol={coin.sym} color={coin.color} size={40}/>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.assetSelectName}>{coin.name}</Text>
+                <Text style={styles.assetSelectBal}>Balance: {coin.balanceText} {coin.sym}</Text>
+              </View>
+            </>
+          ) : (
+            <View style={{ flex: 1 }}>
+              <Text style={styles.assetSelectName}>
+                {loading ? 'Loading assets…' : 'No assets available'}
+              </Text>
+            </View>
+          )}
           <ChevronRight size={18} color={C.textMuted}/>
         </Pressable>
       </View>
@@ -463,7 +502,7 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <Text style={styles.fieldLabel}>AMOUNT</Text>
           <Pressable
-            onPress={() => setAmt(coin.bal)}
+            onPress={() => coin && setAmt(String(coin.balance))}
             style={styles.maxBtn}
           >
             <Text style={styles.maxBtnText}>MAX</Text>
@@ -477,7 +516,9 @@ function SendScreen({ goBack }: { goBack: () => void }) {
           onChangeText={setAmt}
           keyboardType="decimal-pad"
         />
-        <Text style={styles.amountUsdSub}>≈ ${usd.toFixed(2)} USD</Text>
+        <Text style={[styles.amountUsdSub, overBalance && { color: C.red }]}>
+          {overBalance ? 'Amount exceeds balance' : `≈ ${formatUsd(usd)} USD`}
+        </Text>
       </View>
 
       {/* Recipient */}
@@ -486,7 +527,7 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TextInput
             style={[styles.input, { flex: 1, backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14, fontFamily: 'monospace' }]}
-            placeholder="litho1… or name.litho"
+            placeholder="0x… , litho1… or name.litho"
             placeholderTextColor={C.textMuted}
             value={to}
             onChangeText={setTo}
@@ -502,6 +543,11 @@ function SendScreen({ goBack }: { goBack: () => void }) {
             <ScanLine size={20} color={C.blue} strokeWidth={2.2}/>
           </Pressable>
         </View>
+        {!!to && !recipientOk && (
+          <Text style={[styles.rowSub, { marginTop: 8, color: C.red }]}>
+            Not a valid address or .litho name
+          </Text>
+        )}
       </View>
 
       {/* Camera QR scanner — decodes a recipient address (or bare 0x /
@@ -516,22 +562,52 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         }}
       />
 
-      {!!amt && (
+      {/* Asset picker — choose which portfolio asset to send */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}
+          onPress={() => setPickerOpen(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 }}
+            onPress={() => {}}
+          >
+            <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>SELECT ASSET</Text>
+            {assets.map((a, i) => (
+              <Pressable
+                key={`${a.sym}-${a.chainId}`}
+                style={[styles.row, i < assets.length - 1 && styles.rowBorder]}
+                onPress={() => { setSelectedSym(a.sym); setAmt(''); setPickerOpen(false); }}
+              >
+                <Avatar symbol={a.sym} color={a.color} size={36}/>
+                <View style={styles.rowMid}>
+                  <Text style={styles.rowSymbol}>{a.name}</Text>
+                  <Text style={styles.rowSub}>{a.balanceText} {a.sym}</Text>
+                </View>
+                <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {amtNum > 0 && !!coin && (
         <View style={[styles.feeRowCard]}>
           <View style={styles.feeRow}>
-            <Text style={styles.feeText}>Network fee</Text>
-            <Text style={styles.feeTextValue}>~0.002 {coin.sym}</Text>
+            <Text style={styles.feeText}>Network</Text>
+            <Text style={styles.feeTextValue}>Makalu</Text>
           </View>
           <View style={styles.feeRow}>
-            <Text style={styles.feeText}>Estimated time</Text>
-            <Text style={styles.feeTextValue}>~30 seconds</Text>
+            <Text style={styles.feeText}>Network fee</Text>
+            <Text style={styles.feeTextValue}>estimated at review</Text>
           </View>
         </View>
       )}
 
       <Pressable
-        style={[styles.btnPrimary, (!to || !amt) && { opacity: 0.4 }]}
-        disabled={!to || !amt}
+        style={[styles.btnPrimary, !canReview && { opacity: 0.4 }]}
+        disabled={!canReview}
+        onPress={onReview}
       >
         <Text style={styles.btnPrimaryText}>Review send</Text>
       </Pressable>
