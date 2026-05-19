@@ -13,6 +13,9 @@ import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
 } from '../../lib/vault';
+import {
+  usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
+} from './portfolio';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -33,25 +36,6 @@ function deriveEvm(seed: string[]): string {
   try { return HDNodeWallet.fromPhrase(seed.join(' '), undefined, "m/44'/60'/0'/0/0").address; }
   catch { return '0x0000000000000000000000000000000000000000'; }
 }
-
-/* ──────────────────────── Mock data ──────────────────────── */
-
-const ASSETS = [
-  { sym: 'LITHO',  name: 'Lithosphere',         bal: '50,000',   usd: '$15,000.00', price: '$0.300',  chg: 18.40, color: '#8b7df7' },
-  { sym: 'BTC',    name: 'Bitcoin',             bal: '0.04821',  usd: '$2,891.00',  price: '$59,962', chg: -1.17, color: '#f7931a' },
-  { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',    usd: '$1,500.00',  price: '$0.300',  chg: 18.40, color: '#a395f8' },
-  { sym: 'ETH',    name: 'Ethereum',            bal: '0.6142',   usd: '$2,210.00',  price: '$3,598',  chg:  0.54, color: '#627eea' },
-  { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000',   usd: '$1,200.00',  price: '$0.015',  chg: 42.30, color: '#10b981' },
-  { sym: 'USDC',   name: 'USD Coin',            bal: '840.00',   usd: '$840.00',    price: '$1.00',   chg:  0.01, color: '#2775ca' },
-];
-
-const TXS = [
-  { type: 'Received', sym: 'LITHO',  amt: '+1,200', time: '2 min ago', pos: true,  color: '#8b7df7' },
-  { type: 'Sent',     sym: 'BTC',    amt: '-0.012', time: '1 hr ago',  pos: false, color: '#f7931a' },
-  { type: 'Swap',     sym: 'wLITHO', amt: '+500',   time: '3 hr ago',  pos: true,  color: '#a395f8' },
-  { type: 'Sent',     sym: 'FGPT',   amt: '-2,000', time: '5 hr ago',  pos: false, color: '#10b981' },
-  { type: 'Received', sym: 'USDC',   amt: '+840',   time: 'Yesterday', pos: true,  color: '#2775ca' },
-];
 
 /* ──────────────────────── Token icon ──────────────────────── */
 
@@ -362,6 +346,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 /* ──────────────────────── Main app screens ──────────────────────── */
 
 function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap') => void; onLock: () => void }) {
+  const { coins, totalUsd, loading, offline } = usePortfolioCtx();
   return (
     <div className="screen">
       <div className="screen-header">
@@ -369,7 +354,7 @@ function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap
           <div className="acct-avatar"><User size={13}/></div>
           <div>
             <div className="acct-name">Account 1</div>
-            <div className="acct-addr">litho1…o9z4v</div>
+            <div className="acct-addr">{offline ? 'Makalu · offline' : 'Makalu'}</div>
           </div>
         </div>
         <button className="icon-btn"><Bell size={15}/></button>
@@ -377,11 +362,7 @@ function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap
 
       <div className="balance-card">
         <div className="balance-label">TOTAL BALANCE</div>
-        <div className="balance-amt">$9,357.00</div>
-        <div className="balance-row">
-          <div className="change-pill">▲ 2.34%</div>
-          <span className="balance-sub">+$214.32 today</span>
-        </div>
+        <div className="balance-amt">{loading ? '···' : formatUsd(totalUsd)}</div>
       </div>
 
       <div className="qa-row">
@@ -405,19 +386,22 @@ function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap
 
       <div className="section-header">
         <span>Assets</span>
-        <span className="count-pill">{ASSETS.length}</span>
+        <span className="count-pill">{coins.length}</span>
       </div>
       <div className="card list">
-        {ASSETS.map((a, i) => (
-          <div key={a.sym} className={`row ${i < ASSETS.length - 1 ? 'row-border' : ''}`}>
+        {loading && <div className="row-sub" style={{ padding: 12 }}>Loading balances…</div>}
+        {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
+        {!loading && !offline && coins.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No assets yet</div>}
+        {coins.map((a, i) => (
+          <div key={a.sym} className={`row ${i < coins.length - 1 ? 'row-border' : ''}`}>
             <TokenAvatar sym={a.sym} color={a.color}/>
             <div className="row-mid">
               <div className="row-name">{a.name}</div>
-              <div className="row-sub">{a.price} <span className={a.chg >= 0 ? 'pos' : 'neg'}>{a.chg >= 0 ? '+' : ''}{a.chg}%</span></div>
+              <div className="row-sub">{a.priceUsd > 0 ? formatUsd(a.priceUsd) : '—'}</div>
             </div>
             <div className="row-right">
-              <div className="row-amt">{a.usd}</div>
-              <div className="row-bal">{a.bal} {a.sym}</div>
+              <div className="row-amt">{formatUsd(a.usdValue)}</div>
+              <div className="row-bal">{a.balanceText} {a.sym}</div>
             </div>
           </div>
         ))}
@@ -427,6 +411,7 @@ function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap
 }
 
 function ActivityScreen() {
+  const { activity, loading, offline } = usePortfolioCtx();
   return (
     <div className="screen">
       <h1 className="page-title">Activity</h1>
@@ -435,21 +420,24 @@ function ActivityScreen() {
           <button key={f} className={`filter-pill ${i === 0 ? 'active' : ''}`}>{f}</button>
         ))}
       </div>
-      <div className="section-header">Today</div>
+      <div className="section-header">Recent</div>
       <div className="card list">
-        {TXS.map((t, i) => {
-          const Ic = t.type === 'Sent' ? ArrowUpRight : t.type === 'Received' ? ArrowDownLeft : Repeat;
+        {loading && <div className="row-sub" style={{ padding: 12 }}>Loading activity…</div>}
+        {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
+        {!loading && !offline && activity.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No transactions yet</div>}
+        {activity.map((t, i) => {
+          const Ic = t.label === 'Sent' ? ArrowUpRight : t.label === 'Received' ? ArrowDownLeft : Repeat;
           return (
-            <div key={i} className={`row ${i < TXS.length - 1 ? 'row-border' : ''}`}>
+            <div key={t.id} className={`row ${i < activity.length - 1 ? 'row-border' : ''}`}>
               <div className="row-avatar" style={{ background: t.pos ? 'rgba(16,185,129,0.18)' : 'rgba(59,122,247,0.18)', color: t.pos ? '#10b981' : '#3b7af7' }}>
                 <Ic size={14} strokeWidth={2.4}/>
               </div>
               <div className="row-mid">
-                <div className="row-name">{t.type} {t.sym}</div>
+                <div className="row-name">{t.label} {t.sym}</div>
                 <div className="row-sub">{t.time}</div>
               </div>
               <div className="row-right">
-                <div className={`row-amt ${t.pos ? 'pos' : ''}`}>{t.amt} {t.sym}</div>
+                <div className={`row-amt ${t.pos ? 'pos' : ''}`}>{t.amount} {t.sym}</div>
               </div>
             </div>
           );
@@ -731,6 +719,9 @@ function App() {
   const [isDark, setIsDark] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
 
+  const evmAddr   = seed.length ? deriveEvm(seed) : '';
+  const portfolio = usePortfolio(evmAddr);
+
   // Watch chrome.storage.session for an incoming dApp approval request.
   useEffect(() => {
     let cancelled = false;
@@ -813,8 +804,6 @@ function App() {
   if (hasVault === null) return <div className="root-loading"/>;
   if (!unlocked) return <Onboarding hasVault={hasVault} onComplete={onComplete}/>;
 
-  const evmAddr = seed.length ? deriveEvm(seed) : 'litho1a7kxm8gq3n2p4d9fh6we0r1t5y8u3i2o9z4v';
-
   /* If a dApp is asking to connect, show the approval screen instead of the
      normal wallet UI. The user has to handle it (approve / reject) before
      they can do anything else — typical wallet-extension behaviour. */
@@ -845,7 +834,7 @@ function App() {
   }
 
   return (
-    <>
+    <PortfolioContext.Provider value={portfolio}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} address={evmAddr}/>}
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
@@ -869,7 +858,7 @@ function App() {
           ))}
         </div>
       </div>
-    </>
+    </PortfolioContext.Provider>
   );
 }
 
