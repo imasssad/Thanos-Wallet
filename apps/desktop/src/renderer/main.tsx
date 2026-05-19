@@ -11,6 +11,7 @@ import {
 import { UpdateBanner } from './components/UpdateBanner';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
+import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -464,19 +465,52 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 /* ──────────────────────── Send modal ──────────────────────── */
 function SendModal({ onClose }: { onClose: () => void }) {
-  const [coin, setCoin] = useState('LITHO');
+  const { coins } = usePortfolioCtx();
+  const seed = useWalletSeed();
+  const [selectedSym, setSelectedSym] = useState('');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
-  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
 
-  const balMap: Record<string, string> = { LITHO: '4,280.00', BTC: '5.050', ETH: '94.30', SOL: '148.2', USDC: '840.00' };
+  const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
+  const amtNum = parseFloat(amount || '0');
+  const overBalance = !!coin && amtNum > coin.balance;
+  const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending;
 
-  if (sent) return (
+  const doSend = async () => {
+    if (!coin) return;
+    if (!coin.native && !coin.tokenAddress) {
+      setError(`${coin.sym} has no contract address available.`);
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const recipient = await resolveRecipient(to);
+      const hash = await sendAsset({
+        seed,
+        to:           recipient,
+        amount,
+        decimals:     coin.decimals,
+        tokenAddress: coin.native ? undefined : coin.tokenAddress,
+      });
+      setTxHash(hash);
+      setSending(false);
+    } catch (e) {
+      setSending(false);
+      setError((e as Error)?.message || 'Could not broadcast the transaction.');
+    }
+  };
+
+  if (txHash) return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-success">
         <div className="success-icon">✓</div>
         <div className="success-title">Transaction Sent</div>
-        <div className="success-sub">{amount} {coin} sent to {to.slice(0,8)}…</div>
+        <div className="success-sub">{amount} {coin?.sym} broadcast on Makalu</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', margin: '10px 0' }}>{txHash}</div>
         <button className="btn-primary" onClick={onClose}>Done</button>
       </div>
     </Modal>
@@ -486,35 +520,38 @@ function SendModal({ onClose }: { onClose: () => void }) {
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body">
         <label className="field-label">Asset</label>
-        <select className="field-select" value={coin} onChange={e => setCoin(e.target.value)}>
-          {['LITHO','wLITHO','FGPT','BTC','ETH','USDC'].map(s => <option key={s}>{s}</option>)}
+        <select className="field-select" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
+          {coins.length === 0 && <option value="">No assets available</option>}
+          {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
         </select>
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
-        <input className="field-input" placeholder="0x… or wallet address" value={to} onChange={e => setTo(e.target.value)}/>
+        <input className="field-input" placeholder="0x… , litho1… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
 
         <label className="field-label" style={{ marginTop: 14 }}>Amount</label>
         <div style={{ position: 'relative' }}>
           <input className="field-input" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} type="number" style={{ paddingRight: 60 }}/>
-          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{coin}</span>
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{coin?.sym ?? ''}</span>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-          Balance: {balMap[coin] ?? '—'} {coin}
-          <button style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }} onClick={() => setAmount(balMap[coin] ?? '')}>MAX</button>
+        <div style={{ fontSize: 11, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 4 }}>
+          {overBalance ? 'Amount exceeds balance' : `Balance: ${coin?.balanceText ?? '—'} ${coin?.sym ?? ''}`}
+          {coin && (
+            <button
+              style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}
+              onClick={() => setAmount(String(coin.balance))}
+            >MAX</button>
+          )}
         </div>
 
-        <div className="fee-row">
-          <span>Network fee</span>
-          <span>~$1.24 (Fast)</span>
-        </div>
+        {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10 }}>{error}</div>}
 
         <button
           className="btn-primary"
           style={{ marginTop: 18 }}
-          disabled={!to || !amount}
-          onClick={() => setSent(true)}
+          disabled={!canSend}
+          onClick={doSend}
         >
-          Send {coin}
+          {sending ? 'Sending…' : `Send ${coin?.sym ?? ''}`}
         </button>
       </div>
     </Modal>
@@ -1511,6 +1548,8 @@ function App() {
   };
 
   return (
+    <WalletSeedContext.Provider value={walletSeed}>
+    <PortfolioContext.Provider value={portfolio}>
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
       {/* Auto-update banner — mounts above the topnav so it's seen first
@@ -1636,7 +1675,6 @@ function App() {
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
 
       {/* Workspace */}
-      <PortfolioContext.Provider value={portfolio}>
       <div className="workspace">
         <div className="main-area">
           {view === 'dashboard'    && <DashboardView onAction={setModal} liveEth={liveEth}/>}
@@ -1656,9 +1694,10 @@ function App() {
           </aside>
         )}
       </div>
-      </PortfolioContext.Provider>
 
     </div>
+    </PortfolioContext.Provider>
+    </WalletSeedContext.Provider>
   );
 }
 
