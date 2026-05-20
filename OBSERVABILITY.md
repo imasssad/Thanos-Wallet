@@ -152,8 +152,8 @@ The AOF file lives in the `redis_data` Docker volume.
 
 External health-check pings should hit:
 
-- `https://devapp.thanos.fi/` — web UI loads (Next.js returns the HTML)
-- `https://devapp.thanos.fi/api/health` — API + DB + Redis up (return 200)
+- `https://thanos.fi/` — web UI loads (Next.js returns the HTML)
+- `https://thanos.fi/api/health` — API + DB + Redis up (return 200)
 
 Recommended cadence: every 60s from at least two geographies (e.g. a free
 UptimeRobot account hits us from US-East + EU-West).

@@ -61,8 +61,8 @@ jobs:
       - name: Smoke-check
         run: |
           for i in 1 2 3 4 5; do
-            if curl -fsS -m 10 "https://devapp.thanos.fi/" >/dev/null; then
-              echo "✓ devapp.thanos.fi is up"
+            if curl -fsS -m 10 "https://thanos.fi/" >/dev/null; then
+              echo "✓ thanos.fi is up"
               exit 0
             fi
             echo "waiting for site… ($i/5)"
