@@ -1,11 +1,16 @@
 appId: ai.thanos.wallet
 productName: Thanos Wallet
+copyright: Copyright © 2026 Thanos Wallet
 
 # Files included in the packaged app — dist/ holds the transpiled main process
 # and the Vite-built renderer bundle.
 files:
   - dist/**
   - index.html
+
+# Single application icon used by every target unless overridden per-OS.
+# build/icons/icon.png at 1024×1024 produces all needed sizes at build time.
+icon: build/icons/icon.png
 
 # ─── macOS ───────────────────────────────────────────────────────────────────
 # Hardened runtime + notarization are required for distribution outside the
@@ -42,8 +47,8 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
-  installerIcon: build/icon.ico
-  uninstallerIcon: build/icon.ico
+  installerIcon: build/icons/icon.ico
+  uninstallerIcon: build/icons/icon.ico
 
 # ─── Linux ───────────────────────────────────────────────────────────────────
 linux:

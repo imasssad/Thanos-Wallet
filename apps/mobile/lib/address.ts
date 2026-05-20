@@ -17,7 +17,7 @@ import { getAddress } from 'ethers';
 const API_BASE = String(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (typeof process !== 'undefined' && (process as any).env?.EXPO_PUBLIC_API_URL) ||
-    'https://devapp.thanos.fi/api',
+    'https://thanos.fi/api',
 ).replace(/\/$/, '');
 
 /* ─── bech32 (BIP-173) decode ────────────────────────────────────────── */

@@ -65,7 +65,7 @@ export async function getWalletKit(): Promise<import('@reown/walletkit').IWallet
       metadata: {
         name:        'Thanos Wallet',
         description: 'Lithosphere-first multi-chain wallet',
-        url:         (typeof window !== 'undefined' && window.location?.origin) || 'https://devapp.thanos.fi',
+        url:         (typeof window !== 'undefined' && window.location?.origin) || 'https://thanos.fi',
         icons:       ['/images/Thanos_Logo.png'],
       },
     });

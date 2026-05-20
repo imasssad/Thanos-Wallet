@@ -61,7 +61,7 @@ async function trezor(): Promise<typeof import('@trezor/connect-web').default> {
     lazyLoad: true,
     manifest: {
       email:  'devs@thanos.fi',
-      appUrl: typeof window !== 'undefined' ? window.location.origin : 'https://devapp.thanos.fi',
+      appUrl: typeof window !== 'undefined' ? window.location.origin : 'https://thanos.fi',
     },
   }).catch((e: unknown) => {
     // init() rejects only on a hard failure; a second init() throws

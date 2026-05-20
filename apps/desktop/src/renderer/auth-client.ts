@@ -13,7 +13,7 @@ import {
 const baseUrl =
   // Electron + Vite: VITE_API_BASE_URL injected at build time, fallback to prod
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL
-  ?? 'https://devapp.thanos.fi/api';
+  ?? 'https://thanos.fi/api';
 
 export const apiClient = new ThanosApiClient({
   baseUrl,
