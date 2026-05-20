@@ -17,7 +17,7 @@ import { formatUnits } from 'ethers';
 
 const INDEXER_BASE = String(
   (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
-    'https://devapp.thanos.fi/indexer',
+    'https://thanos.fi/indexer',
 ).replace(/\/$/, '');
 
 /* ─── Indexer response shape (services/indexer/src/server.ts) ────────── */

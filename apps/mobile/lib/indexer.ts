@@ -10,7 +10,7 @@
  * the UI can show an offline state instead of crashing.
  */
 
-const DEFAULT_BASE = 'https://devapp.thanos.fi/indexer';
+const DEFAULT_BASE = 'https://thanos.fi/indexer';
 
 function baseUrl(): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

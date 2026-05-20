@@ -13,7 +13,7 @@ const HD_PATH = "m/44'/60'/0'/0/0";
 
 const API_BASE = String(
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
-    'https://devapp.thanos.fi/api',
+    'https://thanos.fi/api',
 ).replace(/\/$/, '');
 
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];

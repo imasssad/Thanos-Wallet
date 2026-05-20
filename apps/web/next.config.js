@@ -30,7 +30,7 @@ const CSP = [
     + " https://api.coingecko.com"
     + " https://relay.walletconnect.com wss://relay.walletconnect.com wss://relay.walletconnect.org"
     + " https://*.sentry.io"
-    + " https://devapp.thanos.fi",
+    + " https://thanos.fi",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

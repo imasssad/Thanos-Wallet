@@ -96,7 +96,7 @@ export class ApiError extends Error {
 
 /* ─── Client config ─────────────────────────────────────────────────── */
 export interface ThanosApiClientOptions {
-  /** Base URL for the backend, e.g. '/api' or 'https://devapp.thanos.fi/api' */
+  /** Base URL for the backend, e.g. '/api' or 'https://thanos.fi/api' */
   baseUrl:  string;
   /** x-platform header value sent with every request */
   platform: Platform;

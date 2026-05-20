@@ -12,7 +12,7 @@ import {
 } from './api-client';
 
 export const apiClient = new ThanosApiClient({
-  baseUrl:  'https://devapp.thanos.fi/api',
+  baseUrl:  'https://thanos.fi/api',
   platform: 'mobile',
   storage:  createAsyncStorageAdapter(AsyncStorage),
 });

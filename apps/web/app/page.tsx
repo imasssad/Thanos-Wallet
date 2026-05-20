@@ -408,7 +408,7 @@ type DL = {
 };
 
 const DOWNLOADS: DL[] = [
-  { n: '01', name: 'Web',       sub: 'Any modern browser · runs at devapp.thanos.fi',     cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
+  { n: '01', name: 'Web',       sub: 'Any modern browser · runs at thanos.fi',            cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
   { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
   { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
   { n: '04', name: 'Android',   sub: 'Phone · Tablet · APK or Play Store',                cta: 'Download .apk', href: '#',    ready: false, Icon: IconAndroid },
