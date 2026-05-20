@@ -14,7 +14,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   build web api indexer
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   up -d web api indexer
-curl -fsS https://devapp.thanos.fi/ -o /dev/null && echo "✓ site is up"
+curl -fsS https://thanos.fi/ -o /dev/null && echo "✓ site is up"
 ```
 
 When the dust settles, get back onto a branch:
