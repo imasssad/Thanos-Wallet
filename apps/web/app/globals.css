@@ -354,6 +354,12 @@ button:focus:not(:focus-visible),
   transition: transform 0.2s;
 }
 .logo-mark:hover { transform: scale(1.05); }
+.logo-word {
+  margin-left: 8px;
+  font-size: 18px; font-weight: 800; letter-spacing: 0.04em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
 
 .nav-tabs { display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--bg-elevated); border-radius: 999px; }
 [data-theme="light"] .nav-tabs { background: rgba(0,0,0,0.04); }
@@ -1611,6 +1617,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .topnav-logo { padding-right: 8px; margin-right: 4px; border-right: none; }
   .logo-mark { width: 30px; height: 30px; }
   .topnav-logo img { width: 28px !important; height: 28px !important; }
+  .logo-word { font-size: 15px; margin-left: 6px; }
   .icon-btn-nav { width: 30px; height: 30px; }
   .nav-mobile-toggle { width: 38px; height: 38px; }
 
