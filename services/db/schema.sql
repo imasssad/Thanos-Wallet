@@ -382,6 +382,19 @@ CREATE TABLE IF NOT EXISTS job_audit (
 
 CREATE INDEX IF NOT EXISTS job_audit_queue_idx ON job_audit(queue_name, status);
 
+-- Push notification device tokens (Expo). Keyed by wallet address so the
+-- indexer can fan out alerts on incoming activity. No FK to users — the
+-- mobile wallet is local-first and registers without a session.
+CREATE TABLE IF NOT EXISTS push_tokens (
+  token       TEXT PRIMARY KEY,
+  address     TEXT NOT NULL,
+  platform    TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS push_tokens_address_idx ON push_tokens(LOWER(address));
+
 -- =============================================================================
 -- 12. UPDATED_AT AUTO-TRIGGER
 -- =============================================================================
@@ -401,7 +414,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'users','wallets','accounts','transactions','contacts',
     'wc_sessions','wc_requests','tokens','portfolio_snapshots',
-    'bridge_jobs','lep100_tokens','lep100_balances','lep100_allowances','job_audit'
+    'bridge_jobs','lep100_tokens','lep100_balances','lep100_allowances','job_audit',
+    'push_tokens'
   ] LOOP
     EXECUTE format(
       'DROP TRIGGER IF EXISTS trg_%I_updated_at ON %I;

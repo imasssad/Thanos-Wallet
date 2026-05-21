@@ -23,6 +23,7 @@ import {
   type TokenSpec,
 } from './chain.js';
 import { setSyncMetrics } from './lib/metrics.js';
+import { notifyReceive } from './push.js';
 
 const TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'; // keccak('Transfer(address,address,uint256)')
@@ -108,7 +109,7 @@ function topicToAddress(topic: string): string {
   return ('0x' + topic.slice(26)).toLowerCase();
 }
 
-async function processTransferLog(log: Log, blockTimestamp: Date): Promise<void> {
+async function processTransferLog(log: Log, blockTimestamp: Date, symbol = 'tokens'): Promise<void> {
   const fromAddr = topicToAddress(log.topics[1]);
   const toAddr   = topicToAddress(log.topics[2]);
   const value    = BigInt(log.data || '0x0').toString();
@@ -170,6 +171,11 @@ async function processTransferLog(log: Log, blockTimestamp: Date): Promise<void>
     }
 
     await client.query('commit');
+
+    // New incoming transfer → push the recipient's devices (best-effort).
+    if (toAddr !== ZERO_ADDRESS.toLowerCase()) {
+      notifyReceive(toAddr, symbol, log.transactionHash);
+    }
   } catch (err) {
     await client.query('rollback');
     throw err;
@@ -201,9 +207,10 @@ async function syncRange(fromBlock: number, toBlock: number, tokens: TokenSpec[]
     }
   }
 
+  const symbolByAddr = new Map(tokens.map(t => [t.address.toLowerCase(), t.fallbackSymbol ?? 'tokens']));
   for (const log of logs) {
     const ts = log.blockNumber != null ? (blockTimes.get(log.blockNumber) ?? new Date()) : new Date();
-    await processTransferLog(log, ts);
+    await processTransferLog(log, ts, symbolByAddr.get(log.address.toLowerCase()) ?? 'tokens');
   }
   return logs.length;
 }
