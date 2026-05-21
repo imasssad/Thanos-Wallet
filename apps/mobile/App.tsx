@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  Alert, Animated, Easing, Image, Linking, Modal, Pressable, RefreshControl, SafeAreaView,
+  Alert, Animated, AppState, Easing, Image, Linking, Modal, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,7 +26,7 @@ import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices } from './lib/pricing';
 import { resolveRecipient, evmToLitho } from './lib/address';
-import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy } from './lib/wc-signer';
+import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { SvgXml } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
@@ -475,7 +475,14 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
         <QuickAction Icon={ArrowUpRight}  label="Send"    onPress={() => navigate('send')}/>
         <QuickAction Icon={ArrowDownLeft} label="Receive" onPress={() => navigate('receive')}/>
         <QuickAction Icon={Repeat}        label="Swap"    onPress={() => navigate('swap')}/>
-        <QuickAction Icon={Plus}          label="Buy"/>
+        <QuickAction Icon={Plus} label="Buy" onPress={() => Alert.alert(
+          'Buy crypto',
+          'Card on-ramp is coming soon. Until then, you can receive funds from another wallet or exchange.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Receive', onPress: () => navigate('receive') },
+          ],
+        )}/>
       </View>
 
       {/* Security: recovery-phrase backup nudge */}
@@ -1147,7 +1154,16 @@ function SettingsScreen() {
   const styles = useStyles();
   const toggle = useToggle();
   const walletAddr = useWalletAddr();
+  const seed = useWalletSeed();
   const isDark = C.bgBase === DARK.bgBase;
+
+  // Modal flags for the settings actions.
+  const [revealOpen, setRevealOpen]     = useState(false);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
+  const [autoLockOpen, setAutoLockOpen] = useState(false);
+  const [rpcOpen, setRpcOpen]           = useState(false);
+  const [autoLockMin, setAutoLockMin]   = useState(0);
+  useEffect(() => { AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0)); }, []);
 
   /* Biometric capability + enabled-state. Refreshes after the user
      toggles it so the row reflects reality. */
@@ -1244,9 +1260,12 @@ function SettingsScreen() {
       ),
       onPress: onToggleBio,
     },
-    { label: 'Auto-lock',         desc: 'After 5 minutes of inactivity',   Icon: Clock },
-    { label: 'Change password',   desc: 'Update wallet password',          Icon: Key },
-    { label: 'Recovery phrase',   desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true },
+    { label: 'Auto-lock',         desc: autoLockMin > 0 ? `After ${autoLockMin} min in background` : 'Never',
+      Icon: Clock, onPress: () => setAutoLockOpen(true) },
+    { label: 'Change password',   desc: 'Update wallet password',          Icon: Key,
+      onPress: () => setChangePwdOpen(true) },
+    { label: 'Recovery phrase',   desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true,
+      onPress: () => setRevealOpen(true) },
   ];
   const NETWORK_OPTS: SettingItem[] = [
     {
@@ -1261,7 +1280,8 @@ function SettingsScreen() {
       onPress: onToggleNotif,
     },
     { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
-    { label: 'Custom RPC',        desc: 'rpc.litho.ai',                    Icon: Server },
+    { label: 'Custom RPC',        desc: 'Override the Makalu RPC endpoint', Icon: Server,
+      onPress: () => setRpcOpen(true) },
     { label: 'Connected dApps',   desc: 'Pair via WalletConnect',          Icon: Zap,
       onPress: () => setWcOpen(true) },
   ];
@@ -1356,7 +1376,158 @@ function SettingsScreen() {
         onClose={() => setWcOpen(false)}
         evmAddress={walletAddr}
       />
+
+      <RevealPhraseModal visible={revealOpen} onClose={() => setRevealOpen(false)} seed={seed}/>
+      <ChangePasswordModal visible={changePwdOpen} onClose={() => setChangePwdOpen(false)} seed={seed}/>
+      <AutoLockModal
+        visible={autoLockOpen}
+        current={autoLockMin}
+        onClose={() => setAutoLockOpen(false)}
+        onPick={(m) => { setAutoLockMin(m); AsyncStorage.setItem(PREF_AUTOLOCK, String(m)); setAutoLockOpen(false); }}
+      />
+      <CustomRpcModal visible={rpcOpen} onClose={() => setRpcOpen(false)}/>
     </ScrollView>
+  );
+}
+
+/* ─── Settings sub-modals ─────────────────────────────────────────────── */
+
+function SheetShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const C = useColors();
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 14, maxHeight: '88%' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: C.textPrimary }}>{title}</Text>
+            <Pressable onPress={onClose} hitSlop={8}><Text style={{ fontSize: 22, color: C.textMuted }}>×</Text></Pressable>
+          </View>
+          {children}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClose: () => void; seed: string[] }) {
+  const C = useColors();
+  const [shown, setShown] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { if (!visible) { setShown(false); setCopied(false); } }, [visible]);
+  if (!visible) return null;
+  return (
+    <SheetShell title="Recovery phrase" onClose={onClose}>
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+        <AlertTriangle size={16} color="#f59e0b"/>
+        <Text style={{ flex: 1, fontSize: 12, color: C.textSecondary, lineHeight: 18 }}>
+          Anyone with these words controls your funds. Never share them, and make sure no one is watching your screen.
+        </Text>
+      </View>
+      {!shown ? (
+        <Pressable onPress={() => setShown(true)} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Reveal phrase</Text>
+        </Pressable>
+      ) : (
+        <>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {seed.map((w, i) => (
+              <View key={i} style={{ flexDirection: 'row', gap: 6, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10 }}>
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>{i + 1}</Text>
+                <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{w}</Text>
+              </View>
+            ))}
+          </View>
+          <Pressable
+            onPress={() => { Clipboard.setStringAsync(seed.join(' ')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1600); }}
+            style={{ paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}
+          >
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied' : 'Copy phrase'}</Text>
+          </Pressable>
+        </>
+      )}
+    </SheetShell>
+  );
+}
+
+function ChangePasswordModal({ visible, onClose, seed }: { visible: boolean; onClose: () => void; seed: string[] }) {
+  const C = useColors();
+  const [cur, setCur] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { if (!visible) { setCur(''); setNext(''); setConfirm(''); setErr(''); } }, [visible]);
+  if (!visible) return null;
+
+  const submit = async () => {
+    if (busy) return;
+    if (next.length < 8) { setErr('New password must be at least 8 characters'); return; }
+    if (next !== confirm) { setErr('New passwords don’t match'); return; }
+    setBusy(true); setErr('');
+    try {
+      const vault = await loadVault();
+      if (!vault || !(await openVault(vault, cur))) { setErr('Current password is incorrect'); setBusy(false); return; }
+      await createVault(seed.join(' '), next); // re-encrypts + saves + caches key
+      Alert.alert('Password updated', 'Your wallet password has been changed.');
+      onClose();
+    } catch (e) {
+      setErr((e as Error)?.message || 'Could not change password');
+    } finally { setBusy(false); }
+  };
+
+  const inputStyle = { backgroundColor: C.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, paddingVertical: 12, paddingHorizontal: 14, color: C.textPrimary, fontSize: 15 };
+  return (
+    <SheetShell title="Change password" onClose={onClose}>
+      <TextInput secureTextEntry placeholder="Current password" placeholderTextColor={C.textMuted} value={cur} onChangeText={setCur} style={inputStyle}/>
+      <TextInput secureTextEntry placeholder="New password (min 8)" placeholderTextColor={C.textMuted} value={next} onChangeText={setNext} style={inputStyle}/>
+      <TextInput secureTextEntry placeholder="Confirm new password" placeholderTextColor={C.textMuted} value={confirm} onChangeText={setConfirm} style={inputStyle}/>
+      {!!err && <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text>}
+      <Pressable onPress={submit} disabled={busy} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Updating…' : 'Update password'}</Text>
+      </Pressable>
+    </SheetShell>
+  );
+}
+
+function AutoLockModal({ visible, current, onClose, onPick }: { visible: boolean; current: number; onClose: () => void; onPick: (m: number) => void }) {
+  const C = useColors();
+  if (!visible) return null;
+  return (
+    <SheetShell title="Auto-lock" onClose={onClose}>
+      <Text style={{ fontSize: 12, color: C.textMuted }}>Lock the wallet after it’s been in the background this long.</Text>
+      {AUTOLOCK_OPTIONS.map(o => (
+        <Pressable key={o.minutes} onPress={() => onPick(o.minutes)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 4 }}>
+          <Text style={{ fontSize: 15, color: C.textPrimary }}>{o.label}</Text>
+          {current === o.minutes && <Text style={{ color: C.blue, fontWeight: '800' }}>✓</Text>}
+        </Pressable>
+      ))}
+    </SheetShell>
+  );
+}
+
+function CustomRpcModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const C = useColors();
+  const [url, setUrl] = useState('');
+  useEffect(() => { if (visible) AsyncStorage.getItem(PREF_CUSTOM_RPC).then(v => setUrl(v || '')); }, [visible]);
+  if (!visible) return null;
+
+  const save = async () => {
+    const v = url.trim();
+    if (v && !/^https?:\/\//i.test(v)) { Alert.alert('Invalid URL', 'RPC URL must start with http:// or https://'); return; }
+    if (v) await AsyncStorage.setItem(PREF_CUSTOM_RPC, v); else await AsyncStorage.removeItem(PREF_CUSTOM_RPC);
+    setRpcOverride(v || null);
+    Alert.alert('Saved', v ? 'Custom RPC will be used (with the default as fallback).' : 'Reverted to the default Makalu RPC.');
+    onClose();
+  };
+  const inputStyle = { backgroundColor: C.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, paddingVertical: 12, paddingHorizontal: 14, color: C.textPrimary, fontSize: 14 };
+  return (
+    <SheetShell title="Custom RPC" onClose={onClose}>
+      <Text style={{ fontSize: 12, color: C.textMuted }}>Default: https://rpc.litho.ai. Leave blank to reset.</Text>
+      <TextInput placeholder="https://your-makalu-rpc" placeholderTextColor={C.textMuted} value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} style={inputStyle}/>
+      <Pressable onPress={save} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>Save</Text>
+      </Pressable>
+    </SheetShell>
   );
 }
 
@@ -1398,6 +1569,17 @@ function deriveEvmAddress(seed: string[]): string {
 
 // Storage keys live in ./lib/vault.ts now — these legacy AsyncStorage keys
 // are only referenced by migrateLegacyPlaintext() and get wiped on first run.
+
+/* User preferences (plaintext, non-sensitive). */
+const PREF_AUTOLOCK = 'thanos.autolock_minutes'; // '0' = never
+const PREF_CUSTOM_RPC = 'thanos.custom_rpc';
+const AUTOLOCK_OPTIONS = [
+  { label: '1 minute',   minutes: 1 },
+  { label: '5 minutes',  minutes: 5 },
+  { label: '15 minutes', minutes: 15 },
+  { label: '1 hour',     minutes: 60 },
+  { label: 'Never',      minutes: 0 },
+];
 
 /* ─────────────────── Onboarding ─────────────────── */
 
@@ -2022,6 +2204,28 @@ export default function App() {
       if (on) registerPush(deriveEvmAddress(walletSeed)).catch(() => {});
     });
   }, [unlocked, walletSeed]);
+
+  // Load the custom-RPC override (Settings) into the signer at boot.
+  useEffect(() => {
+    AsyncStorage.getItem(PREF_CUSTOM_RPC).then(url => setRpcOverride(url || null)).catch(() => {});
+  }, []);
+
+  // Auto-lock: when the app returns from the background, lock if it was
+  // away longer than the configured timeout (0 = never).
+  const bgSince = useRef<number | null>(null);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (state === 'background' || state === 'inactive') {
+        bgSince.current = Date.now();
+      } else if (state === 'active' && bgSince.current && unlocked) {
+        const away = Date.now() - bgSince.current;
+        bgSince.current = null;
+        const mins = parseInt((await AsyncStorage.getItem(PREF_AUTOLOCK)) ?? '0', 10) || 0;
+        if (mins > 0 && away > mins * 60_000) handleLock();
+      }
+    });
+    return () => sub.remove();
+  }, [unlocked]);
 
   const handleLock = () => {
     setUnlocked(false);

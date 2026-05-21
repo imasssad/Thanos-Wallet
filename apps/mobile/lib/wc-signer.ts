@@ -26,10 +26,20 @@ const MAKALU_CHAIN_ID = 700777;
 // Makalu [primary, fallback] — failover via FallbackProvider.
 const MAKALU_RPCS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
 
+/** Optional user-set RPC override (Settings → Custom RPC). Loaded from
+ *  storage at app boot via setRpcOverride; preferred over the defaults. */
+let RPC_OVERRIDE: string | null = null;
+export function setRpcOverride(url: string | null): void {
+  RPC_OVERRIDE = url && url.trim() ? url.trim() : null;
+}
+function rpcUrls(): string[] {
+  return RPC_OVERRIDE ? [RPC_OVERRIDE, ...MAKALU_RPCS] : MAKALU_RPCS;
+}
+
 /** Makalu provider with primary→fallback failover. */
 function makaluProvider(): Provider {
   return new FallbackProvider(
-    MAKALU_RPCS.map(url => ({
+    rpcUrls().map(url => ({
       provider:     new JsonRpcProvider(url, MAKALU_CHAIN_ID),
       priority:     1,
       weight:       1,
@@ -44,7 +54,7 @@ function makaluProvider(): Provider {
  *  eth_estimateGas, eth_blockNumber, …) straight to Makalu. Used by the
  *  in-app dApp browser for methods the wallet doesn't sign. */
 export async function rpcProxy(method: string, params: unknown[]): Promise<unknown> {
-  const p = new JsonRpcProvider(MAKALU_RPCS[0], MAKALU_CHAIN_ID);
+  const p = new JsonRpcProvider(rpcUrls()[0], MAKALU_CHAIN_ID);
   return p.send(method, (params ?? []) as unknown[]);
 }
 
