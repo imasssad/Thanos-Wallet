@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useEffect } from 'react';
 import { useTheme } from '../providers/ThemeProvider';
 import { TopNav } from './TopNav';
+import { BottomNav } from './BottomNav';
 import { OnboardingFlow, useWalletGate } from '../onboarding';
 import { dualFromEvm, type DualAddress } from '../../lib/address';
 import { WalletConnectHost } from '../WalletConnectHost';
@@ -61,6 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
           {children}
         </main>
+        <BottomNav/>
       </div>
     </WalletContext.Provider>
   );
