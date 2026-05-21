@@ -12,12 +12,16 @@ import {
   saveVault, loadVault, clearVault,
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
+  isSeedBackedUp, setSeedBackedUp,
 } from '../../lib/vault';
 import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from '@thanos/sdk-core';
+import {
+  evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
+  fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
+} from '@thanos/sdk-core';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -141,6 +145,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     try {
       const vault = await createVault(seed.join(' '), password);
       saveVault(vault);
+      setSeedBackedUp(true); // create flow includes seed verification
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(seed);
@@ -155,6 +160,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     try {
       const vault = await createVault(words.join(' '), password);
       saveVault(vault);
+      setSeedBackedUp(true); // imported — user already holds the phrase
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(words);
@@ -347,8 +353,61 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
 /* ──────────────────────── Main app screens ──────────────────────── */
 
-function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap') => void; onLock: () => void }) {
+/* Compact portfolio sparkline for the popup. Real CoinGecko history for
+   tracked coins; flat for placeholder-priced ecosystem tokens. */
+function MiniChart({ holdings }: { holdings: Holding[] }) {
+  const [range, setRange] = useState<Range>('7d');
+  const [data, setData] = useState<PortfolioHistory | null>(null);
+  const W = 320, H = 56;
+  const key = useMemo(() => holdings.map(h => `${h.sym}:${h.qty.toFixed(6)}`).join('|'), [holdings]);
+  useEffect(() => {
+    let cancel = false;
+    fetchPortfolioHistory(holdings, range).then(d => { if (!cancel) setData(d); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [key, range]);
+
+  const pts = data?.points ?? [];
+  const up = (data?.changePct ?? 0) >= 0;
+  const stroke = up ? '#10b981' : '#f87171';
+  let line = '', area = '';
+  if (pts.length >= 2) {
+    const min = Math.min(...pts), max = Math.max(...pts), span = (max - min) || 1, dx = W / (pts.length - 1);
+    const coords = pts.map((p, i) => [i * dx, H - 4 - ((p - min) / span) * (H - 8)] as const);
+    line = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    area = `${line} L${W},${H} L0,${H} Z`;
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H} style={{ display: 'block' }}>
+        <defs>
+          <linearGradient id="mc-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={stroke} stopOpacity="0.22"/>
+            <stop offset="100%" stopColor={stroke} stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        {area && <path d={area} fill="url(#mc-fill)"/>}
+        {line && <path d={line} fill="none" stroke={stroke} strokeWidth={1.6}/>}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+        {(['7d', '30d'] as Range[]).map(r => (
+          <button key={r} onClick={() => setRange(r)} className={`filter-pill ${range === r ? 'active' : ''}`} style={{ fontSize: 10, padding: '2px 8px' }}>
+            {r.toUpperCase()}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HomeScreen({ onAction, onLock, onOpenSettings }: { onAction: (m: 'send'|'receive'|'swap') => void; onLock: () => void; onOpenSettings: () => void }) {
   const { coins, totalUsd, loading, offline } = usePortfolioCtx();
+  const [backedUp, setBackedUp] = useState<boolean | null>(null);
+  useEffect(() => { setBackedUp(isSeedBackedUp()); }, []);
+  const holdings: Holding[] = useMemo(
+    () => coins.filter(c => c.balance > 0 && c.usdValue > 0).map(c => ({ sym: c.sym, qty: c.balance, usd: c.usdValue })),
+    [coins],
+  );
   return (
     <div className="screen">
       <div className="screen-header">
@@ -366,6 +425,26 @@ function HomeScreen({ onAction, onLock }: { onAction: (m: 'send'|'receive'|'swap
         <div className="balance-label">TOTAL BALANCE</div>
         <div className="balance-amt">{loading ? '···' : formatUsd(totalUsd)}</div>
       </div>
+
+      {holdings.length > 0 && <MiniChart holdings={holdings}/>}
+
+      {backedUp === false && (
+        <button
+          onClick={onOpenSettings}
+          className="row"
+          style={{
+            width: '100%', cursor: 'pointer', textAlign: 'left', border: '1px solid rgba(245,158,11,0.3)',
+            borderRadius: 12, marginBottom: 12, background: 'rgba(245,158,11,0.08)',
+          }}
+        >
+          <div className="row-avatar" style={{ background: 'rgba(245,158,11,0.16)', color: '#f59e0b' }}><Shield size={15}/></div>
+          <div className="row-mid">
+            <div className="row-name">Back up your recovery phrase</div>
+            <div className="row-sub">Export and store it safely in Settings.</div>
+          </div>
+          <ChevronRight size={16} className="row-right"/>
+        </button>
+      )}
 
       <div className="qa-row">
         <button className="qa-btn" onClick={() => onAction('send')}>
@@ -1029,7 +1108,7 @@ function App() {
 
       <div className="app">
         <div className="app-body">
-          {tab === 'home'     && <HomeScreen onAction={setModal} onLock={lock}/>}
+          {tab === 'home'     && <HomeScreen onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}/>}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
           {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock}/>}

@@ -3,10 +3,11 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ethers } from 'ethers';
 import { TOKENS } from '../lib/tokens';
-import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon, KeyRound, Usb } from 'lucide-react';
+import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIcon, KeyRound, Usb, AlertTriangle, Copy, Check, Eye } from 'lucide-react';
 import { LedgerModal } from './LedgerModal';
 import { TrezorModal } from './TrezorModal';
 import { useWallet } from './shell/AppShell';
+import { loadVault, openVault, setSeedBackedUp } from '../lib/vault';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
@@ -818,7 +819,119 @@ function AddressBookSection({ Section, Row }: {
   );
 }
 
+/* Reveal the recovery phrase after a password re-prompt. The phrase is
+   read from the unlocked wallet context; the password check is a
+   shoulder-surf / unattended-device gate, and a successful reveal marks
+   the wallet as backed up. */
+function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privateKey?: string; onClose: () => void }) {
+  const [pwd, setPwd] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const isPk = !seed.length && !!privateKey;
+
+  const verify = async () => {
+    if (busy || !pwd) return;
+    setBusy(true);
+    setErr('');
+    try {
+      const vault = loadVault();
+      if (!vault) { setErr('No wallet found on this device.'); return; }
+      const opened = await openVault(vault, pwd);
+      if (!opened) { setErr('Incorrect password'); setPwd(''); return; }
+      setRevealed(true);
+      setSeedBackedUp(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = () => {
+    const text = isPk ? (privateKey ?? '') : seed.join(' ');
+    navigator.clipboard?.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }}/>
+      <div style={{
+        position: 'relative', width: 'min(440px, 92vw)', background: 'var(--bg-card)',
+        border: '1px solid var(--border-default)', borderRadius: 16, padding: 22,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(245,158,11,0.14)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Shield size={18}/>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>
+            {isPk ? 'Export private key' : 'Recovery phrase'}
+          </div>
+        </div>
+
+        {!revealed ? (
+          <>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 14 }}>
+              <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1, color: '#f59e0b' }}/>
+              <span>Anyone with {isPk ? 'your private key' : 'these words'} can take your funds. Never share them. Make sure no one is watching your screen.</span>
+            </div>
+            <input
+              className="field-input"
+              type="password"
+              value={pwd}
+              autoFocus
+              onChange={e => setPwd(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') verify(); }}
+              placeholder="Enter your password to continue"
+              style={{ width: '100%' }}
+            />
+            {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12, marginTop: 8 }}>{err}</div>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={busy || !pwd} onClick={verify}>
+                <Eye size={15}/> Reveal
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {isPk ? (
+              <div style={{
+                wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', fontSize: 13,
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                borderRadius: 10, padding: 14, lineHeight: 1.6,
+              }}>{privateKey}</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {seed.map((w, i) => (
+                  <div key={i} style={{
+                    display: 'flex', gap: 6, alignItems: 'baseline',
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                    borderRadius: 8, padding: '8px 10px', fontSize: 13,
+                  }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 11, minWidth: 16 }}>{i + 1}</span>
+                    <span style={{ fontWeight: 600 }}>{w}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn-outline" style={{ flex: 1 }} onClick={copy}>
+                {copied ? <Check size={15}/> : <Copy size={15}/>} {copied ? 'Copied' : 'Copy'}
+              </button>
+              <button className="btn-primary" style={{ flex: 1 }} onClick={onClose}>Done</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView() {
+  const wallet = useWallet();
+  const [revealOpen, setRevealOpen] = useState(false);
   const [currency, setCurrency] = useState('USD');
   const [language, setLanguage] = useState('English');
   const [autoLock, setAutoLock] = useState('5 minutes');
@@ -913,8 +1026,11 @@ export function SettingsView() {
               <Key size={14}/> Change
             </button>
           </Row>
-          <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
-            <button className="settings-btn settings-btn-danger">
+          <Row
+            label={wallet?.privateKey && !wallet?.seed?.length ? 'Export private key' : 'Backup seed phrase'}
+            sub={wallet?.privateKey && !wallet?.seed?.length ? 'Reveal your raw private key' : 'Export your 12/24-word recovery phrase'}
+          >
+            <button className="settings-btn settings-btn-danger" onClick={() => setRevealOpen(true)}>
               <Download size={14}/> Export
             </button>
           </Row>
@@ -945,6 +1061,15 @@ export function SettingsView() {
       {/* Hardware-wallet connect modals */}
       {hwModal === 'ledger' && <LedgerModal onClose={() => setHwModal(null)}/>}
       {hwModal === 'trezor' && <TrezorModal onClose={() => setHwModal(null)}/>}
+
+      {/* Recovery-phrase / private-key reveal */}
+      {revealOpen && (
+        <SeedRevealModal
+          seed={wallet?.seed ?? []}
+          privateKey={wallet?.privateKey}
+          onClose={() => setRevealOpen(false)}
+        />
+      )}
     </div>
   );
 }

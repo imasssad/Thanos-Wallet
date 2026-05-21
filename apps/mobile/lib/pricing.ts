@@ -19,7 +19,7 @@ export const PLACEHOLDER_PRICES: Record<string, number> = {
   IMAGE: 0.025,
 };
 
-const COINGECKO_IDS: Record<string, string> = {
+export const COINGECKO_IDS: Record<string, string> = {
   LitBTC: 'bitcoin',
   FurGPT: 'furgpt',
   COLLE:  'colle-ai',

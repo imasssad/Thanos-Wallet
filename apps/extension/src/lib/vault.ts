@@ -35,6 +35,10 @@ const STORAGE_KEYS = {
   vault:      'thanos.vault',
   hasVault:   'thanos.has_vault',
   sessionKey: 'thanos.session_key',
+  /* Set once the user has provably recorded their recovery phrase (after
+     the create-flow verification step, or on import). Absent for legacy/
+     migrated vaults, which then get a backup nudge. */
+  seedBackedUp: 'thanos.seed_backed_up',
   /* Legacy keys we migrate from on first load (then clear). */
   legacyMnemonic: 'thanos.mnemonic',
   legacyPassword: 'thanos.password',
@@ -172,10 +176,21 @@ export function loadVault(): EncryptedVault | null {
   try { return JSON.parse(raw) as EncryptedVault; } catch { return null; }
 }
 
+export function isSeedBackedUp(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(STORAGE_KEYS.seedBackedUp) === '1';
+}
+export function setSeedBackedUp(backedUp: boolean): void {
+  if (typeof window === 'undefined') return;
+  if (backedUp) localStorage.setItem(STORAGE_KEYS.seedBackedUp, '1');
+  else          localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
+}
+
 export function clearVault(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEYS.vault);
   localStorage.removeItem(STORAGE_KEYS.hasVault);
+  localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
   localStorage.removeItem(STORAGE_KEYS.legacyMnemonic);
   localStorage.removeItem(STORAGE_KEYS.legacyPassword);
   localStorage.removeItem(STORAGE_KEYS.legacyUnlocked);

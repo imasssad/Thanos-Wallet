@@ -37,6 +37,7 @@ const LEGACY_HAS     = 'thanos.has_vault';  // AsyncStorage (legacy)
 const LEGACY_MNEM    = 'thanos.mnemonic';
 const LEGACY_PWD     = 'thanos.password';
 const LEGACY_UNLOCK  = 'thanos.unlocked';
+const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 
 // Argon2id params — match services/api + apps/web vault.ts.
 const ARGON2_T = 3;            // iterations
@@ -142,7 +143,19 @@ export async function openVaultWithKey(
 export async function clearVault(): Promise<void> {
   clearSessionKey();
   try { await SecureStore.deleteItemAsync(VAULT_KEY); } catch {}
-  await AsyncStorage.multiRemove([LEGACY_HAS, LEGACY_MNEM, LEGACY_PWD, LEGACY_UNLOCK]);
+  await AsyncStorage.multiRemove([LEGACY_HAS, LEGACY_MNEM, LEGACY_PWD, LEGACY_UNLOCK, SEED_BACKED_UP]);
+}
+
+/* ─── Recovery-phrase backup flag ───────────────────────────────────────── */
+/** True once the user has recorded their recovery phrase on this device.
+ *  Set after the create-flow verification step / on import; absent for
+ *  legacy/migrated vaults (which then get a backup nudge). */
+export async function isSeedBackedUp(): Promise<boolean> {
+  return (await AsyncStorage.getItem(SEED_BACKED_UP)) === '1';
+}
+export async function setSeedBackedUp(backedUp: boolean): Promise<void> {
+  if (backedUp) await AsyncStorage.setItem(SEED_BACKED_UP, '1');
+  else          await AsyncStorage.removeItem(SEED_BACKED_UP);
 }
 
 /* ─── Quick existence check ─────────────────────────────────────────────── */

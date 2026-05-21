@@ -11,6 +11,7 @@ import {
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
+  isSeedBackedUp, setSeedBackedUp,
 } from './lib/vault';
 import {
   getBiometricCapability, biometricLabel,
@@ -35,6 +36,7 @@ import {
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from './lib/ecosystem';
+import { fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range } from './lib/price-history';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -337,12 +339,75 @@ function SectionTitle({ children }: { children: string }) {
 
 /* ─────────────────────────── Screens ─────────────────────────── */
 
+/* Portfolio sparkline (RN). Builds an SVG string and renders it via
+   SvgXml. Real CoinGecko history for tracked coins; flat for the
+   placeholder-priced ecosystem tokens. */
+function PortfolioChart({ holdings }: { holdings: Holding[] }) {
+  const C = useColors();
+  const [range, setRange] = useState<Range>('7d');
+  const [data, setData] = useState<PortfolioHistory | null>(null);
+  const W = 320, H = 72;
+  const key = useMemo(() => holdings.map(h => `${h.sym}:${h.qty.toFixed(6)}`).join('|'), [holdings]);
+  useEffect(() => {
+    let cancel = false;
+    fetchPortfolioHistory(holdings, range).then(d => { if (!cancel) setData(d); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [key, range]);
+
+  const pts = data?.points ?? [];
+  const up = (data?.changePct ?? 0) >= 0;
+  const stroke = up ? '#10b981' : '#f87171';
+  let svg = '';
+  if (pts.length >= 2) {
+    const min = Math.min(...pts), max = Math.max(...pts), span = (max - min) || 1, dx = W / (pts.length - 1);
+    const coords = pts.map((p, i) => [i * dx, H - 4 - ((p - min) / span) * (H - 8)] as const);
+    const line = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+    const area = `${line} L${W},${H} L0,${H} Z`;
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${stroke}" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path d="${area}" fill="url(#g)"/>
+      <path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      {svg ? <SvgXml xml={svg} width="100%" height={H}/> : <View style={{ height: H }}/>}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8 }}>
+        {(['7d', '30d'] as Range[]).map(r => (
+          <Pressable key={r} onPress={() => setRange(r)} style={{
+            paddingVertical: 4, paddingHorizontal: 12, borderRadius: 999,
+            borderWidth: 1, borderColor: C.borderSubtle,
+            backgroundColor: range === r ? C.bgElevated : 'transparent',
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: range === r ? C.textPrimary : C.textMuted }}>{r.toUpperCase()}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {data && !data.hasRealData && (
+        <Text style={{ textAlign: 'center', fontSize: 10, color: C.textMuted, marginTop: 4 }}>
+          No price history for your current holdings yet.
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
   const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr);
   const networks = new Set(assets.map((a) => a.chainId)).size;
+  const [backedUp, setBackedUp] = useState<boolean | null>(null);
+  useEffect(() => { isSeedBackedUp().then(setBackedUp).catch(() => {}); }, []);
+  const holdings: Holding[] = useMemo(
+    () => assets.filter(a => a.balance > 0 && a.usdValue > 0).map(a => ({ sym: a.sym, qty: a.balance, usd: a.usdValue })),
+    [assets],
+  );
 
   const QuickAction = ({ Icon, label, onPress }: { Icon: any; label: string; onPress?: () => void }) => (
     <Pressable style={styles.qaBtn} onPress={onPress}>
@@ -392,6 +457,9 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
         </View>
       </View>
 
+      {/* Portfolio history chart */}
+      {holdings.length > 0 && <PortfolioChart holdings={holdings}/>}
+
       {/* Quick actions row */}
       <View style={styles.qaRow}>
         <QuickAction Icon={ArrowUpRight}  label="Send"    onPress={() => navigate('send')}/>
@@ -399,6 +467,27 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
         <QuickAction Icon={Repeat}        label="Swap"    onPress={() => navigate('swap')}/>
         <QuickAction Icon={Plus}          label="Buy"/>
       </View>
+
+      {/* Security: recovery-phrase backup nudge */}
+      {backedUp === false && (
+        <Pressable
+          onPress={() => navigate('settings')}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginTop: 4,
+            borderRadius: 14, borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)',
+            backgroundColor: 'rgba(245,158,11,0.08)',
+          }}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(245,158,11,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+            <Shield size={18} color="#f59e0b"/>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Back up your recovery phrase</Text>
+            <Text style={{ fontSize: 12, color: C.textMuted }}>Export and store it safely in Settings.</Text>
+          </View>
+          <ChevronRight size={18} color={C.textMuted}/>
+        </Pressable>
+      )}
 
       {/* Assets */}
       <View>
@@ -1240,6 +1329,7 @@ function OnboardingScreen({
     setBusy(true);
     try {
       await createVault(seed.join(' '), password);
+      await setSeedBackedUp(true); // create flow includes seed verification
       // createVault session-caches the key internally.
       onComplete(seed);
     } finally { setBusy(false); }
@@ -1256,6 +1346,7 @@ function OnboardingScreen({
     setBusy(true);
     try {
       await createVault(words.join(' '), password);
+      await setSeedBackedUp(true); // imported — user already holds the phrase
       onComplete(words);
     } finally { setBusy(false); }
   };

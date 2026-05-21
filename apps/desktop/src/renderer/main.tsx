@@ -7,12 +7,16 @@ import {
   saveVault, loadVault, clearVault,
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
+  isSeedBackedUp, setSeedBackedUp,
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from '@thanos/sdk-core';
+import {
+  evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
+  fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
+} from '@thanos/sdk-core';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -307,12 +311,127 @@ function StakingCard() {
 
 /* ──────────────────────── Dashboard ──────────────────────── */
 
-function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null }) {
+/* ──────────────────────── Portfolio chart ──────────────────────── */
+function buildChartPath(points: number[], w: number, h: number): { line: string; area: string } {
+  if (points.length < 2) return { line: '', area: '' };
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const dx = w / (points.length - 1);
+  const coords = points.map((p, i) => {
+    const x = i * dx;
+    const y = h - 6 - ((p - min) / span) * (h - 12);
+    return [x, y] as const;
+  });
+  const line = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  return { line, area: `${line} L${w},${h} L0,${h} Z` };
+}
+
+function PortfolioChart({ holdings }: { holdings: Holding[] }) {
+  const [range, setRange] = useState<Range>('7d');
+  const [data, setData] = useState<PortfolioHistory | null>(null);
+  const [loading, setLoading] = useState(true);
+  const W = 600, H = 110;
+  const key = useMemo(() => holdings.map(h => `${h.sym}:${h.qty.toFixed(6)}`).join('|'), [holdings]);
+  useEffect(() => {
+    let cancel = false;
+    setLoading(true);
+    fetchPortfolioHistory(holdings, range)
+      .then(d => { if (!cancel) { setData(d); setLoading(false); } })
+      .catch(() => { if (!cancel) setLoading(false); });
+    return () => { cancel = true; };
+  }, [key, range]);
+
+  const up = (data?.changePct ?? 0) >= 0;
+  const stroke = up ? 'var(--green, #10b981)' : 'var(--red, #f87171)';
+  const { line, area } = useMemo(() => buildChartPath(data?.points ?? [], W, H), [data]);
+
+  return (
+    <div className="card" style={{ padding: '14px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>Portfolio</span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['7d', '30d'] as Range[]).map(r => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              style={{
+                padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                border: '1px solid var(--border-subtle)',
+                background: range === r ? 'var(--bg-elevated)' : 'transparent',
+                color: range === r ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >{r.toUpperCase()}</button>
+          ))}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H}
+        style={{ display: 'block', opacity: loading ? 0.5 : 1 }}>
+        <defs>
+          <linearGradient id="pf-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={stroke} stopOpacity="0.22"/>
+            <stop offset="100%" stopColor={stroke} stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        {area && <path d={area} fill="url(#pf-fill)"/>}
+        {line && <path d={line} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round"/>}
+      </svg>
+      {data && !data.hasRealData && !loading && (
+        <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+          No price history for your current holdings yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────── Security panel ──────────────────────── */
+function SecurityPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const [backedUp, setBackedUp] = useState<boolean | null>(null);
+  useEffect(() => { setBackedUp(isSeedBackedUp()); }, []);
+  if (backedUp === null) return null;
+  return (
+    <button
+      className="card"
+      onClick={onOpenSettings}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
+        cursor: 'pointer', textAlign: 'left', border: '1px solid var(--border-subtle)',
+      }}
+    >
+      <div style={{
+        width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+        background: backedUp ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: backedUp ? 'var(--green, #10b981)' : '#f59e0b',
+      }}><Shield size={18}/></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>
+          {backedUp ? 'Recovery phrase backed up' : 'Back up your recovery phrase'}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          {backedUp ? 'Your wallet can be restored from your phrase.' : 'Export and store it safely in Settings.'}
+        </div>
+      </div>
+      {!backedUp && (
+        <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 6, background: 'rgba(245,158,11,0.16)', color: '#f59e0b' }}>ACTION</span>
+      )}
+      <ChevRight2 size={18}/>
+    </button>
+  );
+}
+
+function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null; onOpenSettings: () => void }) {
   const { coins, activity, totalUsd, loading } = usePortfolioCtx();
   const balance = loading ? '···' : formatUsd(totalUsd);
   const liveLine = liveEth !== null
     ? `Live ETH: ${parseFloat(liveEth).toFixed(6)} ETH`
     : null;
+  const holdings: Holding[] = useMemo(
+    () => coins.filter(c => c.balance > 0 && c.usdValue > 0)
+               .map(c => ({ sym: c.sym, qty: c.balance, usd: c.usdValue })),
+    [coins],
+  );
   return (
     <>
       {/* Hero: balance + quick actions */}
@@ -341,6 +460,12 @@ function DashboardView({ onAction, liveEth }: { onAction: (a: 'send'|'receive'|'
           ))}
         </div>
       </div>
+
+      {/* Portfolio history chart */}
+      {holdings.length > 0 && <PortfolioChart holdings={holdings}/>}
+
+      {/* Security: recovery-phrase backup status */}
+      <SecurityPanel onOpenSettings={onOpenSettings}/>
 
       {/* Allocation: bar + per-coin grid wrapped in card */}
       <div className="card" style={{ padding: '14px 18px' }}>
@@ -1240,6 +1365,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
     try {
       const vault = await createVault(seed.join(' '), password);
       saveVault(vault);
+      setSeedBackedUp(true); // create flow includes seed verification
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(seed, password);
@@ -1256,6 +1382,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
     try {
       const vault = await createVault(words.join(' '), password);
       saveVault(vault);
+      setSeedBackedUp(true); // imported — user already holds the phrase
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(words, password);
@@ -1869,7 +1996,7 @@ function App() {
       {/* Workspace */}
       <div className="workspace">
         <div className="main-area">
-          {view === 'dashboard'    && <DashboardView onAction={setModal} liveEth={liveEth}/>}
+          {view === 'dashboard'    && <DashboardView onAction={setModal} liveEth={liveEth} onOpenSettings={() => setView('settings')}/>}
           {view === 'market'       && <MarketView/>}
           {view === 'portfolio'    && <PortfolioView/>}
           {view === 'transactions' && <TransactionsView/>}
