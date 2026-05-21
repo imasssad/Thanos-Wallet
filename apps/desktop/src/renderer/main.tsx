@@ -1912,6 +1912,7 @@ function App() {
           <div className="logo-mark">
             <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
           </div>
+          <span style={{ marginLeft: 8, fontSize: 18, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>THANOS</span>
         </div>
 
         <div className="nav-tabs">
