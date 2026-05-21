@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  Alert, Animated, Easing, Image, Modal, Pressable, RefreshControl, SafeAreaView,
+  Alert, Animated, Easing, Image, Linking, Modal, Pressable, RefreshControl, SafeAreaView,
   ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -32,8 +32,9 @@ import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
-  Copy, Share2, Eye, EyeOff, ScanFace, ScanLine,
+  Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
 } from 'lucide-react-native';
+import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from './lib/ecosystem';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -851,6 +852,88 @@ function ActivityScreen() {
   );
 }
 
+function DiscoverScreen() {
+  const C = useColors();
+  const styles = useStyles();
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const apps: EcosystemApp[] = query
+    ? ECOSYSTEM_APPS.filter(a =>
+        a.name.toLowerCase().includes(query) ||
+        a.category.toLowerCase().includes(query) ||
+        a.description.toLowerCase().includes(query))
+    : ECOSYSTEM_APPS;
+  const open = (url: string) => { Linking.openURL(url).catch(() => {}); };
+
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <Text style={styles.pageTitleLarge}>Discover</Text>
+      <Text style={styles.pageSubtitle}>Lithosphere ecosystem apps — open in your browser</Text>
+
+      {/* Search */}
+      <View style={{ position: 'relative', marginTop: 14, marginBottom: 14, justifyContent: 'center' }}>
+        <View style={{ position: 'absolute', left: 12, zIndex: 1 }}>
+          <Search size={16} color={C.textMuted}/>
+        </View>
+        <TextInput
+          value={q}
+          onChangeText={setQ}
+          placeholder="Search ecosystem apps"
+          placeholderTextColor={C.textMuted}
+          style={{
+            backgroundColor: C.bgElevated, borderRadius: 12,
+            borderWidth: 1, borderColor: C.borderDefault,
+            paddingVertical: 12, paddingLeft: 38, paddingRight: 14,
+            color: C.textPrimary, fontSize: 15,
+          }}
+        />
+      </View>
+
+      {/* Featured hub */}
+      <Pressable
+        onPress={() => open(ECOSYSTEM_HUB)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16,
+          borderRadius: 16, marginBottom: 20,
+          backgroundColor: C.purpleGlow, borderWidth: 1, borderColor: C.borderDefault,
+        }}
+      >
+        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+          <Globe size={22} color={C.blue}/>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web3</Text>
+          <Text style={{ fontSize: 12, color: C.textMuted }}>Browse the full ecosystem on ecosystem.litho.ai</Text>
+        </View>
+      </Pressable>
+
+      <Text style={styles.dateHeader}>Lithosphere Ecosystem</Text>
+      <View style={styles.card}>
+        {apps.map((a, i) => (
+          <Pressable key={a.id} onPress={() => open(a.url)} style={[styles.row, i < apps.length - 1 && styles.rowBorder]}>
+            <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: a.color, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 18 }}>{a.name.charAt(0)}</Text>
+            </View>
+            <View style={styles.rowMid}>
+              <Text style={styles.rowSymbol}>{a.name}</Text>
+              <Text style={styles.rowSub} numberOfLines={1}>{a.description}</Text>
+            </View>
+            <ChevronRight size={18} color={C.textMuted}/>
+          </Pressable>
+        ))}
+        {apps.length === 0 && <Text style={[styles.rowSub, { padding: 16 }]}>No apps match “{q}”.</Text>}
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-start' }}>
+        <Shield size={14} color={C.green}/>
+        <Text style={{ flex: 1, fontSize: 11, color: C.textMuted, lineHeight: 17 }}>
+          These are Lithosphere ecosystem apps. Always check the URL in your browser before connecting your wallet or signing a transaction.
+        </Text>
+      </View>
+    </ScrollView>
+  );
+}
+
 function SettingsScreen() {
   const C = useColors();
   const styles = useStyles();
@@ -1043,11 +1126,12 @@ function SettingsScreen() {
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'activity' | 'settings';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Home',     Icon: Home },
   { key: 'swap',     label: 'Swap',     Icon: Repeat },
+  { key: 'discover', label: 'Discover', Icon: Compass },
   { key: 'activity', label: 'Activity', Icon: Clock },
   { key: 'settings', label: 'Settings', Icon: SettingsIcon },
 ];
@@ -1653,6 +1737,7 @@ export default function App() {
                 {screen === 'send'     && <SendScreen goBack={() => setScreen('home')}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
                 {screen === 'swap'     && <SendScreen goBack={() => setScreen('home')}/>}
+                {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
