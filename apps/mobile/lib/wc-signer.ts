@@ -40,6 +40,14 @@ function makaluProvider(): Provider {
   );
 }
 
+/** Proxy a read-only JSON-RPC call (eth_call, eth_getBalance,
+ *  eth_estimateGas, eth_blockNumber, …) straight to Makalu. Used by the
+ *  in-app dApp browser for methods the wallet doesn't sign. */
+export async function rpcProxy(method: string, params: unknown[]): Promise<unknown> {
+  const p = new JsonRpcProvider(MAKALU_RPCS[0], MAKALU_CHAIN_ID);
+  return p.send(method, (params ?? []) as unknown[]);
+}
+
 export class WcSignerError extends Error {
   constructor(public readonly code: number, message: string) {
     super(message);
