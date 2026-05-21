@@ -128,6 +128,21 @@ export async function getActiveSessions() {
   return kit.getActiveSessions();
 }
 
+/**
+ * Count active sessions WITHOUT booting the kit. Returns null if
+ * WalletConnect hasn't been initialised this session (so callers like the
+ * dashboard don't open a relay socket just to render a badge).
+ */
+export async function getActiveSessionCountIfReady(): Promise<number | null> {
+  if (!kitPromise) return null;
+  try {
+    const kit = await kitPromise;
+    return Object.keys(kit.getActiveSessions()).length;
+  } catch {
+    return null;
+  }
+}
+
 export async function disconnectSession(topic: string): Promise<void> {
   const kit = await getWalletKit();
   await kit.disconnectSession({

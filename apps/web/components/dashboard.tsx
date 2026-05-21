@@ -12,6 +12,7 @@ import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
 import { PortfolioChart } from './PortfolioChart';
+import { SecurityPanel } from './SecurityPanel';
 import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
@@ -637,6 +638,9 @@ export function Dashboard() {
             onClick={() => setModal('receive')}
           />
         </div>
+
+        {/* ── Security signals (backup status + connected apps) ──────── */}
+        <SecurityPanel/>
 
         {/* ── Tabs ──────────────────────────────────────────────────── */}
         <div style={{
