@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ethers } from 'ethers';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, DollarSign,
@@ -307,6 +307,7 @@ function StakingCard() {
 
 export function Dashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [modal, setModal] = useState<ModalKind>(null);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
@@ -497,6 +498,20 @@ export function Dashboard() {
      only in component state — restoring on each mount is intentional
      (you opt in for the session, not forever). */
   const [balanceHidden, setBalanceHidden] = useState(false);
+
+  /* The top-nav "Swap" and "NFTs" entries route here with a query param
+     rather than to a standalone page (Swap is a modal; NFTs is a tab).
+     Apply it once, then strip the param so back/refresh stay clean. */
+  useEffect(() => {
+    const swap = searchParams.get('swap');
+    const t    = searchParams.get('tab');
+    if (swap === '1') { setModal('swap'); router.replace('/app'); }
+    else if (t && (['tokens', 'defi', 'nfts', 'activity'] as const).includes(t as never)) {
+      setTab(t as 'tokens' | 'defi' | 'nfts' | 'activity');
+      router.replace('/app');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const filteredCoins = useMemo(() => {
     if (netFilter === 'all') return COINS;

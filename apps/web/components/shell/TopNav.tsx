@@ -9,14 +9,19 @@ import {
 
 const ACCOUNT_NAME = 'RobbyWallet';
 
+/* Trust Wallet-style vocabulary. Swap opens the existing swap modal and
+   NFTs selects the home NFTs tab (both via a query param the dashboard
+   reads) since neither has — or needs — a standalone route yet. Settings
+   lives in the account menu, not the tab bar. */
 const NAV = [
-  { href: '/app',           label: 'Dashboard'    },
-  { href: '/app/assets',    label: 'Assets'       },
-  { href: '/app/market',    label: 'Market'       },
-  { href: '/app/discover',  label: 'Discover'     },
-  { href: '/app/history',   label: 'Transactions' },
-  { href: '/app/staking',   label: 'Staking'      },
-  { href: '/app/settings',  label: 'Settings'     },
+  { href: '/app',            label: 'Home'     },
+  { href: '/app?swap=1',     label: 'Swap'     },
+  { href: '/app/staking',    label: 'Earn'     },
+  { href: '/app?tab=nfts',   label: 'NFTs'     },
+  { href: '/app/assets',     label: 'Assets'   },
+  { href: '/app/market',     label: 'Market'   },
+  { href: '/app/discover',   label: 'Discover' },
+  { href: '/app/history',    label: 'Activity' },
 ];
 
 export function TopNav({ onLock }: { onLock?: () => void }) {
