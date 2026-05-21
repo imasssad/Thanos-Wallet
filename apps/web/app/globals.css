@@ -354,6 +354,27 @@ button:focus:not(:focus-visible),
   transition: transform 0.2s;
 }
 .logo-mark:hover { transform: scale(1.05); }
+
+/* ─── Assets page (PortfolioView) layout ─────────────────────────────
+   Chart card + asset table side-by-side on desktop, stacked on mobile.
+   min-width:0 lets the table card shrink so the table scrolls inside it
+   instead of overflowing the viewport. */
+.assets-layout { display: flex; gap: 16px; align-items: flex-start; }
+.assets-chart-card { flex: 0 0 260px; }
+.assets-table-card { flex: 1; min-width: 0; overflow-x: auto; }
+@media (max-width: 768px) {
+  .assets-layout { flex-direction: column; }
+  .assets-chart-card { flex: 1 1 auto; width: 100%; box-sizing: border-box; }
+  .assets-table-card { width: 100%; }
+}
+/* Phone: drop Price + 24h columns so Asset / Holdings / Value fit cleanly. */
+@media (max-width: 480px) {
+  .assets-table-card .data-table th:nth-child(2),
+  .assets-table-card .data-table td:nth-child(2),
+  .assets-table-card .data-table th:nth-child(5),
+  .assets-table-card .data-table td:nth-child(5) { display: none; }
+}
+
 .logo-word {
   margin-left: 8px;
   font-size: 18px; font-weight: 800; letter-spacing: 0.04em;

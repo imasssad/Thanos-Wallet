@@ -280,8 +280,8 @@ export function PortfolioView() {
             </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          <div className="card" style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 24 }}>
+        <div className="assets-layout">
+          <div className="card assets-chart-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 24 }}>
             <div style={{ position: 'relative', width: 180, height: 180 }}>
               <svg viewBox="0 0 180 180" width="180" height="180" style={{ transform: 'rotate(-90deg)' }}>
                 {segments.map((s, i) => (
@@ -304,7 +304,7 @@ export function PortfolioView() {
               </div>
             ))}
           </div>
-          <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+          <div className="card assets-table-card" style={{ padding: 0 }}>
             <table className="data-table">
               <thead>
                 <tr>
