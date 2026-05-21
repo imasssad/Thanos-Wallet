@@ -42,6 +42,10 @@ function projectAsset(a: IndexerAsset, prices: Record<string, number> | null) {
     usdNum: balNum * priceUsd,
     chg:    canon?.change24h ?? 0,
     color:  canon?.color ?? '#52525b',
+    /** Chain the asset lives on — drives the TokenIcon chain-badge. */
+    chainId: a.chainId,
+    /** True for the chain's native coin (LITHO/ETH/BNB/…). */
+    native:  !!a.native,
   };
 }
 
@@ -410,6 +414,8 @@ export function Dashboard() {
         usdNum: balance * priceOr(prices, sym, tok.priceUsd),
         chg:    tok.change24h,
         color:  tok.color,
+        chainId: undefined as number | undefined,
+        native:  true,
       };
     };
     const solRow = buildNonEvmRow('SOL', solBalance);
@@ -427,6 +433,8 @@ export function Dashboard() {
       usdNum: balance * priceOr(prices, chain.nativeSymbol, 0),
       chg:    0,
       color:  chain.color,
+      chainId: chain.chainId as number | undefined,
+      native:  true,
     }));
 
     const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
@@ -437,6 +445,7 @@ export function Dashboard() {
       sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,
       usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
       chg: c.chg, color: c.color,
+      chainId: c.chainId, native: c.native,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
   }, [liveAssets, solBalance, btcBalance, evmChainBalances, prices]);
@@ -685,7 +694,7 @@ export function Dashboard() {
                   padding: '14px 4px',
                   borderBottom: '1px solid var(--border-subtle)',
                 }}>
-                  <TokenIcon sym={c.sym} color={c.color} size={44}/>
+                  <TokenIcon sym={c.sym} color={c.color} size={44} chainId={c.chainId} native={c.native}/>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 700 }}>{c.sym}</div>
                     <div style={{
