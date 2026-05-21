@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
   Alert, Animated, Easing, Image, Linking, Modal, Pressable, RefreshControl, SafeAreaView,
-  ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
+  ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits } from 'ethers';
@@ -497,6 +497,30 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
         </Pressable>
       )}
 
+      {/* Shortcuts: Earn + History (SafePal-style home shortcuts) */}
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, marginBottom: 4 }}>
+        <Pressable
+          onPress={() => navigate('earn')}
+          style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}
+        >
+          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <Zap size={18} color={C.green}/>
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Earn</Text>
+          <Text style={{ fontSize: 11, color: C.textMuted }}>Stake & earn yield</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => navigate('activity')}
+          style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}
+        >
+          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <Clock size={18} color={C.blue}/>
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>History</Text>
+          <Text style={{ fontSize: 11, color: C.textMuted }}>Recent transactions</Text>
+        </Pressable>
+      </View>
+
       {/* Assets */}
       <View>
         <View style={styles.assetsHeader}>
@@ -863,7 +887,7 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
           <Pressable style={[styles.btnSecondary, { flex: 1 }]} onPress={copy}>
             <Text style={styles.btnSecondaryText}>{copied ? '✓ Copied' : 'Copy address'}</Text>
           </Pressable>
-          <Pressable style={[styles.btnSecondary, { flex: 1 }]}>
+          <Pressable style={[styles.btnSecondary, { flex: 1 }]} onPress={() => { Share.share({ message: displayed }).catch(() => {}); }}>
             <Text style={styles.btnSecondaryText}>Share</Text>
           </Pressable>
         </View>
@@ -959,6 +983,33 @@ function DappIcon({ id, name, color, size = 44 }: { id: string; name: string; co
         ? <Image source={src} style={{ width: size, height: size }} resizeMode="cover"/>
         : <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.4 }}>{name.charAt(0)}</Text>}
     </View>
+  );
+}
+
+/* Earn — honest "coming soon" mirroring web StakingView; the Lithosphere
+   staking contracts aren't deployed on Makalu yet. */
+function EarnScreen({ goBack }: { goBack: () => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <Pressable onPress={goBack} hitSlop={8}><ChevronLeft size={24} color={C.textPrimary}/></Pressable>
+        <Text style={styles.pageTitleLarge}>Earn</Text>
+      </View>
+      <View style={{
+        padding: 28, borderRadius: 16, marginTop: 12, alignItems: 'center', gap: 12,
+        backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault, borderStyle: 'dashed',
+      }}>
+        <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' }}>
+          <Zap size={26} color={C.green}/>
+        </View>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary, textAlign: 'center' }}>Staking opens with the protocol rollout</Text>
+        <Text style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
+          Lithosphere validator staking, LITHO/LitBTC LP, and the LAX stable-yield vault will appear here as soon as the staking contract is deployed on Makalu. Your active positions will show up automatically.
+        </Text>
+      </View>
+    </ScrollView>
   );
 }
 
@@ -1277,7 +1328,7 @@ function SettingsScreen() {
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Home',     Icon: Home },
@@ -1948,6 +1999,7 @@ export default function App() {
                 {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
                 {screen === 'swap'     && <SendScreen goBack={() => setScreen('home')}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
+                {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
