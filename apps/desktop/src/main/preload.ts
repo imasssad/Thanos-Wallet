@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
   vaultSet:    (key: string, value: string) => ipcRenderer.invoke('vault:set', key, value),
   vaultRemove: (key: string) => ipcRenderer.invoke('vault:remove', key),
 
+  /** Open an http(s) URL in the user's default browser. */
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+
   /* electron-updater bridge.
      onUpdateEvent returns a teardown function so React useEffects can
      subscribe + clean up without leaking listeners. */

@@ -1,6 +1,6 @@
 // Use require() directly — Electron's module interceptor matches the literal "electron" string
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
-const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron') as typeof import('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require('electron') as typeof import('electron');
 const path = require('path') as typeof import('path');
 import { startAutoUpdater } from './updater';
 
@@ -36,6 +36,17 @@ app.whenReady().then(() => {
   ipcMain.handle('vault:get',    (_e, key: string)               => keytar?.getPassword(SERVICE, key)    ?? null);
   ipcMain.handle('vault:set',    (_e, key: string, value: string) => keytar?.setPassword(SERVICE, key, value));
   ipcMain.handle('vault:remove', (_e, key: string)               => keytar?.deletePassword(SERVICE, key));
+
+  // Open external links (Discover ecosystem apps) in the user's default
+  // browser. Restricted to http/https so a compromised renderer can't
+  // launch arbitrary protocols/handlers.
+  ipcMain.handle('shell:openExternal', (_e, url: string) => {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return shell.openExternal(url);
+    } catch { /* malformed URL — ignore */ }
+    return Promise.resolve();
+  });
 
   nativeTheme.themeSource = 'system';
   createWindow();

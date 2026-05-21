@@ -12,7 +12,7 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { evmToLitho } from '@thanos/sdk-core';
+import { evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from '@thanos/sdk-core';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -31,6 +31,7 @@ declare global {
       vaultGet(key: string): Promise<string | null>;
       vaultSet(key: string, value: string): Promise<void>;
       vaultRemove(key: string): Promise<void>;
+      openExternal?:      (url: string) => Promise<unknown>;
       onUpdateEvent?:     (cb: (ev: UpdaterEvent) => void) => () => void;
       checkForUpdate?:    () => Promise<unknown>;
       installAndRestart?: () => Promise<unknown>;
@@ -39,7 +40,7 @@ declare global {
 }
 
 /* ──────────────────────── Types ──────────────────────── */
-type View = 'dashboard' | 'market' | 'portfolio' | 'transactions' | 'staking' | 'settings';
+type View = 'dashboard' | 'market' | 'portfolio' | 'transactions' | 'staking' | 'settings' | 'discover' | 'nfts';
 
 /* ──────────────────────── Icons ──────────────────────── */
 const Ic = (path: React.ReactNode) => ({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) => (
@@ -1493,13 +1494,160 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
 /* ──────────────────────── App ──────────────────────── */
 
-const NAV: { key: View; label: string }[] = [
-  { key: 'dashboard',    label: 'Dashboard'    },
-  { key: 'market',       label: 'Market'       },
-  { key: 'portfolio',    label: 'Portfolio'    },
-  { key: 'transactions', label: 'Transactions' },
-  { key: 'staking',      label: 'Staking'      },
-  { key: 'settings',     label: 'Settings'     },
+/* ──────────────────────── Discover / NFTs ──────────────────────── */
+
+/** Open an http(s) URL in the user's default browser via the preload
+ *  bridge (Electron blocks renderer window.open by default). */
+function openExternal(url: string) {
+  window.thanosDesktop?.openExternal?.(url);
+}
+
+function DiscoverAppRow({ app }: { app: EcosystemApp }) {
+  return (
+    <button
+      className="discover-row"
+      onClick={() => openExternal(app.url)}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+        padding: '14px 16px', background: 'transparent', border: 'none',
+        borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer',
+        textAlign: 'left', color: 'inherit',
+      }}
+    >
+      <div style={{
+        width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+        background: app.color, color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18, fontWeight: 700,
+      }}>{app.name.charAt(0)}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{app.name}</span>
+          <span style={{
+            fontSize: 10, padding: '2px 6px', borderRadius: 4,
+            background: 'var(--bg-elevated)', color: 'var(--text-secondary)', fontWeight: 600,
+          }}>{app.category}</span>
+        </div>
+        <div style={{
+          fontSize: 12, color: 'var(--text-muted)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{app.description}</div>
+      </div>
+      <ChevRight2 size={18}/>
+    </button>
+  );
+}
+
+function DiscoverView() {
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const apps = query
+    ? ECOSYSTEM_APPS.filter(a =>
+        a.name.toLowerCase().includes(query) ||
+        a.category.toLowerCase().includes(query) ||
+        a.description.toLowerCase().includes(query))
+    : ECOSYSTEM_APPS;
+
+  return (
+    <div className="view-wrap" style={{ maxWidth: 760, margin: '0 auto', padding: '24px' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 4px' }}>Discover</h1>
+      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+        Apps from the Lithosphere ecosystem — open in your browser.
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', display: 'inline-flex' }}>
+          <Search size={15}/>
+        </span>
+        <input
+          className="field-input"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search ecosystem apps"
+          style={{ paddingLeft: 36, width: '100%' }}
+        />
+      </div>
+
+      <button
+        onClick={() => openExternal(ECOSYSTEM_HUB)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: 16,
+          borderRadius: 16, marginBottom: 20, cursor: 'pointer', textAlign: 'left',
+          color: 'inherit',
+          background: 'linear-gradient(135deg, rgba(59,122,247,0.16), rgba(139,125,247,0.12))',
+          border: '1px solid var(--border-default)',
+        }}
+      >
+        <div style={{
+          width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+          background: 'rgba(59,122,247,0.18)', color: 'var(--blue, #3b7af7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><Globe size={22}/></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Explore Web3</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Browse the full Lithosphere ecosystem on ecosystem.litho.ai
+          </div>
+        </div>
+      </button>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {apps.map(a => <DiscoverAppRow key={a.id} app={a}/>)}
+        {apps.length === 0 && (
+          <div style={{ padding: 16, fontSize: 13, color: 'var(--text-muted)' }}>No apps match “{q}”.</div>
+        )}
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14,
+        fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5,
+      }}>
+        <span style={{ flexShrink: 0, marginTop: 1, color: 'var(--green, #10b981)', display: 'inline-flex' }}>
+          <Shield size={14}/>
+        </span>
+        <span>
+          These are Lithosphere ecosystem apps. Always check the URL in your browser
+          before connecting your wallet or signing a transaction.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function NftsView() {
+  return (
+    <div className="view-wrap" style={{ maxWidth: 760, margin: '0 auto', padding: '24px' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 16px' }}>NFTs</h1>
+      <div style={{
+        padding: '36px 16px', textAlign: 'center', background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-default)', borderRadius: 16,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>No NFTs yet</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 380, lineHeight: 1.5 }}>
+          NFTs you receive on Lithosphere (LEP-721 / LEP-1155) will appear here.
+          The indexing pipeline ships with the next backend slice — until then,
+          browse and mint on the Lithosphere marketplace.
+        </div>
+        <button className="settings-btn" style={{ marginTop: 4 }} onClick={() => openExternal('https://makalu.litho.ai/nfts')}>
+          Open marketplace <ChevRight2 size={14}/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Trust Wallet-style vocabulary. 'swap' opens the swap modal rather than
+   switching views; Settings lives in the account menu. */
+const NAV: { key: View | 'swap'; label: string }[] = [
+  { key: 'dashboard',    label: 'Home'     },
+  { key: 'swap',         label: 'Swap'     },
+  { key: 'staking',      label: 'Earn'     },
+  { key: 'nfts',         label: 'NFTs'     },
+  { key: 'portfolio',    label: 'Assets'   },
+  { key: 'market',       label: 'Market'   },
+  { key: 'discover',     label: 'Discover' },
+  { key: 'transactions', label: 'Activity' },
 ];
 
 type Modal = 'send' | 'receive' | 'swap' | null;
@@ -1614,7 +1762,7 @@ function App() {
             <button
               key={n.key}
               className={`nav-tab ${view === n.key ? 'active' : ''}`}
-              onClick={() => setView(n.key)}
+              onClick={() => n.key === 'swap' ? setModal('swap') : setView(n.key)}
             >
               {n.label}
             </button>
@@ -1726,6 +1874,8 @@ function App() {
           {view === 'portfolio'    && <PortfolioView/>}
           {view === 'transactions' && <TransactionsView/>}
           {view === 'staking'      && <StakingView/>}
+          {view === 'discover'     && <DiscoverView/>}
+          {view === 'nfts'         && <NftsView/>}
           {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark}/>}
         </div>
 

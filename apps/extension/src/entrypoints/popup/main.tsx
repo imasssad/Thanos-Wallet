@@ -17,7 +17,7 @@ import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { evmToLitho } from '@thanos/sdk-core';
+import { evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from '@thanos/sdk-core';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -449,6 +449,87 @@ function ActivityScreen() {
   );
 }
 
+/* Discover — Lithosphere ecosystem apps that open in a new browser tab. */
+function DiscoverScreen() {
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const apps: EcosystemApp[] = query
+    ? ECOSYSTEM_APPS.filter(a =>
+        a.name.toLowerCase().includes(query) ||
+        a.category.toLowerCase().includes(query) ||
+        a.description.toLowerCase().includes(query))
+    : ECOSYSTEM_APPS;
+  const open = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
+
+  return (
+    <div className="screen">
+      <h1 className="page-title">Discover</h1>
+      <div className="row-sub" style={{ marginBottom: 10 }}>
+        Lithosphere ecosystem apps — open in your browser.
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', display: 'inline-flex' }}>
+          <Search size={14}/>
+        </span>
+        <input
+          className="field-input"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search ecosystem apps"
+          style={{ paddingLeft: 32, width: '100%' }}
+        />
+      </div>
+
+      <button
+        className="row"
+        onClick={() => open(ECOSYSTEM_HUB)}
+        style={{
+          width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none',
+          borderRadius: 12, marginBottom: 12,
+          background: 'linear-gradient(135deg, rgba(59,122,247,0.16), rgba(139,125,247,0.12))',
+        }}
+      >
+        <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}>
+          <Globe size={16}/>
+        </div>
+        <div className="row-mid">
+          <div className="row-name">Explore Web3</div>
+          <div className="row-sub">Browse the full ecosystem on ecosystem.litho.ai</div>
+        </div>
+        <ChevronRight size={16} className="row-right"/>
+      </button>
+
+      <div className="section-header">Lithosphere Ecosystem</div>
+      <div className="card list">
+        {apps.map((a, i) => (
+          <button
+            key={a.id}
+            className={`row ${i < apps.length - 1 ? 'row-border' : ''}`}
+            onClick={() => open(a.url)}
+            style={{ width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none', background: 'transparent' }}
+          >
+            <div className="row-avatar" style={{ background: a.color, color: '#fff', fontWeight: 700 }}>
+              {a.name.charAt(0)}
+            </div>
+            <div className="row-mid">
+              <div className="row-name">{a.name}</div>
+              <div className="row-sub">{a.description}</div>
+            </div>
+            <ChevronRight size={16} className="row-right"/>
+          </button>
+        ))}
+        {apps.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No apps match “{q}”.</div>}
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 10, fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        <span style={{ flexShrink: 0, marginTop: 1, color: '#10b981', display: 'inline-flex' }}><Shield size={12}/></span>
+        <span>Always check the URL in your browser before connecting your wallet.</span>
+      </div>
+    </div>
+  );
+}
+
 function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; onToggleTheme: () => void; onLock: () => void }) {
   // Premium-pattern settings: icon-led section headers + a gradient title hero.
   // Adapted for the 360px popup — smaller paddings + tighter spacing.
@@ -746,7 +827,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
 
 /* ──────────────────────── App shell ──────────────────────── */
 
-type Tab = 'home' | 'activity' | 'settings';
+type Tab = 'home' | 'discover' | 'activity' | 'settings';
 type Modal = 'send' | 'receive' | 'swap' | null;
 
 /* ─── EIP-1193 connection approval screen ──────────────────────────────── */
@@ -949,12 +1030,14 @@ function App() {
       <div className="app">
         <div className="app-body">
           {tab === 'home'     && <HomeScreen onAction={setModal} onLock={lock}/>}
+          {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
           {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock}/>}
         </div>
         <div className="tabbar">
           {([
             { k: 'home',     l: 'Home',     I: Home },
+            { k: 'discover', l: 'Discover', I: Globe },
             { k: 'activity', l: 'Activity', I: Clock },
             { k: 'settings', l: 'Settings', I: SettingsIcon },
           ] as const).map(t => (
