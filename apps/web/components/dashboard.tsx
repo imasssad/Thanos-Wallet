@@ -5,6 +5,7 @@ import {
   ArrowUpRight, ArrowDownLeft, Repeat, DollarSign,
   ChevronDown, MoreVertical, SlidersHorizontal, ExternalLink,
   Image as ImageIcon, Sparkles, BadgeCheck,
+  Eye, EyeOff, ShieldCheck,
 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { Select } from './ui/Select';
@@ -442,7 +443,7 @@ export function Dashboard() {
     const combined = [...fromLive, ...evmRows, ...extraRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
-      sym: c.sym, name: c.name, bal: c.bal, usdNum: c.usdNum,
+      sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
       usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
       chg: c.chg, color: c.color,
       chainId: c.chainId, native: c.native,
@@ -480,6 +481,11 @@ export function Dashboard() {
      Bitcoin, and Solana. 'all' keeps the current behaviour (everything). */
   type NetFilter = 'all' | 'Makalu' | 'EVM' | 'Bitcoin' | 'Solana';
   const [netFilter, setNetFilter] = useState<NetFilter>('all');
+
+  /* Privacy: hide the dollar total when shoulder-surfing risk. Stored
+     only in component state — restoring on each mount is intentional
+     (you opt in for the session, not forever). */
+  const [balanceHidden, setBalanceHidden] = useState(false);
 
   const filteredCoins = useMemo(() => {
     if (netFilter === 'all') return COINS;
@@ -522,8 +528,22 @@ export function Dashboard() {
         display: 'flex', flexDirection: 'column', gap: 28,
       }}>
 
-        {/* ── Hero: centered balance + change + Discover ─────────────── */}
+        {/* ── Hero: self-custody pill + balance + change + Discover ──── */}
         <div style={{ textAlign: 'center' }}>
+          {/* Trust signal: this wallet holds your keys, not us. */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '4px 10px',
+            background: 'rgba(16,185,129,0.08)',
+            border: '1px solid rgba(16,185,129,0.22)',
+            borderRadius: 999,
+            color: 'var(--green, #10b981)',
+            fontSize: 11, fontWeight: 600, letterSpacing: 0.4,
+            marginBottom: 10,
+          }}>
+            <ShieldCheck size={12} strokeWidth={2.4}/>
+            Self-custody
+          </div>
           <div style={{
             fontSize: 14, fontWeight: 700, letterSpacing: 1.8,
             color: 'var(--text-muted)',
@@ -531,6 +551,18 @@ export function Dashboard() {
             justifyContent: 'center',
           }}>
             TOTAL BALANCE
+            <button
+              type="button"
+              aria-label={balanceHidden ? 'Show balance' : 'Hide balance'}
+              onClick={() => setBalanceHidden(v => !v)}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: 'var(--text-muted)', padding: 2, display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              {balanceHidden ? <EyeOff size={14}/> : <Eye size={14}/>}
+            </button>
             {!indexerOk && (
               <span style={{
                 fontSize: 9, letterSpacing: 1.2, padding: '2px 6px',
@@ -543,7 +575,7 @@ export function Dashboard() {
             fontSize: 68, fontWeight: 800, letterSpacing: '-0.04em',
             lineHeight: 1.05, marginTop: 10,
           }}>
-            {totalDisplay}
+            {balanceHidden ? '••••••' : totalDisplay}
           </div>
           <div style={{
             marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 12,
@@ -572,7 +604,8 @@ export function Dashboard() {
             icon={<DollarSign size={30} strokeWidth={2}/>}
             label="Buy"
             disabled={!transakApiKey}
-            title={transakApiKey ? 'Buy crypto via Transak (opens in new tab)' : 'Buy disabled — set NEXT_PUBLIC_TRANSAK_API_KEY to enable on-ramp'}
+            soonBadge={!transakApiKey}
+            title={transakApiKey ? 'Buy crypto via Transak (opens in new tab)' : 'Fiat on-ramp launching soon — Buy will route to Transak when enabled.'}
             onClick={onBuy}
           />
           <ActionBtn
@@ -688,7 +721,15 @@ export function Dashboard() {
                   )}
                 </div>
               )}
-              {filteredCoins.map(c => (
+              {filteredCoins.map(c => {
+                const price = c.balNum > 0 ? c.usdNum / c.balNum : 0;
+                const priceTxt = price > 0
+                  ? '$' + price.toLocaleString('en-US', {
+                      minimumFractionDigits: price >= 1 ? 2 : 4,
+                      maximumFractionDigits: price >= 1 ? 2 : 6,
+                    })
+                  : '';
+                return (
                 <div key={c.sym} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 4px',
@@ -700,21 +741,28 @@ export function Dashboard() {
                     <div style={{
                       fontSize: 12, color: 'var(--text-muted)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      display: 'flex', alignItems: 'center', gap: 6,
                     }}>
-                      {c.name}
+                      <span>{priceTxt || c.name}</span>
+                      {c.chg !== 0 && (
+                        <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontWeight: 600 }}>
+                          {c.chg >= 0 ? '+' : ''}{c.chg.toFixed(2)}%
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>{c.usd}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{balanceHidden ? '••••' : `${c.bal} ${c.sym}`}</div>
                     <div style={{
                       fontSize: 12, color: 'var(--text-muted)',
                       fontFamily: 'Geist Mono, monospace',
                     }}>
-                      {c.bal} {c.sym}
+                      {balanceHidden ? '••••' : c.usd}
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -815,11 +863,27 @@ export function Dashboard() {
             border: '1px dashed var(--border-default)',
             borderRadius: 12,
             color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
           }}>
-            No activity yet on this account.
-            <div style={{ fontSize: 11, marginTop: 6 }}>
-              Every Send / Receive on Lithosphere will land here once the indexer
-              picks it up (sync runs every 15s).
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 15 }}>
+              No activity yet
+            </div>
+            <div style={{ fontSize: 12, maxWidth: 360 }}>
+              Every Send / Receive on Lithosphere will land here. The indexer
+              picks transactions up roughly every 15s.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button className="settings-btn" onClick={() => setModal('receive')}>
+                <ArrowDownLeft size={14}/> Receive funds
+              </button>
+              <a
+                href="https://makalu.litho.ai/faucet"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="settings-btn"
+              >
+                Get testnet LITHO
+              </a>
             </div>
           </div>
         )}
@@ -899,12 +963,15 @@ function SectionHead({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function ActionBtn({ icon, label, onClick, disabled, title }: {
-  icon:     React.ReactNode;
-  label:    string;
-  onClick:  () => void;
-  disabled?: boolean;
-  title?:   string;
+function ActionBtn({ icon, label, onClick, disabled, title, soonBadge }: {
+  icon:       React.ReactNode;
+  label:      string;
+  onClick:    () => void;
+  disabled?:  boolean;
+  title?:     string;
+  /** Show a "SOON" pill in the corner when disabled (so it reads as
+   *  "feature pending" instead of "feature dead"). */
+  soonBadge?: boolean;
 }) {
   return (
     <button
@@ -912,6 +979,7 @@ function ActionBtn({ icon, label, onClick, disabled, title }: {
       disabled={disabled}
       title={title}
       style={{
+        position: 'relative',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 10,
         padding: '24px 14px',
@@ -919,14 +987,24 @@ function ActionBtn({ icon, label, onClick, disabled, title }: {
         border: '1px solid var(--border-default)',
         borderRadius: 14,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
-        opacity: disabled ? 0.55 : 1,
+        color: disabled ? 'var(--text-secondary)' : 'var(--text-primary)',
+        opacity: disabled ? 0.78 : 1,
         minHeight: 108,
         transition: 'background .12s ease, transform .08s ease',
       }}
       onMouseOver={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-hover)'; }}
       onMouseOut={e  => { e.currentTarget.style.background = 'var(--bg-elevated)'; }}
     >
+      {soonBadge && disabled && (
+        <span style={{
+          position: 'absolute', top: 8, right: 8,
+          fontSize: 9, fontWeight: 700, letterSpacing: 0.6,
+          padding: '2px 6px', borderRadius: 4,
+          background: 'rgba(139,125,247,0.18)',
+          color: 'var(--purple500, #8b7df7)',
+          border: '1px solid rgba(139,125,247,0.3)',
+        }}>SOON</span>
+      )}
       <span style={{
         width: 48, height: 48, borderRadius: 14,
         background: 'rgba(59,122,247,0.10)',
