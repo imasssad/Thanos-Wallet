@@ -47,3 +47,20 @@ export function tokenIconSource(sym: string): ImageSourcePropType | null {
   if (REMOTE[key])  return { uri: REMOTE[key] };
   return null;
 }
+
+/* Discover/dApp APP icons — deliberately separate from coin logos above
+ * (per client: "AGII App icon to be used for Discover, not the asset
+ * icon"). Keyed by ECOSYSTEM_APPS id. Populated as the client's app-icon
+ * assets land in assets/images/dapps/; ids without an asset fall back to
+ * the colour+initial avatar in the Discover screen. */
+const DAPP_ICONS: Record<string, ImageSourcePropType> = {
+  // 'agii':        require('../assets/images/dapps/agii.png'),
+  // 'colle':       require('../assets/images/dapps/colle.png'),
+  // 'furgpt':      require('../assets/images/dapps/furgpt.png'),
+  // 'mansa':       require('../assets/images/dapps/mansa.png'),
+};
+
+/** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */
+export function discoverAppIcon(id: string): ImageSourcePropType | null {
+  return DAPP_ICONS[id] ?? null;
+}
