@@ -20,6 +20,7 @@ import {
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
+  groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
 } from '@thanos/sdk-core';
 
@@ -528,17 +529,22 @@ function ActivityScreen() {
   );
 }
 
-/* Discover — Lithosphere ecosystem apps that open in a new browser tab. */
+/* Discover — Lithosphere ecosystem apps, grouped SafePal-style; the
+   search box doubles as an address bar (Enter opens a typed link). */
 function DiscoverScreen() {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
-  const apps: EcosystemApp[] = query
+  const isLink = looksLikeUrl(q);
+  const filtered: EcosystemApp[] = query && !isLink
     ? ECOSYSTEM_APPS.filter(a =>
         a.name.toLowerCase().includes(query) ||
         a.category.toLowerCase().includes(query) ||
-        a.description.toLowerCase().includes(query))
+        a.description.toLowerCase().includes(query) ||
+        a.section.toLowerCase().includes(query))
     : ECOSYSTEM_APPS;
+  const groups = groupBySection(filtered);
   const open = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
+  const submit = () => { const u = normalizeUrl(q); if (u) open(u); };
 
   return (
     <div className="screen">
@@ -555,51 +561,69 @@ function DiscoverScreen() {
           className="field-input"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Search ecosystem apps"
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="Search DApp or enter a link"
           style={{ paddingLeft: 32, width: '100%' }}
         />
       </div>
 
-      <button
-        className="row"
-        onClick={() => open(ECOSYSTEM_HUB)}
-        style={{
-          width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none',
-          borderRadius: 12, marginBottom: 12,
-          background: 'linear-gradient(135deg, rgba(59,122,247,0.16), rgba(139,125,247,0.12))',
-        }}
-      >
-        <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}>
-          <Globe size={16}/>
-        </div>
-        <div className="row-mid">
-          <div className="row-name">Explore Web3</div>
-          <div className="row-sub">Browse the full ecosystem on ecosystem.litho.ai</div>
-        </div>
-        <ChevronRight size={16} className="row-right"/>
-      </button>
+      {isLink && (
+        <button className="row" onClick={submit} style={{ width: '100%', cursor: 'pointer', textAlign: 'left', border: '1px solid var(--blue, #3b7af7)', borderRadius: 12, marginBottom: 12, background: 'rgba(59,122,247,0.10)' }}>
+          <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}><Globe size={16}/></div>
+          <div className="row-mid">
+            <div className="row-name">Open link</div>
+            <div className="row-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{normalizeUrl(q)}</div>
+          </div>
+          <ChevronRight size={16} className="row-right"/>
+        </button>
+      )}
 
-      <div className="section-header">Lithosphere Ecosystem</div>
-      <div className="card list">
-        {apps.map((a, i) => (
-          <button
-            key={a.id}
-            className={`row ${i < apps.length - 1 ? 'row-border' : ''}`}
-            onClick={() => open(a.url)}
-            style={{ width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none', background: 'transparent' }}
-          >
-            <div className="row-avatar" style={{ background: a.color, color: '#fff', fontWeight: 700 }}>
-              {a.name.charAt(0)}
-            </div>
-            <div className="row-mid">
-              <div className="row-name">{a.name}</div>
-              <div className="row-sub">{a.description}</div>
-            </div>
-            <ChevronRight size={16} className="row-right"/>
-          </button>
-        ))}
-        {apps.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No apps match “{q}”.</div>}
-      </div>
+      {!query && (
+        <button
+          className="row"
+          onClick={() => open(ECOSYSTEM_HUB)}
+          style={{
+            width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none',
+            borderRadius: 12, marginBottom: 12,
+            background: 'linear-gradient(135deg, rgba(59,122,247,0.16), rgba(139,125,247,0.12))',
+          }}
+        >
+          <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}>
+            <Globe size={16}/>
+          </div>
+          <div className="row-mid">
+            <div className="row-name">Explore Web3</div>
+            <div className="row-sub">Browse the full ecosystem on ecosystem.litho.ai</div>
+          </div>
+          <ChevronRight size={16} className="row-right"/>
+        </button>
+      )}
+
+      {groups.map(({ section, apps }) => (
+        <div key={section}>
+          <div className="section-header">{section}</div>
+          <div className="card list">
+            {apps.map((a, i) => (
+              <button
+                key={a.id}
+                className={`row ${i < apps.length - 1 ? 'row-border' : ''}`}
+                onClick={() => open(a.url)}
+                style={{ width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none', background: 'transparent' }}
+              >
+                <div className="row-avatar" style={{ background: a.color, color: '#fff', fontWeight: 700 }}>
+                  {a.name.charAt(0)}
+                </div>
+                <div className="row-mid">
+                  <div className="row-name">{a.name}</div>
+                  <div className="row-sub">{a.description}</div>
+                </div>
+                <ChevronRight size={16} className="row-right"/>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {groups.length === 0 && !isLink && <div className="row-sub" style={{ padding: 12 }}>No apps match “{q}”.</div>}
 
       <div style={{ display: 'flex', gap: 6, marginTop: 10, fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5 }}>
         <span style={{ flexShrink: 0, marginTop: 1, color: '#10b981', display: 'inline-flex' }}><Shield size={12}/></span>

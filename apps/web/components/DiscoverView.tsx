@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, Search, ShieldCheck, ChevronRight, Globe } from 'lucide-react';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from '../lib/ecosystem';
+import { groupBySection, looksLikeUrl, normalizeUrl } from '@thanos/sdk-core';
 
 function AppIcon({ app, size = 44 }: { app: EcosystemApp; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -35,14 +36,18 @@ function AppIcon({ app, size = 44 }: { app: EcosystemApp; size?: number }) {
 export function DiscoverView() {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
-  const apps = query
+  const isLink = looksLikeUrl(q);
+  const apps = query && !isLink
     ? ECOSYSTEM_APPS.filter(a =>
         a.name.toLowerCase().includes(query) ||
         a.category.toLowerCase().includes(query) ||
-        a.description.toLowerCase().includes(query))
+        a.description.toLowerCase().includes(query) ||
+        a.section.toLowerCase().includes(query))
     : ECOSYSTEM_APPS;
+  const groups = groupBySection(apps);
 
   const open = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
+  const submit = () => { const u = normalizeUrl(q); if (u) open(u); };
 
   return (
     <div className="page-wrap" style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -53,17 +58,39 @@ export function DiscoverView() {
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search / address bar */}
       <div style={{ position: 'relative', margin: '14px 0' }}>
         <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}/>
         <input
           className="field-input"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Search ecosystem apps"
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="Search DApp or enter a link"
           style={{ paddingLeft: 36 }}
         />
       </div>
+
+      {/* Open-link affordance when the query looks like a URL */}
+      {isLink && (
+        <button
+          onClick={submit}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 14,
+            borderRadius: 14, marginBottom: 16, cursor: 'pointer', textAlign: 'left', color: 'inherit',
+            background: 'rgba(59,122,247,0.10)', border: '1px solid var(--blue)',
+          }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: 'rgba(59,122,247,0.18)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Globe size={20}/>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Open link</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{normalizeUrl(q)}</div>
+          </div>
+          <ExternalLink size={16} color="var(--blue)"/>
+        </button>
+      )}
 
       {/* Featured: the full ecosystem hub */}
       <a
@@ -94,46 +121,50 @@ export function DiscoverView() {
         <ExternalLink size={16} color="var(--text-muted)"/>
       </a>
 
-      {/* App list */}
-      <div style={{
-        fontSize: 13, fontWeight: 700, color: 'var(--text-muted)',
-        letterSpacing: 0.4, marginBottom: 8, textTransform: 'uppercase',
-      }}>
-        Lithosphere Ecosystem
-      </div>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {apps.map((a, i) => (
-          <button
-            key={a.id}
-            onClick={() => open(a.url)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-              padding: '14px 16px', background: 'transparent', border: 'none',
-              borderBottom: i < apps.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-              cursor: 'pointer', textAlign: 'left', color: 'inherit',
-            }}
-          >
-            <AppIcon app={a}/>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{a.name}</span>
-                <span style={{
-                  fontSize: 10, padding: '2px 6px', borderRadius: 4,
-                  background: 'var(--bg-elevated)', color: 'var(--text-secondary)', fontWeight: 600,
-                }}>{a.category}</span>
-              </div>
-              <div style={{
-                fontSize: 12, color: 'var(--text-muted)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{a.description}</div>
-            </div>
-            <ChevronRight size={18} color="var(--text-muted)"/>
-          </button>
-        ))}
-        {apps.length === 0 && (
-          <div style={{ padding: 16, fontSize: 13, color: 'var(--text-muted)' }}>No apps match “{q}”.</div>
-        )}
-      </div>
+      {/* Grouped sections (SafePal-style) */}
+      {groups.map(({ section, apps: secApps }) => (
+        <div key={section} style={{ marginBottom: 18 }}>
+          <div style={{
+            fontSize: 13, fontWeight: 700, color: 'var(--text-muted)',
+            letterSpacing: 0.4, marginBottom: 8, textTransform: 'uppercase',
+          }}>
+            {section}
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {secApps.map((a, i) => (
+              <button
+                key={a.id}
+                onClick={() => open(a.url)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '14px 16px', background: 'transparent', border: 'none',
+                  borderBottom: i < secApps.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                  cursor: 'pointer', textAlign: 'left', color: 'inherit',
+                }}
+              >
+                <AppIcon app={a}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{a.name}</span>
+                    <span style={{
+                      fontSize: 10, padding: '2px 6px', borderRadius: 4,
+                      background: 'var(--bg-elevated)', color: 'var(--text-secondary)', fontWeight: 600,
+                    }}>{a.category}</span>
+                  </div>
+                  <div style={{
+                    fontSize: 12, color: 'var(--text-muted)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{a.description}</div>
+                </div>
+                <ChevronRight size={18} color="var(--text-muted)"/>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      {groups.length === 0 && !isLink && (
+        <div className="card" style={{ padding: 16, fontSize: 13, color: 'var(--text-muted)' }}>No apps match “{q}”.</div>
+      )}
 
       {/* Safety reminder — Trust Wallet-style trust cue */}
       <div style={{

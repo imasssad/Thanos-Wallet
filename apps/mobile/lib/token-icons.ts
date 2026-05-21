@@ -23,6 +23,8 @@ const BUNDLED: Record<string, ImageSourcePropType> = {
   colle:  require('../assets/images/tokens/colle.png'),
   furgpt: require('../assets/images/tokens/furgpt.png'),
   ignite: require('../assets/images/tokens/ignite.png'),
+  ignt:   require('../assets/images/tokens/ignite.png'),
+  mansa:  require('../assets/images/tokens/mansa.png'),
   quantt: require('../assets/images/tokens/quantt.png'),
 };
 
@@ -54,10 +56,10 @@ export function tokenIconSource(sym: string): ImageSourcePropType | null {
  * assets land in assets/images/dapps/; ids without an asset fall back to
  * the colour+initial avatar in the Discover screen. */
 const DAPP_ICONS: Record<string, ImageSourcePropType> = {
-  // 'agii':        require('../assets/images/dapps/agii.png'),
-  // 'colle':       require('../assets/images/dapps/colle.png'),
-  // 'furgpt':      require('../assets/images/dapps/furgpt.png'),
-  // 'mansa':       require('../assets/images/dapps/mansa.png'),
+  agii:  require('../assets/images/dapps/agii.png'),
+  colle: require('../assets/images/dapps/colle.png'),
+  mansa: require('../assets/images/dapps/mansa.png'),
+  // furgpt: pending client asset (Dropbox /preview link not downloadable)
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */
