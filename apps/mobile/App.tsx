@@ -39,6 +39,7 @@ import {
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
 import { fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range } from './lib/price-history';
+import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal } from './lib/notifications';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -596,6 +597,10 @@ function SendScreen({ goBack }: { goBack: () => void }) {
       });
       setSending(false);
       setAmt(''); setTo('');
+      // Fire a local notification (works without a push server) when enabled.
+      isNotificationsEnabled().then(on => {
+        if (on) notifyLocal('Transaction sent', `${amt} ${coin.sym} broadcast on Makalu.`);
+      });
       Alert.alert(
         'Transaction sent ✓',
         `${amt} ${coin.sym} broadcast on Makalu.\n\nTx hash:\n${hash}`,
@@ -1150,6 +1155,7 @@ function SettingsScreen() {
   const [bioOn, setBioOn]       = useState(false);
   const [copied, setCopied]     = useState(false);
   const [wcOpen, setWcOpen]     = useState(false);
+  const [notifOn, setNotifOn]   = useState(false);
 
   const refreshBio = async () => {
     const cap = await getBiometricCapability();
@@ -1157,7 +1163,23 @@ function SettingsScreen() {
     setBioReady(cap.hasHardware && cap.isEnrolled);
     setBioOn(await isBiometricUnlockEnabled());
   };
-  useEffect(() => { void refreshBio(); }, []);
+  useEffect(() => { void refreshBio(); isNotificationsEnabled().then(setNotifOn); }, []);
+
+  const onToggleNotif = async () => {
+    if (notifOn) {
+      await setNotificationsEnabled(false);
+      await unregisterPush(walletAddr).catch(() => {});
+      setNotifOn(false);
+      return;
+    }
+    const ok = await registerPush(walletAddr);
+    if (!ok) {
+      Alert.alert('Notifications unavailable', 'Enable notifications for Thanos in your device settings, then try again. (Push delivery also requires the app to be a real device build.)');
+      return;
+    }
+    await setNotificationsEnabled(true);
+    setNotifOn(true);
+  };
 
   const onToggleBio = async () => {
     if (!bioReady) {
@@ -1226,6 +1248,17 @@ function SettingsScreen() {
     { label: 'Recovery phrase',   desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true },
   ];
   const NETWORK_OPTS: SettingItem[] = [
+    {
+      label: 'Push notifications',
+      desc:  notifOn ? 'Enabled — alerts for activity' : 'Get alerts for incoming funds & activity',
+      Icon:  Zap,
+      accessory: (
+        <View style={[styles.toggleSwitch, notifOn && styles.toggleSwitchOn]}>
+          <View style={[styles.toggleThumb, notifOn && styles.toggleThumbOn]}/>
+        </View>
+      ),
+      onPress: onToggleNotif,
+    },
     { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
     { label: 'Custom RPC',        desc: 'rpc.litho.ai',                    Icon: Server },
     { label: 'Connected dApps',   desc: 'Pair via WalletConnect',          Icon: Zap,
@@ -1894,6 +1927,15 @@ export default function App() {
   const colors = isDark ? DARK : LIGHT;
   const styles = useMemo(() => makeStyles(colors), [isDark]);
   const toggle = () => setIsDark(d => !d);
+
+  // Once unlocked, if the user has opted into notifications, (re)register
+  // this device's push token against the wallet address.
+  useEffect(() => {
+    if (!unlocked || walletSeed.length === 0) return;
+    isNotificationsEnabled().then(on => {
+      if (on) registerPush(deriveEvmAddress(walletSeed)).catch(() => {});
+    });
+  }, [unlocked, walletSeed]);
 
   const handleLock = () => {
     setUnlocked(false);
