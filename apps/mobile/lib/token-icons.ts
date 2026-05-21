@@ -25,6 +25,7 @@ const BUNDLED: Record<string, ImageSourcePropType> = {
   ignite: require('../assets/images/tokens/ignite.png'),
   ignt:   require('../assets/images/tokens/ignite.png'),
   mansa:  require('../assets/images/tokens/mansa.png'),
+  agii:   require('../assets/images/tokens/agii.png'),
   quantt: require('../assets/images/tokens/quantt.png'),
 };
 
