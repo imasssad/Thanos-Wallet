@@ -11,6 +11,8 @@ import {
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
+import { PortfolioChart } from './PortfolioChart';
+import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { usePrices, priceOr } from '../lib/usePrices';
@@ -460,6 +462,12 @@ export function Dashboard() {
 
   const totalUsd = COINS.reduce((s, c) => s + c.usdNum, 0);
   const totalDisplay = `$${totalUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  // Holdings for the portfolio history chart (qty + current USD value).
+  const holdings: Holding[] = useMemo(
+    () => COINS.filter(c => c.balNum > 0 && c.usdNum > 0)
+               .map(c => ({ sym: c.sym, qty: c.balNum, usd: c.usdNum })),
+    [COINS],
+  );
   // 24h change: weighted average of per-coin changes by USD value.
   const weighted = COINS.reduce((s, c) => s + (c.chg * c.usdNum), 0);
   const change24h = totalUsd > 0 ? (weighted / totalUsd) : 0;
@@ -594,6 +602,9 @@ export function Dashboard() {
               Discover <ExternalLink size={16}/>
             </a>
           </div>
+          {holdings.length > 0 && (
+            <PortfolioChart holdings={holdings} hidden={balanceHidden}/>
+          )}
         </div>
 
         {/* ── 4 action buttons (Buy / Swap / Send / Receive) ────────── */}

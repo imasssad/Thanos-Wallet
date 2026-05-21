@@ -24,7 +24,7 @@ export const PLACEHOLDER_PRICES: Record<string, number> = {
 };
 
 /** Symbol → CoinGecko coin id. Add entries as more tokens get listed. */
-const COINGECKO_IDS: Record<string, string> = {
+export const COINGECKO_IDS: Record<string, string> = {
   LitBTC: 'bitcoin',
   FurGPT: 'furgpt',     // probably 404s today — falls back to caller default
   COLLE:  'colle-ai',   // probably 404s today — falls back to caller default
