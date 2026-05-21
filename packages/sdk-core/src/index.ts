@@ -25,6 +25,7 @@ export * from './dex/ignite';
 export * from './hardware/ledger';
 export * from './hardware/trezor';
 export * from './portfolio/indexer-client';
+export * from './portfolio/price-history';
 export * from './walletconnect/client';
 export * from './imports/token-importer';
 export * from './dnns/service';
