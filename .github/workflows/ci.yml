@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
       - name: Typecheck workspace
         run: pnpm typecheck
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/web build
         env:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/extension build
 
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
       # Vault round-trip tests — encrypt/decrypt, wrong password, tampering.
       # A regression here locks every user out of their funds, so this gate
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
       - name: pnpm audit (high+ severity, prod deps only)
         run: pnpm audit --audit-level=high --prod
