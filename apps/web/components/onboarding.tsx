@@ -11,6 +11,7 @@ import {
   saveVault, loadVault, clearVault,
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
+  setSeedBackedUp,
 } from '../lib/vault';
 import { serializeSource, deserializeSource, type WalletSource } from '../lib/wallet-source';
 import { initSigner, lockSigner } from '../lib/signer-client';
@@ -122,6 +123,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       const source: WalletSource = { kind: 'mnemonic', mnemonic: seed.join(' ') };
       const vault = await createVault(serializeSource(source), password);
       saveVault(vault);
+      // The user just passed the recovery-phrase verification step.
+      setSeedBackedUp(true);
       // Session-cache the derived key so a refresh skips the password prompt.
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
@@ -141,6 +144,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       const source: WalletSource = { kind: 'mnemonic', mnemonic: words.join(' ') };
       const vault = await createVault(serializeSource(source), password);
       saveVault(vault);
+      // Imported — the user already holds this recovery phrase.
+      setSeedBackedUp(true);
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(source);
@@ -162,6 +167,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       const source: WalletSource = { kind: 'privateKey', privateKey: pk.privateKey };
       const vault = await createVault(serializeSource(source), password);
       saveVault(vault);
+      // Imported via private key — nothing to back up beyond what the user holds.
+      setSeedBackedUp(true);
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(source);
