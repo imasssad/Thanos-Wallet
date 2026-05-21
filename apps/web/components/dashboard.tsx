@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ethers } from 'ethers';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, DollarSign,
@@ -302,6 +303,7 @@ function StakingCard() {
 }
 
 export function Dashboard() {
+  const router = useRouter();
   const [modal, setModal] = useState<ModalKind>(null);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
@@ -585,10 +587,10 @@ export function Dashboard() {
               {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
             </span>
             <span style={{ color: 'var(--text-muted)' }}>·</span>
-            <a href="#" style={{
+            <a href="/app/discover" style={{
               color: 'var(--blue)', textDecoration: 'none', fontWeight: 600,
               display: 'inline-flex', alignItems: 'center', gap: 4,
-            }} onClick={e => e.preventDefault()}>
+            }} onClick={e => { e.preventDefault(); router.push('/app/discover'); }}>
               Discover <ExternalLink size={16}/>
             </a>
           </div>
