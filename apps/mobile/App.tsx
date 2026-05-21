@@ -28,6 +28,7 @@ import { fetchEcosystemPrices } from './lib/pricing';
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { sendAsset } from './lib/wc-signer';
 import { SvgXml } from 'react-native-svg';
+import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
@@ -35,7 +36,8 @@ import {
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
 } from 'lucide-react-native';
-import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp } from './lib/ecosystem';
+import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
+import { discoverAppIcon } from './lib/token-icons';
 import { fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range } from './lib/price-history';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -154,6 +156,12 @@ function useWalletAddr(): string { return useContext(WalletAddrCtx); }
    for transaction signing. Empty array while the wallet is locked. */
 const WalletSeedCtx = createContext<string[]>([]);
 function useWalletSeed(): string[] { return useContext(WalletSeedCtx); }
+
+/* In-app browser — Discover opens dApps inside a WebView overlay rather
+   than the OS browser (SafePal-style). App provides openBrowser; any
+   screen can call it. */
+const BrowserCtx = createContext<(url: string) => void>(() => {});
+function useBrowser(): (url: string) => void { return useContext(BrowserCtx); }
 
 /* ─────────────────────────── Live portfolio ─────────────────────────── */
 
@@ -941,25 +949,47 @@ function ActivityScreen() {
   );
 }
 
+/* App-icon avatar for the Discover screen — uses the client's dApp app
+   icon when bundled, else the brand colour + initial. */
+function DappIcon({ id, name, color, size = 44 }: { id: string; name: string; color: string; size?: number }) {
+  const src = discoverAppIcon(id);
+  return (
+    <View style={{ width: size, height: size, borderRadius: 14, backgroundColor: color, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      {src
+        ? <Image source={src} style={{ width: size, height: size }} resizeMode="cover"/>
+        : <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.4 }}>{name.charAt(0)}</Text>}
+    </View>
+  );
+}
+
 function DiscoverScreen() {
   const C = useColors();
   const styles = useStyles();
+  const openBrowser = useBrowser();
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
-  const apps: EcosystemApp[] = query
+  const isLink = looksLikeUrl(q);
+
+  const filtered: EcosystemApp[] = query && !isLink
     ? ECOSYSTEM_APPS.filter(a =>
         a.name.toLowerCase().includes(query) ||
         a.category.toLowerCase().includes(query) ||
-        a.description.toLowerCase().includes(query))
+        a.description.toLowerCase().includes(query) ||
+        a.section.toLowerCase().includes(query))
     : ECOSYSTEM_APPS;
-  const open = (url: string) => { Linking.openURL(url).catch(() => {}); };
+  const groups = groupBySection(filtered);
+
+  const submit = () => {
+    const url = normalizeUrl(q);
+    if (url) openBrowser(url);
+  };
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <Text style={styles.pageTitleLarge}>Discover</Text>
-      <Text style={styles.pageSubtitle}>Lithosphere ecosystem apps — open in your browser</Text>
+      <Text style={styles.pageSubtitle}>Lithosphere ecosystem apps — open in the in-app browser</Text>
 
-      {/* Search */}
+      {/* Search / address bar */}
       <View style={{ position: 'relative', marginTop: 14, marginBottom: 14, justifyContent: 'center' }}>
         <View style={{ position: 'absolute', left: 12, zIndex: 1 }}>
           <Search size={16} color={C.textMuted}/>
@@ -967,7 +997,12 @@ function DiscoverScreen() {
         <TextInput
           value={q}
           onChangeText={setQ}
-          placeholder="Search ecosystem apps"
+          onSubmitEditing={submit}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="web-search"
+          returnKeyType="go"
+          placeholder="Search DApp or enter a link"
           placeholderTextColor={C.textMuted}
           style={{
             backgroundColor: C.bgElevated, borderRadius: 12,
@@ -978,45 +1013,72 @@ function DiscoverScreen() {
         />
       </View>
 
-      {/* Featured hub */}
-      <Pressable
-        onPress={() => open(ECOSYSTEM_HUB)}
-        style={{
-          flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16,
-          borderRadius: 16, marginBottom: 20,
-          backgroundColor: C.purpleGlow, borderWidth: 1, borderColor: C.borderDefault,
-        }}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
-          <Globe size={22} color={C.blue}/>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web3</Text>
-          <Text style={{ fontSize: 12, color: C.textMuted }}>Browse the full ecosystem on ecosystem.litho.ai</Text>
-        </View>
-      </Pressable>
+      {/* "Open this link" affordance when the query looks like a URL */}
+      {isLink && (
+        <Pressable
+          onPress={submit}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginBottom: 16,
+            borderRadius: 14, borderWidth: 1, borderColor: C.blue, backgroundColor: C.blueDim,
+          }}
+        >
+          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+            <Globe size={20} color={C.blue}/>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Open link</Text>
+            <Text style={{ fontSize: 12, color: C.textMuted }} numberOfLines={1}>{normalizeUrl(q)}</Text>
+          </View>
+          <ChevronRight size={18} color={C.blue}/>
+        </Pressable>
+      )}
 
-      <Text style={styles.dateHeader}>Lithosphere Ecosystem</Text>
-      <View style={styles.card}>
-        {apps.map((a, i) => (
-          <Pressable key={a.id} onPress={() => open(a.url)} style={[styles.row, i < apps.length - 1 && styles.rowBorder]}>
-            <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: a.color, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 18 }}>{a.name.charAt(0)}</Text>
-            </View>
-            <View style={styles.rowMid}>
-              <Text style={styles.rowSymbol}>{a.name}</Text>
-              <Text style={styles.rowSub} numberOfLines={1}>{a.description}</Text>
-            </View>
-            <ChevronRight size={18} color={C.textMuted}/>
-          </Pressable>
-        ))}
-        {apps.length === 0 && <Text style={[styles.rowSub, { padding: 16 }]}>No apps match “{q}”.</Text>}
-      </View>
+      {/* Featured hub */}
+      {!query && (
+        <Pressable
+          onPress={() => openBrowser(ECOSYSTEM_HUB)}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16,
+            borderRadius: 16, marginBottom: 20,
+            backgroundColor: C.purpleGlow, borderWidth: 1, borderColor: C.borderDefault,
+          }}
+        >
+          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+            <Globe size={22} color={C.blue}/>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web3</Text>
+            <Text style={{ fontSize: 12, color: C.textMuted }}>Browse the full ecosystem on ecosystem.litho.ai</Text>
+          </View>
+        </Pressable>
+      )}
+
+      {/* Grouped sections (SafePal-style) */}
+      {groups.map(({ section, apps }) => (
+        <View key={section} style={{ marginBottom: 8 }}>
+          <Text style={styles.dateHeader}>{section}</Text>
+          <View style={styles.card}>
+            {apps.map((a, i) => (
+              <Pressable key={a.id} onPress={() => openBrowser(a.url)} style={[styles.row, i < apps.length - 1 && styles.rowBorder]}>
+                <DappIcon id={a.id} name={a.name} color={a.color}/>
+                <View style={styles.rowMid}>
+                  <Text style={styles.rowSymbol}>{a.name}</Text>
+                  <Text style={styles.rowSub} numberOfLines={1}>{a.description}</Text>
+                </View>
+                <ChevronRight size={18} color={C.textMuted}/>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+      {groups.length === 0 && !isLink && (
+        <Text style={[styles.rowSub, { padding: 16 }]}>No apps match “{q}”.</Text>
+      )}
 
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 14, alignItems: 'flex-start' }}>
         <Shield size={14} color={C.green}/>
         <Text style={{ flex: 1, fontSize: 11, color: C.textMuted, lineHeight: 17 }}>
-          These are Lithosphere ecosystem apps. Always check the URL in your browser before connecting your wallet or signing a transaction.
+          Always check the URL before connecting your wallet or signing a transaction.
         </Text>
       </View>
     </ScrollView>
@@ -1689,12 +1751,65 @@ function OnboardingScreen({
   );
 }
 
+/* ─────────────────── In-app browser (WebView overlay) ─────────────────── */
+function InAppBrowser({ url, onClose }: { url: string; onClose: () => void }) {
+  const C = useColors();
+  const ref = useRef<WebView>(null);
+  const [current, setCurrent] = useState(url);
+  const [loading, setLoading] = useState(true);
+  let host = current;
+  try { host = new URL(current).host; } catch { /* keep raw */ }
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
+        <StatusBar barStyle={C.statusBar} backgroundColor={C.bgBase}/>
+        {/* Chrome: close · host (lock) · reload · open external */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          paddingHorizontal: 14, paddingVertical: 10,
+          borderBottomWidth: 1, borderBottomColor: C.borderSubtle, backgroundColor: C.bgSurface,
+        }}>
+          <Pressable onPress={onClose} hitSlop={8}><ChevronLeft size={24} color={C.textPrimary}/></Pressable>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bgElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
+            <Shield size={13} color={current.startsWith('https://') ? C.green : C.textMuted}/>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: C.textSecondary }}>{host}</Text>
+          </View>
+          <Pressable onPress={() => ref.current?.reload()} hitSlop={8}><Repeat size={18} color={C.textSecondary}/></Pressable>
+          <Pressable onPress={() => { Linking.openURL(current).catch(() => {}); }} hitSlop={8}><Globe size={18} color={C.textSecondary}/></Pressable>
+        </View>
+
+        {loading && (
+          <View style={{ height: 2, backgroundColor: C.blueDim }}>
+            <View style={{ height: 2, width: '40%', backgroundColor: C.blue }}/>
+          </View>
+        )}
+
+        <WebView
+          ref={ref}
+          source={{ uri: url }}
+          onNavigationStateChange={(s) => setCurrent(s.url)}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
+          style={{ flex: 1, backgroundColor: C.bgBase }}
+          allowsBackForwardNavigationGestures
+          /* Keep the wallet's keys isolated from arbitrary dApp pages: no
+             auto-injected provider yet (full WalletConnect-in-webview is a
+             follow-up). Third-party cookies on for normal site logins. */
+          setSupportMultipleWindows={false}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   const [isDark, setIsDark] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -1787,12 +1902,16 @@ export default function App() {
         <ToggleCtx.Provider value={toggle}>
         <WalletAddrCtx.Provider value={walletAddr}>
         <WalletSeedCtx.Provider value={walletSeed}>
+        <BrowserCtx.Provider value={setBrowserUrl}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
 
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}
             <WalletConnectRequestHost seed={walletSeed}/>
+
+            {/* In-app browser overlay (Discover dApps / typed links) */}
+            {browserUrl && <InAppBrowser url={browserUrl} onClose={() => setBrowserUrl(null)}/>}
 
             {/* Top header */}
             <View style={styles.topbar}>
@@ -1848,6 +1967,7 @@ export default function App() {
               })}
             </View>
           </SafeAreaView>
+        </BrowserCtx.Provider>
         </WalletSeedCtx.Provider>
         </WalletAddrCtx.Provider>
         </ToggleCtx.Provider>

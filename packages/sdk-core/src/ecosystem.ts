@@ -21,18 +21,16 @@ export interface EcosystemApp {
   url:         string;
   /** Brand colour for the letter-avatar fallback. */
   color:       string;
+  /** Short tag shown on the row (e.g. "AI", "DeFi"). */
   category:    string;
+  /** Grouping section header (SafePal-style). One of ECOSYSTEM_SECTIONS. */
+  section:     string;
 }
 
+/** Section headers in display order. Apps render grouped under these. */
+export const ECOSYSTEM_SECTIONS = ['AI & Agents', 'DeFi & Yield', 'NFTs', 'Rewards'] as const;
+
 export const ECOSYSTEM_APPS: EcosystemApp[] = [
-  {
-    id: 'litho-deals',
-    name: 'LITHO Deals',
-    description: 'Deals, offers and rewards across the Lithosphere ecosystem.',
-    url: ECOSYSTEM_HUB,
-    color: '#3b7af7',
-    category: 'Rewards',
-  },
   {
     id: 'agii',
     name: 'AGII',
@@ -40,14 +38,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     url: ECOSYSTEM_HUB,
     color: '#8b7df7',
     category: 'AI',
-  },
-  {
-    id: 'colle',
-    name: 'Colle AI',
-    description: 'Multi-chain, AI-powered NFT creation and trading.',
-    url: ECOSYSTEM_HUB,
-    color: '#a3e635',
-    category: 'NFT · AI',
+    section: 'AI & Agents',
   },
   {
     id: 'imagen',
@@ -56,6 +47,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     url: ECOSYSTEM_HUB,
     color: '#10b981',
     category: 'AI',
+    section: 'AI & Agents',
   },
   {
     id: 'furgpt',
@@ -64,6 +56,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     url: ECOSYSTEM_HUB,
     color: '#10b981',
     category: 'AI',
+    section: 'AI & Agents',
   },
   {
     id: 'mansa',
@@ -72,5 +65,60 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     url: ECOSYSTEM_HUB,
     color: '#eab308',
     category: 'AI · DeFi',
+    section: 'DeFi & Yield',
+  },
+  {
+    id: 'colle',
+    name: 'Colle AI',
+    description: 'Multi-chain, AI-powered NFT creation and trading.',
+    url: ECOSYSTEM_HUB,
+    color: '#a3e635',
+    category: 'NFT · AI',
+    section: 'NFTs',
+  },
+  {
+    id: 'litho-deals',
+    name: 'LITHO Deals',
+    description: 'Deals, offers and rewards across the Lithosphere ecosystem.',
+    url: ECOSYSTEM_HUB,
+    color: '#3b7af7',
+    category: 'Rewards',
+    section: 'Rewards',
   },
 ];
+
+/* ─── Helpers shared by every client's Discover/Explore screen ──────── */
+
+/** Group apps under their section in ECOSYSTEM_SECTIONS order. Empty
+ *  sections are omitted; any app whose section isn't recognised lands in
+ *  a trailing "More" group so nothing silently disappears. */
+export function groupBySection<T extends { section: string }>(
+  apps: T[],
+): { section: string; apps: T[] }[] {
+  const out: { section: string; apps: T[] }[] = [];
+  for (const section of ECOSYSTEM_SECTIONS) {
+    const inSection = apps.filter((a) => a.section === section);
+    if (inSection.length) out.push({ section, apps: inSection });
+  }
+  const known = new Set<string>(ECOSYSTEM_SECTIONS);
+  const rest = apps.filter((a) => !known.has(a.section));
+  if (rest.length) out.push({ section: 'More', apps: rest });
+  return out;
+}
+
+/** True when the query looks like a URL or bare domain the user wants to
+ *  open directly (SafePal's "enter a link" behaviour). */
+export function looksLikeUrl(q: string): boolean {
+  const s = q.trim();
+  if (!s || /\s/.test(s)) return false;
+  if (/^https?:\/\//i.test(s)) return true;
+  // bare domain: something.tld (+ optional path)
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(s);
+}
+
+/** Normalise a typed link to an https URL, or null if it isn't openable. */
+export function normalizeUrl(q: string): string | null {
+  const s = q.trim();
+  if (!looksLikeUrl(s)) return null;
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
