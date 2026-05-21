@@ -19,12 +19,14 @@ export interface EcosystemApp extends BaseEcosystemApp {
   icon?: string;
 }
 
-/** id → web icon path. Only entries with a curated asset are listed. */
+/** id → Discover APP-icon path (public/images/dapps/*), distinct from the
+ *  coin/asset logos in /images/tokens/. Only ids with a curated app icon
+ *  are listed; the rest fall back to a letter avatar. */
 const WEB_ICONS: Record<string, string> = {
-  agii:   '/images/tokens/agii.png',
-  colle:  '/images/tokens/colle.png',
-  imagen: '/images/tokens/image.png',
-  furgpt: '/images/tokens/furgpt.png',
+  agii:  '/images/dapps/agii.png',
+  colle: '/images/dapps/colle.png',
+  mansa: '/images/dapps/mansa.png',
+  // furgpt, imagen, litho-deals: pending client app-icon assets
 };
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = BASE_APPS.map(a => ({

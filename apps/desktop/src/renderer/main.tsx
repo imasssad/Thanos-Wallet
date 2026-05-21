@@ -15,6 +15,7 @@ import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
+  groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
 } from '@thanos/sdk-core';
 
@@ -1668,12 +1669,16 @@ function DiscoverAppRow({ app }: { app: EcosystemApp }) {
 function DiscoverView() {
   const [q, setQ] = useState('');
   const query = q.trim().toLowerCase();
-  const apps = query
+  const isLink = looksLikeUrl(q);
+  const apps = query && !isLink
     ? ECOSYSTEM_APPS.filter(a =>
         a.name.toLowerCase().includes(query) ||
         a.category.toLowerCase().includes(query) ||
-        a.description.toLowerCase().includes(query))
+        a.description.toLowerCase().includes(query) ||
+        a.section.toLowerCase().includes(query))
     : ECOSYSTEM_APPS;
+  const groups = groupBySection(apps);
+  const submit = () => { const u = normalizeUrl(q); if (u) openExternal(u); };
 
   return (
     <div className="view-wrap" style={{ maxWidth: 760, margin: '0 auto', padding: '24px' }}>
@@ -1690,10 +1695,30 @@ function DiscoverView() {
           className="field-input"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="Search ecosystem apps"
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="Search DApp or enter a link"
           style={{ paddingLeft: 36, width: '100%' }}
         />
       </div>
+
+      {isLink && (
+        <button
+          onClick={submit}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 14,
+            borderRadius: 14, marginBottom: 16, cursor: 'pointer', textAlign: 'left', color: 'inherit',
+            background: 'rgba(59,122,247,0.10)', border: '1px solid var(--blue, #3b7af7)',
+          }}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: 'rgba(59,122,247,0.18)', color: 'var(--blue, #3b7af7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Globe size={20}/>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Open link</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{normalizeUrl(q)}</div>
+          </div>
+        </button>
+      )}
 
       <button
         onClick={() => openExternal(ECOSYSTEM_HUB)}
@@ -1718,12 +1743,17 @@ function DiscoverView() {
         </div>
       </button>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {apps.map(a => <DiscoverAppRow key={a.id} app={a}/>)}
-        {apps.length === 0 && (
-          <div style={{ padding: 16, fontSize: 13, color: 'var(--text-muted)' }}>No apps match “{q}”.</div>
-        )}
-      </div>
+      {groups.map(({ section, apps: secApps }) => (
+        <div key={section} style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 0.4, marginBottom: 8, textTransform: 'uppercase' }}>{section}</div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            {secApps.map(a => <DiscoverAppRow key={a.id} app={a}/>)}
+          </div>
+        </div>
+      ))}
+      {groups.length === 0 && !isLink && (
+        <div className="card" style={{ padding: 16, fontSize: 13, color: 'var(--text-muted)' }}>No apps match “{q}”.</div>
+      )}
 
       <div style={{
         display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14,
