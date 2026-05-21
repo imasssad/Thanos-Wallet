@@ -26,7 +26,8 @@ import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices } from './lib/pricing';
 import { resolveRecipient, evmToLitho } from './lib/address';
-import { sendAsset } from './lib/wc-signer';
+import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy } from './lib/wc-signer';
+import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { SvgXml } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
@@ -1836,13 +1837,72 @@ function OnboardingScreen({
 }
 
 /* ─────────────────── In-app browser (WebView overlay) ─────────────────── */
-function InAppBrowser({ url, onClose }: { url: string; onClose: () => void }) {
+interface DappRequest { id: number; method: string; params: unknown[] }
+
+function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void; seed: string[] }) {
   const C = useColors();
   const ref = useRef<WebView>(null);
   const [current, setCurrent] = useState(url);
   const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
+  const [pending, setPending] = useState<DappRequest | null>(null);
+  const address = useMemo(() => (seed.length ? deriveEvmAddress(seed) : ''), [seed]);
   let host = current;
   try { host = new URL(current).host; } catch { /* keep raw */ }
+
+  const send = (js: string) => ref.current?.injectJavaScript(js);
+
+  // Run a request against the wallet signer and post the result back.
+  const run = async (req: DappRequest) => {
+    try {
+      const result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
+      if (req.method === 'eth_requestAccounts') setConnected(true);
+      send(resolveJs(req.id, result));
+    } catch (e) {
+      const code = e instanceof WcSignerError ? e.code : -32603;
+      send(rejectJs(req.id, code, (e as Error)?.message || 'Request failed'));
+    }
+  };
+
+  const onMessage = (raw: string) => {
+    let msg: DappRequest & { __thanos?: boolean };
+    try { msg = JSON.parse(raw); } catch { return; }
+    if (!msg || !msg.__thanos || typeof msg.id !== 'number') return;
+    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [] };
+
+    // Read-only / already-authorised methods resolve immediately.
+    if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${(700777).toString(16)}`)); return; }
+    if (req.method === 'net_version')  { send(resolveJs(req.id, '700777')); return; }
+    if (req.method === 'eth_accounts') {
+      send(resolveJs(req.id, connected && address ? [address] : []));
+      return;
+    }
+    // Connecting while already connected? No need to re-prompt.
+    if (req.method === 'eth_requestAccounts' && connected && address) {
+      send(resolveJs(req.id, [address]));
+      return;
+    }
+    // Chain management — we only support Makalu (Lithosphere).
+    if (req.method === 'wallet_switchEthereumChain') {
+      const target = (req.params?.[0] as { chainId?: string })?.chainId?.toLowerCase();
+      if (target === `0x${(700777).toString(16)}`) send(resolveJs(req.id, null));
+      else send(rejectJs(req.id, 4902, 'Only Makalu (Lithosphere) is supported in-app'));
+      return;
+    }
+    if (req.method === 'wallet_addEthereumChain') { send(resolveJs(req.id, null)); return; }
+    if (APPROVAL_METHODS.has(req.method)) { setPending(req); return; }
+    // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
+    // read — proxy straight to the Makalu RPC.
+    rpcProxy(req.method, req.params)
+      .then(r => send(resolveJs(req.id, r)))
+      .catch(e => send(rejectJs(req.id, -32603, (e as Error)?.message || 'RPC error')));
+  };
+
+  const approve = () => { if (pending) { void run(pending); setPending(null); } };
+  const reject  = () => { if (pending) { send(rejectJs(pending.id, 4001, 'User rejected')); setPending(null); } };
+
+  const isConnect = pending?.method === 'eth_requestAccounts';
+  const summary = pending ? (isConnect ? `Connect your wallet to ${host}?` : summariseRequest(pending.method, pending.params)) : '';
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -1858,6 +1918,7 @@ function InAppBrowser({ url, onClose }: { url: string; onClose: () => void }) {
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bgElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
             <Shield size={13} color={current.startsWith('https://') ? C.green : C.textMuted}/>
             <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: C.textSecondary }}>{host}</Text>
+            {connected && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.green }}/>}
           </View>
           <Pressable onPress={() => ref.current?.reload()} hitSlop={8}><Repeat size={18} color={C.textSecondary}/></Pressable>
           <Pressable onPress={() => { Linking.openURL(current).catch(() => {}); }} hitSlop={8}><Globe size={18} color={C.textSecondary}/></Pressable>
@@ -1875,13 +1936,38 @@ function InAppBrowser({ url, onClose }: { url: string; onClose: () => void }) {
           onNavigationStateChange={(s) => setCurrent(s.url)}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
+          onMessage={(e) => onMessage(e.nativeEvent.data)}
+          injectedJavaScriptBeforeContentLoaded={INJECTED_PROVIDER_JS}
           style={{ flex: 1, backgroundColor: C.bgBase }}
           allowsBackForwardNavigationGestures
-          /* Keep the wallet's keys isolated from arbitrary dApp pages: no
-             auto-injected provider yet (full WalletConnect-in-webview is a
-             follow-up). Third-party cookies on for normal site logins. */
           setSupportMultipleWindows={false}
         />
+
+        {/* dApp request approval sheet */}
+        {pending && (
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+                  {isConnect ? <Globe size={18} color={C.blue}/> : <Shield size={18} color={C.blue}/>}
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary, flex: 1 }}>
+                  {isConnect ? 'Connection request' : pending.method === 'eth_sendTransaction' ? 'Confirm transaction' : 'Signature request'}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 13, color: C.textSecondary, lineHeight: 19 }}>{summary}</Text>
+              <Text style={{ fontSize: 11, color: C.textMuted }} numberOfLines={1}>From {host}</Text>
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                <Pressable onPress={reject} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}>
+                  <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Reject</Text>
+                </Pressable>
+                <Pressable onPress={approve} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>{isConnect ? 'Connect' : 'Approve'}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -2004,7 +2090,7 @@ export default function App() {
             <WalletConnectRequestHost seed={walletSeed}/>
 
             {/* In-app browser overlay (Discover dApps / typed links) */}
-            {browserUrl && <InAppBrowser url={browserUrl} onClose={() => setBrowserUrl(null)}/>}
+            {browserUrl && <InAppBrowser url={browserUrl} onClose={() => setBrowserUrl(null)} seed={walletSeed}/>}
 
             {/* Top header */}
             <View style={styles.topbar}>
