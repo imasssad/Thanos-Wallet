@@ -1008,7 +1008,10 @@ button:focus:not(:focus-visible),
 .field-input {
   width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-default);
   border-radius: 9px; padding: 10px 12px; color: var(--text-primary);
-  font-size: 15px; font-family: inherit; outline: none;
+  /* 16px is the threshold below which iOS Safari auto-zooms inputs on
+     focus — keep at 16+ to avoid the page jumping when the keyboard
+     opens. The mobile media query below preserves this. */
+  font-size: 16px; font-family: inherit; outline: none;
   transition: border-color 0.12s;
 }
 .field-input:focus { border-color: rgba(59,122,247,0.4); box-shadow: 0 0 0 3px rgba(59,122,247,0.08); }
@@ -1024,7 +1027,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .field-select {
   background: var(--bg-elevated); border: 1px solid var(--border-default);
   border-radius: 9px; padding: 9px 10px; color: var(--text-primary);
-  font-size: 14px; font-family: inherit; outline: none; cursor: pointer; width: 100%;
+  /* 16px to prevent iOS Safari focus-auto-zoom (see .field-input). */
+  font-size: 16px; font-family: inherit; outline: none; cursor: pointer; width: 100%;
 }
 .fee-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); padding: 6px 0; border-top: 1px solid var(--border-subtle); margin-top: 8px; }
 
@@ -1639,7 +1643,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
   /* Modals on phone — full-width sheet */
   .modal-box { width: calc(100vw - 24px) !important; max-width: 100% !important; }
-  .field-input, .field-select { font-size: 14px !important; padding: 10px 11px !important; }
+  /* 16px is mandatory on mobile to suppress iOS Safari's focus
+     auto-zoom; do NOT drop below this. Padding stays tight. */
+  .field-input, .field-select { font-size: 16px !important; padding: 10px 11px !important; }
 }
 
 /* ─── Very small phones (≤360) — extra-tight ─────────────────────── */
