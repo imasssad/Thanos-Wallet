@@ -56,6 +56,8 @@ import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances'
 import { EVM_CHAINS } from '../lib/evm-chains';
 import { classifyRecipient } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
+import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
+import { SimulationPanel, hasCriticalIssue } from './SimulationPanel';
 import * as RadixSelect from '@radix-ui/react-select';
 import { QrCode, Check, ChevronDown } from 'lucide-react';
 
@@ -130,6 +132,10 @@ export function SendModal({ onClose }: { onClose: () => void }) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError]   = useState<string | null>(null);
   const [feeStr, setFeeStr] = useState<string | null>(null);
+  // Pre-send simulation — populated by a debounced effect once
+  // recipient + amount are valid. Null when not yet run or when the
+  // chain isn't in sdk-core's registry (external EVM chains).
+  const [simReport, setSimReport] = useState<SimulationReport | null>(null);
 
   // Recipient UX state — QR scanner + address-book autocomplete + DNNS resolver.
   const [showQr,       setShowQr]       = useState(false);
@@ -346,6 +352,36 @@ export function SendModal({ onClose }: { onClose: () => void }) {
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
   }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isCosmosSend, isEvmSend, evmChainId, evmChain]);
+
+  /* Pre-send simulation — runs alongside the fee estimate above. Only
+     fires on EVM/Lithosphere sends (Bitcoin + Solana + Cosmos go through
+     other simulators when their respective sdk-core clients support it).
+     Result drives the SimulationPanel rendered above the network-fee row;
+     a critical issue (e.g. INSUFFICIENT_BALANCE) also disables the Send
+     button so the user can't dispatch a guaranteed-to-revert tx. */
+  useEffect(() => {
+    if (!recipientValidation.valid || !amount) { setSimReport(null); return; }
+    const targetChainId = isEvmSend ? evmChainId : MAKALU_CHAIN_ID;
+    if (!targetChainId) { setSimReport(null); return; }
+    if (isSolanaSend || isBitcoinSend || isCosmosSend) { setSimReport(null); return; }
+    const fromAddr = canonicalEvm || (isEvmSend ? to.trim() : '');
+    // Don't simulate when we don't even know the sender — happens briefly
+    // before the wallet resolves an EVM address from the active source.
+    const senderAddr = (wallet?.addresses?.evm || '').trim();
+    if (!senderAddr) { setSimReport(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const report = await simulateEvmSend({
+        chainId:      targetChainId,
+        from:         senderAddr,
+        to:           fromAddr || to.trim(),
+        amount,
+        tokenSymbol:  coin,
+      });
+      if (!cancelled) setSimReport(report);
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [coin, to, amount, recipientValidation.valid, canonicalEvm, isEvmSend, isSolanaSend, isBitcoinSend, isCosmosSend, evmChainId, wallet?.addresses?.evm]);
 
   const onSubmit = async () => {
     if (!walletReady) {
@@ -1109,6 +1145,11 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           <PhishingBanner verdict={recipientVerdict} compact/>
         )}
 
+        {/* Pre-send simulation — shows contract warnings + balance checks
+            before signing. Hidden when there's nothing to surface; a
+            critical issue also disables the Send button below. */}
+        <SimulationPanel report={simReport} compact/>
+
         <div className="fee-row" style={{ marginTop: 14, fontSize: 13 }}>
           <span>Network fee</span>
           <span>{feeStr ? `≈ ${feeStr}` : '—'}</span>
@@ -1121,12 +1162,18 @@ export function SendModal({ onClose }: { onClose: () => void }) {
             fontSize: 15, fontWeight: 700,
             borderRadius: 12,
           }}
-          disabled={!recipientValidation.valid || !amount || recipientBlocked || !walletReady}
+          disabled={!recipientValidation.valid || !amount || recipientBlocked || !walletReady || hasCriticalIssue(simReport)}
           onClick={onSubmit}
-          title={recipientBlocked ? 'Recipient flagged as high-risk — sending is blocked.' : undefined}
+          title={
+            recipientBlocked        ? 'Recipient flagged as high-risk — sending is blocked.'
+            : hasCriticalIssue(simReport) ? 'Pre-send simulation found a critical issue — sending is blocked.'
+            : undefined
+          }
         >
           {recipientBlocked
             ? 'Recipient blocked'
+            : hasCriticalIssue(simReport)
+            ? 'Issue detected — blocked'
             : usingLedger ? `Confirm on Ledger · Send ${coin}`
             : usingTrezor ? `Confirm on Trezor · Send ${coin}`
             : `Send ${coin}`}

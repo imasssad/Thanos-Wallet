@@ -67,6 +67,12 @@ export interface SendAssetRequest {
   amount: string;
   tokenAddress?: string;
   memo?: string;
+  /** Sender address — when provided, the simulator can do balance + nonce
+   *  checks. Optional for back-compat with older callers. */
+  from?: string;
+  /** Display label for the asset being sent (e.g. "USDC" or "LITHO").
+   *  Used by the simulator to build a human-readable summary. */
+  tokenSymbol?: string;
 }
 
 export interface BitcoinSendRequest {

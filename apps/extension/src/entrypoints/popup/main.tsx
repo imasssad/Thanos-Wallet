@@ -22,6 +22,7 @@ import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
+  TransactionSimulator, type SimulationReport,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
@@ -1035,6 +1036,10 @@ function App() {
   const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
   const [rpcBusy, setRpcBusy]       = useState(false);
   const [rpcErr, setRpcErr]         = useState<string | null>(null);
+  // Pre-sign simulation — populated when a pending eth_sendTransaction
+  // arrives. Other methods (personal_sign, eth_signTypedData_v4) don't
+  // touch on-chain state so we skip the simulator for them.
+  const [simReport, setSimReport]   = useState<SimulationReport | null>(null);
 
   const evmAddr   = seed.length ? deriveEvm(seed) : '';
   const portfolio = usePortfolio(evmAddr);
@@ -1067,6 +1072,36 @@ function App() {
       browser.storage.onChanged.removeListener(listener as never);
     };
   }, []);
+
+  /* Pre-sign simulation for incoming eth_sendTransaction requests. Runs
+     in parallel with the approval UI mount — the user sees the report
+     as soon as the simulator returns. Lazy singleton: TransactionSimulator
+     caches RPC providers internally so re-renders don't churn them. */
+  useEffect(() => {
+    if (!pendingRpc || pendingRpc.method !== 'eth_sendTransaction') {
+      setSimReport(null); return;
+    }
+    const tx = pendingRpc.params?.[0] as { to?: string; value?: string; from?: string } | undefined;
+    if (!tx?.to) { setSimReport(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const sim    = new TransactionSimulator();
+        // EIP-1193 hex value → decimal ether (caller may send "0x0" or "0xde0b6b3a7640000").
+        const valueHex = tx.value || '0x0';
+        const valueWei = BigInt(valueHex);
+        const amountEth = (Number(valueWei) / 1e18).toString();
+        const report = await sim.simulateSend({
+          chainId: 700777,                       // Makalu — the only chain this wallet talks to today
+          from:    tx.from || pendingRpc.address,
+          to:      tx.to,
+          amount:  amountEth,
+        });
+        if (!cancelled) setSimReport(report);
+      } catch { if (!cancelled) setSimReport(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [pendingRpc]);
 
   useEffect(() => {
     (async () => {
@@ -1215,9 +1250,41 @@ function App() {
 
         {rpcErr && <div style={{ padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.10)', color: '#f87171', fontSize: 12 }}>{rpcErr}</div>}
 
+        {/* Pre-sign simulation — only meaningful for eth_sendTransaction;
+            the effect that populates simReport already gates on that. */}
+        {simReport && simReport.issues.filter(i => i.level !== 'info').length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {simReport.issues.filter(i => i.level !== 'info').map((issue, i) => {
+              const isCritical = issue.level === 'critical';
+              return (
+                <div
+                  key={`${issue.code}-${i}`}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    background: isCritical ? 'rgba(248,113,113,0.10)' : 'rgba(245,158,11,0.10)',
+                    border:     isCritical ? '1px solid #f87171' : 'none',
+                    color:      isCritical ? '#f87171' : '#f59e0b',
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {issue.message}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
           <button onClick={rejectRpc}  disabled={rpcBusy} className="btn-secondary" style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}>Reject</button>
-          <button onClick={approveRpc} disabled={rpcBusy} className="btn-primary"  style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}>
+          <button
+            onClick={approveRpc}
+            disabled={rpcBusy || (simReport?.issues.some(i => i.level === 'critical') ?? false)}
+            className="btn-primary"
+            style={{ flex: 1, opacity: (rpcBusy || (simReport?.issues.some(i => i.level === 'critical') ?? false)) ? 0.6 : 1 }}
+            title={(simReport?.issues.some(i => i.level === 'critical') ?? false) ? 'Simulator found a critical issue — approval blocked.' : undefined}
+          >
             {rpcBusy ? 'Signing…' : isTx ? 'Approve & Send' : 'Approve & Sign'}
           </button>
         </div>
