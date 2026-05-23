@@ -1,0 +1,104 @@
+# Alertmanager routing for Thanos Wallet.
+#
+# Loaded by the alertmanager service in docker-compose.observability.yml.
+# Placeholders prefixed __VAR__ are substituted at container startup
+# from env vars (.env on the host) — that way Slack webhook + PagerDuty
+# routing key stay out of git.
+#
+# Env vars consumed:
+#   SLACK_WEBHOOK_URL          — Slack incoming-webhook URL
+#   PAGERDUTY_INTEGRATION_KEY  — PagerDuty Events v2 routing key
+#   ALERT_FROM_EMAIL           — From-address for the "default" fallback
+#                                (optional; only used if both above are blank)
+#
+# Routing tree:
+#   * severity=critical → Slack #thanos-alerts (loud) AND PagerDuty
+#   * severity=warning  → Slack #thanos-alerts only
+#   * everything else   → Slack #thanos-alerts (catch-all)
+#
+# Inhibits: when a whole job is down (ThanosServiceDown), suppress the
+# noisy follow-ons (5xx rate, latency, queue backlog) for that job.
+
+global:
+  resolve_timeout: 5m
+
+# Templates for richer Slack/PD payloads (optional — single file ok).
+templates: []
+
+route:
+  # Group all alerts from one rule together so a flapping check doesn't
+  # spam the channel; group_wait gives us a brief settle window.
+  group_by:        ['alertname', 'job']
+  group_wait:      30s
+  group_interval:  5m
+  repeat_interval: 4h
+  receiver:        slack-default
+
+  routes:
+    - matchers:
+        - severity = critical
+      receiver: critical-fanout
+      continue: false
+
+    - matchers:
+        - severity = warning
+      receiver: slack-default
+      continue: false
+
+receivers:
+  - name: slack-default
+    slack_configs:
+      - api_url:      '__SLACK_WEBHOOK_URL__'
+        channel:      '#thanos-alerts'
+        send_resolved: true
+        title:        '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
+        text: |-
+          {{ range .Alerts -}}
+          *Severity:* {{ .Labels.severity }}{{ if .Labels.component }} · *Component:* {{ .Labels.component }}{{ end }}
+          *Summary:* {{ .Annotations.summary }}
+          {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+          {{ end -}}
+
+  # Critical alerts fan out: same Slack message + a PagerDuty page so
+  # someone gets a phone call out of hours.
+  - name: critical-fanout
+    slack_configs:
+      - api_url:      '__SLACK_WEBHOOK_URL__'
+        channel:      '#thanos-alerts'
+        send_resolved: true
+        color:        'danger'
+        title:        '[CRITICAL{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
+        text: |-
+          {{ range .Alerts -}}
+          *Severity:* {{ .Labels.severity }}{{ if .Labels.component }} · *Component:* {{ .Labels.component }}{{ end }}
+          *Summary:* {{ .Annotations.summary }}
+          {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+          {{ end -}}
+    pagerduty_configs:
+      - routing_key:   '__PAGERDUTY_INTEGRATION_KEY__'
+        send_resolved: true
+        severity:      'critical'
+        description:   '{{ .CommonLabels.alertname }}: {{ (index .Alerts 0).Annotations.summary }}'
+        details:
+          description:  '{{ (index .Alerts 0).Annotations.description }}'
+          job:          '{{ .CommonLabels.job }}'
+          component:    '{{ .CommonLabels.component }}'
+          firing_count: '{{ .Alerts.Firing | len }}'
+
+inhibit_rules:
+  # When a whole service is down, suppress the inevitable secondary
+  # alerts (latency, 5xx, queue depth) for the same job for the duration
+  # of the outage. ServiceDown alone wakes oncall.
+  - source_matchers:
+      - alertname = ThanosServiceDown
+    target_matchers:
+      - alertname =~ "ThanosApi5xxRateHigh|ThanosApiLatencyHigh|ThanosWorkerQueueBacklog|ThanosWorkerFailedJobs|ThanosBridgePollFailing|ThanosBridgeQueueBacklog"
+    equal: ['job']
+
+  # If the indexer's cursor has stalled, the sync-gap warning is just a
+  # symptom — only page on the stall.
+  - source_matchers:
+      - alertname = ThanosIndexerStalled
+    target_matchers:
+      - alertname = ThanosIndexerSyncGap
+    equal: ['job']
