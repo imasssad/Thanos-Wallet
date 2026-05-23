@@ -18,6 +18,8 @@ import {
   groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
 } from '@thanos/sdk-core';
+import { HardwareModal } from './hardware';
+import { WalletConnectModal } from './walletconnect';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -1128,10 +1130,12 @@ function StakingView() {
 }
 
 /* ──────────────────────── Settings view ──────────────────────── */
-function SettingsView({ toggleTheme, isDark }: { toggleTheme: () => void; isDark: boolean }) {
+function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => void; isDark: boolean; walletAddr: string }) {
   const [currency, setCurrency] = useState('USD');
   const [autoLock, setAutoLock] = useState('5');
   const [rpc, setRpc]           = useState('https://rpc.litho.ai');
+  const [hwOpen, setHwOpen]     = useState(false);
+  const [wcOpen, setWcOpen]     = useState(false);
 
   const Section = ({
     icon: Icon, title, sub, children,
@@ -1200,6 +1204,9 @@ function SettingsView({ toggleTheme, isDark }: { toggleTheme: () => void; isDark
           <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
             <button className="settings-btn settings-btn-danger"><Download2 size={14}/> Export</button>
           </Row>
+          <Row label="Hardware wallet" sub="Connect a Ledger via USB (Trezor support is wired through the same vendor allowlist)">
+            <button className="settings-btn" onClick={() => setHwOpen(true)}><KeyIcon size={14}/> Connect</button>
+          </Row>
           <Row label="Lock wallet now" sub="Sign out on this device">
             <button className="settings-btn"><Lock2 size={14}/> Lock</button>
           </Row>
@@ -1214,7 +1221,13 @@ function SettingsView({ toggleTheme, isDark }: { toggleTheme: () => void; isDark
               <span className="settings-network-dot"/> Makalu
             </span>
           </Row>
+          <Row label="WalletConnect" sub="Pair this wallet with a dApp via wc: link">
+            <button className="settings-btn" onClick={() => setWcOpen(true)}><Globe size={14}/> Open</button>
+          </Row>
         </Section>
+
+        {hwOpen && <HardwareModal onClose={() => setHwOpen(false)} isDark={isDark}/>}
+        {wcOpen && <WalletConnectModal evmAddress={walletAddr} onClose={() => setWcOpen(false)}/>}
 
         <Section icon={Info} title="About" sub="Build info and version">
           <Row label="Version" sub="Thanos Wallet Desktop">
@@ -2034,7 +2047,7 @@ function App() {
           {view === 'staking'      && <StakingView/>}
           {view === 'discover'     && <DiscoverView/>}
           {view === 'nfts'         && <NftsView/>}
-          {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark}/>}
+          {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark} walletAddr={walletAddr}/>}
         </div>
 
         {view !== 'settings' && (
