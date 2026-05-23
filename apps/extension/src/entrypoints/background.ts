@@ -26,6 +26,18 @@ interface PendingApproval {
   // Used by the bg's resolver maps below — not persisted.
 }
 
+/* A direct EIP-1193 sign/tx request — for `window.ethereum.request`
+ * paths (NOT WalletConnect, which has its own offscreen+popup flow).
+ * The popup picks this up, shows an approval sheet, signs locally with
+ * its in-memory seed, and posts the result back via thanos-rpc-result. */
+interface PendingRpcRequest {
+  id:      string;
+  origin:  string;
+  method:  string;
+  params:  unknown[];
+  address: string;   // expected `from` address (the origin's connected wallet)
+}
+
 /* In-memory resolver tables. The background SW can stay alive long enough
    for these to round-trip in most flows; if it dies, the popup falls back
    to broadcasting the result via runtime.sendMessage. */
@@ -138,13 +150,47 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
       return null;
     }
 
-    /* ─ Signing (deferred to slice 4) ────────────────────────────── */
+    /* ─ Signing — popup approval + local sign ────────────────────── */
 
     case 'eth_sendTransaction':
     case 'personal_sign':
     case 'eth_signTypedData_v4':
-    case 'eth_sign':
-      throw rpcError(4200, `${method} requires the next vault-bridge slice`);
+    case 'eth_sign': {
+      const conns = await getConnections();
+      const conn = conns[origin];
+      // Strict: only connected origins can ask for signatures. Otherwise
+      // a malicious page could enqueue prompts without ever asking the
+      // user to connect first.
+      if (!conn) throw rpcError(4100, 'Unauthorized — call eth_requestAccounts first');
+
+      // For sendTransaction, the `from` field (if set) must match the
+      // connected address. dApps sometimes pre-populate this; if it's
+      // mismatched, refuse rather than silently signing with the wrong key.
+      if (method === 'eth_sendTransaction') {
+        const tx = params?.[0] as { from?: string } | undefined;
+        if (tx?.from && tx.from.toLowerCase() !== conn.address.toLowerCase()) {
+          throw rpcError(4001, '`from` does not match the connected account');
+        }
+      }
+      // For personal_sign / eth_sign the signer address is in params; same check.
+      if (method === 'personal_sign' || method === 'eth_signTypedData_v4') {
+        const signer = (method === 'personal_sign' ? params?.[1] : params?.[0]) as string | undefined;
+        if (signer && signer.toLowerCase() !== conn.address.toLowerCase()) {
+          throw rpcError(4001, 'Signer address does not match the connected account');
+        }
+      }
+
+      const id = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+      await browser.storage.session.set({
+        pending_rpc_request: { id, origin, method, params, address: conn.address } as PendingRpcRequest,
+      });
+      try { await browser.action.openPopup(); }
+      catch { /* user may need to open the popup manually */ }
+
+      return await new Promise<unknown>((resolve, reject) => {
+        pendingResolvers.set(id, { resolve, reject });
+      });
+    }
 
     /* ─ Unknown ──────────────────────────────────────────────────── */
 
@@ -215,6 +261,23 @@ export default defineBackground(() => {
       );
       // Returning true tells the runtime we'll respond asynchronously.
       return true;
+    }
+
+    // 2b) Popup posting back the signed result (or rejection) of a
+    //     pending EIP-1193 sign/tx request.
+    const sigMsg = m as { type?: string; requestId?: string; result?: unknown; error?: { code: number; message: string } };
+    if (sigMsg.type === 'thanos-rpc-result' && sigMsg.requestId) {
+      const pending = pendingResolvers.get(sigMsg.requestId);
+      if (pending) {
+        pendingResolvers.delete(sigMsg.requestId);
+        (async () => {
+          await browser.storage.session.remove('pending_rpc_request');
+          if (sigMsg.error) pending.reject(rpcError(sigMsg.error.code, sigMsg.error.message));
+          else              pending.resolve(sigMsg.result);
+        })();
+      }
+      sendResponse({ ok: true });
+      return false;
     }
 
     // 2) Popup posting back the user's approval / rejection.
