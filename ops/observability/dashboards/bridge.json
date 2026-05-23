@@ -1,0 +1,142 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Bridge polls / s (5m)",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(thanos_worker_jobs_total{queue=\"bridge-poll\"}[5m]))" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops", "decimals": 2 } }
+    },
+    {
+      "type": "stat",
+      "title": "Bridge failure ratio (15m)",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(thanos_worker_jobs_total{queue=\"bridge-poll\",status=\"failed\"}[15m])) / clamp_min(sum(rate(thanos_worker_jobs_total{queue=\"bridge-poll\"}[15m])), 1e-9)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red",    "value": 0.2 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Bridge-poll wait depth",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "thanos_worker_queue_depth{queue=\"bridge-poll\",state=\"wait\"}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 25 },
+              { "color": "red",    "value": 50 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Bridge-poll p95 duration (5m)",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(thanos_worker_job_duration_seconds_bucket{queue=\"bridge-poll\"}[5m])))"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bridge poll throughput (completed vs failed)",
+      "id": 5,
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(thanos_worker_jobs_total{queue=\"bridge-poll\"}[1m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bridge-poll queue depth by state",
+      "id": 6,
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "thanos_worker_queue_depth{queue=\"bridge-poll\"}",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bridge-poll duration p50 / p95 / p99",
+      "id": 7,
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "p50", "expr": "histogram_quantile(0.50, sum by (le) (rate(thanos_worker_job_duration_seconds_bucket{queue=\"bridge-poll\"}[5m])))", "legendFormat": "p50" },
+        { "refId": "p95", "expr": "histogram_quantile(0.95, sum by (le) (rate(thanos_worker_job_duration_seconds_bucket{queue=\"bridge-poll\"}[5m])))", "legendFormat": "p95" },
+        { "refId": "p99", "expr": "histogram_quantile(0.99, sum by (le) (rate(thanos_worker_job_duration_seconds_bucket{queue=\"bridge-poll\"}[5m])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["thanos", "bridge", "multx"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Thanos Wallet — Bridge (MultX)",
+  "uid": "thanos-bridge",
+  "version": 1,
+  "weekStart": ""
+}

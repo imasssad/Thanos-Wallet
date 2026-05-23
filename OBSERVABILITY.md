@@ -123,6 +123,27 @@ Prometheus via the `rule_files:` directive. Current rules:
 - `ThanosIndexerSyncGap` — cursor > 200 blocks behind head for 5 min
 - `ThanosIndexerStalled` — cursor not advanced in 10 min while > 50 blocks behind (critical)
 
+### Dashboards
+
+Five Grafana dashboards are committed under `ops/observability/dashboards/`
+and auto-provisioned via `grafana-dashboards.yml`. They show up under the
+**Thanos Wallet** folder in Grafana the first time the container starts
+(or within 30s on a hot reload).
+
+| UID                | File                    | What it covers |
+| ------------------ | ----------------------- | -------------- |
+| `thanos-overview`  | `wallet-overview.json`  | Service up/down, API rps + 5xx + p99 latency, indexer sync lag, worker depth + throughput |
+| `thanos-api`       | `api.json`              | Per-route request rate, p95 latency, error breakdown, Node heap + event-loop lag |
+| `thanos-worker`    | `worker.json`           | BullMQ depth by state, throughput by queue/status, duration p95, failure ratio |
+| `thanos-indexer`   | `indexer.json`          | Head vs cursor, sync lag, cursor advance rate, events indexed |
+| `thanos-bridge`    | `bridge.json`           | MultX poll throughput, failure ratio, queue depth, p50/p95/p99 duration |
+
+Editing in the UI is allowed (`allowUiUpdates: true`) — changes persist
+in the Grafana SQLite store but the JSON files in git stay authoritative
+on container restart. To promote a UI change to the repo, export the
+dashboard JSON (Share → Export → Save to file) and overwrite the
+matching file in `ops/observability/dashboards/`.
+
 ### Routing — Alertmanager → Slack + PagerDuty
 
 `ops/observability/alertmanager.yml` defines the routing tree.

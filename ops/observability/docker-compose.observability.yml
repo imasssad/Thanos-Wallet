@@ -85,6 +85,11 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/thanos.yml:ro
+      # Dashboard JSON is committed to ops/observability/dashboards/ so it
+      # round-trips through git. Grafana auto-loads anything under the
+      # provisioned path on startup + every 30s.
+      - ./dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "127.0.0.1:3001:3000"
 
