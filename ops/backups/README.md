@@ -1,11 +1,16 @@
 # Postgres backups
 
-`pg-backup.sh` runs a `pg_dump`, rotates daily/weekly/monthly, and optionally
-pushes the latest dump off-site to S3.
+Two complementary backup chains:
+
+1. **`pg-backup.sh`** (this directory) — logical `pg_dump`, gzipped,
+   rotated daily/weekly/monthly, optional S3 mirror. Schema-portable.
+2. **pgBackRest** ([`./pgbackrest/`](./pgbackrest/)) — physical, continuous
+   WAL archiving. Enables point-in-time recovery (RPO ~1 min). Optional
+   overlay, brought up with `docker-compose.pitr.yml`.
 
 > **Recovering from a real incident?** See [`RUNBOOK.md`](./RUNBOOK.md) for
-> the on-call playbook — scenario-by-scenario restore commands, RPO/RTO
-> targets, and post-restore verification.
+> the on-call playbook — scenario-by-scenario restore commands (including
+> PITR), RPO/RTO targets, and post-restore verification.
 
 ## One-time setup on the VPS
 
