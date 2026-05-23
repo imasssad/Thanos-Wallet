@@ -67,6 +67,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
+      # SDK-core: BIP-39/44 derivation + bech32 round-trip + price-history math
+      # + ecosystem helpers + phishing classifier. A regression here breaks
+      # every client, so it runs first.
+      - run: pnpm --filter @thanos/sdk-core test
       # Vault round-trip tests — encrypt/decrypt, wrong password, tampering.
       # A regression here locks every user out of their funds, so this gate
       # blocks the entire PR.
