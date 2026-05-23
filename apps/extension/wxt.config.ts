@@ -15,7 +15,11 @@ export default defineConfig({
   manifest: {
     name: 'Thanos Wallet',
     description: 'Lithosphere-first wallet with Bitcoin, Solana, MultX, Ignite DEX, and hardware wallet support.',
-    permissions: ['storage', 'activeTab', 'tabs'],
+    // 'offscreen' hosts the WalletConnect relay socket across popup
+    // closes — MV3 service workers terminate after ~30s idle, which
+    // kills any persistent WebSocket. Chrome-only API; gracefully
+    // ignored by Firefox/Safari (which keep the popup kit fallback).
+    permissions: ['storage', 'activeTab', 'tabs', 'offscreen'],
     host_permissions: ['https://*/*', 'http://*/*'],
     // injected.js must be loadable from page context for the MAIN-world
     // window.thanos provider injection.
