@@ -1,0 +1,51 @@
+# PITR overlay — swaps the stock postgres:16-alpine for a custom image
+# that bakes in pgBackRest, mounts the pgbackrest config + repo, and
+# turns on WAL archiving via Postgres command-line overrides.
+#
+# Bring up:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.pitr.yml up -d
+# Or, if you're already running the base stack, just rebuild postgres:
+#   docker compose -f docker-compose.yml -f docker-compose.pitr.yml up -d --build postgres
+#
+# WAL is shipped to the pgBackRest repo automatically (archive_command),
+# so a fresh cluster reaches "PITR-capable" within seconds of the first
+# WAL switch. Backups are driven from the host cron — see
+# ops/backups/pgbackrest/backup.sh.
+#
+# Existing volumes are reused, so this overlay can be applied to a
+# running cluster without a dump/restore. The init-stanza.sh script is
+# idempotent and only runs `stanza-create` if the cluster is fresh.
+
+services:
+  postgres:
+    image: thanos-postgres-pitr
+    build:
+      context:    ./ops/backups/pgbackrest
+      dockerfile: Dockerfile
+    # Override the stock entrypoint command to add archive flags + bump
+    # max_wal_senders for the future replica overlay. `wal_level=replica`
+    # is the default in Postgres 16, set explicitly for clarity.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=thanos archive-push %p
+      - -c
+      - max_wal_senders=10
+      - -c
+      - wal_keep_size=512MB
+    volumes:
+      - ./ops/backups/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+      # Bind the repo to a host path so backups survive container rebuilds
+      # and so the cron's `aws s3 sync` can read it from the host. Must
+      # exist before `up`:  sudo mkdir -p /var/backups/thanos-pgbackrest
+      - /var/backups/thanos-pgbackrest:/var/lib/pgbackrest
+      - thanos_pgbackrest_logs:/var/log/pgbackrest
+
+volumes:
+  thanos_pgbackrest_logs:

@@ -7,12 +7,18 @@ database. Pair it with `README.md` (which covers the one-time cron setup).
 - **Container**: `thanos-postgres` (docker network only — no host port).
 - **Backup cadence**: nightly 04:00 UTC `pg_dump` → gzip → rotated daily/weekly/monthly.
 - **Off-site**: optional `aws s3 cp` if `S3_BUCKET` is set in `/root/.thanos-backup.env`.
-- **RPO** (data we can lose): **24 h** — the last good nightly dump.
+- **RPO** (data we can lose): **24 h** with dumps alone; **~1 min** with the optional PITR overlay (see Scenario 4).
 - **RTO** (time to recover): **~15 min** for a same-host restore; **~90 min** for a full VPS rebuild.
 
-If those numbers are no longer acceptable, switch to `pgbackrest` with
-WAL shipping (PITR, RPO ~5 min). That's a bigger lift — out of scope for
-this runbook.
+Two complementary backup chains run side-by-side:
+
+1. **`pg_dump`** — logical, gzipped, schema-portable. Survives a Postgres
+   major-version upgrade and is human-readable. Daily / weekly / monthly
+   rotation. *This is what most restores use.*
+2. **pgBackRest (optional overlay)** — physical, with continuous WAL
+   shipping. Enables point-in-time recovery and a cross-region replica.
+   Bring up with `docker-compose.pitr.yml`. *Use for PITR or PR-grade
+   incidents where 24h RPO is too much.*
 
 ---
 
@@ -227,11 +233,106 @@ If this fails two Sundays in a row, **page** — your DR plan is broken.
 
 ---
 
+## Scenario 4 — point-in-time recovery (PITR)
+
+**Symptom**: You need to roll the database back to a specific moment —
+the minute before a bad migration ran, the hour before someone TRUNCATE'd
+a table. Nightly dumps can't help; you need every WAL segment since the
+last full backup.
+
+**Prerequisite**: the PITR overlay is up. Bring it up with:
+
+```bash
+cd /var/www/thanos-wallet
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+                -f docker-compose.pitr.yml up -d --build postgres
+sudo mkdir -p /var/backups/thanos-pgbackrest
+```
+
+Once it's running, pgBackRest streams every WAL segment to the local
+repo as Postgres rotates it (RPO ~1 min once WAL pressure flushes it).
+The host cron (see `ops/backups/pgbackrest/backup.sh`) takes nightly
+incrementals + weekly fulls on top.
+
+### Restore to a target time
+
+1. **Identify the target time** in UTC. Be precise — pgBackRest replays
+   WAL up to (not including) this timestamp.
+
+   ```bash
+   TARGET="2026-05-23 14:32:00+00"
+   ```
+
+2. **Stop the dependent services** so they don't keep writing while you
+   restore:
+
+   ```bash
+   cd /var/www/thanos-wallet
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml stop api indexer worker
+   ```
+
+3. **Check what backups + WAL the repo has**. If the target time falls
+   before the oldest backup, you're out of luck — bail and use the
+   nightly dump instead.
+
+   ```bash
+   docker exec -u postgres thanos-postgres \
+     pgbackrest --stanza=thanos info
+   ```
+
+4. **Stop Postgres, wipe the data directory, restore**. pgBackRest will
+   not restore over a non-empty data dir without `--delta`. Use `--delta`
+   for an in-place restore (faster, only changed files copied) and
+   `--type=time` with the target.
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml stop postgres
+
+   # Restore as the postgres OS user. The data dir is on a Docker volume;
+   # easiest path is to run a one-shot exec inside a fresh container.
+   docker run --rm \
+     -v thanos-wallet_postgres_data:/var/lib/postgresql/data \
+     -v /var/backups/thanos-pgbackrest:/var/lib/pgbackrest \
+     -v /var/www/thanos-wallet/ops/backups/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro \
+     --user postgres \
+     thanos-postgres-pitr \
+     pgbackrest --stanza=thanos \
+                --type=time "--target=$TARGET" \
+                --target-action=promote \
+                --delta restore
+   ```
+
+5. **Bring Postgres back** and verify it's caught up to the target time:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+                   -f docker-compose.pitr.yml up -d postgres
+   sleep 5
+   docker exec thanos-postgres psql -U thanos -d thanos_wallet -c \
+     "SELECT now() AS db_now, pg_last_wal_replay_lsn();"
+   ```
+
+6. **Bring services back** and run the post-restore verification
+   checklist above:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api indexer worker
+   ```
+
+> **PITR caveat**: WAL between the target and the moment you noticed
+> the problem is *lost on purpose* — that's the entire point of PITR.
+> If the bad event was at T+0 and you restore to T-5min, anything
+> users did between T-5min and T+0 is gone. Communicate this clearly
+> before pulling the trigger.
+
+---
+
 ## What's intentionally not in this runbook
 
-- **Continuous WAL archiving / point-in-time recovery.** Daily dumps give
-  RPO 24h. If that's no longer acceptable, install `pgbackrest` and ship
-  WAL to S3; the restore workflow then includes a `--target-time` flag.
+- **Cross-region replica failover.** A streaming replica in a second
+  region would cut the rebuild RTO from ~90 min to ~5 min. The playbook
+  + Postgres config lives at `ops/backups/replica/RUNBOOK.md` — execute
+  it once the second VPS is provisioned.
 - **Cross-region replica.** A read replica in a second region would cut
   the rebuild RTO from ~90 min to ~5 min, at the cost of a second VPS.
 - **Encrypted-at-rest backups.** If the S3 bucket is shared, pipe through
