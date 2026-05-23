@@ -12,10 +12,24 @@ global:
 rule_files:
   - /etc/prometheus/alerts.yml
 
+# Forward firing alerts to Alertmanager. Resolves to the alertmanager
+# service in docker-compose.observability.yml.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
+
+  # Scrape Alertmanager itself so the dashboards can show silenced /
+  # active counts and so we'd notice if it stopped responding.
+  - job_name: alertmanager
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['alertmanager:9093']
 
   # ─── Wallet services ──────────────────────────────────────────────────
   - job_name: thanos-api

@@ -77,6 +77,36 @@ groups:
           summary: "Worker {{ $labels.queue }} failing > 10 jobs / 15 min"
           description: "Sustained job-failure rate on {{ $labels.queue }} — inspect Sentry breadcrumbs + the job_audit table."
 
+  - name: thanos-bridge
+    interval: 30s
+    rules:
+      # Bridge polling against bridge.litho.ai — sustained job failures
+      # almost always mean MultX is down or returning 5xx. Wakes oncall
+      # because in-flight bridges accumulate while the worker can't
+      # progress them.
+      - alert: ThanosBridgePollFailing
+        expr: |
+          increase(thanos_worker_jobs_total{queue="bridge-poll", status="failed"}[10m]) > 5
+        for: 0m
+        labels:
+          severity: critical
+          component: bridge
+        annotations:
+          summary: "MultX bridge polling failing (> 5 fails / 10 min)"
+          description: "More than 5 bridge-poll jobs failed in 10 min — likely bridge.litho.ai is down or rate-limiting. Check `curl https://bridge.litho.ai/health` and the worker logs."
+
+      # Sustained backlog on the bridge queue specifically — even if jobs
+      # aren't outright failing, depth growing means we're falling behind.
+      - alert: ThanosBridgeQueueBacklog
+        expr: thanos_worker_queue_depth{queue="bridge-poll", state="wait"} > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: bridge
+        annotations:
+          summary: "Bridge-poll backlog > 50 jobs"
+          description: "BullMQ bridge-poll wait depth has been above 50 for 10 min — either MultX is slow or worker concurrency is too low."
+
   - name: thanos-indexer
     interval: 30s
     rules:

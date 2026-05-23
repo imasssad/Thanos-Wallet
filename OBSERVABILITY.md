@@ -118,12 +118,43 @@ Prometheus via the `rule_files:` directive. Current rules:
 - `ThanosApiLatencyHigh` — p99 > 1 s for 10 min (warning)
 - `ThanosWorkerQueueBacklog` — wait depth > 100 per queue for 5 min
 - `ThanosWorkerFailedJobs` — > 10 failed jobs / 15 min per queue
+- `ThanosBridgePollFailing` — > 5 bridge-poll failures / 10 min (critical) — usually means bridge.litho.ai is down
+- `ThanosBridgeQueueBacklog` — bridge-poll wait depth > 50 for 10 min
 - `ThanosIndexerSyncGap` — cursor > 200 blocks behind head for 5 min
 - `ThanosIndexerStalled` — cursor not advanced in 10 min while > 50 blocks behind (critical)
 
-Route them to Slack / PagerDuty / email via Grafana's contact-points
-UI (or wire Alertmanager directly). Tighten thresholds on
-single-tenant deployments; relax them for low-traffic environments.
+### Routing — Alertmanager → Slack + PagerDuty
+
+`ops/observability/alertmanager.yml` defines the routing tree.
+Prometheus forwards every firing alert to Alertmanager (added in
+`prometheus.yml` under `alerting:`), which then:
+
+- groups by `alertname` + `job` so a flapping check doesn't spam the channel,
+- routes `severity=critical` to **both Slack `#thanos-alerts` and PagerDuty**,
+- routes `severity=warning` to Slack only,
+- inhibits noisy secondaries (5xx rate / latency / queue backlog) for a job
+  whose `ThanosServiceDown` is already firing — one outage = one page.
+
+The Slack webhook + PagerDuty routing key are read from env at
+container startup (sed substitutes them into the templated config) so
+secrets never sit in git. Set them in the host `.env`:
+
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T0000/B0000/XXXX
+PAGERDUTY_INTEGRATION_KEY=00000000000000000000000000000000   # Events v2 routing key
+```
+
+Leave either blank to disable that channel — the receiver silently
+no-ops, so partial setup still works.
+
+Bring the stack up (separate compose project from the wallet):
+
+```bash
+docker compose -f ops/observability/docker-compose.observability.yml up -d
+```
+
+Alertmanager UI: `http://localhost:9093` (silences, active alerts).
+Prometheus UI: `http://localhost:9090`.
 
 ### Sentry on the Node services
 
