@@ -12,6 +12,7 @@ import { createContext, useContext } from 'react';
 import { HDNodeWallet, Interface, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
 import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
 import { sendViaLedger, type LedgerConnection } from './ledger-sign';
+import { sendViaTrezor, type TrezorConnection } from './trezor-sign';
 
 const HD_PATH = "m/44'/60'/0'/0/0";
 
@@ -69,10 +70,13 @@ export interface SendAssetArgs {
   /** LEP100 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
   /** Which signer to use. Defaults to the local seed. */
-  signWith?: 'seed' | 'ledger';
+  signWith?: 'seed' | 'ledger' | 'trezor';
   /** Open Ledger connection (transport + derived address). Required when
    *  `signWith === 'ledger'`. The caller owns transport lifecycle. */
   ledger?: LedgerConnection;
+  /** Open Trezor connection (derived address). Required when
+   *  `signWith === 'trezor'`. */
+  trezor?: TrezorConnection;
 }
 
 /**
@@ -89,20 +93,35 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   }
   if (value <= 0n) throw new Error('Amount must be greater than zero');
 
-  // ─── Ledger signing path ──────────────────────────────────────────────
+  // ─── Hardware-wallet signing paths ────────────────────────────────────
   if (args.signWith === 'ledger') {
     if (!args.ledger) throw new Error('Ledger not connected');
     try {
       if (args.tokenAddress) {
-        // LEP100/ERC-20 — encode transfer(to, value) and call the contract.
         const data = new Interface(ERC20_TRANSFER_ABI).encodeFunctionData('transfer', [args.to, value]);
         return await sendViaLedger(args.ledger, { to: args.tokenAddress, value: 0n, data });
       }
       return await sendViaLedger(args.ledger, { to: args.to, value });
     } catch (e) {
       const msg = (e as Error).message || 'Broadcast failed';
-      if (/0x6985/.test(msg))             throw new Error('Rejected on Ledger device');
+      if (/0x6985/.test(msg))              throw new Error('Rejected on Ledger device');
       if (/insufficient funds/i.test(msg)) throw new Error('Insufficient balance on Ledger account for amount + gas');
+      throw new Error(msg);
+    }
+  }
+
+  if (args.signWith === 'trezor') {
+    if (!args.trezor) throw new Error('Trezor not connected');
+    try {
+      if (args.tokenAddress) {
+        const data = new Interface(ERC20_TRANSFER_ABI).encodeFunctionData('transfer', [args.to, value]);
+        return await sendViaTrezor(args.trezor, { to: args.tokenAddress, value: 0n, data });
+      }
+      return await sendViaTrezor(args.trezor, { to: args.to, value });
+    } catch (e) {
+      const msg = (e as Error).message || 'Broadcast failed';
+      if (/cancelled|rejected|denied/i.test(msg)) throw new Error('Rejected on Trezor device');
+      if (/insufficient funds/i.test(msg))        throw new Error('Insufficient balance on Trezor account for amount + gas');
       throw new Error(msg);
     }
   }

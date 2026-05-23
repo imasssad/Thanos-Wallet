@@ -27,6 +27,7 @@
     "@reown/walletkit": "^1.5.5",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
+    "@trezor/connect-web": "^9.7.1",
     "@walletconnect/core": "^2.21.6",
     "@walletconnect/types": "^2.21.6",
     "electron-log": "^5.2.4",

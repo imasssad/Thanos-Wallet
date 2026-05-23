@@ -31,7 +31,12 @@ function resolveBase(): string {
 }
 
 export class BridgeTracker {
-  constructor(private readonly baseUrl: string = resolveBase()) {}
+  private readonly baseUrl: string;
+  constructor(baseUrl: string = resolveBase()) {
+    // Normalise here too so a user-supplied base with a trailing slash
+    // doesn't end up making /bridge/status//{hash}.
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+  }
 
   createPending(request: SwapQuoteRequest, executionId: string): BridgeStatus {
     return {

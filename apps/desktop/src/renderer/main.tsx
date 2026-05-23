@@ -21,6 +21,9 @@ import {
 import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
 import { connectLedger, type LedgerConnection } from './ledger-sign';
+import { connectTrezor, type TrezorConnection } from './trezor-sign';
+
+type SignerChoice = 'seed' | 'ledger' | 'trezor';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -604,41 +607,56 @@ function SendModal({ onClose }: { onClose: () => void }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
-  // Ledger signing path.
-  const [useLedger, setUseLedger]   = useState(false);
+  // Hardware-signer state (Ledger / Trezor are mutually exclusive).
+  const [signer, setSigner]         = useState<SignerChoice>('seed');
   const [ledger, setLedger]         = useState<LedgerConnection | null>(null);
-  const [ledgerBusy, setLedgerBusy] = useState(false);
+  const [trezor, setTrezor]         = useState<TrezorConnection | null>(null);
+  const [hwBusy,  setHwBusy]        = useState(false);
 
-  // Close the Ledger transport when the modal unmounts so the device
-  // doesn't stay claimed across sessions.
-  useEffect(() => () => { void ledger?.close().catch(() => {}); }, [ledger]);
+  // Close any open hardware-wallet transport when the modal unmounts.
+  useEffect(() => () => {
+    void ledger?.close().catch(() => {});
+    void trezor?.close().catch(() => {});
+  }, [ledger, trezor]);
+
+  const useLedger = signer === 'ledger';
+  const useTrezor = signer === 'trezor';
 
   const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
   const amtNum = parseFloat(amount || '0');
-  // Balance is from the seed account; when signing with Ledger the FROM
-  // account changes, so we don't gate on it (the device + RPC will).
-  const overBalance = !useLedger && !!coin && amtNum > coin.balance;
+  // Balance is from the seed account; when signing with hardware the
+  // FROM account changes, so we don't gate on it (the device + RPC will).
+  const overBalance = signer === 'seed' && !!coin && amtNum > coin.balance;
+  const hwReady     = (signer === 'ledger' && !!ledger) || (signer === 'trezor' && !!trezor);
   const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
-                  && (!useLedger || !!ledger);
+                  && (signer === 'seed' || hwReady);
+  const hwAddress: string | null = signer === 'ledger' ? (ledger?.address ?? null)
+                                  : signer === 'trezor' ? (trezor?.address ?? null) : null;
 
-  const toggleLedger = async (on: boolean) => {
+  const chooseSigner = async (choice: SignerChoice) => {
     setError(null);
-    if (!on) {
-      setUseLedger(false);
-      void ledger?.close().catch(() => {});
-      setLedger(null);
-      return;
-    }
-    setLedgerBusy(true);
+    if (choice === signer) return;
+    // Tear down the previous hardware transport before opening another.
+    void ledger?.close().catch(() => {});
+    void trezor?.close().catch(() => {});
+    setLedger(null); setTrezor(null);
+    if (choice === 'seed') { setSigner('seed'); return; }
+    setHwBusy(true);
     try {
-      const conn = await connectLedger();
-      setLedger(conn);
-      setUseLedger(true);
+      if (choice === 'ledger') {
+        const conn = await connectLedger();
+        setLedger(conn);
+      } else {
+        const conn = await connectTrezor();
+        setTrezor(conn);
+      }
+      setSigner(choice);
     } catch (e) {
-      const msg = (e as Error)?.message || 'Could not reach the Ledger';
+      const msg = (e as Error)?.message || `Could not reach the ${choice}`;
       setError(msg.includes('0x6985') ? 'Rejected on device' : msg);
+      setSigner('seed');
     } finally {
-      setLedgerBusy(false);
+      setHwBusy(false);
     }
   };
 
@@ -658,8 +676,9 @@ function SendModal({ onClose }: { onClose: () => void }) {
         amount,
         decimals:     coin.decimals,
         tokenAddress: coin.native ? undefined : coin.tokenAddress,
-        signWith:     useLedger ? 'ledger' : 'seed',
-        ledger:       useLedger ? ledger ?? undefined : undefined,
+        signWith:     signer,
+        ledger:       signer === 'ledger' ? ledger ?? undefined : undefined,
+        trezor:       signer === 'trezor' ? trezor ?? undefined : undefined,
       });
       setTxHash(hash);
       setSending(false);
@@ -708,33 +727,50 @@ function SendModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* Signer choice: software wallet (seed) vs Ledger USB. */}
+        {/* Signer choice: software wallet vs Ledger vs Trezor. */}
         <div style={{
           marginTop: 16, padding: 12, borderRadius: 10,
           background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input
-              id="useLedger" type="checkbox" checked={useLedger}
-              disabled={ledgerBusy || sending}
-              onChange={(e) => void toggleLedger(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            <label htmlFor="useLedger" style={{ flex: 1, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              Sign with Ledger
-            </label>
-            {ledgerBusy && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Connecting…</span>}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 }}>Sign with</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([
+              ['seed',   'Software'],
+              ['ledger', 'Ledger'],
+              ['trezor', 'Trezor'],
+            ] as const).map(([key, label]) => {
+              const active = signer === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={hwBusy || sending}
+                  onClick={() => void chooseSigner(key)}
+                  style={{
+                    flex: 1, padding: '8px 10px', borderRadius: 8, cursor: hwBusy ? 'wait' : 'pointer',
+                    fontSize: 12, fontWeight: 700,
+                    background: active ? 'var(--blue, #3b7af7)' : 'transparent',
+                    color: active ? '#fff' : 'var(--text-secondary)',
+                    border: `1px solid ${active ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          {useLedger && ledger && (
+          {hwBusy && <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Connecting to device…</div>}
+          {hwAddress && (
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-              Sending from <span style={{ fontFamily: 'Geist Mono, monospace', color: 'var(--text-secondary)' }}>{ledger.address.slice(0, 8)}…{ledger.address.slice(-6)}</span>
-              <br/>Confirm the transaction on your device when prompted.
+              Sending from <span style={{ fontFamily: 'Geist Mono, monospace', color: 'var(--text-secondary)' }}>{hwAddress.slice(0, 8)}…{hwAddress.slice(-6)}</span>
+              <br/>Confirm on your {signer === 'ledger' ? 'Ledger' : 'Trezor'} when prompted.
             </div>
           )}
-          {useLedger && !ledger && !ledgerBusy && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-              Plug in your Ledger, unlock it, and open the Ethereum app.
-            </div>
+          {signer === 'ledger' && !ledger && !hwBusy && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Plug in your Ledger, unlock it, and open the Ethereum app.</div>
+          )}
+          {signer === 'trezor' && !trezor && !hwBusy && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Plug in your Trezor and approve the connection in the Trezor Connect window.</div>
           )}
         </div>
 
@@ -746,7 +782,9 @@ function SendModal({ onClose }: { onClose: () => void }) {
           disabled={!canSend}
           onClick={doSend}
         >
-          {sending ? (useLedger ? 'Confirm on device…' : 'Sending…') : `Send ${coin?.sym ?? ''}${useLedger ? ' (Ledger)' : ''}`}
+          {sending
+            ? (signer === 'seed' ? 'Sending…' : 'Confirm on device…')
+            : `Send ${coin?.sym ?? ''}${signer === 'ledger' ? ' (Ledger)' : signer === 'trezor' ? ' (Trezor)' : ''}`}
         </button>
       </div>
     </Modal>
