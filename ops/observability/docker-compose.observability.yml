@@ -28,8 +28,9 @@ services:
       - '--web.enable-lifecycle'    # /-/reload endpoint, so config changes don't need a container restart
     ports:
       - "127.0.0.1:9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - default     # alertmanager + own observability default net
+      - thanos-net  # shared with the wallet stack so we can scrape via service DNS
 
   # Routes firing alerts → Slack (#thanos-alerts) and PagerDuty for
   # critical-severity. Secrets live in env vars on the host; a small
@@ -41,7 +42,11 @@ services:
   #   PAGERDUTY_INTEGRATION_KEY  (PagerDuty Events v2 routing key)
   # Leave either blank and that channel just silently no-ops.
   alertmanager:
-    image: prom/alertmanager:latest
+    # Pinned. `:latest` rolled to 0.32.x which tightened URL validation
+    # and started rejecting our placeholder webhook even though it's a
+    # syntactically valid URL — 0.27.0 was the last release tested
+    # against this config.
+    image: prom/alertmanager:v0.27.0
     container_name: thanos-alertmanager
     restart: unless-stopped
     # prom/alertmanager has /bin/sh + sed; use them to render the
@@ -51,8 +56,15 @@ services:
       - /bin/sh
       - -c
       - |
-        sed -e "s|__SLACK_WEBHOOK_URL__|${SLACK_WEBHOOK_URL:-}|g" \
-            -e "s|__PAGERDUTY_INTEGRATION_KEY__|${PAGERDUTY_INTEGRATION_KEY:-}|g" \
+        # Belt-and-suspenders defaults — if the compose-level interpolation
+        # didn't apply (some host envs don't propagate cleanly), force a
+        # syntactically valid placeholder so alertmanager parses ok.
+        : "${SLACK_WEBHOOK_URL:=https://hooks.slack.invalid/no-webhook-configured}"
+        : "${PAGERDUTY_INTEGRATION_KEY:=00000000000000000000000000000000}"
+        [ -n "$$SLACK_WEBHOOK_URL"         ] || SLACK_WEBHOOK_URL=https://hooks.slack.invalid/no-webhook-configured
+        [ -n "$$PAGERDUTY_INTEGRATION_KEY" ] || PAGERDUTY_INTEGRATION_KEY=00000000000000000000000000000000
+        sed -e "s|__SLACK_WEBHOOK_URL__|$$SLACK_WEBHOOK_URL|g" \
+            -e "s|__PAGERDUTY_INTEGRATION_KEY__|$$PAGERDUTY_INTEGRATION_KEY|g" \
             /etc/alertmanager/alertmanager.tpl.yml > /etc/alertmanager/alertmanager.yml
         exec /bin/alertmanager \
           --config.file=/etc/alertmanager/alertmanager.yml \
@@ -97,3 +109,15 @@ volumes:
   prometheus_data:
   grafana_data:
   alertmanager_data:
+
+# Reference the wallet stack's network as external so Prometheus can
+# resolve `api`, `indexer`, `worker` by service DNS and scrape directly,
+# instead of routing through `host.docker.internal` (which can't reach
+# 127.0.0.1-bound host ports). The wallet's docker-compose.yml owns the
+# network creation — this file just joins it.
+networks:
+  default:
+    # Observability's own bridge — keeps prometheus/alertmanager/grafana
+    # gossiping internally without polluting the wallet net.
+  thanos-net:
+    external: true
