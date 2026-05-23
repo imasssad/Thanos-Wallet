@@ -13,7 +13,11 @@ import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
 import { Select } from './ui/Select';
 import { usePrices, priceOr } from '../lib/usePrices';
-import { loadContacts, addContact, deleteContact, type Contact } from '../lib/address-book';
+import {
+  loadContacts, addContact, deleteContact,
+  syncContactsFromServer, onContactsChanged,
+  type Contact,
+} from '../lib/address-book';
 import { loadPendingTxs, type PendingTx } from '../lib/tx-store';
 import { BumpFeeModal } from './BumpFeeModal';
 import { bitcoinExplorerUrl } from '../lib/bitcoin';
@@ -727,23 +731,41 @@ function AddressBookSection({ Section, Row }: {
   const [name,     setName]     = useState('');
   const [address,  setAddress]  = useState('');
   const [err,      setErr]      = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
 
-  useEffect(() => { setContacts(loadContacts()); }, []);
+  /* Hydrate from the local cache immediately, then kick off a background
+     sync from the server (no-op when not signed in). Subscribe to cache
+     changes so any other tab / sync update re-renders this list. */
+  useEffect(() => {
+    setContacts(loadContacts());
+    syncContactsFromServer()
+      .then(() => setContacts(loadContacts()))
+      .catch(() => { /* offline / not authed — local cache is still fine */ });
+    const off = onContactsChanged(() => setContacts(loadContacts()));
+    return off;
+  }, []);
 
-  const onAdd = () => {
+  const onAdd = async () => {
     setErr(null);
+    setBusy(true);
     try {
-      addContact({ name, address });
+      await addContact({ name, address });
       setContacts(loadContacts());
       setName('');
       setAddress('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not add contact');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const onDelete = (id: string) => {
-    if (deleteContact(id)) setContacts(loadContacts());
+  const onDelete = async (id: string) => {
+    try {
+      if (await deleteContact(id)) setContacts(loadContacts());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not delete contact');
+    }
   };
 
   return (
@@ -768,9 +790,9 @@ function AddressBookSection({ Section, Row }: {
         <button
           className="settings-btn"
           onClick={onAdd}
-          disabled={!name.trim() || !address.trim()}
+          disabled={busy || !name.trim() || !address.trim()}
         >
-          <Plus size={14}/> Save contact
+          <Plus size={14}/> {busy ? 'Saving…' : 'Save contact'}
         </button>
       </div>
 
