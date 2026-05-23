@@ -59,8 +59,10 @@ services:
         # Belt-and-suspenders defaults — if the compose-level interpolation
         # didn't apply (some host envs don't propagate cleanly), force a
         # syntactically valid placeholder so alertmanager parses ok.
-        : "${SLACK_WEBHOOK_URL:=https://hooks.slack.invalid/no-webhook-configured}"
-        : "${PAGERDUTY_INTEGRATION_KEY:=00000000000000000000000000000000}"
+        # Every `$` aimed at the shell is doubled — compose treats `$X`
+        # as its own interpolation and rejects unknown vars at parse time.
+        : "$${SLACK_WEBHOOK_URL:=https://hooks.slack.invalid/no-webhook-configured}"
+        : "$${PAGERDUTY_INTEGRATION_KEY:=00000000000000000000000000000000}"
         [ -n "$$SLACK_WEBHOOK_URL"         ] || SLACK_WEBHOOK_URL=https://hooks.slack.invalid/no-webhook-configured
         [ -n "$$PAGERDUTY_INTEGRATION_KEY" ] || PAGERDUTY_INTEGRATION_KEY=00000000000000000000000000000000
         sed -e "s|__SLACK_WEBHOOK_URL__|$$SLACK_WEBHOOK_URL|g" \
