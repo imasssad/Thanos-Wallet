@@ -3,6 +3,10 @@
 `pg-backup.sh` runs a `pg_dump`, rotates daily/weekly/monthly, and optionally
 pushes the latest dump off-site to S3.
 
+> **Recovering from a real incident?** See [`RUNBOOK.md`](./RUNBOOK.md) for
+> the on-call playbook — scenario-by-scenario restore commands, RPO/RTO
+> targets, and post-restore verification.
+
 ## One-time setup on the VPS
 
 1. Copy the env template and fill in real values:
@@ -66,6 +70,27 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api indexe
 # 4) Watch logs until the indexer reports "schema ready" + "background poll"
 docker logs --tail=20 thanos-indexer
 ```
+
+## Weekly restore-verification
+
+`pg-backup.sh` proves we can *take* a backup; `restore-verify.sh` proves we
+can *use* it. It spins a throwaway Postgres container, pipes the latest
+daily dump into it, runs sanity SELECTs, then tears the container down.
+
+```bash
+sudo /var/www/thanos-wallet/ops/backups/restore-verify.sh
+```
+
+Suggested cron — Sundays at 05:00 UTC, after the nightly rotation:
+
+```bash
+sudo crontab -e
+# Verify the most recent dump actually restores.
+0 5 * * 0 /var/www/thanos-wallet/ops/backups/restore-verify.sh >> /var/log/thanos-restore-verify.log 2>&1
+```
+
+If this script exits non-zero two weeks in a row, the backup chain is
+broken — see [`RUNBOOK.md`](./RUNBOOK.md) for what to check.
 
 ## What's *not* in this script (intentionally)
 
