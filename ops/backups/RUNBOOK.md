@@ -240,14 +240,47 @@ the minute before a bad migration ran, the hour before someone TRUNCATE'd
 a table. Nightly dumps can't help; you need every WAL segment since the
 last full backup.
 
-**Prerequisite**: the PITR overlay is up. Bring it up with:
+**Prerequisite**: the PITR overlay is up. There are two paths depending on
+whether the cluster already has data or is being initialised fresh.
+
+### Activating on a fresh cluster
+
+```bash
+cd /var/www/thanos-wallet
+sudo mkdir -p /var/backups/thanos-pgbackrest
+sudo chown -R 70:70 /var/backups/thanos-pgbackrest
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+                -f docker-compose.pitr.yml up -d --build postgres
+```
+
+The `init-stanza.sh` script baked into the image fires on first boot,
+creates the stanza, and takes the initial full backup automatically.
+Skip straight to "Restore to a target time" below.
+
+### Activating on an existing cluster
+
+`init-stanza.sh` only runs on a fresh `initdb`, so for a cluster that
+already has data you do the equivalent steps via a one-shot bootstrap
+script:
 
 ```bash
 cd /var/www/thanos-wallet
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
                 -f docker-compose.pitr.yml up -d --build postgres
-sudo mkdir -p /var/backups/thanos-pgbackrest
+sudo /var/www/thanos-wallet/ops/backups/pgbackrest/bootstrap-existing.sh
 ```
+
+The script is idempotent — it:
+- creates the `postgres` superuser role if missing (the stock image
+  initdb's with `POSTGRES_USER=thanos`, so the `postgres` role that
+  `pgbackrest.conf` expects doesn't exist by default),
+- chowns the host bind mount to uid 70 (Alpine's postgres container
+  user) so pgBackRest can write the repo,
+- runs `stanza-create`,
+- takes the initial full backup if one doesn't exist yet.
+
+Safe to re-run on a healthy stanza — it skips each step that's already
+done.
 
 Once it's running, pgBackRest streams every WAL segment to the local
 repo as Postgres rotates it (RPO ~1 min once WAL pressure flushes it).
