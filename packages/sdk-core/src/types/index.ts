@@ -270,18 +270,24 @@ export interface SwapQuoteRequest {
   walletAddress: string;
 }
 
+export type SwapProvider = 'multx' | 'ignite';
+
 export interface SwapQuote {
-  provider: 'multx';
+  provider: SwapProvider;
   quoteId: string;
   amountIn: string;
   amountOut: string;
   route: string[];
   estimatedSeconds: number;
   feeUsd?: string;
+  /** Ignite (same-chain DEX) reports price impact; MultX doesn't. */
+  priceImpactBps?: number;
+  /** DEX quotes expire fast; Unix ms. */
+  expiresAtMs?: number;
 }
 
 export interface SwapExecutionResult {
-  provider: 'multx';
+  provider: SwapProvider;
   status: 'submitted' | 'pending' | 'completed';
   executionId: string;
   approvalTxHash?: string;
@@ -290,7 +296,7 @@ export interface SwapExecutionResult {
 
 export interface BridgeStatus {
   executionId: string;
-  provider: 'multx';
+  provider: SwapProvider;
   status: 'quoted' | 'submitted' | 'bridging' | 'settling' | 'completed' | 'failed';
   fromChainId: number;
   toChainId: number;

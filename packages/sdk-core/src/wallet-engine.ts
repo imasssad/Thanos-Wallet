@@ -26,6 +26,7 @@ import { BitcoinClient } from './clients/bitcoin-client';
 import { SolanaClient } from './clients/solana-client';
 import { TransactionSimulator } from './security/simulator';
 import { MultXClient } from './swaps/multx';
+import { createIgniteClient, type IgniteClient } from './dex/ignite';
 import { inspectWebsite } from './security/phishing';
 import { BITCOIN_MAINNET, MAKALU_TESTNET, SOLANA_MAINNET } from './chains/networks';
 import { TokenImporter } from './imports/token-importer';
@@ -43,6 +44,10 @@ export class WalletEngine {
   readonly solana = new SolanaClient();
   readonly simulator = new TransactionSimulator(this.evm, this.lithic);
   readonly multx = new MultXClient();
+  /** Same-chain DEX. Defaults to the mock client so a misconfigured deploy
+   *  falls back to safe canned data; swap for `createIgniteClient({ kind:
+   *  'live' })` once Ignite confirms their API spec. */
+  readonly ignite: IgniteClient = createIgniteClient();
   readonly tokenImporter = new TokenImporter();
   readonly indexer = new IndexerClient();
   readonly walletConnect = new WalletConnectBridge();
