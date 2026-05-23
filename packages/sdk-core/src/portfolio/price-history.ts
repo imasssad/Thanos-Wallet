@@ -115,3 +115,6 @@ export async function fetchPortfolioHistory(
 
 /** Number of points returned by fetchPortfolioHistory (for chart sizing). */
 export const PORTFOLIO_HISTORY_POINTS = POINTS;
+
+/** Test-only: wipes the per-(id, days) series cache between cases. */
+export function _resetSeriesCacheForTests(): void { seriesCache.clear(); }
