@@ -1,3 +1,4 @@
+/// <reference types="chrome" />
 /**
  * Service worker — central dispatcher for EIP-1193 JSON-RPC requests
  * coming in from content scripts.
@@ -31,6 +32,29 @@ interface PendingApproval {
 const pendingResolvers = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
 
 const MAKALU_CHAIN_ID_HEX = '0xab09f9'; // 700777
+
+/* ─── WalletConnect offscreen lifecycle ────────────────────────────────
+   The relay socket lives in a hidden offscreen document so it survives
+   the popup closing + this service worker idling out. Chrome-only API —
+   guarded so the build still loads on browsers that don't ship it. */
+const OFFSCREEN_URL = 'offscreen.html';
+async function ensureOffscreen(): Promise<void> {
+  // `chrome.offscreen` is undefined on Firefox / Safari builds.
+  const offscreen = (globalThis as { chrome?: { offscreen?: typeof chrome.offscreen } }).chrome?.offscreen;
+  if (!offscreen) return;
+  try {
+    if (await offscreen.hasDocument()) return;
+    await offscreen.createDocument({
+      url:           OFFSCREEN_URL,
+      // BLOBS keeps a document with active network resources alive — the
+      // closest stable reason for "we need a long-lived WebSocket".
+      reasons:       [chrome.offscreen.Reason.BLOBS],
+      justification: 'Persistent WalletConnect relay socket across popup closes',
+    });
+  } catch {
+    /* createDocument throws if one already exists (race); ignore. */
+  }
+}
 
 async function getConnections(): Promise<ConnectionMap> {
   const { connections } = await browser.storage.local.get('connections');
@@ -147,10 +171,31 @@ async function broadcastEvent(event: string, ...args: unknown[]): Promise<void> 
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(() => {
     console.log('Thanos Wallet extension installed');
+    void ensureOffscreen();
   });
+  // Boot the offscreen kit eagerly so persisted sessions reconnect and
+  // a session_proposal can land before the user opens the popup.
+  void ensureOffscreen();
 
   browser.runtime.onMessage.addListener(((msg: unknown, _sender: unknown, sendResponse: (resp: unknown) => void) => {
     const m = msg as RpcMessage & { type?: string; approvalId?: string; approved?: boolean; address?: string };
+
+    // 0) WalletConnect commands — proxy from the popup to the offscreen
+    //    document. Tagging the forwarded message with __target lets
+    //    background ignore its own re-broadcast (otherwise we loop).
+    const wcMsg = m as { type?: string; __target?: string };
+    if (wcMsg.type?.startsWith('wc.') && !wcMsg.type.startsWith('wc.event.') && wcMsg.__target !== 'offscreen') {
+      (async () => {
+        try {
+          await ensureOffscreen();
+          const resp = await browser.runtime.sendMessage({ ...m, __target: 'offscreen' });
+          sendResponse(resp);
+        } catch (e) {
+          sendResponse({ ok: false, error: (e as Error)?.message || 'offscreen unreachable' });
+        }
+      })();
+      return true;
+    }
 
     // 1) Direct RPC from content script.
     if (m?.type === 'thanos-rpc') {

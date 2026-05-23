@@ -1,61 +1,38 @@
 /**
- * WalletConnect pair + approve sheet for the extension popup.
+ * WalletConnect popup UI — message bridge to the persistent offscreen
+ * host. The popup no longer initializes its own kit, so a paired
+ * session survives the popup closing: the offscreen document keeps the
+ * relay socket alive across browser sessions.
  *
- * MV3 service-workers terminate after ~30s idle, which kills any
- * persistent WC relay socket. So this sheet runs the kit in the POPUP
- * context: the user opens the popup, pastes a wc: URI, approves the
- * incoming session_proposal, and the dApp's connect button completes.
- * Once the popup closes the relay disconnects — the dApp side handles
- * the resulting expiry like any other wallet disconnect.
+ * Bridge:
+ *   popup → background → offscreen kit (chrome.runtime.sendMessage)
+ *   offscreen → popup    via event broadcasts (wc.event.*)
  *
- * Full background-persistent sessions are the next slice (Chrome
- * offscreen documents or alarms-kept-alive service worker).
+ * Hydration: a session_proposal that lands while the popup is closed is
+ * stashed in chrome.storage.session by the offscreen; the popup reads
+ * it on mount and shows the approval sheet immediately.
  */
 import React, { useEffect, useState } from 'react';
 import { Globe, ChevronLeft } from 'lucide-react';
-import type { IWalletKit } from '@reown/walletkit';
-import type { SessionTypes } from '@walletconnect/types';
-
-const MAKALU = 700777;
-const SUPPORTED_EVM = [MAKALU, 1, 56, 137, 8453, 42161, 59144, 10, 43114];
-const NS_CHAINS = SUPPORTED_EVM.map((id) => `eip155:${id}`);
-const METHODS = [
-  'eth_sendTransaction', 'eth_signTransaction', 'eth_sign',
-  'personal_sign', 'eth_signTypedData_v4',
-  'wallet_switchEthereumChain', 'wallet_addEthereumChain',
-];
-const EVENTS = ['chainChanged', 'accountsChanged'];
-
-let kitPromise: Promise<IWalletKit> | null = null;
-async function getKit(): Promise<IWalletKit> {
-  if (kitPromise) return kitPromise;
-  kitPromise = (async () => {
-    const { Core } = await import('@walletconnect/core');
-    const { WalletKit } = await import('@reown/walletkit');
-    const projectId =
-      (typeof process !== 'undefined' && process.env?.WXT_REOWN_PROJECT_ID) ||
-      '6d05d9a84112ca2f7c1bb77a76a18c81';
-    const core = new Core({ projectId });
-    return WalletKit.init({
-      core,
-      metadata: {
-        name:        'Thanos Wallet (Extension)',
-        description: 'Lithosphere-first multi-chain wallet',
-        url:         'https://thanos.fi',
-        icons:       ['https://thanos.fi/images/Thanos_Logo.png'],
-      },
-    });
-  })();
-  return kitPromise;
-}
 
 interface SessionRow { topic: string; name: string; url: string }
-function projectSession(s: SessionTypes.Struct): SessionRow {
-  return {
-    topic: s.topic,
-    name:  s.peer?.metadata?.name ?? 'Unknown dApp',
-    url:   s.peer?.metadata?.url  ?? '',
-  };
+interface ProposalRow { id: number; name: string; url?: string }
+
+function send<T = unknown>(message: object): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    try {
+      const reply = browser.runtime.sendMessage(message) as unknown;
+      // webextension-polyfill returns a promise; chrome.runtime returns
+      // a value via callback. Handle both.
+      if (reply && typeof (reply as Promise<unknown>).then === 'function') {
+        (reply as Promise<T>).then(resolve, reject);
+      } else {
+        resolve(reply as T);
+      }
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string; onClose: () => void }) {
@@ -63,36 +40,47 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const [busy, setBusy]         = useState(false);
   const [err,  setErr]          = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [proposal, setProposal] = useState<{ id: number; name: string } | null>(null);
+  const [proposal, setProposal] = useState<ProposalRow | null>(null);
 
   const refresh = async () => {
     try {
-      const kit = await getKit();
-      setSessions(Object.values(kit.getActiveSessions()).map(projectSession));
-    } catch { /* relay not ready yet */ }
+      const r = await send<{ ok: boolean; sessions?: SessionRow[] }>({ type: 'wc.list' });
+      if (r?.ok && r.sessions) setSessions(r.sessions);
+    } catch { /* offscreen still booting */ }
   };
 
+  // On mount: pull active sessions + any pending proposal stashed while
+  // the popup was closed. Subscribe to live events for the rest.
   useEffect(() => {
-    let cancel = false;
+    void refresh();
     (async () => {
-      const kit = await getKit();
-      if (cancel) return;
-      kit.on('session_proposal', (p) => setProposal({ id: p.id, name: p.params.proposer.metadata?.name ?? 'dApp' }));
-      kit.on('session_delete', () => void refresh());
-      void refresh();
-    })().catch((e) => setErr((e as Error).message));
-    return () => { cancel = true; };
+      try {
+        const r = await send<{ ok: boolean; proposal?: ProposalRow | null }>({ type: 'wc.get-proposal' });
+        if (r?.ok && r.proposal) setProposal(r.proposal);
+      } catch { /* fine */ }
+    })();
+
+    const listener = (raw: unknown) => {
+      const m = raw as { type?: string; id?: number; name?: string; url?: string };
+      if (m?.type === 'wc.event.proposal') {
+        setProposal({ id: m.id!, name: m.name ?? 'dApp', url: m.url });
+      } else if (m?.type === 'wc.event.session_delete') {
+        void refresh();
+      }
+    };
+    browser.runtime.onMessage.addListener(listener as Parameters<typeof browser.runtime.onMessage.addListener>[0]);
+    return () => browser.runtime.onMessage.removeListener(listener as Parameters<typeof browser.runtime.onMessage.removeListener>[0]);
   }, []);
 
   const pair = async () => {
     if (!uri.trim()) return;
     setBusy(true); setErr(null);
     try {
-      const kit = await getKit();
-      await kit.pair({ uri: uri.trim() });
+      const r = await send<{ ok: boolean; error?: string }>({ type: 'wc.pair', uri: uri.trim() });
+      if (!r?.ok) throw new Error(r?.error || 'Pairing failed');
       setUri('');
     } catch (e) {
-      setErr((e as Error).message || 'Pairing failed');
+      setErr((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -102,16 +90,12 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     if (!proposal || !evmAddress) return;
     setBusy(true); setErr(null);
     try {
-      const kit = await getKit();
-      const accounts = NS_CHAINS.map((c) => `${c}:${evmAddress}`);
-      await kit.approveSession({
-        id: proposal.id,
-        namespaces: { eip155: { chains: NS_CHAINS, methods: METHODS, events: EVENTS, accounts } },
-      });
+      const r = await send<{ ok: boolean; error?: string }>({ type: 'wc.approve', id: proposal.id, evmAddress });
+      if (!r?.ok) throw new Error(r?.error || 'Approve failed');
       setProposal(null);
       await refresh();
     } catch (e) {
-      setErr((e as Error).message || 'Approve failed');
+      setErr((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -119,17 +103,11 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
 
   const reject = async () => {
     if (!proposal) return;
-    try {
-      const kit = await getKit();
-      await kit.rejectSession({ id: proposal.id, reason: { code: 5000, message: 'User rejected' } });
-    } finally { setProposal(null); }
+    try { await send({ type: 'wc.reject', id: proposal.id }); } finally { setProposal(null); }
   };
 
   const disconnect = async (topic: string) => {
-    try {
-      const kit = await getKit();
-      await kit.disconnectSession({ topic, reason: { code: 6000, message: 'User disconnected' } });
-    } finally { await refresh(); }
+    try { await send({ type: 'wc.disconnect', topic }); } finally { await refresh(); }
   };
 
   return (
@@ -152,7 +130,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={reject}  className="btn-secondary"  style={{ flex: 1 }}>Reject</button>
+              <button onClick={reject}  className="btn-secondary" style={{ flex: 1 }}>Reject</button>
               <button onClick={approve} disabled={busy} className="btn-primary" style={{ flex: 1, opacity: busy ? 0.6 : 1 }}>{busy ? 'Connecting…' : 'Approve'}</button>
             </div>
           </>
@@ -172,7 +150,8 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
             </button>
 
             <div className="row-sub" style={{ marginTop: 12, fontSize: 10, lineHeight: 1.5 }}>
-              Note: closing this popup ends the live relay connection (MV3 limitation). Sessions are best-effort — the dApp will reconnect when you reopen the popup.
+              Sessions are kept alive in the background — the relay socket runs in an offscreen document
+              so closing this popup no longer ends the connection.
             </div>
 
             {sessions.length > 0 && (
