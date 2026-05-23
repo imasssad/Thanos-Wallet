@@ -40,9 +40,17 @@ const METHODS = [
 const EVENTS = ['chainChanged', 'accountsChanged'];
 
 interface PendingProposal { id: number; name: string; url: string }
+interface PendingRequest {
+  id:     number;
+  topic:  string;
+  method: string;
+  params: unknown[];
+  name:   string;
+}
 let kit: IWalletKit | null = null;
 let kitPromise: Promise<IWalletKit> | null = null;
 let pendingProposal: PendingProposal | null = null;
+let pendingRequest:  PendingRequest  | null = null;
 
 function broadcast(msg: object): void {
   // Fire-and-forget; if no listener is alive (popup closed) chrome just
@@ -81,10 +89,35 @@ async function getKit(): Promise<IWalletKit> {
     k.on('session_delete', () => {
       broadcast({ type: 'wc.event.session_delete' });
     });
+    k.on('session_request', (event) => {
+      const session = k.getActiveSessions()[event.topic];
+      const req: PendingRequest = {
+        id:     event.id,
+        topic:  event.topic,
+        method: event.params.request.method,
+        params: (event.params.request.params as unknown[]) ?? [],
+        name:   session?.peer?.metadata?.name ?? 'dApp',
+      };
+      pendingRequest = req;
+      // Stash so a popup that opens AFTER the request arrives can sign.
+      browser.storage.session.set({ wc_pending_request: req }).catch(() => {});
+      // Badge the toolbar so the user notices when the popup is closed.
+      try {
+        browser.action.setBadgeText({ text: '1' }).catch(() => {});
+        browser.action.setBadgeBackgroundColor({ color: '#3b7af7' }).catch(() => {});
+      } catch { /* MV2-style fallback */ }
+      broadcast({ type: 'wc.event.request', ...req });
+    });
     kit = k;
     return k;
   })();
   return kitPromise;
+}
+
+function clearPendingRequestBadge(): void {
+  pendingRequest = null;
+  browser.storage.session.remove('wc_pending_request').catch(() => {});
+  try { browser.action.setBadgeText({ text: '' }).catch(() => {}); } catch { /* ignore */ }
 }
 
 function projectSession(s: SessionTypes.Struct) {
@@ -139,6 +172,26 @@ browser.runtime.onMessage.addListener(((raw: unknown, _sender: unknown, sendResp
         case 'wc.get-proposal':
           sendResponse({ ok: true, proposal: pendingProposal });
           break;
+        case 'wc.get-request':
+          sendResponse({ ok: true, request: pendingRequest });
+          break;
+        case 'wc.respond': {
+          // The popup signed the request (or chose to reject); relay
+          // the result back to the dApp via the kit.
+          const topic = String(msg.topic ?? '');
+          const id    = Number(msg.id);
+          const result = (msg as { result?: unknown }).result;
+          const error  = (msg as { error?: { code: number; message: string } }).error;
+          await k.respondSessionRequest({
+            topic,
+            response: error
+              ? { id, jsonrpc: '2.0', error }
+              : { id, jsonrpc: '2.0', result },
+          });
+          clearPendingRequestBadge();
+          sendResponse({ ok: true });
+          break;
+        }
         case 'wc.ping':
           sendResponse({ ok: true });
           break;

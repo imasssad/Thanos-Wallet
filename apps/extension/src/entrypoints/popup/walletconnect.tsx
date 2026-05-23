@@ -14,9 +14,18 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Globe, ChevronLeft } from 'lucide-react';
+import { useWalletSeed } from './send';
+import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
 
 interface SessionRow { topic: string; name: string; url: string }
 interface ProposalRow { id: number; name: string; url?: string }
+interface PendingRequest {
+  id:     number;
+  topic:  string;
+  method: string;
+  params: unknown[];
+  name:   string;
+}
 
 function send<T = unknown>(message: object): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -36,11 +45,13 @@ function send<T = unknown>(message: object): Promise<T> {
 }
 
 export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string; onClose: () => void }) {
+  const seed = useWalletSeed();
   const [uri, setUri]           = useState('');
   const [busy, setBusy]         = useState(false);
   const [err,  setErr]          = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [proposal, setProposal] = useState<ProposalRow | null>(null);
+  const [pending, setPending]   = useState<PendingRequest | null>(null);
 
   const refresh = async () => {
     try {
@@ -49,8 +60,9 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     } catch { /* offscreen still booting */ }
   };
 
-  // On mount: pull active sessions + any pending proposal stashed while
-  // the popup was closed. Subscribe to live events for the rest.
+  // On mount: pull active sessions + any pending proposal / pending
+  // signing request stashed while the popup was closed. Subscribe to
+  // live events for the rest.
   useEffect(() => {
     void refresh();
     (async () => {
@@ -58,12 +70,24 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         const r = await send<{ ok: boolean; proposal?: ProposalRow | null }>({ type: 'wc.get-proposal' });
         if (r?.ok && r.proposal) setProposal(r.proposal);
       } catch { /* fine */ }
+      try {
+        const r = await send<{ ok: boolean; request?: PendingRequest | null }>({ type: 'wc.get-request' });
+        if (r?.ok && r.request) setPending(r.request);
+      } catch { /* fine */ }
     })();
 
     const listener = (raw: unknown) => {
-      const m = raw as { type?: string; id?: number; name?: string; url?: string };
+      const m = raw as { type?: string; id?: number; topic?: string; method?: string; params?: unknown[]; name?: string; url?: string };
       if (m?.type === 'wc.event.proposal') {
         setProposal({ id: m.id!, name: m.name ?? 'dApp', url: m.url });
+      } else if (m?.type === 'wc.event.request' && m.topic && m.method) {
+        setPending({
+          id:     m.id!,
+          topic:  m.topic,
+          method: m.method,
+          params: (m.params ?? []) as unknown[],
+          name:   m.name ?? 'dApp',
+        });
       } else if (m?.type === 'wc.event.session_delete') {
         void refresh();
       }
@@ -71,6 +95,33 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     browser.runtime.onMessage.addListener(listener as Parameters<typeof browser.runtime.onMessage.addListener>[0]);
     return () => browser.runtime.onMessage.removeListener(listener as Parameters<typeof browser.runtime.onMessage.removeListener>[0]);
   }, []);
+
+  const approveRequest = async () => {
+    if (!pending) return;
+    setBusy(true); setErr(null);
+    try {
+      const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params } });
+      await send({ type: 'wc.respond', topic: pending.topic, id: pending.id, result });
+      setPending(null);
+    } catch (e) {
+      const code = e instanceof WcSignerError ? e.code : -32603;
+      const message = (e as Error)?.message || 'Sign failed';
+      try {
+        await send({ type: 'wc.respond', topic: pending.topic, id: pending.id, error: { code, message } });
+      } catch { /* ignore */ }
+      setPending(null);
+      setErr(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rejectRequest = async () => {
+    if (!pending) return;
+    try {
+      await send({ type: 'wc.respond', topic: pending.topic, id: pending.id, error: { code: 5000, message: 'User rejected' } });
+    } finally { setPending(null); }
+  };
 
   const pair = async () => {
     if (!uri.trim()) return;
@@ -120,7 +171,28 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
       </div>
 
       <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
-        {proposal ? (
+        {pending ? (
+          <>
+            <div className="row-sub" style={{ marginBottom: 4 }}>
+              {pending.method === 'eth_sendTransaction' ? 'Transaction request from' : 'Signature request from'}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>{pending.name}</div>
+            <div style={{
+              fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto', marginBottom: 12,
+            }}>
+              {summariseRequest(pending.method, pending.params)}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={rejectRequest}  disabled={busy} className="btn-secondary" style={{ flex: 1, opacity: busy ? 0.6 : 1 }}>Reject</button>
+              <button onClick={approveRequest} disabled={busy || !seed.length} className="btn-primary" style={{ flex: 1, opacity: (busy || !seed.length) ? 0.6 : 1 }}>
+                {busy ? 'Signing…' : pending.method === 'eth_sendTransaction' ? 'Approve & Send' : 'Approve & Sign'}
+              </button>
+            </div>
+            {!seed.length && <div className="row-sub" style={{ marginTop: 8, fontSize: 10 }}>Unlock the wallet to sign.</div>}
+          </>
+        ) : proposal ? (
           <>
             <div className="row" style={{ marginBottom: 12 }}>
               <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}><Globe size={16}/></div>
