@@ -23,6 +23,7 @@ import {
   groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
 } from '@thanos/sdk-core';
+import { WalletConnectModal } from './walletconnect';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -633,7 +634,7 @@ function DiscoverScreen() {
   );
 }
 
-function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; onToggleTheme: () => void; onLock: () => void }) {
+function SettingsScreen({ isDark, onToggleTheme, onLock, onOpenWalletConnect }: { isDark: boolean; onToggleTheme: () => void; onLock: () => void; onOpenWalletConnect: () => void }) {
   // Premium-pattern settings: icon-led section headers + a gradient title hero.
   // Adapted for the 360px popup — smaller paddings + tighter spacing.
   const SectionHead = ({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub: string }) => (
@@ -688,6 +689,18 @@ function SettingsScreen({ isDark, onToggleTheme, onLock }: { isDark: boolean; on
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </div>
+      </div>
+
+      <SectionHead Icon={Globe} title="Connections" sub="WalletConnect-paired dApps"/>
+      <div className="card list">
+        <button className="set-row" onClick={onOpenWalletConnect} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+          <div className="set-icon"><Globe size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">WalletConnect</div>
+            <div className="set-sub">Pair via wc: link (popup-scoped session)</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
       </div>
 
       <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
@@ -931,7 +944,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
 /* ──────────────────────── App shell ──────────────────────── */
 
 type Tab = 'home' | 'discover' | 'activity' | 'settings';
-type Modal = 'send' | 'receive' | 'swap' | null;
+type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | null;
 
 /* ─── EIP-1193 connection approval screen ──────────────────────────────── */
 function ApprovalScreen({
@@ -1126,16 +1139,17 @@ function App() {
   return (
     <WalletSeedContext.Provider value={seed}>
     <PortfolioContext.Provider value={portfolio}>
-      {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
-      {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} address={evmAddr}/>}
-      {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
+      {modal === 'send'          && <SendModal          onClose={() => setModal(null)}/>}
+      {modal === 'receive'       && <ReceiveModal       onClose={() => setModal(null)} address={evmAddr}/>}
+      {modal === 'swap'          && <SwapModal          onClose={() => setModal(null)}/>}
+      {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
 
       <div className="app">
         <div className="app-body">
           {tab === 'home'     && <HomeScreen onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}/>}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
-          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock}/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')}/>}
         </div>
         <div className="tabbar">
           {([

@@ -26,8 +26,11 @@
     "lint": "echo 'no lint configured'"
   },
   "dependencies": {
+    "@reown/walletkit": "^1.5.5",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:^",
+    "@walletconnect/core": "^2.21.6",
+    "@walletconnect/types": "^2.21.6",
     "ethers": "^6.13.4",
     "hash-wasm": "^4.12.0",
     "lucide-react": "^1.14.0",
