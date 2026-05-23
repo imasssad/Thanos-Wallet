@@ -59,8 +59,14 @@ services:
           --storage.path=/alertmanager \
           --web.external-url=http://localhost:9093
     environment:
-      SLACK_WEBHOOK_URL:         ${SLACK_WEBHOOK_URL:-}
-      PAGERDUTY_INTEGRATION_KEY: ${PAGERDUTY_INTEGRATION_KEY:-}
+      # If the operator hasn't set the real Slack / PagerDuty creds yet,
+      # substitute a syntactically-valid placeholder so Alertmanager's
+      # config schema is satisfied and the daemon starts cleanly. The
+      # `.invalid` TLD is RFC-reserved and never resolves, and the
+      # all-zero PD routing key is well-formed but unrouteable — both
+      # behave as silent no-op receivers until you swap in real values.
+      SLACK_WEBHOOK_URL:         ${SLACK_WEBHOOK_URL:-https://hooks.slack.invalid/no-webhook-configured}
+      PAGERDUTY_INTEGRATION_KEY: ${PAGERDUTY_INTEGRATION_KEY:-00000000000000000000000000000000}
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.tpl.yml:ro
       - alertmanager_data:/alertmanager
