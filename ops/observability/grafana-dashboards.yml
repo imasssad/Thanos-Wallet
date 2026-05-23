@@ -1,0 +1,18 @@
+# Auto-provision Grafana dashboards from /etc/grafana/provisioning/dashboards.
+# Pairs with the JSON files in ./dashboards/ — mounted read-only into the
+# Grafana container by docker-compose.observability.yml. Dashboards saved
+# in-UI are written back to disk because allowUiUpdates is on; that keeps
+# local edits round-trippable but the source of truth is still the repo.
+apiVersion: 1
+
+providers:
+  - name:           Thanos
+    orgId:          1
+    folder:         Thanos Wallet
+    type:           file
+    disableDeletion: false
+    allowUiUpdates:  true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
