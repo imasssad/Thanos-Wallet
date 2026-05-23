@@ -1,12 +1,17 @@
 # Postgres backups
 
-Two complementary backup chains:
+Three complementary chains, each for a different failure mode:
 
 1. **`pg-backup.sh`** (this directory) — logical `pg_dump`, gzipped,
    rotated daily/weekly/monthly, optional S3 mirror. Schema-portable.
+   Survives a Postgres major-version upgrade.
 2. **pgBackRest** ([`./pgbackrest/`](./pgbackrest/)) — physical, continuous
    WAL archiving. Enables point-in-time recovery (RPO ~1 min). Optional
    overlay, brought up with `docker-compose.pitr.yml`.
+3. **Cross-region streaming replica** ([`./replica/`](./replica/)) — hot
+   standby in a second region. Cuts rebuild RTO from ~90 min to ~5 min
+   via DNS-flip failover. Requires a second VPS — see the replica
+   [`RUNBOOK.md`](./replica/RUNBOOK.md) for provisioning + failover.
 
 > **Recovering from a real incident?** See [`RUNBOOK.md`](./RUNBOOK.md) for
 > the on-call playbook — scenario-by-scenario restore commands (including
