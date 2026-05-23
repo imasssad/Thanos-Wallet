@@ -180,6 +180,16 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener(((msg: unknown, _sender: unknown, sendResponse: (resp: unknown) => void) => {
     const m = msg as RpcMessage & { type?: string; approvalId?: string; approved?: boolean; address?: string };
 
+    // 0a) A signing request fired in the offscreen kit — try to bring
+    //    up the popup so the user sees the approval sheet immediately.
+    //    Failures are fine: the toolbar badge + stashed request keep
+    //    the user informed when they click the icon themselves.
+    const evMsg = m as { type?: string };
+    if (evMsg.type === 'wc.event.request') {
+      try { void browser.action.openPopup().catch(() => {}); } catch { /* older browsers */ }
+      return false;
+    }
+
     // 0) WalletConnect commands — proxy from the popup to the offscreen
     //    document. Tagging the forwarded message with __target lets
     //    background ignore its own re-broadcast (otherwise we loop).

@@ -14,6 +14,16 @@
 import React, { useEffect, useState } from 'react';
 import type { IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
+import { useWalletSeed } from './send';
+import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
+
+interface PendingRequest {
+  id:     number;
+  topic:  string;
+  method: string;
+  params: unknown[];
+  name:   string;
+}
 
 const MAKALU = 700777;
 const SUPPORTED_EVM = [MAKALU, 1, 56, 137, 8453, 42161, 59144, 10, 43114];
@@ -60,11 +70,13 @@ function projectSession(s: SessionTypes.Struct): SessionRow {
 }
 
 export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string; onClose: () => void }) {
+  const seed = useWalletSeed();
   const [uri, setUri]               = useState('');
   const [busy, setBusy]             = useState(false);
   const [err,  setErr]              = useState<string | null>(null);
   const [sessions, setSessions]     = useState<SessionRow[]>([]);
   const [proposal, setProposal]     = useState<{ id: number; name: string } | null>(null);
+  const [pending, setPending]       = useState<PendingRequest | null>(null);
 
   // Keep the active-sessions list in sync.
   const refresh = async () => {
@@ -83,10 +95,60 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         setProposal({ id: p.id, name: p.params.proposer.metadata?.name ?? 'dApp' });
       });
       kit.on('session_delete', () => void refresh());
+      kit.on('session_request', (event) => {
+        const session = kit.getActiveSessions()[event.topic];
+        setPending({
+          id:     event.id,
+          topic:  event.topic,
+          method: event.params.request.method,
+          params: (event.params.request.params as unknown[]) ?? [],
+          name:   session?.peer?.metadata?.name ?? 'dApp',
+        });
+      });
       void refresh();
     })().catch((e) => setErr((e as Error).message));
     return () => { cancel = true; };
   }, []);
+
+  const approveRequest = async () => {
+    if (!pending) return;
+    setBusy(true); setErr(null);
+    try {
+      const kit = await getKit();
+      const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params } });
+      await kit.respondSessionRequest({
+        topic:    pending.topic,
+        response: { id: pending.id, jsonrpc: '2.0', result },
+      });
+      setPending(null);
+    } catch (e) {
+      const code = e instanceof WcSignerError ? e.code : -32603;
+      const message = (e as Error)?.message || 'Sign failed';
+      // Respond with an RPC error so the dApp sees a clean rejection.
+      try {
+        const kit = await getKit();
+        await kit.respondSessionRequest({
+          topic:    pending.topic,
+          response: { id: pending.id, jsonrpc: '2.0', error: { code, message } },
+        });
+      } catch { /* ignore */ }
+      setPending(null);
+      setErr(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rejectRequest = async () => {
+    if (!pending) return;
+    try {
+      const kit = await getKit();
+      await kit.respondSessionRequest({
+        topic:    pending.topic,
+        response: { id: pending.id, jsonrpc: '2.0', error: { code: 5000, message: 'User rejected' } },
+      });
+    } finally { setPending(null); }
+  };
 
   const pair = async () => {
     if (!uri.trim()) return;
@@ -144,7 +206,28 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           <button onClick={onClose} style={closeBtn} aria-label="Close">×</button>
         </div>
 
-        {proposal ? (
+        {pending ? (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
+              {pending.method === 'eth_sendTransaction' ? 'Transaction request' : 'Signature request'} from
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{pending.name}</div>
+            <div style={{
+              fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              borderRadius: 10, padding: 12, maxHeight: 200, overflowY: 'auto', marginBottom: 14,
+            }}>
+              {summariseRequest(pending.method, pending.params)}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={rejectRequest}  disabled={busy} style={{ ...btn, background: 'transparent', border: '1px solid var(--border-default)', color: 'var(--text-primary)', opacity: busy ? 0.6 : 1 }}>Reject</button>
+              <button onClick={approveRequest} disabled={busy || !seed.length} style={{ ...btn, background: 'var(--blue, #3b7af7)', color: '#fff', opacity: (busy || !seed.length) ? 0.6 : 1 }}>
+                {busy ? 'Signing…' : pending.method === 'eth_sendTransaction' ? 'Approve & Send' : 'Approve & Sign'}
+              </button>
+            </div>
+            {!seed.length && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Wallet is locked — unlock to sign.</div>}
+          </>
+        ) : proposal ? (
           <>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>
               <b>{proposal.name}</b> wants to connect to your wallet on Makalu + 8 EVM chains.
