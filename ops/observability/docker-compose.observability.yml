@@ -65,9 +65,25 @@ services:
         : "$${PAGERDUTY_INTEGRATION_KEY:=00000000000000000000000000000000}"
         [ -n "$$SLACK_WEBHOOK_URL"         ] || SLACK_WEBHOOK_URL=https://hooks.slack.invalid/no-webhook-configured
         [ -n "$$PAGERDUTY_INTEGRATION_KEY" ] || PAGERDUTY_INTEGRATION_KEY=00000000000000000000000000000000
-        sed -e "s|__SLACK_WEBHOOK_URL__|$$SLACK_WEBHOOK_URL|g" \
-            -e "s|__PAGERDUTY_INTEGRATION_KEY__|$$PAGERDUTY_INTEGRATION_KEY|g" \
-            /etc/alertmanager/alertmanager.tpl.yml > /etc/alertmanager/alertmanager.yml
+        # Two modes:
+        #   - placeholder creds (.invalid TLD or all-zero PD key) → render a
+        #     minimal config with a `null` receiver. Alerts still fire +
+        #     show up in the UI, but they don't try to push anywhere — so
+        #     the logs stay clean.
+        #   - real creds → render the full Slack + PagerDuty routing tree
+        #     from alertmanager.tpl.yml.
+        case "$$SLACK_WEBHOOK_URL$$PAGERDUTY_INTEGRATION_KEY" in
+          *invalid*|*00000000000000000000000000000000*)
+            echo "[entrypoint] placeholder creds detected — using null-receiver config"
+            cp /etc/alertmanager/alertmanager.minimal.yml /etc/alertmanager/alertmanager.yml
+            ;;
+          *)
+            echo "[entrypoint] real Slack/PagerDuty creds — rendering full routing tree"
+            sed -e "s|__SLACK_WEBHOOK_URL__|$$SLACK_WEBHOOK_URL|g" \
+                -e "s|__PAGERDUTY_INTEGRATION_KEY__|$$PAGERDUTY_INTEGRATION_KEY|g" \
+                /etc/alertmanager/alertmanager.tpl.yml > /etc/alertmanager/alertmanager.yml
+            ;;
+        esac
         exec /bin/alertmanager \
           --config.file=/etc/alertmanager/alertmanager.yml \
           --storage.path=/alertmanager \
@@ -83,6 +99,7 @@ services:
       PAGERDUTY_INTEGRATION_KEY: ${PAGERDUTY_INTEGRATION_KEY:-00000000000000000000000000000000}
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.tpl.yml:ro
+      - ./alertmanager.minimal.yml:/etc/alertmanager/alertmanager.minimal.yml:ro
       - alertmanager_data:/alertmanager
     ports:
       - "127.0.0.1:9093:9093"
