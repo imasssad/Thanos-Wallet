@@ -329,10 +329,10 @@ incrementals + weekly fulls on top.
 
 ## What's intentionally not in this runbook
 
-- **Cross-region replica failover.** A streaming replica in a second
-  region would cut the rebuild RTO from ~90 min to ~5 min. The playbook
-  + Postgres config lives at `ops/backups/replica/RUNBOOK.md` — execute
-  it once the second VPS is provisioned.
+- **Cross-region replica failover.** Handled in its own runbook:
+  [`ops/backups/replica/RUNBOOK.md`](./replica/RUNBOOK.md). Streaming
+  standby + DNS-flip failover, RTO ~5 min. Provisioning + failover
+  scripts ready; execute once the second VPS is provisioned.
 - **Cross-region replica.** A read replica in a second region would cut
   the rebuild RTO from ~90 min to ~5 min, at the cost of a second VPS.
 - **Encrypted-at-rest backups.** If the S3 bucket is shared, pipe through
