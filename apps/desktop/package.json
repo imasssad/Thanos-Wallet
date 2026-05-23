@@ -22,8 +22,13 @@
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
+    "@ledgerhq/hw-app-eth": "^6.46.0",
+    "@ledgerhq/hw-transport-webhid": "^6.31.5",
+    "@reown/walletkit": "^1.5.5",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
+    "@walletconnect/core": "^2.21.6",
+    "@walletconnect/types": "^2.21.6",
     "electron-log": "^5.2.4",
     "electron-updater": "^6.3.9",
     "ethers": "^6.13.4",

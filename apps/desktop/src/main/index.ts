@@ -1,6 +1,12 @@
 // Use require() directly — Electron's module interceptor matches the literal "electron" string
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
-const { app, BrowserWindow, ipcMain, nativeTheme, shell } = require('electron') as typeof import('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, shell, session } = require('electron') as typeof import('electron');
+
+/* USB / HID vendor IDs we let the renderer enumerate. Hardware-wallet
+   manufacturers only — never a blanket "allow all devices" handler. */
+const LEDGER_VENDOR_ID  = 0x2c97;
+const TREZOR_VENDOR_IDS = [0x534c, 0x1209]; // Trezor One / Trezor T (Trezor Co.)
+const HW_VENDOR_IDS     = new Set([LEDGER_VENDOR_ID, ...TREZOR_VENDOR_IDS]);
 const path = require('path') as typeof import('path');
 import { startAutoUpdater } from './updater';
 
@@ -21,6 +27,28 @@ const createWindow = () => {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     }
+  });
+
+  /* Hardware-wallet USB / HID transport — Electron denies device access
+     by default. We allow Ledger / Trezor vendor IDs only so the
+     renderer's @ledgerhq/hw-transport-webhid + @trezor/connect-web can
+     enumerate the device. Other vendors stay denied. */
+  const sess = win.webContents.session;
+  sess.setPermissionRequestHandler((_wc, permission, callback) => {
+    const p = String(permission);
+    callback(p === 'hid' || p === 'usb');
+  });
+  sess.setDevicePermissionHandler(({ deviceType, device }) => {
+    if (deviceType !== 'hid' && deviceType !== 'usb') return false;
+    const vid = (device as { vendorId?: number }).vendorId;
+    return typeof vid === 'number' && HW_VENDOR_IDS.has(vid);
+  });
+  sess.on('select-hid-device', (event, details, callback) => {
+    event.preventDefault();
+    // Auto-pick the first hardware-wallet device — there's only ever
+    // one connected during a signing flow.
+    const dev = details.deviceList.find((d) => typeof d.vendorId === 'number' && HW_VENDOR_IDS.has(d.vendorId));
+    callback(dev ? dev.deviceId : undefined);
   });
 
   if (process.env.NODE_ENV === 'development') win.loadURL('http://localhost:5173');
