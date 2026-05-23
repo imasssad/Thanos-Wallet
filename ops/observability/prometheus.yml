@@ -32,23 +32,28 @@ scrape_configs:
       - targets: ['alertmanager:9093']
 
   # ─── Wallet services ──────────────────────────────────────────────────
+  # Scraped over the shared `thanos-net` docker network — see the
+  # observability compose file. Service DNS resolves api / indexer /
+  # worker to the running containers; this works regardless of host
+  # port bindings (some services don't publish to the host at all).
   - job_name: thanos-api
     metrics_path: /metrics
     static_configs:
-      - targets: ['host.docker.internal:4000']
+      - targets: ['api:4000']
 
   - job_name: thanos-indexer
     metrics_path: /metrics
     static_configs:
-      - targets: ['host.docker.internal:4010']
+      - targets: ['indexer:4010']
 
   - job_name: thanos-worker
     metrics_path: /metrics
     static_configs:
-      - targets: ['host.docker.internal:4020']
+      - targets: ['worker:4020']
 
   # ─── Host metrics (optional) ───────────────────────────────────────────
-  # Run node_exporter on the host to scrape CPU/mem/disk/network:
+  # Run node_exporter on the host to scrape CPU/mem/disk/network. Reaches
+  # the host via the docker bridge gateway (extra_hosts: host-gateway).
   #
   # - job_name: node
   #   static_configs:

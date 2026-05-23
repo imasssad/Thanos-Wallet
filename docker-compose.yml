@@ -187,6 +187,17 @@ services:
       - redis
 
 # =============================================================================
+# NETWORKS
+# =============================================================================
+# A single named network so the observability stack (separate compose
+# project) can join it as external + scrape services via container DNS
+# (e.g. `api:4000`) instead of `host.docker.internal:PORT` (which can't
+# reach 127.0.0.1-bound ports).
+networks:
+  default:
+    name: thanos-net
+
+# =============================================================================
 # VOLUMES
 # =============================================================================
 volumes:
