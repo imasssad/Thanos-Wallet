@@ -20,6 +20,7 @@ import {
 } from '@thanos/sdk-core';
 import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
+import { connectLedger, type LedgerConnection } from './ledger-sign';
 
 /** Bridge exposed by src/main/preload.ts. The updater fields are
  *  optional so the renderer keeps working on older Electron shells
@@ -603,11 +604,43 @@ function SendModal({ onClose }: { onClose: () => void }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  // Ledger signing path.
+  const [useLedger, setUseLedger]   = useState(false);
+  const [ledger, setLedger]         = useState<LedgerConnection | null>(null);
+  const [ledgerBusy, setLedgerBusy] = useState(false);
+
+  // Close the Ledger transport when the modal unmounts so the device
+  // doesn't stay claimed across sessions.
+  useEffect(() => () => { void ledger?.close().catch(() => {}); }, [ledger]);
 
   const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
   const amtNum = parseFloat(amount || '0');
-  const overBalance = !!coin && amtNum > coin.balance;
-  const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending;
+  // Balance is from the seed account; when signing with Ledger the FROM
+  // account changes, so we don't gate on it (the device + RPC will).
+  const overBalance = !useLedger && !!coin && amtNum > coin.balance;
+  const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
+                  && (!useLedger || !!ledger);
+
+  const toggleLedger = async (on: boolean) => {
+    setError(null);
+    if (!on) {
+      setUseLedger(false);
+      void ledger?.close().catch(() => {});
+      setLedger(null);
+      return;
+    }
+    setLedgerBusy(true);
+    try {
+      const conn = await connectLedger();
+      setLedger(conn);
+      setUseLedger(true);
+    } catch (e) {
+      const msg = (e as Error)?.message || 'Could not reach the Ledger';
+      setError(msg.includes('0x6985') ? 'Rejected on device' : msg);
+    } finally {
+      setLedgerBusy(false);
+    }
+  };
 
   const doSend = async () => {
     if (!coin) return;
@@ -625,6 +658,8 @@ function SendModal({ onClose }: { onClose: () => void }) {
         amount,
         decimals:     coin.decimals,
         tokenAddress: coin.native ? undefined : coin.tokenAddress,
+        signWith:     useLedger ? 'ledger' : 'seed',
+        ledger:       useLedger ? ledger ?? undefined : undefined,
       });
       setTxHash(hash);
       setSending(false);
@@ -673,6 +708,36 @@ function SendModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
+        {/* Signer choice: software wallet (seed) vs Ledger USB. */}
+        <div style={{
+          marginTop: 16, padding: 12, borderRadius: 10,
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              id="useLedger" type="checkbox" checked={useLedger}
+              disabled={ledgerBusy || sending}
+              onChange={(e) => void toggleLedger(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            <label htmlFor="useLedger" style={{ flex: 1, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              Sign with Ledger
+            </label>
+            {ledgerBusy && <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Connecting…</span>}
+          </div>
+          {useLedger && ledger && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              Sending from <span style={{ fontFamily: 'Geist Mono, monospace', color: 'var(--text-secondary)' }}>{ledger.address.slice(0, 8)}…{ledger.address.slice(-6)}</span>
+              <br/>Confirm the transaction on your device when prompted.
+            </div>
+          )}
+          {useLedger && !ledger && !ledgerBusy && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              Plug in your Ledger, unlock it, and open the Ethereum app.
+            </div>
+          )}
+        </div>
+
         {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10 }}>{error}</div>}
 
         <button
@@ -681,7 +746,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
           disabled={!canSend}
           onClick={doSend}
         >
-          {sending ? 'Sending…' : `Send ${coin?.sym ?? ''}`}
+          {sending ? (useLedger ? 'Confirm on device…' : 'Sending…') : `Send ${coin?.sym ?? ''}${useLedger ? ' (Ledger)' : ''}`}
         </button>
       </div>
     </Modal>
