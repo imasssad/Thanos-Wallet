@@ -24,6 +24,7 @@ import {
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
+import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -1013,6 +1014,16 @@ interface PendingApproval {
   params: unknown[];
 }
 
+/* EIP-1193 sign/tx request waiting on user approval. Stashed by the
+ * background SW into chrome.storage.session.pending_rpc_request. */
+interface PendingRpcRequest {
+  id:      string;
+  origin:  string;
+  method:  string;
+  params:  unknown[];
+  address: string;
+}
+
 function App() {
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
@@ -1021,25 +1032,33 @@ function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [isDark, setIsDark] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
+  const [rpcBusy, setRpcBusy]       = useState(false);
+  const [rpcErr, setRpcErr]         = useState<string | null>(null);
 
   const evmAddr   = seed.length ? deriveEvm(seed) : '';
   const portfolio = usePortfolio(evmAddr);
 
-  // Watch chrome.storage.session for an incoming dApp approval request.
+  // Watch chrome.storage.session for incoming dApp approval / signing
+  // requests so the popup can render the right sheet without polling.
   useEffect(() => {
     let cancelled = false;
-    const checkApproval = async () => {
+    const checkPending = async () => {
       try {
-        const stored = await browser.storage.session.get('pending_approval');
-        const pa = stored.pending_approval as PendingApproval | undefined;
-        if (!cancelled) setPendingApproval(pa ?? null);
+        const stored = await browser.storage.session.get(['pending_approval', 'pending_rpc_request']);
+        if (cancelled) return;
+        setPendingApproval((stored.pending_approval as PendingApproval | undefined) ?? null);
+        setPendingRpc((stored.pending_rpc_request as PendingRpcRequest | undefined) ?? null);
       } catch {}
     };
-    checkApproval();
+    checkPending();
     const listener = (changes: Record<string, { newValue?: unknown }>, area: string) => {
       if (area !== 'session') return;
       if ('pending_approval' in changes) {
         setPendingApproval((changes.pending_approval.newValue as PendingApproval | undefined) ?? null);
+      }
+      if ('pending_rpc_request' in changes) {
+        setPendingRpc((changes.pending_rpc_request.newValue as PendingRpcRequest | undefined) ?? null);
       }
     };
     browser.storage.onChanged.addListener(listener as never);
@@ -1104,8 +1123,107 @@ function App() {
     } catch {}
   };
 
+  const approveRpc = async () => {
+    if (!pendingRpc) return;
+    setRpcBusy(true); setRpcErr(null);
+    try {
+      const result = await executeWcRequest(seed, {
+        request: { method: pendingRpc.method, params: pendingRpc.params },
+      });
+      await browser.runtime.sendMessage({
+        type:      'thanos-rpc-result',
+        requestId: pendingRpc.id,
+        result,
+      });
+      setPendingRpc(null);
+    } catch (e) {
+      const code    = e instanceof WcSignerError ? e.code : -32603;
+      const message = (e as Error)?.message || 'Sign failed';
+      try {
+        await browser.runtime.sendMessage({
+          type:      'thanos-rpc-result',
+          requestId: pendingRpc.id,
+          error:     { code, message },
+        });
+      } catch { /* ignore */ }
+      setPendingRpc(null);
+      setRpcErr(message);
+    } finally {
+      setRpcBusy(false);
+    }
+  };
+
+  const rejectRpc = async () => {
+    if (!pendingRpc) return;
+    try {
+      await browser.runtime.sendMessage({
+        type:      'thanos-rpc-result',
+        requestId: pendingRpc.id,
+        error:     { code: 4001, message: 'User rejected the request' },
+      });
+    } finally { setPendingRpc(null); }
+  };
+
   if (hasVault === null) return <div className="root-loading"/>;
   if (!unlocked) return <Onboarding hasVault={hasVault} onComplete={onComplete}/>;
+
+  /* A direct EIP-1193 sign/tx request (window.ethereum.request) takes
+     priority — the dApp is blocked on us answering. The WalletConnect
+     path is handled by the WalletConnectModal opened from Settings; this
+     branch is only the injected-provider path. */
+  if (pendingRpc) {
+    const host = (() => { try { return new URL(pendingRpc.origin).host; } catch { return pendingRpc.origin; } })();
+    const isTx = pendingRpc.method === 'eth_sendTransaction';
+    return (
+      <div className="screen" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
+        <div style={{ textAlign: 'center', marginTop: 4 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 16,
+            background: isTx ? 'rgba(245,158,11,0.14)' : 'rgba(59,122,247,0.14)',
+            border:    `1px solid ${isTx ? 'rgba(245,158,11,0.30)' : 'rgba(59,122,247,0.30)'}`,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+          }}>
+            <Globe size={26} color={isTx ? '#f59e0b' : 'var(--blue)'}/>
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>
+            {isTx ? 'Confirm transaction' : 'Signature request'}
+          </div>
+          <div style={{
+            fontSize: 12, color: 'var(--text-muted)', marginTop: 4,
+            fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all',
+          }}>
+            {host}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 14, gap: 8, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+            {pendingRpc.method}
+          </div>
+          <div style={{
+            fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            background: 'var(--bg-elevated)', borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto',
+          }}>
+            {summariseRequest(pendingRpc.method, pendingRpc.params)}
+          </div>
+          <div style={{
+            fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all',
+          }}>
+            Signing as {pendingRpc.address}
+          </div>
+        </div>
+
+        {rpcErr && <div style={{ padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.10)', color: '#f87171', fontSize: 12 }}>{rpcErr}</div>}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
+          <button onClick={rejectRpc}  disabled={rpcBusy} className="btn-secondary" style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}>Reject</button>
+          <button onClick={approveRpc} disabled={rpcBusy} className="btn-primary"  style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}>
+            {rpcBusy ? 'Signing…' : isTx ? 'Approve & Send' : 'Approve & Sign'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   /* If a dApp is asking to connect, show the approval screen instead of the
      normal wallet UI. The user has to handle it (approve / reject) before
