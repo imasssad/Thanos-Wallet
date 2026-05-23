@@ -9,8 +9,9 @@
  * reused from there rather than re-implemented.
  */
 import { createContext, useContext } from 'react';
-import { HDNodeWallet, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
+import { HDNodeWallet, Interface, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
 import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
+import { sendViaLedger, type LedgerConnection } from './ledger-sign';
 
 const HD_PATH = "m/44'/60'/0'/0/0";
 
@@ -57,7 +58,7 @@ export async function resolveRecipient(input: string): Promise<string> {
 /* ─── Send ───────────────────────────────────────────────────────────── */
 
 export interface SendAssetArgs {
-  /** Unlocked BIP-39 seed words. */
+  /** Unlocked BIP-39 seed words. Ignored when `signWith === 'ledger'`. */
   seed: string[];
   /** Resolved 0x recipient address. */
   to: string;
@@ -67,6 +68,11 @@ export interface SendAssetArgs {
   decimals: number;
   /** LEP100 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
+  /** Which signer to use. Defaults to the local seed. */
+  signWith?: 'seed' | 'ledger';
+  /** Open Ledger connection (transport + derived address). Required when
+   *  `signWith === 'ledger'`. The caller owns transport lifecycle. */
+  ledger?: LedgerConnection;
 }
 
 /**
@@ -75,8 +81,6 @@ export interface SendAssetArgs {
  * Returns the broadcast transaction hash.
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
-  if (!args.seed.length) throw new Error('Wallet is locked');
-
   let value: bigint;
   try {
     value = parseUnits(args.amount, args.decimals);
@@ -85,6 +89,26 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   }
   if (value <= 0n) throw new Error('Amount must be greater than zero');
 
+  // ─── Ledger signing path ──────────────────────────────────────────────
+  if (args.signWith === 'ledger') {
+    if (!args.ledger) throw new Error('Ledger not connected');
+    try {
+      if (args.tokenAddress) {
+        // LEP100/ERC-20 — encode transfer(to, value) and call the contract.
+        const data = new Interface(ERC20_TRANSFER_ABI).encodeFunctionData('transfer', [args.to, value]);
+        return await sendViaLedger(args.ledger, { to: args.tokenAddress, value: 0n, data });
+      }
+      return await sendViaLedger(args.ledger, { to: args.to, value });
+    } catch (e) {
+      const msg = (e as Error).message || 'Broadcast failed';
+      if (/0x6985/.test(msg))             throw new Error('Rejected on Ledger device');
+      if (/insufficient funds/i.test(msg)) throw new Error('Insufficient balance on Ledger account for amount + gas');
+      throw new Error(msg);
+    }
+  }
+
+  // ─── Default: sign with the unlocked seed ─────────────────────────────
+  if (!args.seed.length) throw new Error('Wallet is locked');
   const wallet = HDNodeWallet
     .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), HD_PATH)
     .connect(getMakaluProvider());
