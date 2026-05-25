@@ -7,6 +7,7 @@ import { OnboardingFlow, useWalletGate } from '../onboarding';
 import { dualFromEvm, type DualAddress } from '../../lib/address';
 import { WalletConnectHost } from '../WalletConnectHost';
 import { preloadTokenLogos } from '../../lib/token-logos';
+import { setContactEncryptionKey } from '../../lib/contact-crypto';
 
 /* Wallet context — exposes the unlocked address (in both formats) AND the
    raw mnemonic words to any descendant. The mnemonic is needed only when a
@@ -42,6 +43,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void preloadTokenLogos();
   }, []);
+
+  /* Derive + cache the contact-encryption key from the unlocked seed.
+     Cleared when the wallet locks (walletSeed goes empty). The address
+     book uses this to encrypt name + notes before POSTing to /contacts. */
+  useEffect(() => {
+    void setContactEncryptionKey(unlocked ? walletSeed : null);
+    return () => { void setContactEncryptionKey(null); };
+  }, [unlocked, walletSeed]);
 
   // Wait for client-side check (avoid SSR mismatch)
   if (hasVault === null) {

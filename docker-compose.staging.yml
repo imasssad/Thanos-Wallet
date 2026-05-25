@@ -1,0 +1,94 @@
+# Staging overlay — runs the wallet stack on the SAME VPS as production
+# but on a separate database, redis namespace, port, and hostname.
+# Pair this with docker-compose.yml; do NOT include docker-compose.prod.yml
+# (the prod port bindings would collide).
+#
+# Bring up:
+#   docker compose -p thanos-staging \
+#                  -f docker-compose.yml \
+#                  -f docker-compose.staging.yml \
+#                  up -d --build
+#
+# Tear down (keeps volumes):
+#   docker compose -p thanos-staging \
+#                  -f docker-compose.yml \
+#                  -f docker-compose.staging.yml \
+#                  down
+#
+# Tear down + wipe staging data:
+#   docker compose -p thanos-staging \
+#                  -f docker-compose.yml \
+#                  -f docker-compose.staging.yml \
+#                  down -v
+#
+# nginx on the VPS should route `staging.thanos.fi` → 127.0.0.1:4200 for
+# the api and 127.0.0.1:3100 for the web app. See OBSERVABILITY.md for
+# the dual-vhost example.
+#
+# Migrations run against the staging DB are a no-op against prod —
+# this is the whole point of the overlay: a place to dry-run a schema
+# change before pushing to prod.
+
+services:
+  postgres:
+    container_name: thanos-postgres-staging
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-thanos_wallet_staging}
+      POSTGRES_USER:     ${POSTGRES_USER:-thanos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_STAGING:-thanos_staging_secret}
+    volumes:
+      - postgres_data_staging:/var/lib/postgresql/data
+      - ./services/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+
+  redis:
+    container_name: thanos-redis-staging
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD_STAGING:-redis_staging_secret}
+      --appendonly yes --appendfsync everysec
+    volumes:
+      - redis_data_staging:/data
+
+  api:
+    container_name: thanos-api-staging
+    environment:
+      NODE_ENV:          staging
+      DATABASE_URL:      postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD_STAGING:-thanos_staging_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet_staging}
+      REDIS_URL:         redis://:${REDIS_PASSWORD_STAGING:-redis_staging_secret}@redis:6379
+      JWT_SECRET:        ${JWT_SECRET_STAGING:-staging_jwt_secret_change_me_min_32_chars}
+      CORS_ORIGINS:      https://staging.thanos.fi
+    ports:
+      # Host port 4200 (avoid clashing with prod's 4100).
+      - "127.0.0.1:4200:4000"
+
+  indexer:
+    container_name: thanos-indexer-staging
+    environment:
+      NODE_ENV:      staging
+      DATABASE_URL:  postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD_STAGING:-thanos_staging_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet_staging}
+      REDIS_URL:     redis://:${REDIS_PASSWORD_STAGING:-redis_staging_secret}@redis:6379
+    ports:
+      - "127.0.0.1:4210:4010"
+
+  worker:
+    container_name: thanos-worker-staging
+    environment:
+      NODE_ENV:      staging
+      DATABASE_URL:  postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD_STAGING:-thanos_staging_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet_staging}
+      REDIS_URL:     redis://:${REDIS_PASSWORD_STAGING:-redis_staging_secret}@redis:6379
+
+  web:
+    container_name: thanos-web-staging
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV:            staging
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL_STAGING:-https://staging.thanos.fi}
+    ports:
+      - "127.0.0.1:3100:3000"
+
+volumes:
+  postgres_data_staging:
+  redis_data_staging:

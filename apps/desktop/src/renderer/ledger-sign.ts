@@ -99,6 +99,18 @@ export async function sendViaLedger(
     v: parseInt(sig.v, 16),
   };
 
+  // Sanity check: the signed tx must recover to the same address the user
+  // saw + confirmed. If the device returned a signature for a different
+  // account (malware on the host swapped the HD path? hardware fault?
+  // signature corruption?), refuse to broadcast — the funds would leave
+  // an account the user didn't authorise.
+  const recovered = tx.from;
+  if (!recovered || recovered.toLowerCase() !== from.toLowerCase()) {
+    throw new Error(
+      `Hardware-wallet address mismatch: signature recovered to ${recovered ?? 'null'}, expected ${from}. Refusing to broadcast.`,
+    );
+  }
+
   const sent = await provider.broadcastTransaction(tx.serialized);
   return sent.hash;
 }

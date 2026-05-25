@@ -33,6 +33,23 @@ const httpDuration = new Histogram({
   registers:  [registry],
 });
 
+/* Auth-event counter. Auth route handlers call `recordAuthEvent()` on
+   every register/login/refresh/logout (success + failure). Prometheus
+   alerts can then fire on a high failed-login rate ("brute-force
+   attempt") or a sudden spike in successful logins ("credential
+   stuffing"). Labels stay low-cardinality: the event-type enum is
+   fixed, status is success/failure. */
+const authEvents = new Counter({
+  name:       'thanos_api_auth_events_total',
+  help:       'Auth events by type + outcome',
+  labelNames: ['event_type', 'status'],
+  registers:  [registry],
+});
+
+export function recordAuthEvent(eventType: string, status: 'success' | 'failure'): void {
+  authEvents.inc({ event_type: eventType, status });
+}
+
 /** Express middleware that times every request and records its outcome. */
 export function metricsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const start = process.hrtime.bigint();

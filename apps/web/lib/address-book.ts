@@ -24,6 +24,7 @@ import { getAddress } from 'ethers';
 import { resolveToEvm, evmToLitho } from './address';
 import { apiClient } from './auth-client';
 import type { ContactDto } from '@thanos/api-client';
+import { encryptField, decryptField } from './contact-crypto';
 
 const STORAGE_KEY = 'thanos.address_book';
 
@@ -76,17 +77,23 @@ function saveContacts(list: Contact[]) {
 
 /* ─── DTO ↔ Contact mapping ─────────────────────────────────────────── */
 
-function contactFromDto(d: ContactDto): Contact {
+async function contactFromDto(d: ContactDto): Promise<Contact> {
   // The server stores the address verbatim — we re-canonicalise for
   // dedup so the local cache keys are consistent across devices.
   let evm = d.address;
   try { evm = getAddress(resolveToEvm(d.address) || d.address); } catch { /* leave as-is */ }
+  // Try to decrypt name/notes — falls through unchanged for legacy
+  // plaintext rows (anything not prefixed with v1:).
+  const [decryptedName, decryptedNote] = await Promise.all([
+    decryptField(d.name),
+    decryptField(d.notes),
+  ]);
   return {
     id:        d.id,
-    name:      d.name,
+    name:      decryptedName ?? d.name,
     evm,
     litho:     evmToLitho(evm) || undefined,
-    note:      d.notes || undefined,
+    note:      decryptedNote ?? undefined,
     updatedAt: new Date(d.updatedAt).getTime(),
   };
 }
@@ -123,13 +130,21 @@ export async function addContact(input: { name: string; address: string; note?: 
   }
 
   if (await isAuthed()) {
+    // Encrypt the user-readable fields before they leave the device.
+    // Server only ever sees ciphertext. Address stays plaintext because
+    // the server enforces dedup on lower(address) — and addresses are
+    // already public on-chain anyway.
+    const [encName, encNote] = await Promise.all([
+      encryptField(trimmedName),
+      encryptField(input.note?.trim() || undefined),
+    ]);
     const { item } = await apiClient.createContact({
-      name:        trimmedName,
+      name:        encName ?? trimmedName,                   // fall back to plaintext if no key
       address:     checksummed,
       addressType: 'evm',
-      notes:       input.note?.trim() || undefined,
+      notes:       encNote ?? (input.note?.trim() || undefined),
     });
-    const contact = contactFromDto(item);
+    const contact = await contactFromDto(item);
     saveContacts([...all, contact]);
     return contact;
   }
@@ -157,11 +172,17 @@ export async function updateContact(
 
   const authed = await isAuthed();
   if (authed && !all[idx].pendingSync) {
+    const [encName, encNote] = await Promise.all([
+      patch.name !== undefined ? encryptField(patch.name.trim()) : Promise.resolve(undefined),
+      patch.note !== undefined ? encryptField(patch.note?.trim() || '') : Promise.resolve(undefined),
+    ]);
     const { item } = await apiClient.updateContact(id, {
-      name:  patch.name?.trim(),
-      notes: patch.note === undefined ? undefined : (patch.note?.trim() || null),
+      name:  patch.name !== undefined ? (encName ?? patch.name.trim()) : undefined,
+      notes: patch.note === undefined
+        ? undefined
+        : (patch.note === '' ? null : (encNote ?? patch.note.trim())),
     });
-    const updated = contactFromDto(item);
+    const updated = await contactFromDto(item);
     const next = [...all.slice(0, idx), updated, ...all.slice(idx + 1)];
     saveContacts(next);
     return updated;
@@ -216,7 +237,7 @@ export async function syncContactsFromServer(): Promise<{ synced: number; pushed
 
   const local = loadContacts();
   const { items } = await apiClient.listContacts();
-  const serverContacts = items.map(contactFromDto);
+  const serverContacts = await Promise.all(items.map(contactFromDto));
   const serverByAddr = new Map(serverContacts.map(c => [c.evm.toLowerCase(), c]));
 
   // Push pending-sync local items.
@@ -225,13 +246,17 @@ export async function syncContactsFromServer(): Promise<{ synced: number; pushed
     if (!l.pendingSync) continue;
     if (serverByAddr.has(l.evm.toLowerCase())) continue; // server already has it
     try {
+      const [encName, encNote] = await Promise.all([
+        encryptField(l.name),
+        encryptField(l.note),
+      ]);
       const { item } = await apiClient.createContact({
-        name:        l.name,
+        name:        encName ?? l.name,
         address:     l.evm,
         addressType: 'evm',
-        notes:       l.note,
+        notes:       encNote ?? l.note,
       });
-      serverByAddr.set(l.evm.toLowerCase(), contactFromDto(item));
+      serverByAddr.set(l.evm.toLowerCase(), await contactFromDto(item));
       pushed++;
     } catch {
       // Leave the pending-sync flag; next call will retry.

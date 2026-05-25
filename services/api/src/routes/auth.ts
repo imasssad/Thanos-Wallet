@@ -10,6 +10,7 @@ import {
 } from '../lib/jwt.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { authLimiter, sensitiveOpLimiter } from '../middleware/rate-limit.js';
+import { recordAuthEvent } from '../lib/metrics.js';
 
 export const authRouter = Router();
 
@@ -50,6 +51,10 @@ async function logAuthEvent(
      VALUES ($1, $2, $3, $4, $5)`,
     [userId, eventType, meta.ip, meta.userAgent, JSON.stringify(meta)]
   );
+  // Mirror to Prometheus so alert rules can fire on event-type rates
+  // (failed_login spike = brute force, login spike = credential stuffing).
+  const status = eventType.startsWith('failed_') ? 'failure' : 'success';
+  recordAuthEvent(eventType, status);
 }
 
 // ─── POST /auth/register ────────────────────────────────────────────────────

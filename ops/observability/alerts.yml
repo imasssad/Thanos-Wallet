@@ -129,3 +129,35 @@ groups:
         annotations:
           summary: "Indexer cursor has not advanced in 10 min"
           description: "Sync loop is stuck — either RPC outage or worker crash. Check `docker logs thanos-indexer`."
+
+  - name: thanos-auth
+    interval: 30s
+    rules:
+      # Brute-force / credential-stuffing detector.
+      # The rate-limiter already blocks at 10 attempts per 15 min per IP,
+      # so seeing > 30 failed_login events per minute across the fleet
+      # means a distributed attack is hitting many IPs.
+      - alert: ThanosAuthFailedLoginSpike
+        expr: |
+          sum(rate(thanos_api_auth_events_total{event_type="failed_login"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "Elevated failed-login rate ({{ $value | printf \"%.2f\" }}/s for 5 min)"
+          description: "Sustained failed_login rate above 0.5/s (~30 attempts/min). Check auth_events table for source IPs + consider per-IP fail2ban."
+
+      # Successful-login spike — possible credential stuffing if real
+      # accounts are being compromised at a rate well above organic
+      # signup growth. Tune the threshold once we have a baseline.
+      - alert: ThanosAuthLoginAnomaly
+        expr: |
+          sum(rate(thanos_api_auth_events_total{event_type="login"}[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "Unusually high successful-login rate"
+          description: "Successful logins above 2/s sustained for 10 min — investigate for credential stuffing if signup rate hasn't matched."

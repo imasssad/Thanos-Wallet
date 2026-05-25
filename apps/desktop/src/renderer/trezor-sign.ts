@@ -121,6 +121,17 @@ export async function sendViaTrezor(
     v: parseInt(signed.payload.v, 16),
   };
 
+  // Sanity check: signature must recover to the same address the user
+  // confirmed on the device. A mismatch means something between the
+  // popup and the device tampered with the path or the signature —
+  // refuse to broadcast.
+  const recovered = tx.from;
+  if (!recovered || recovered.toLowerCase() !== from.toLowerCase()) {
+    throw new Error(
+      `Hardware-wallet address mismatch: signature recovered to ${recovered ?? 'null'}, expected ${from}. Refusing to broadcast.`,
+    );
+  }
+
   const sent = await provider.broadcastTransaction(tx.serialized);
   return sent.hash;
 }
