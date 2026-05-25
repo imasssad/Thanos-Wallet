@@ -17,7 +17,8 @@
     "overrides": {
       "axios": ">=1.12.0",
       "@xmldom/xmldom": ">=0.9.8",
-      "bigint-buffer": ">=1.1.5"
+      "bigint-buffer": ">=1.1.5",
+      "protobufjs": ">=7.5.5"
     }
   }
 }
