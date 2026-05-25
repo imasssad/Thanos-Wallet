@@ -109,7 +109,10 @@ function topicToAddress(topic: string): string {
   return ('0x' + topic.slice(26)).toLowerCase();
 }
 
-async function processTransferLog(log: Log, blockTimestamp: Date, symbol = 'tokens'): Promise<void> {
+/** Exported for integration tests — exercises the SQL-side balance
+ *  mutation + idempotency in isolation. Production callers should reach
+ *  through syncRange / runMakaluSync instead. */
+export async function processTransferLog(log: Log, blockTimestamp: Date, symbol = 'tokens'): Promise<void> {
   const fromAddr = topicToAddress(log.topics[1]);
   const toAddr   = topicToAddress(log.topics[2]);
   const value    = BigInt(log.data || '0x0').toString();

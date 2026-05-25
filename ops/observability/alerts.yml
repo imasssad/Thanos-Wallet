@@ -130,6 +130,27 @@ groups:
           summary: "Indexer cursor has not advanced in 10 min"
           description: "Sync loop is stuck — either RPC outage or worker crash. Check `docker logs thanos-indexer`."
 
+  - name: thanos-rpc
+    interval: 30s
+    rules:
+      # Dedicated RPC-outage detector. Watches the indexer's head-block
+      # metric which is sampled from rpc.litho.ai / rpc-2.litho.ai via
+      # the FallbackProvider. If the head doesn't advance for 3 min,
+      # BOTH providers are down — that's a Lithosphere-network-wide
+      # event, not a wallet bug, and the on-call should know early
+      # rather than only via the indexer-stalled symptom.
+      - alert: ThanosRpcOutage
+        expr: |
+          delta(thanos_indexer_head_block[3m]) == 0
+          and on() thanos_indexer_head_block > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: rpc
+        annotations:
+          summary: "Lithosphere RPC head not advancing (both rpc.litho.ai + rpc-2 unreachable)"
+          description: "thanos_indexer_head_block has been flat for 3 min — the FallbackProvider can't reach either RPC. Check https://status.litho.ai and `curl -sv https://rpc.litho.ai` from the VPS."
+
   - name: thanos-auth
     interval: 30s
     rules:

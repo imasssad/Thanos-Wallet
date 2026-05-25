@@ -106,13 +106,24 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
-      - name: Run schema integration smoke tests
-        run: pnpm --filter @thanos/api test -- schema-integration
+      - name: Run schema + contacts integration tests (api)
+        run: pnpm --filter @thanos/api test -- integration
         env:
           DATABASE_URL: postgres://thanos:thanos@127.0.0.1:5432/thanos_test
           JWT_SECRET:   test_jwt_secret_at_least_32_chars_long_x
           REDIS_URL:    redis://localhost:6379
           CORS_ORIGINS: http://localhost:3000
+      - name: Run LEP100 indexer integration tests
+        run: pnpm --filter @thanos/indexer test
+        env:
+          DATABASE_URL:       postgres://thanos:thanos@127.0.0.1:5432/thanos_test
+          # Indexer's chain.ts reads these at import time; defaults make
+          # the import work without ever contacting the network. The tests
+          # themselves never reach RPC — they call processTransferLog
+          # directly with synthetic Log objects.
+          LITHO_RPC_PRIMARY:  https://rpc.litho.ai
+          LITHO_RPC_FALLBACK: https://rpc-2.litho.ai
+          LITHO_CHAIN_ID:     '700777'
 
   audit:
     name: dependency audit (high+)

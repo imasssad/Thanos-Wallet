@@ -1,24 +1,219 @@
 name: release
 
+# Triggered on a tag push (vX.Y.Z) or manual dispatch. Builds + signs +
+# publishes per-platform artifacts to the GitHub Release. Signing is
+# CONDITIONAL on the relevant secrets being present:
+#   - Desktop macOS:    CSC_LINK + CSC_KEY_PASSWORD + APPLE_ID +
+#                       APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+#   - Desktop Windows:  WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD
+#   - Mobile (EAS):     EXPO_TOKEN  (job gated on vars.EAS_ENABLED=='true')
+#
+# Without those secrets, the corresponding job still produces an UNSIGNED
+# artifact (electron-builder emits the binary, EAS job skips). Operators
+# can verify integrity via the per-artifact .sha256 sidecar.
+#
+# See SIGNING.md for every secret + where it comes from.
+
 on:
   workflow_dispatch:
   push:
     tags:
       - 'v*'
 
+permissions:
+  contents: write   # required to upload artifacts to the GitHub Release
+
 jobs:
-  build:
+  # ─── 1. Web — bundle the Next.js standalone output for the VPS ──────
+  build-web:
+    name: web (Next.js standalone)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
+        with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm typecheck
       - run: pnpm --filter @thanos/web build
-      - run: pnpm --filter @thanos/extension build
-      - run: pnpm --filter @thanos/mobile build
-      - run: pnpm --filter @thanos/desktop dist
+        env:
+          NEXT_PUBLIC_LITHO_RPC:        https://rpc.litho.ai
+          NEXT_PUBLIC_REOWN_PROJECT_ID: 6d05d9a84112ca2f7c1bb77a76a18c81
+          NEXT_PUBLIC_MULTX_API_URL:    https://bridge.litho.ai
+          NEXT_PUBLIC_SENTRY_DSN:       ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN:            ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG:                   ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT:               ${{ secrets.SENTRY_PROJECT }}
+      - name: Tarball the standalone bundle + SHA-256
+        run: |
+          tar -czf web-dist-${GITHUB_REF_NAME}.tar.gz -C apps/web/.next standalone
+          sha256sum web-dist-${GITHUB_REF_NAME}.tar.gz > web-dist-${GITHUB_REF_NAME}.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: |
+            web-dist-*.tar.gz
+            web-dist-*.tar.gz.sha256
+          retention-days: 30
+
+  # ─── 2. Extension — zip the per-target builds ───────────────────────
+  build-extension:
+    name: extension (chrome + firefox + safari)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pnpm install --no-frozen-lockfile
+      # WXT's `zip` script produces a ready-for-upload .zip per browser
+      # target. Safari needs the macOS Xcode converter (run on a Mac);
+      # the raw safari-mv2 build directory is the upstream input to that.
+      - run: pnpm --filter @thanos/extension zip
+      - run: pnpm --filter @thanos/extension zip:firefox
+      - run: pnpm --filter @thanos/extension build:safari
+      - name: SHA-256 every artifact
+        shell: bash
+        run: |
+          cd apps/extension/.output
+          for f in *.zip; do
+            [ -e "$f" ] || continue
+            sha256sum "$f" > "$f.sha256"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-zips
+          path: |
+            apps/extension/.output/*.zip
+            apps/extension/.output/*.sha256
+            apps/extension/.output/safari-mv2/
+          retention-days: 30
+
+  # ─── 3. Desktop — matrix across macOS + Windows + Linux ─────────────
+  build-desktop:
+    name: desktop (electron-builder, signed when secrets present)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os:     macos-latest
+            target: mac
+            artifact: 'apps/desktop/dist/*.dmg'
+          - os:     windows-latest
+            target: win
+            artifact: 'apps/desktop/dist/*.exe'
+          - os:     ubuntu-latest
+            target: linux
+            artifact: 'apps/desktop/dist/*.AppImage'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --filter @thanos/desktop build
+
+      - name: Build + sign (macOS)
+        if: matrix.target == 'mac'
+        run: pnpm --filter @thanos/desktop exec electron-builder --mac --publish never
+        env:
+          # When CSC_LINK is unset, electron-builder produces an unsigned
+          # build instead of failing — useful for preview tags. Real
+          # releases set all five and notarization runs automatically.
+          CSC_LINK:                    ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD:            ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID:                    ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID:               ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Build + sign (Windows)
+        if: matrix.target == 'win'
+        run: pnpm --filter @thanos/desktop exec electron-builder --win --publish never
+        env:
+          # WIN_CSC_LINK takes precedence over CSC_LINK on Windows so the
+          # EV cert and the macOS Developer ID can coexist in the same
+          # repo. EV signing on a YubiKey/HSM requires a self-hosted
+          # Windows runner — see SIGNING.md §2.
+          CSC_LINK:         ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Build (Linux — unsigned by design)
+        if: matrix.target == 'linux'
+        run: pnpm --filter @thanos/desktop exec electron-builder --linux --publish never
+
+      - name: SHA-256 every artifact (operator-side verification)
+        shell: bash
+        run: |
+          cd apps/desktop/dist
+          # Hash every artifact regardless of platform; users on every OS
+          # verify the same way.
+          for f in *.dmg *.exe *.AppImage *.zip; do
+            [ -e "$f" ] || continue
+            sha256sum "$f" > "$f.sha256"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            ${{ matrix.artifact }}
+            apps/desktop/dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  # ─── 4. Mobile — EAS build + (optional) submit ──────────────────────
+  build-mobile:
+    name: mobile (EAS Build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Skip entirely when EAS_ENABLED isn't set as a repo variable —
+    # the EAS CLI would otherwise prompt interactively. Operators flip
+    # vars.EAS_ENABLED=true in the repo's Variables tab when the
+    # Expo + Apple + Google accounts are wired (see SIGNING.md §3).
+    if: ${{ vars.EAS_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install EAS CLI
+        run: npm install --global eas-cli@latest
+      - name: EAS Build — iOS + Android (non-interactive, --no-wait)
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build --platform ios     --profile production --non-interactive --no-wait
+          eas build --platform android --profile production --non-interactive --no-wait
+
+  # ─── 5. GitHub Release — attach every artifact + auto-notes ─────────
+  publish:
+    name: publish GitHub release
+    needs: [build-web, build-extension, build-desktop]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # full history so changelog auto-gen works
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Flatten artifact tree (release-page upload doesn't recurse)
+        run: |
+          mkdir -p flat
+          find release-artifacts -type f \
+            \( -name '*.tar.gz' -o -name '*.dmg' -o -name '*.exe' \
+               -o -name '*.AppImage' -o -name '*.zip' -o -name '*.sha256' \) \
+            -exec cp {} flat/ \;
+          ls -la flat/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:               ${{ github.ref_name }}
+          name:                   Thanos Wallet ${{ github.ref_name }}
+          generate_release_notes: true
+          files:                  flat/*

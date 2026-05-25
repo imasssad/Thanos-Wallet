@@ -20,6 +20,12 @@ import {
   type BiometricKind,
 } from './lib/biometric';
 import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
+import { useScreenProtect } from './lib/screen-protect';
+import { initSentry } from './lib/sentry';
+
+// Initialise Sentry as the very first work the bundle does — no-op
+// when EXPO_PUBLIC_SENTRY_DSN is not set (local dev + EAS preview).
+initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
@@ -1594,6 +1600,11 @@ function OnboardingScreen({
   const styles = useStyles();
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
+  // Engage Android FLAG_SECURE + iOS screenshot-detection on every step
+  // that displays sensitive material (the user's mnemonic). Steps that
+  // only ask for the password don't need it. Active flag pivots on
+  // step, so the lock+unlock paths in `unlock` stay screenshot-able.
+  useScreenProtect(step === 'create-show' || step === 'create-confirm' || step === 'import');
   const [importInput, setImportInput] = useState('');
   /* Verify-phrase: only N indices missing; user fills them from a pool */
   const VERIFY_MISSING = 4;

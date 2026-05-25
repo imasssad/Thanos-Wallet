@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { TOKENS } from '../lib/tokens';
 import { useWallet } from './shell/AppShell';
 import {
@@ -1621,6 +1621,16 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const [sourceHash,  setSourceHash]  = useState<string | null>(null);
   const [destHash,    setDestHash]    = useState<string | null>(null);
   const [execError,   setExecError]   = useState<string | null>(null);
+  // Duplicate-submission guards. `executingRef` is a sync flag that
+  // short-circuits a second onSwap before React has a chance to flip
+  // `stage` to 'executing' and disable the button — defends against the
+  // user double-clicking faster than the render cycle. `submittedQuotes`
+  // remembers which quoteIds have already been executed in this modal
+  // session so a back-and-forth navigation can't fire the same quote
+  // through `multxExecute` twice. A page reload generates a fresh quote
+  // (the quote-fetch effect re-runs), so the in-memory dedup is enough.
+  const executingRef    = useRef(false);
+  const submittedQuotes = useRef<Set<string>>(new Set());
 
   // Fallback indicative rate from the canonical USD prices — used only when
   // the MultX endpoint isn't reachable, so the UI still has something to show.
@@ -1725,6 +1735,14 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
      signedTx construction goes here. */
   const onSwap = async () => {
     if (!quote || !provider) return;
+    // Dedup guards — sync ref + per-quoteId set. Bail without surfacing
+    // an error: a fast double-click should be silently coalesced, not
+    // shown to the user as a "swap already in progress" toast.
+    if (executingRef.current) return;
+    if (submittedQuotes.current.has(quote.quoteId)) return;
+    executingRef.current = true;
+    submittedQuotes.current.add(quote.quoteId);
+
     setStage('executing');
     setExecError(null);
     try {
@@ -1745,6 +1763,12 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
       setExecError(offline
         ? `${provider === 'ignite' ? 'Ignite DEX' : 'Bridge'} is unavailable — try again in a moment.`
         : (e as Error).message || 'Swap execute failed');
+      // Failed execution: let the user retry with a *fresh* quote (the
+      // quote-fetch effect will produce a new quoteId), so we don't
+      // leave a "stuck" entry in submittedQuotes for the next attempt.
+      submittedQuotes.current.delete(quote.quoteId);
+    } finally {
+      executingRef.current = false;
     }
   };
 
