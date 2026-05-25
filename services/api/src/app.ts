@@ -9,6 +9,7 @@ import express from 'express';
 import { checkDbConnection } from './lib/db.js';
 import { checkRedisConnection } from './lib/redis.js';
 import { generalLimiter } from './middleware/rate-limit.js';
+import { requestId, type LoggedRequest } from './middleware/request-id.js';
 import { authRouter } from './routes/auth.js';
 import { contactsRouter } from './routes/contacts.js';
 import { dnnsRouter } from './routes/dnns.js';
@@ -18,6 +19,10 @@ import { captureException } from './lib/sentry.js';
 
 export function createApp(): express.Express {
   const app = express();
+
+  /* Request-ID first so every log line + metric + error has a
+     correlation id, even ones from middleware that rejects below. */
+  app.use(requestId);
 
   /* Metrics middleware MUST run before everything else so route timing
      covers any rate-limit / CORS rejection latency too. The /metrics
@@ -59,10 +64,12 @@ export function createApp(): express.Express {
   });
 
   app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    captureException(err, { route: req.originalUrl, method: req.method });
-    // Lazy import so app.ts doesn't depend on log.ts at module load (test ergonomics).
-    import('./lib/log.js').then(({ log }) => log.error({ err: err.message, stack: err.stack }, 'unhandled error'));
-    res.status(500).json({ error: 'Internal server error' });
+    const r = req as LoggedRequest;
+    captureException(err, { route: req.originalUrl, method: req.method, requestId: r.id });
+    // r.log is a child logger bound with requestId so the error line
+    // correlates with the request's other logs.
+    r.log?.error({ err: err.message, stack: err.stack, route: req.originalUrl }, 'unhandled error');
+    res.status(500).json({ error: 'Internal server error', requestId: r.id });
   });
 
   return app;

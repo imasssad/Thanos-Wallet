@@ -30,6 +30,29 @@ function resolveBase(): string {
   return String(url).replace(/\/$/, '');
 }
 
+/**
+ * Exponential-backoff schedule for bridge-status polling. UI callers
+ * (SwapModal) and worker callers should use this instead of a fixed
+ * interval — a stalled bridge that takes 30 min to resolve doesn't
+ * deserve 450 polls. Schedule:
+ *
+ *   attempt 0  →   4 s   (snappy first check)
+ *   attempt 1  →   8 s
+ *   attempt 2  →  16 s
+ *   attempt 3  →  30 s   (cap — applies thereafter)
+ *
+ * `cap` and `base` are tunable so tests can run a tight schedule.
+ */
+export function bridgePollBackoffMs(
+  attempt: number,
+  opts: { baseMs?: number; capMs?: number } = {},
+): number {
+  const base = opts.baseMs ?? 4_000;
+  const cap  = opts.capMs  ?? 30_000;
+  const exp  = Math.min(cap, base * Math.pow(2, Math.max(0, attempt)));
+  return Math.round(exp);
+}
+
 export class BridgeTracker {
   private readonly baseUrl: string;
   constructor(baseUrl: string = resolveBase()) {

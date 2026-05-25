@@ -74,6 +74,10 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [unlockErr, setUnlockErr] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [copiedSeed, setCopiedSeed] = useState(false);
+  /* Seed-phrase masking on the create-show screen — the words are hidden
+     30s after the user lands here, requiring a deliberate re-tap to view
+     them again. Defends against shoulder-surf + a left-open laptop. */
+  const [seedHidden, setSeedHidden] = useState(false);
 
   const startCreate = () => { setStep('create-length'); };
   const pickLengthAndGenerate = (n: 12 | 24) => {
@@ -350,17 +354,34 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
         </>}
 
         {step === 'create-show' && <>
+          <SeedAutoHider hidden={seedHidden} setHidden={setSeedHidden}/>
           <h1 className="onboard-title">Your recovery phrase</h1>
           <p className="onboard-sub">Write these {phraseLen} words down in order. You'll confirm them next.</p>
-          <div className="seed-grid">
+          <div className="seed-grid" style={{ position: 'relative' }}>
             {seed.map((w, i) => (
               <div key={i} className="seed-word">
                 <span className="seed-num">{i + 1}.</span>
-                <span style={{ userSelect: 'text' }}>{w}</span>
+                <span style={{ userSelect: 'text', filter: seedHidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
               </div>
             ))}
+            {seedHidden && (
+              <button
+                type="button"
+                onClick={() => setSeedHidden(false)}
+                style={{
+                  position: 'absolute', inset: 0,
+                  background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)',
+                  borderRadius: 12, border: 'none',
+                  color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}
+              >
+                <Eye size={14}/> Tap to reveal
+              </button>
+            )}
           </div>
-          <button className="btn-link" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={copySeed}>
+          <button className="btn-link" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={copySeed} disabled={seedHidden}>
             {copiedSeed ? <><Check size={14}/> Copied to clipboard</> : <><Copy size={14}/> Copy phrase</>}
           </button>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
@@ -497,6 +518,20 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       </div>
     </div>
   );
+}
+
+/**
+ * Auto-hides the seed phrase 30 seconds after the create-show step
+ * mounts. Lives as a separate component so it can own its own timer +
+ * cleanup without re-running every render of the giant parent.
+ */
+function SeedAutoHider({ hidden, setHidden }: { hidden: boolean; setHidden: (v: boolean) => void }) {
+  React.useEffect(() => {
+    if (hidden) return;          // user manually revealed — start the timer again
+    const t = setTimeout(() => setHidden(true), 30_000);
+    return () => clearTimeout(t);
+  }, [hidden, setHidden]);
+  return null;
 }
 
 export function useWalletGate() {

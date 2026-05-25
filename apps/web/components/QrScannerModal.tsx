@@ -22,9 +22,19 @@ interface Props {
   onResult: (decoded: string) => void;
 }
 
-/** Normalise common QR payload formats down to a bare address string. */
-function extractAddress(raw: string): string {
+/**
+ * Normalise common QR payload formats down to either a bare address or
+ * the full payload (when caller dispatches on prefix).
+ *
+ * Returns the *exact* `wc:` URI unmodified — the SendModal autocomplete
+ * won't see it (it's not an address) but the WalletConnect host watches
+ * for the `wc:` prefix in the onResult callback and pairs accordingly,
+ * so single-scanner UX flows route to the right handler.
+ */
+export function extractAddress(raw: string): string {
   const s = raw.trim();
+  // WalletConnect v2 pairing URI — pass through unchanged for the WC host.
+  if (/^wc:[a-z0-9-]+@\d+/i.test(s)) return s;
   // ethereum:0xABC@<chainId>?value=...
   const ethMatch = s.match(/^ethereum:(0x[a-fA-F0-9]{40})/);
   if (ethMatch) return ethMatch[1];
@@ -32,6 +42,13 @@ function extractAddress(raw: string): string {
   const cosmosMatch = s.match(/^(litho1|bc1|tb1)[0-9a-z]+/i);
   if (cosmosMatch) return cosmosMatch[0];
   return s;
+}
+
+/** True when the QR payload is a WalletConnect v2 pairing URI. Callers
+ *  can dispatch on this to route to the WalletConnect host's `pair()`
+ *  instead of the recipient field. */
+export function isWalletConnectUri(s: string): boolean {
+  return /^wc:[a-z0-9-]+@\d+/i.test(s.trim());
 }
 
 export function QrScannerModal({ open, onClose, onResult }: Props) {

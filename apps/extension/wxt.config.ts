@@ -29,6 +29,14 @@ export default defineConfig({
         resources: ['injected.js'],
       },
     ],
+    // Tight CSP for extension pages (popup, offscreen, options). MV3
+    // already bans `unsafe-eval` and remote script — these are explicit
+    // anyway so any future relaxation requires a deliberate edit + PR
+    // review. `wasm-unsafe-eval` is needed by tiny-secp256k1 (BIP32
+    // derivation) which loads its WASM via the ESM integration proposal.
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+    },
     icons: {
       '16':  'icons/icon16.png',
       '32':  'icons/icon32.png',

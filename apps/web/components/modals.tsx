@@ -58,6 +58,7 @@ import { classifyRecipient } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
 import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
 import { SimulationPanel, hasCriticalIssue } from './SimulationPanel';
+import { bridgePollBackoffMs } from '@thanos/sdk-core';
 import * as RadixSelect from '@radix-ui/react-select';
 import { QrCode, Check, ChevronDown } from 'lucide-react';
 
@@ -1678,35 +1679,44 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const displayedOut  = quote ? Number(quote.toAmount) : fallbackOut;
   const feeLine = quote ? `${quote.feeFrom} ${quote.from}` : 'Rate-only preview';
 
-  /* Poll /v1/status/:id while we're in an in-flight state. The bridge SLA
-     is "minutes, not seconds" so 4s polling is plenty. On terminal states
-     we stop the loop and surface the result. */
+  /* Poll the bridge / DEX status with exponential backoff. The bridge SLA
+     is "minutes, not seconds" — a fixed 4s loop wastes RPC budget once
+     things stall. Schedule is `bridgePollBackoffMs`: 4s → 8s → 16s → 30s
+     cap. On terminal states we stop the loop and surface the result. */
   useEffect(() => {
     if (!executionId) return;
     if (stage === 'completed' || stage === 'failed') return;
     let cancelled = false;
+    let attempt   = 0;
+    let timer:    ReturnType<typeof setTimeout> | null = null;
+
     const tick = async () => {
       try {
-        // Poll the service that executed the swap.
         const s = provider === 'ignite'
           ? await igniteGetStatus(executionId)
           : await multxGetStatus(executionId);
         if (cancelled) return;
         if (s.sourceHash) setSourceHash(s.sourceHash);
         if ('destHash' in s && s.destHash) setDestHash(s.destHash);
-        if (s.state === 'completed') setStage('completed');
-        else if (s.state === 'failed') { setStage('failed'); setExecError(s.error || 'Swap reported failure'); }
-        else if (s.state === 'settling')  setStage('settling');
-        else if (s.state === 'bridging')  setStage('bridging');
+        if (s.state === 'completed') { setStage('completed'); return; }
+        if (s.state === 'failed')    { setStage('failed'); setExecError(s.error || 'Swap reported failure'); return; }
+        if (s.state === 'settling')  setStage('settling');
+        else if (s.state === 'bridging') setStage('bridging');
       } catch {
-        /* Don't flip to failed on a single network blip — the bridge could
-           be temporarily slow. The user can close the modal if they want. */
+        /* Network blip — don't flip to failed, just keep polling. */
       }
+      if (cancelled) return;
+      attempt += 1;
+      timer = setTimeout(tick, bridgePollBackoffMs(attempt));
     };
+
+    // Snappy first check, then back off.
     tick();
-    const id = setInterval(tick, 4_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [executionId, stage]);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [executionId, stage, provider]);
 
   /* Kick off the bridge execution. The real signedTx envelope is something
      the bridge contract spec defines (not yet finalised), so today we send
