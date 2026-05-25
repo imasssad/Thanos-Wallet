@@ -53,3 +53,7 @@ apps/mobile/android/app/build/
 apps/mobile/ios/build/
 apps/mobile/.gradle/
 apps/desktop/release/
+
+# Local asset working directory — coin icons, animations, mockups.
+# Not part of the shipped source tree; lives in 1Password / Drive.
+Thanos_Wallet_Pack/
