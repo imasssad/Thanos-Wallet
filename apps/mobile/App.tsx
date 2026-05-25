@@ -22,6 +22,12 @@ import {
 import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
 import { useScreenProtect } from './lib/screen-protect';
 import { initSentry } from './lib/sentry';
+import {
+  loadAccountsFromStorage,
+  getActiveAccountIndex, setActiveAccountIndex,
+  getAccountCount,       setAccountCount,
+  MAX_ACCOUNTS,
+} from './lib/accounts';
 
 // Initialise Sentry as the very first work the bundle does — no-op
 // when EXPO_PUBLIC_SENTRY_DSN is not set (local dev + EAS preview).
@@ -1623,9 +1629,9 @@ function isValidMnemonic(phrase: string): boolean {
   catch { return false; }
 }
 
-function deriveEvmAddress(seed: string[]): string {
+function deriveEvmAddress(seed: string[], accountIdx = 0): string {
   try {
-    return HDNodeWallet.fromPhrase(seed.join(' '), undefined, "m/44'/60'/0'/0/0").address;
+    return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${accountIdx}`).address;
   } catch { return '0x0000000000000000000000000000000000000000'; }
 }
 
@@ -2229,6 +2235,29 @@ export default function App() {
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+  // Multi-account state — same pattern as web/desktop/extension, but the
+  // store is AsyncStorage so we hydrate once on app start.
+  const [activeIdx, setActiveIdx]            = useState(0);
+  const [accountCount, setAccountCountState] = useState(1);
+  useEffect(() => {
+    void loadAccountsFromStorage().then(() => {
+      setActiveIdx(getActiveAccountIndex());
+      setAccountCountState(getAccountCount());
+    });
+  }, []);
+  const switchAccount = (idx: number) => {
+    if (idx < 0 || idx >= accountCount) return;
+    setActiveAccountIndex(idx);
+    setActiveIdx(idx);
+  };
+  const addAccount = () => {
+    if (accountCount >= MAX_ACCOUNTS) return;
+    const next = accountCount;
+    setAccountCount(next + 1);
+    setAccountCountState(next + 1);
+    setActiveAccountIndex(next);
+    setActiveIdx(next);
+  };
 
   useEffect(() => {
     (async () => {
@@ -2268,9 +2297,9 @@ export default function App() {
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;
     isNotificationsEnabled().then(on => {
-      if (on) registerPush(deriveEvmAddress(walletSeed)).catch(() => {});
+      if (on) registerPush(deriveEvmAddress(walletSeed, activeIdx)).catch(() => {});
     });
-  }, [unlocked, walletSeed]);
+  }, [unlocked, walletSeed, activeIdx]);
 
   // Load the custom-RPC override (Settings) into the signer at boot.
   useEffect(() => {
@@ -2343,7 +2372,7 @@ export default function App() {
     );
   }
 
-  const walletAddr = walletSeed.length > 0 ? deriveEvmAddress(walletSeed) : '0x0000…0000';
+  const walletAddr = walletSeed.length > 0 ? deriveEvmAddress(walletSeed, activeIdx) : '0x0000…0000';
   const shortAddr = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
 
   return (
@@ -2365,17 +2394,38 @@ export default function App() {
 
             {/* Top header */}
             <View style={styles.topbar}>
-              <Pressable style={styles.acct} onLongPress={() => Alert.alert(
-                'Lock wallet?',
-                'You\'ll need your password to unlock.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Lock', style: 'destructive', onPress: handleLock },
-                ],
-              )}>
+              <Pressable
+                style={styles.acct}
+                /* Tap = account switcher (mnemonic wallets only). Long-press
+                   = lock shortcut, same as before. PK-only wallets keep
+                   the previous tap-to-lock behaviour. */
+                onPress={() => {
+                  if (walletSeed.length === 0) return;
+                  Alert.alert(
+                    'Account',
+                    `Active: Account ${activeIdx + 1}`,
+                    [
+                      ...Array.from({ length: accountCount }, (_, i) => ({
+                        text: `${i === activeIdx ? '✓ ' : ''}Account ${i + 1}`,
+                        onPress: () => switchAccount(i),
+                      })),
+                      ...(accountCount < MAX_ACCOUNTS ? [{ text: '+ Add account', onPress: addAccount }] : []),
+                      { text: 'Cancel', style: 'cancel' as const },
+                    ],
+                  );
+                }}
+                onLongPress={() => Alert.alert(
+                  'Lock wallet?',
+                  'You\'ll need your password to unlock.',
+                  [
+                    { text: 'Cancel', style: 'cancel' as const },
+                    { text: 'Lock',   style: 'destructive' as const, onPress: handleLock },
+                  ],
+                )}
+              >
                 <View style={styles.acctAvatar}><Text style={styles.acctAvatarText}>○</Text></View>
                 <View>
-                  <Text style={styles.acctName}>Account 1</Text>
+                  <Text style={styles.acctName}>{walletSeed.length > 0 ? `Account ${activeIdx + 1}` : 'Account 1'}</Text>
                   <Text style={styles.acctAddr}>{shortAddr}</Text>
                 </View>
               </Pressable>

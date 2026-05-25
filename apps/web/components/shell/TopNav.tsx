@@ -24,7 +24,21 @@ const NAV = [
   { href: '/app/history',    label: 'Activity' },
 ];
 
-export function TopNav({ onLock }: { onLock?: () => void }) {
+export function TopNav({
+  onLock,
+  activeIdx = 0,
+  accountCount = 1,
+  onSwitchAccount,
+  onAddAccount,
+}: {
+  onLock?:          () => void;
+  /** Current HD-derivation account (mnemonic wallets only). */
+  activeIdx?:       number;
+  accountCount?:    number;
+  /** When set, the menu shows an Account-N switcher + "+ Add account". */
+  onSwitchAccount?: (idx: number) => void;
+  onAddAccount?:    () => void;
+}) {
   const router    = useRouter();
   const pathname  = usePathname();
   const { theme, toggleTheme } = useTheme();
@@ -32,6 +46,8 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
   const isDark = theme === 'dark';
   const [accountMenu, setAccountMenu] = useState(false);
   const [mobileMenu, setMobileMenu]   = useState(false);
+  const showSwitcher = !!onSwitchAccount && accountCount >= 1;
+  const accountLabel = `Account ${activeIdx + 1}`;
   const [addrFmt,  setAddrFmt]  = useState<'litho' | 'evm'>('litho');
   const [copiedFmt, setCopiedFmt] = useState<'litho' | 'evm' | null>(null);
 
@@ -88,7 +104,7 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
               <User size={18}/>
             </div>
             <div className="chip-info">
-              <span className="chip-name">{ACCOUNT_NAME}</span>
+              <span className="chip-name">{showSwitcher ? accountLabel : ACCOUNT_NAME}</span>
               <span className="chip-addr">{activeShort}</span>
             </div>
             <ChevronDown size={13} color="var(--text-muted)"/>
@@ -101,7 +117,7 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
                 <div className="menu-header">
                   <div className="menu-avatar"><User size={24}/></div>
                   <div>
-                    <div className="menu-name">{ACCOUNT_NAME}</div>
+                    <div className="menu-name">{showSwitcher ? accountLabel : ACCOUNT_NAME}</div>
                     <div className="menu-addr" title={activeAddr}>{activeShort}</div>
                   </div>
                 </div>
@@ -143,6 +159,28 @@ export function TopNav({ onLock }: { onLock?: () => void }) {
                     {copiedFmt === 'evm' ? '✓' : <Copy size={14}/>}
                   </button>
                 </div>
+                {showSwitcher && (
+                  <>
+                    <div className="menu-divider"/>
+                    {Array.from({ length: accountCount }, (_, i) => (
+                      <button
+                        key={i}
+                        className="menu-item"
+                        onClick={() => { onSwitchAccount?.(i); setAccountMenu(false); }}
+                        style={i === activeIdx ? { fontWeight: 700 } : undefined}
+                      >
+                        <User size={16}/> Account {i + 1}
+                        {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                      </button>
+                    ))}
+                    {onAddAccount && accountCount < 10 && (
+                      <button className="menu-item" onClick={() => { onAddAccount(); setAccountMenu(false); }}>
+                        <span style={{ width: 16, textAlign: 'center', fontSize: 18, lineHeight: '16px' }}>+</span>
+                        Add account
+                      </button>
+                    )}
+                  </>
+                )}
                 <div className="menu-divider"/>
                 <button className="menu-item" onClick={() => { router.push('/app/permissions'); setAccountMenu(false); }}>
                   <KeyRound size={18}/> Permissions

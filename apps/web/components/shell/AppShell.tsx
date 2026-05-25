@@ -1,5 +1,6 @@
 'use client';
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { HDNodeWallet, Mnemonic } from 'ethers';
 import { useTheme } from '../providers/ThemeProvider';
 import { TopNav } from './TopNav';
 import { BottomNav } from './BottomNav';
@@ -8,6 +9,11 @@ import { dualFromEvm, type DualAddress } from '../../lib/address';
 import { WalletConnectHost } from '../WalletConnectHost';
 import { preloadTokenLogos } from '../../lib/token-logos';
 import { setContactEncryptionKey } from '../../lib/contact-crypto';
+import {
+  getActiveAccountIndex, setActiveAccountIndex,
+  getAccountCount, setAccountCount, MAX_ACCOUNTS,
+} from '../../lib/vault';
+import { setSignerAccountIndex } from '../../lib/signer-client';
 
 /* Wallet context — exposes the unlocked address (in both formats) AND the
    raw mnemonic words to any descendant. The mnemonic is needed only when a
@@ -32,6 +38,51 @@ export function useWallet(): WalletContextValue | null {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   const { unlocked, hasVault, onComplete, lock, evmAddress, walletSeed, walletPrivateKey } = useWalletGate();
+
+  // Multi-account state. activeIdx is the HD-path the wallet derives
+  // from; accountCount is how many "Account N" rows we expose in the
+  // TopNav switcher. Mnemonic-only — privateKey-imported wallets are
+  // single-account by definition.
+  const isMnemonicWallet = walletSeed.length > 0 && !walletPrivateKey;
+  const [activeIdx, setActiveIdx]       = useState(0);
+  const [accountCount, setAccountCountState] = useState(1);
+  useEffect(() => {
+    if (!unlocked) return;
+    setActiveIdx(getActiveAccountIndex());
+    setAccountCountState(getAccountCount());
+  }, [unlocked]);
+
+  // Re-derive the EVM address from the unlocked seed at activeIdx.
+  // For PK-only wallets the upstream evmAddress is authoritative.
+  const derivedEvm = useMemo(() => {
+    if (!isMnemonicWallet) return evmAddress;
+    try {
+      const m  = Mnemonic.fromPhrase(walletSeed.join(' '));
+      const hd = HDNodeWallet.fromMnemonic(m, `m/44'/60'/0'/0/${activeIdx}`);
+      return hd.address;
+    } catch { return evmAddress; }
+  }, [isMnemonicWallet, walletSeed, activeIdx, evmAddress]);
+
+  // Push the active index into the signer worker so the next signed
+  // tx broadcasts from the displayed account.
+  useEffect(() => {
+    if (!unlocked || !isMnemonicWallet) return;
+    void setSignerAccountIndex(activeIdx).catch(() => { /* worker not ready yet */ });
+  }, [activeIdx, unlocked, isMnemonicWallet]);
+
+  const switchAccount = (idx: number) => {
+    if (idx < 0 || idx >= accountCount) return;
+    setActiveAccountIndex(idx);
+    setActiveIdx(idx);
+  };
+  const addAccount = () => {
+    if (accountCount >= MAX_ACCOUNTS) return;
+    const next = accountCount;
+    setAccountCount(next + 1);
+    setAccountCountState(next + 1);
+    setActiveAccountIndex(next);
+    setActiveIdx(next);
+  };
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -61,13 +112,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <OnboardingFlow hasVault={hasVault} onComplete={onComplete}/>;
   }
 
-  const addresses = dualFromEvm(evmAddress);
+  const addresses = dualFromEvm(derivedEvm);
 
   return (
-    <WalletContext.Provider value={{ evmAddress, addresses, seed: walletSeed, privateKey: walletPrivateKey }}>
+    <WalletContext.Provider value={{ evmAddress: derivedEvm, addresses, seed: walletSeed, privateKey: walletPrivateKey }}>
       <WalletConnectHost/>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <TopNav onLock={lock}/>
+        <TopNav
+          onLock={lock}
+          activeIdx={activeIdx}
+          accountCount={isMnemonicWallet ? accountCount : 1}
+          onSwitchAccount={isMnemonicWallet ? switchAccount  : undefined}
+          onAddAccount={isMnemonicWallet ? addAccount : undefined}
+        />
         <main style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
           {children}
         </main>

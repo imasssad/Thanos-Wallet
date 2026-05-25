@@ -23,10 +23,15 @@ import { resolveToEvm } from './address';
 /* ─── Constants ────────────────────────────────────────────────────────── */
 
 import { getMakaluProvider, MAKALU_CHAIN_ID as _CHAIN_ID } from './rpc';
+import { getActiveAccountIndex } from './vault';
 
 export const MAKALU_CHAIN_ID = _CHAIN_ID;
 
-const HD_PATH = "m/44'/60'/0'/0/0";
+/** HD path for the active EVM account. Read at sign time so a switch in
+ *  the TopNav takes effect on the very next transaction. */
+function hdPath(idx: number = getActiveAccountIndex()): string {
+  return `m/44'/60'/0'/0/${idx}`;
+}
 
 /* Minimal ABI — transfer() for send, approve() for spend allowance management,
    balanceOf() for refresh. */
@@ -48,10 +53,10 @@ export function makeProvider() {
  * Throws if the phrase is invalid (shouldn't happen — the gate already
  * decrypted it from a vault we created).
  */
-export function walletFromSeed(seed: string[], provider?: Provider): HDNodeWallet {
+export function walletFromSeed(seed: string[], provider?: Provider, accountIdx?: number): HDNodeWallet {
   const phrase = seed.join(' ');
   const mnemonic = Mnemonic.fromPhrase(phrase);
-  const hd = HDNodeWallet.fromMnemonic(mnemonic, HD_PATH);
+  const hd = HDNodeWallet.fromMnemonic(mnemonic, hdPath(accountIdx));
   return provider ? (hd.connect(provider) as HDNodeWallet) : hd;
 }
 

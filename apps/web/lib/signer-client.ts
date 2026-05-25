@@ -73,9 +73,18 @@ function call<T>(op: string, payload?: unknown): Promise<T> {
 /* ─── Public API ─────────────────────────────────────────────────────── */
 
 /** Hand the unlocked WalletSource to the worker. After this returns the
- *  main thread can drop its own reference to the secret. */
-export function initSigner(source: WalletSource): Promise<{ address: string }> {
-  return call('init', { source });
+ *  main thread can drop its own reference to the secret. `accountIndex`
+ *  picks which HD-path account to derive (mnemonic sources only —
+ *  privateKey sources are single-account and ignore it). */
+export function initSigner(source: WalletSource, accountIndex = 0): Promise<{ address: string }> {
+  return call('init', { source, accountIndex });
+}
+
+/** Switch the active HD-derivation account. The worker re-derives its
+ *  cached signer + returns the new address so the UI can update. No-op
+ *  for privateKey sources. */
+export function setSignerAccountIndex(accountIndex: number): Promise<{ address: string }> {
+  return call('set-account-index', { accountIndex });
 }
 
 /** Wipe the secret from the worker. Required on lock / sign-out. */

@@ -34,8 +34,10 @@ type WalletSource =
 
 let source: WalletSource | null = null;
 let cachedAddress: string | null = null;
-
-const HD_PATH = "m/44'/60'/0'/0/0";
+/* Active HD-derivation index for mnemonic sources. The main thread
+   passes this on every initSigner / setActiveIndex message; we hold
+   it here so each getSigner() call derives from the right path. */
+let accountIdx = 0;
 const MAKALU_CHAIN_ID = 700777;
 // Makalu [primary, fallback] — rpc-3 is Kamet's now. FallbackProvider
 // below rotates primary → fallback on a stall.
@@ -77,7 +79,9 @@ function getSigner(withProvider: boolean): HDNodeWallet | Wallet {
     return provider ? (w.connect(provider) as Wallet) : w;
   }
   const m = Mnemonic.fromPhrase(source.mnemonic);
-  const hd = HDNodeWallet.fromMnemonic(m, HD_PATH);
+  // Derive at the active account index — switched via setActiveIndex
+  // messages from the main thread, defaults to 0.
+  const hd = HDNodeWallet.fromMnemonic(m, `m/44'/60'/0'/0/${accountIdx}`);
   return provider ? (hd.connect(provider) as HDNodeWallet) : hd;
 }
 
@@ -100,8 +104,10 @@ const LEP100_TRANSFER_ABI = [
 
 /* ─── RPC handlers ───────────────────────────────────────────────────── */
 
-interface InitPayload  { source: WalletSource }
+interface InitPayload  { source: WalletSource; accountIndex?: number }
 interface InitReply    { address: string }
+interface SetIdxPayload { accountIndex: number }
+interface SetIdxReply  { address: string }
 
 interface SendPayload  { symbol: string; recipient: string; amount: string }
 interface SendReply    { hash: string; symbol: string; to: string; value: string }
@@ -137,6 +143,21 @@ interface SendBtcReply  { hash: string }
 
 async function handleInit(p: InitPayload): Promise<InitReply> {
   source = p.source;
+  // accountIndex only meaningful for mnemonic sources — privateKey is
+  // a single account. Default to 0 when not passed.
+  accountIdx = typeof p.accountIndex === 'number' && p.accountIndex >= 0 ? p.accountIndex : 0;
+  const signer = getSigner(false);
+  cachedAddress = await signer.getAddress();
+  return { address: cachedAddress };
+}
+
+async function handleSetAccountIndex(p: SetIdxPayload): Promise<SetIdxReply> {
+  if (!source) throw new Error('worker_locked');
+  // Only mnemonic sources have multiple accounts; the privateKey path
+  // ignores the switch silently (the chip just doesn't move).
+  if (source.kind === 'mnemonic') {
+    accountIdx = Math.max(0, Math.floor(p.accountIndex));
+  }
   const signer = getSigner(false);
   cachedAddress = await signer.getAddress();
   return { address: cachedAddress };
@@ -241,7 +262,7 @@ async function handleSendBitcoin(p: SendBtcPayload): Promise<SendBtcReply> {
 
 interface RpcRequest {
   id:      number;
-  op:      'init' | 'send' | 'send-btc' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock';
+  op:      'init' | 'send' | 'send-btc' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock' | 'set-account-index';
   payload?: unknown;
 }
 
@@ -258,6 +279,7 @@ self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
       case 'sign-transaction': result = await handleSignTransaction(payload as SignTxPayload); break;
       case 'address':          result = await handleAddress(); break;
       case 'lock':             result = handleLock(); break;
+      case 'set-account-index': result = await handleSetAccountIndex(payload as SetIdxPayload); break;
       default:                 throw new Error(`unknown_op:${op as string}`);
     }
     (self as unknown as Worker).postMessage({ id, ok: true, result });

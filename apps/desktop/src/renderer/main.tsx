@@ -8,6 +8,9 @@ import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
   isSeedBackedUp, setSeedBackedUp,
+  getActiveAccountIndex, setActiveAccountIndex,
+  getAccountCount,       setAccountCount,
+  MAX_ACCOUNTS,
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
@@ -1442,14 +1445,14 @@ interface DerivedAddresses {
   short: string;
 }
 
-function deriveAddressesFromSeed(seed: string[]): DerivedAddresses {
+function deriveAddressesFromSeed(seed: string[], accountIdx = 0): DerivedAddresses {
   const phrase = seed.join(' ');
   let evm = '0x0000000000000000000000000000000000000000';
   let btc = 'bc1qplaceholder';
   let sol = '11111111111111111111111111111111';
   try {
-    // Real EVM address from BIP44 m/44'/60'/0'/0/0
-    const evmNode = HDNodeWallet.fromPhrase(phrase, undefined, "m/44'/60'/0'/0/0");
+    // Real EVM address from BIP44 m/44'/60'/0'/0/{idx}
+    const evmNode = HDNodeWallet.fromPhrase(phrase, undefined, `m/44'/60'/0'/0/${accountIdx}`);
     evm = evmNode.address;
 
     // BTC: BIP84 native segwit path m/84'/0'/0'/0/0 — use compressed public key as display
@@ -2021,10 +2024,32 @@ function App() {
   const [hasVault, setHasVault] = useState(false);
   const [liveEth, setLiveEth] = useState<string | null>(null);
   const [accountMenu, setAccountMenu] = useState(false);
+  // Multi-account state — mirrors web. Storage helpers live in vault.ts.
+  const [activeIdx, setActiveIdx]            = useState(0);
+  const [accountCount, setAccountCountState] = useState(1);
+  useEffect(() => {
+    if (!unlocked) return;
+    setActiveIdx(getActiveAccountIndex());
+    setAccountCountState(getAccountCount());
+  }, [unlocked]);
 
   const addrs = walletSeed.length > 0
-    ? deriveAddressesFromSeed(walletSeed)
+    ? deriveAddressesFromSeed(walletSeed, activeIdx)
     : { evm: ACCOUNT.address, btc: 'bc1q…', sol: '11111…', short: ACCOUNT.address };
+
+  const switchAccount = (idx: number) => {
+    if (idx < 0 || idx >= accountCount) return;
+    setActiveAccountIndex(idx);
+    setActiveIdx(idx);
+  };
+  const addAccount = () => {
+    if (accountCount >= MAX_ACCOUNTS) return;
+    const next = accountCount;
+    setAccountCount(next + 1);
+    setAccountCountState(next + 1);
+    setActiveAccountIndex(next);
+    setActiveIdx(next);
+  };
   const walletAddr = addrs.evm;
   const shortAddr  = addrs.short;
   const portfolio  = usePortfolio(walletAddr);
@@ -2143,7 +2168,7 @@ function App() {
                 </svg>
               </div>
               <div className="chip-info">
-                <span className="chip-name">{ACCOUNT.name}</span>
+                <span className="chip-name">{walletSeed.length > 0 ? `Account ${activeIdx + 1}` : ACCOUNT.name}</span>
                 <span className="chip-addr">{shortAddr}</span>
               </div>
               <ChevDown size={11} color="var(--text-muted)"/>
@@ -2161,7 +2186,7 @@ function App() {
                       </svg>
                     </div>
                     <div>
-                      <div className="menu-name">{ACCOUNT.name}</div>
+                      <div className="menu-name">{walletSeed.length > 0 ? `Account ${activeIdx + 1}` : ACCOUNT.name}</div>
                       <div className="menu-addr">{shortAddr}</div>
                     </div>
                   </div>
@@ -2196,6 +2221,39 @@ function App() {
                       : <Moon size={16}/>}
                     {isDark ? 'Light mode' : 'Dark mode'}
                   </button>
+
+                  {/* Multi-account switcher — mnemonic wallets only.
+                      Reads from + writes to localStorage so a refresh
+                      preserves the selection. */}
+                  {walletSeed.length > 0 && (
+                    <>
+                      <div className="menu-divider"/>
+                      {Array.from({ length: accountCount }, (_, i) => (
+                        <button
+                          key={i}
+                          className="menu-item"
+                          onClick={() => { switchAccount(i); setAccountMenu(false); }}
+                          style={i === activeIdx ? { fontWeight: 700 } : undefined}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                            <circle cx="12" cy="8" r="4"/>
+                            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                          </svg>
+                          Account {i + 1}
+                          {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                        </button>
+                      ))}
+                      {accountCount < MAX_ACCOUNTS && (
+                        <button
+                          className="menu-item"
+                          onClick={() => { addAccount(); setAccountMenu(false); }}
+                        >
+                          <span style={{ width: 16, textAlign: 'center', fontSize: 18, lineHeight: '16px' }}>+</span>
+                          Add account
+                        </button>
+                      )}
+                    </>
+                  )}
 
                   <div className="menu-divider"/>
 

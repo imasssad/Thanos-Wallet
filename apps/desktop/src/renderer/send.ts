@@ -13,8 +13,13 @@ import { HDNodeWallet, Interface, Mnemonic, Contract, parseUnits, getAddress } f
 import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
 import { sendViaLedger, type LedgerConnection } from './ledger-sign';
 import { sendViaTrezor, type TrezorConnection } from './trezor-sign';
+import { getActiveAccountIndex } from './vault';
 
-const HD_PATH = "m/44'/60'/0'/0/0";
+/** HD path for the active EVM account. Read at sign time so a TopNav
+ *  switch takes effect on the very next send. */
+function activeHdPath(): string {
+  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
+}
 
 const API_BASE = String(
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
@@ -129,7 +134,7 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   // ─── Default: sign with the unlocked seed ─────────────────────────────
   if (!args.seed.length) throw new Error('Wallet is locked');
   const wallet = HDNodeWallet
-    .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), HD_PATH)
+    .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath())
     .connect(getMakaluProvider());
 
   try {

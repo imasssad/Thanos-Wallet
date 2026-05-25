@@ -561,7 +561,11 @@ export function useWalletGate() {
     // resolves, signing flows can call signer-client without ever seeing
     // the secret on the main thread again. Failure is non-fatal — callers
     // that need the worker will surface their own error if it's unavailable.
-    void initSigner(source).catch(() => { /* worker may be unsupported (SSR / old browser) */ });
+    // Pass the active account index so the worker derives from the same
+    // HD path the AppShell uses to show the user's address.
+    void import('../lib/vault')
+      .then(v => initSigner(source, v.getActiveAccountIndex()))
+      .catch(() => { /* worker may be unsupported (SSR / old browser) */ });
   };
 
   useEffect(() => {

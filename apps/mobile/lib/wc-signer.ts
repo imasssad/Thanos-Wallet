@@ -20,8 +20,13 @@ import {
   HDNodeWallet, Mnemonic, JsonRpcProvider, FallbackProvider, Contract,
   getBytes, toUtf8Bytes, isHexString, parseUnits, type Provider,
 } from 'ethers';
+import { getActiveAccountIndex } from './accounts';
 
-const HD_PATH = "m/44'/60'/0'/0/0";
+/** HD path for the active EVM account. Read at sign time so a switch in
+ *  the HomeScreen account chip takes effect on the very next signature. */
+function activeHdPath(): string {
+  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
+}
 const MAKALU_CHAIN_ID = 700777;
 // Makalu [primary, fallback] — failover via FallbackProvider.
 const MAKALU_RPCS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
@@ -67,7 +72,7 @@ export class WcSignerError extends Error {
 
 function walletFromSeed(seed: string[], provider?: Provider): HDNodeWallet {
   const mnemonic = Mnemonic.fromPhrase(seed.join(' '));
-  const hd = HDNodeWallet.fromMnemonic(mnemonic, HD_PATH);
+  const hd = HDNodeWallet.fromMnemonic(mnemonic, activeHdPath());
   return provider ? (hd.connect(provider) as HDNodeWallet) : hd;
 }
 

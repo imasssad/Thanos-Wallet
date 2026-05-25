@@ -20,8 +20,13 @@ import {
   HDNodeWallet, Mnemonic, getBytes, toUtf8Bytes, isHexString,
 } from 'ethers';
 import { getMakaluProvider } from '@thanos/sdk-core';
+import { getActiveAccountIndex } from './vault';
 
-const HD_PATH = "m/44'/60'/0'/0/0";
+/** HD path for the active EVM account. Read at sign time so a TopNav
+ *  switch takes effect on the very next WalletConnect signature. */
+function activeHdPath(): string {
+  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
+}
 const MAKALU_CHAIN_ID = 700777;
 
 export class WcSignerError extends Error {
@@ -33,7 +38,7 @@ export class WcSignerError extends Error {
 
 function walletFromSeed(seed: string[]): HDNodeWallet {
   const mnemonic = Mnemonic.fromPhrase(seed.join(' '));
-  return HDNodeWallet.fromMnemonic(mnemonic, HD_PATH);
+  return HDNodeWallet.fromMnemonic(mnemonic, activeHdPath());
 }
 
 /** Human-readable summary shown in the approval sheet. */

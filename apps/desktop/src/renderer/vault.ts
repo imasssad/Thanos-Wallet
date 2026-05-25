@@ -186,6 +186,32 @@ export function setSeedBackedUp(backedUp: boolean): void {
   else          localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
 }
 
+/* ─── Multi-account derivation index ─────────────────────────────── */
+const STORAGE_KEY_ACTIVE_IDX = 'thanos.active_account_idx';
+const STORAGE_KEY_ACCT_COUNT = 'thanos.account_count';
+export const MAX_ACCOUNTS = 10;
+
+export function getActiveAccountIndex(): number {
+  if (typeof window === 'undefined') return 0;
+  const n = Number.parseInt(localStorage.getItem(STORAGE_KEY_ACTIVE_IDX) ?? '0', 10);
+  return Number.isFinite(n) && n >= 0 && n < MAX_ACCOUNTS ? n : 0;
+}
+export function setActiveAccountIndex(idx: number): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_ACCOUNTS) return;
+  localStorage.setItem(STORAGE_KEY_ACTIVE_IDX, String(idx));
+}
+export function getAccountCount(): number {
+  if (typeof window === 'undefined') return 1;
+  const n = Number.parseInt(localStorage.getItem(STORAGE_KEY_ACCT_COUNT) ?? '1', 10);
+  return Number.isFinite(n) && n >= 1 && n <= MAX_ACCOUNTS ? n : 1;
+}
+export function setAccountCount(n: number): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isInteger(n) || n < 1 || n > MAX_ACCOUNTS) return;
+  localStorage.setItem(STORAGE_KEY_ACCT_COUNT, String(n));
+}
+
 export function clearVault(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEYS.vault);
