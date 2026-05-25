@@ -13,8 +13,14 @@ import {
   HDNodeWallet, Mnemonic, getBytes, toUtf8Bytes, isHexString,
 } from 'ethers';
 import { getMakaluProvider } from '@thanos/sdk-core';
+import { getActiveAccountIndex } from '../../lib/vault';
 
-const HD_PATH = "m/44'/60'/0'/0/0";
+/** HD-path template — the active account index from storage fills the
+ *  last segment. Read at sign time (not import time) so an account
+ *  switch in the popup takes effect on the very next signature. */
+function hdPath(): string {
+  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
+}
 const MAKALU_CHAIN_ID = 700777;
 
 export class WcSignerError extends Error {
@@ -25,7 +31,7 @@ export class WcSignerError extends Error {
 }
 
 function walletFromSeed(seed: string[]): HDNodeWallet {
-  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), HD_PATH);
+  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath());
 }
 
 export function summariseRequest(method: string, params: unknown): string {

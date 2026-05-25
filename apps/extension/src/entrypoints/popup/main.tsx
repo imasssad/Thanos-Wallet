@@ -13,6 +13,9 @@ import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
   isSeedBackedUp, setSeedBackedUp,
+  getActiveAccountIndex, setActiveAccountIndex,
+  getAccountCount,       setAccountCount,
+  MAX_ACCOUNTS,
 } from '../../lib/vault';
 import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
@@ -42,8 +45,8 @@ function isValidMnemonic(p: string) {
   try { Mnemonic.fromPhrase(p.trim().toLowerCase()); return true; }
   catch { return false; }
 }
-function deriveEvm(seed: string[]): string {
-  try { return HDNodeWallet.fromPhrase(seed.join(' '), undefined, "m/44'/60'/0'/0/0").address; }
+function deriveEvm(seed: string[], idx = 0): string {
+  try { return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${idx}`).address; }
   catch { return '0x0000000000000000000000000000000000000000'; }
 }
 
@@ -404,9 +407,21 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
   );
 }
 
-function HomeScreen({ onAction, onLock, onOpenSettings }: { onAction: (m: 'send'|'receive'|'swap') => void; onLock: () => void; onOpenSettings: () => void }) {
+function HomeScreen({
+  onAction, onLock, onOpenSettings,
+  activeIdx, accountCount, onSwitch, onAddAccount,
+}: {
+  onAction:      (m: 'send'|'receive'|'swap') => void;
+  onLock:        () => void;
+  onOpenSettings: () => void;
+  activeIdx:     number;
+  accountCount:  number;
+  onSwitch:      (idx: number) => void;
+  onAddAccount:  () => void;
+}) {
   const { coins, totalUsd, loading, offline } = usePortfolioCtx();
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
+  const [acctMenu, setAcctMenu] = useState(false);
   useEffect(() => { setBackedUp(isSeedBackedUp()); }, []);
   const holdings: Holding[] = useMemo(
     () => coins.filter(c => c.balance > 0 && c.usdValue > 0).map(c => ({ sym: c.sym, qty: c.balance, usd: c.usdValue })),
@@ -415,12 +430,83 @@ function HomeScreen({ onAction, onLock, onOpenSettings }: { onAction: (m: 'send'
   return (
     <div className="screen">
       <div className="screen-header">
-        <div className="acct-chip" onClick={onLock} title="Long-press to lock">
-          <div className="acct-avatar"><User size={13}/></div>
-          <div>
-            <div className="acct-name">Account 1</div>
-            <div className="acct-addr">{offline ? 'Makalu · offline' : 'Makalu'}</div>
+        {/* Account chip + switcher menu. Tap = open switcher; the lock
+            action moves to the menu so a misclick doesn't lock the
+            wallet. */}
+        <div style={{ position: 'relative' }}>
+          <div className="acct-chip" onClick={() => setAcctMenu(v => !v)}>
+            <div className="acct-avatar"><User size={13}/></div>
+            <div>
+              <div className="acct-name">Account {activeIdx + 1}</div>
+              <div className="acct-addr">{offline ? 'Makalu · offline' : 'Makalu'}</div>
+            </div>
           </div>
+          {acctMenu && (
+            <>
+              <div
+                onClick={() => setAcctMenu(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+              />
+              <div
+                style={{
+                  position: 'absolute', top: '100%', left: 0, marginTop: 6,
+                  zIndex: 11, minWidth: 180,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 10, padding: 4,
+                  boxShadow: '0 10px 28px rgba(0,0,0,0.24)',
+                }}
+              >
+                {Array.from({ length: accountCount }, (_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { onSwitch(i); setAcctMenu(false); }}
+                    style={{
+                      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', border: 'none', borderRadius: 6,
+                      background: i === activeIdx ? 'var(--bg-hover)' : 'transparent',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer', textAlign: 'left',
+                      fontSize: 12, fontWeight: i === activeIdx ? 700 : 500,
+                    }}
+                  >
+                    <User size={12}/> Account {i + 1}
+                    {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                  </button>
+                ))}
+                {accountCount < MAX_ACCOUNTS && (
+                  <button
+                    onClick={() => { onAddAccount(); setAcctMenu(false); }}
+                    style={{
+                      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', border: 'none', borderRadius: 6,
+                      background: 'transparent',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer', textAlign: 'left',
+                      fontSize: 12,
+                      borderTop: accountCount > 0 ? '1px solid var(--border-default)' : 'none',
+                      marginTop: 4, paddingTop: 10,
+                    }}
+                  >
+                    + Add account
+                  </button>
+                )}
+                <button
+                  onClick={() => { onLock(); setAcctMenu(false); }}
+                  style={{
+                    display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', border: 'none', borderRadius: 6,
+                    background: 'transparent', color: 'var(--red)',
+                    cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                    borderTop: '1px solid var(--border-default)',
+                    marginTop: 4, paddingTop: 10,
+                  }}
+                >
+                  Lock wallet
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <button className="icon-btn"><Bell size={15}/></button>
       </div>
@@ -1040,9 +1126,38 @@ function App() {
   // arrives. Other methods (personal_sign, eth_signTypedData_v4) don't
   // touch on-chain state so we skip the simulator for them.
   const [simReport, setSimReport]   = useState<SimulationReport | null>(null);
+  // Multi-account state. activeIdx is the HD-path index the popup signs
+  // from (m/44'/60'/0'/0/{idx}); accountCount is how many accounts the
+  // user has provisioned. Both read from storage on mount and persist
+  // back on change. Default 0 / 1 for a fresh vault.
+  const [activeIdx,    setActiveIdx]    = useState(0);
+  const [accountCount, setAccountCountState] = useState(1);
+  useEffect(() => {
+    setActiveIdx(getActiveAccountIndex());
+    setAccountCountState(getAccountCount());
+  }, [unlocked]);
 
-  const evmAddr   = seed.length ? deriveEvm(seed) : '';
+  const evmAddr   = seed.length ? deriveEvm(seed, activeIdx) : '';
   const portfolio = usePortfolio(evmAddr);
+
+  /** Switch to a different derived account. Updates storage so the
+   *  next popup open + the signer paths pick up the same index. */
+  const switchAccount = (idx: number) => {
+    if (idx < 0 || idx >= accountCount) return;
+    setActiveAccountIndex(idx);
+    setActiveIdx(idx);
+  };
+
+  /** Add a new derived account at the next index. Bumps accountCount
+   *  + activates the new one immediately. */
+  const addAccount = () => {
+    if (accountCount >= MAX_ACCOUNTS) return;
+    const next = accountCount;
+    setAccountCount(next + 1);
+    setAccountCountState(next + 1);
+    setActiveAccountIndex(next);
+    setActiveIdx(next);
+  };
 
   // Watch chrome.storage.session for incoming dApp approval / signing
   // requests so the popup can render the right sheet without polling.
@@ -1152,11 +1267,23 @@ function App() {
     setHasVault(true);
     setUnlocked(true);
     // Announce the unlocked address so the background can answer eth_accounts.
+    // Reads the stored active index so re-unlock returns the same account
+    // the user last had selected, not always Account 1.
     try {
-      const addr = deriveEvm(s);
+      const addr = deriveEvm(s, getActiveAccountIndex());
       browser?.runtime?.sendMessage({ type: 'thanos-active-address', address: addr });
     } catch {}
   };
+
+  /* Whenever the active account changes (switch or add), push the new
+     address to the background so dApps see the change via eth_accounts
+     and the existing connections re-emit the accountsChanged event. */
+  useEffect(() => {
+    if (!seed.length || !evmAddr) return;
+    try {
+      browser?.runtime?.sendMessage({ type: 'thanos-active-address', address: evmAddr });
+    } catch {}
+  }, [evmAddr, seed.length]);
 
   const approveRpc = async () => {
     if (!pendingRpc) return;
@@ -1331,7 +1458,11 @@ function App() {
 
       <div className="app">
         <div className="app-body">
-          {tab === 'home'     && <HomeScreen onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}/>}
+          {tab === 'home'     && <HomeScreen
+            onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}
+            activeIdx={activeIdx} accountCount={accountCount}
+            onSwitch={switchAccount} onAddAccount={addAccount}
+          />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
           {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')}/>}

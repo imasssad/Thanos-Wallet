@@ -8,8 +8,13 @@
 import { createContext, useContext } from 'react';
 import { HDNodeWallet, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
 import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
+import { getActiveAccountIndex } from '../../lib/vault';
 
-const HD_PATH = "m/44'/60'/0'/0/0";
+/** HD path for the active account. Computed at sign time so an account
+ *  switch in the popup takes effect on the very next send. */
+function activeHdPath(): string {
+  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
+}
 
 const API_BASE = String(
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
@@ -78,7 +83,7 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (value <= 0n) throw new Error('Amount must be greater than zero');
 
   const wallet = HDNodeWallet
-    .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), HD_PATH)
+    .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath())
     .connect(getMakaluProvider());
 
   try {
