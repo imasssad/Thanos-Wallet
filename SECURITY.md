@@ -116,6 +116,35 @@ Any other USB device asking for HID access is silently denied. This prevents
 a malicious page from prompting the user to share a different USB device
 (e.g. a keyboard) and harvesting keystrokes.
 
+## Accepted-risk dependencies
+
+`pnpm audit --audit-level=high --prod` is run on every PR. Most
+high-severity transitive advisories are patched via the `pnpm.overrides`
+block in the root `package.json` (axios, protobufjs, tar,
+`@babel/plugin-transform-modules-systemjs`, etc.). The following one is
+**unfixable upstream** and the wallet team has accepted the residual risk
+after review:
+
+### `bigint-buffer ≤1.1.5` — buffer overflow in `toBigIntLE()` ([GHSA-3gc7-fjrx-p6mg](https://github.com/advisories/GHSA-3gc7-fjrx-p6mg))
+
+- **No patch published.** Latest version on npm is 1.1.5; the maintainer
+  has not released a fix. The override `bigint-buffer: ">=1.1.5"` is
+  already at the latest available.
+- **Where it's used:** transitively via `@solana/spl-token →
+  @solana/buffer-layout-utils → bigint-buffer`. The Solana SPL-token
+  client decodes account-data buffers returned by the Solana RPC.
+- **Exploit surface:** an attacker would need to control the RPC
+  response the wallet receives. Our RPC endpoints are pinned to
+  `api.mainnet-beta.solana.com` (production) over HTTPS; a successful
+  exploit requires a TLS-level MITM against Solana's hosted RPC.
+- **Mitigation:** none beyond the existing HTTPS + endpoint pinning.
+  Watch the [advisory page](https://github.com/advisories/GHSA-3gc7-fjrx-p6mg)
+  for a future patch; when one ships, bump the override + drop this entry.
+
+The CI `dependency audit (high+)` job is configured with
+`continue-on-error: true` so this single unfixable advisory does not
+gate PRs. When upstream patches it, flip the job back to a hard fail.
+
 ## Secrets in CI + the deployed environment
 
 - `.env` is in `.gitignore`. Only `.env.example` is committed.

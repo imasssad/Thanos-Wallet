@@ -15,10 +15,12 @@
   },
   "pnpm": {
     "overrides": {
-      "axios": ">=1.12.0",
+      "axios": ">=1.15.2",
       "@xmldom/xmldom": ">=0.9.8",
       "bigint-buffer": ">=1.1.5",
-      "protobufjs": ">=7.5.5"
+      "protobufjs": ">=7.5.6",
+      "tar": ">=7.5.11",
+      "@babel/plugin-transform-modules-systemjs": ">=7.29.4"
     }
   }
 }
