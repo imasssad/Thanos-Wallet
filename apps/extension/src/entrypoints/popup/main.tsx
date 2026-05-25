@@ -29,6 +29,12 @@ import {
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
+import {
+  loadContacts, addContact, deleteContact,
+  syncContactsFromServer, onContactsChanged,
+  type Contact as AbContact,
+} from '../../lib/address-book';
+import { setContactEncryptionKey } from '../../lib/contact-crypto';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -749,7 +755,15 @@ function DiscoverScreen() {
   );
 }
 
-function SettingsScreen({ isDark, onToggleTheme, onLock, onOpenWalletConnect }: { isDark: boolean; onToggleTheme: () => void; onLock: () => void; onOpenWalletConnect: () => void }) {
+function SettingsScreen({
+  isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook,
+}: {
+  isDark: boolean;
+  onToggleTheme: () => void;
+  onLock: () => void;
+  onOpenWalletConnect: () => void;
+  onOpenAddressBook:   () => void;
+}) {
   // Premium-pattern settings: icon-led section headers + a gradient title hero.
   // Adapted for the 360px popup — smaller paddings + tighter spacing.
   const SectionHead = ({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub: string }) => (
@@ -804,6 +818,18 @@ function SettingsScreen({ isDark, onToggleTheme, onLock, onOpenWalletConnect }: 
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </div>
+      </div>
+
+      <SectionHead Icon={User} title="Address book" sub="Saved contacts, cloud-synced when signed in"/>
+      <div className="card list">
+        <button className="set-row" onClick={onOpenAddressBook} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+          <div className="set-icon"><User size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Contacts</div>
+            <div className="set-sub">Add, remove, and sync recipients across devices</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
       </div>
 
       <SectionHead Icon={Globe} title="Connections" sub="WalletConnect-paired dApps"/>
@@ -1021,6 +1047,104 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
   );
 }
 
+/* ─── Address book modal ───────────────────────────────────────────── */
+function AddressBookModal({ onClose }: { onClose: () => void }) {
+  const [contacts, setContacts] = useState<AbContact[]>([]);
+  const [name,     setName]     = useState('');
+  const [address,  setAddress]  = useState('');
+  const [err,      setErr]      = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
+
+  useEffect(() => {
+    setContacts(loadContacts());
+    syncContactsFromServer()
+      .then(() => setContacts(loadContacts()))
+      .catch(() => { /* offline / not authed */ });
+    const off = onContactsChanged(() => setContacts(loadContacts()));
+    return off;
+  }, []);
+
+  const onAdd = async () => {
+    setErr(null);
+    setBusy(true);
+    try {
+      await addContact({ name, address });
+      setName(''); setAddress('');
+      setContacts(loadContacts());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add contact');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const onDelete = async (id: string) => {
+    try { if (await deleteContact(id)) setContacts(loadContacts()); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not delete'); }
+  };
+
+  return (
+    <Modal title="Address book" onClose={onClose}>
+      <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <input
+          className="field"
+          placeholder="Name (e.g. Sora)"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+        <input
+          className="field"
+          placeholder="0x… or litho1…"
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          spellCheck={false}
+          autoCapitalize="off"
+          style={{ fontFamily: address ? 'Geist Mono, monospace' : undefined, fontSize: address ? 11 : undefined }}
+        />
+        {err && <div style={{ fontSize: 11, color: 'var(--red)' }}>{err}</div>}
+        <button
+          className="btn-primary"
+          onClick={onAdd}
+          disabled={busy || !name.trim() || !address.trim()}
+        >
+          {busy ? 'Saving…' : 'Save contact'}
+        </button>
+
+        {contacts.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+            {contacts.map(c => (
+              <div key={c.id} className="set-row" style={{ alignItems: 'center', padding: '8px 10px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="set-label" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {c.name}{c.pendingSync && <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 6 }}>· not synced</span>}
+                  </div>
+                  <div className="set-sub" style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {c.evm.slice(0,6)}…{c.evm.slice(-4)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onDelete(c.id)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--red)',
+                    fontSize: 11, cursor: 'pointer', padding: '4px 6px',
+                  }}
+                  title="Delete contact"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {contacts.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
+            No saved contacts yet. Add one above to send faster next time.
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO'); const [to, setTo] = useState('ETH'); const [amt, setAmt] = useState('100');
   const rates: Record<string, Record<string, number>> = {
@@ -1059,7 +1183,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
 /* ──────────────────────── App shell ──────────────────────── */
 
 type Tab = 'home' | 'discover' | 'activity' | 'settings';
-type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | null;
+type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | null;
 
 /* ─── EIP-1193 connection approval screen ──────────────────────────────── */
 function ApprovalScreen({
@@ -1315,6 +1439,14 @@ function App() {
     } catch {}
   }, [evmAddr, seed.length]);
 
+  /* Derive + cache the contact-encryption key from the unlocked seed.
+     Cleared on lock. AddressBookModal uses this to encrypt name + notes
+     before POSTing to /contacts. */
+  useEffect(() => {
+    void setContactEncryptionKey(unlocked && seed.length ? seed : null);
+    return () => { void setContactEncryptionKey(null); };
+  }, [unlocked, seed]);
+
   const approveRpc = async () => {
     if (!pendingRpc) return;
     setRpcBusy(true); setRpcErr(null);
@@ -1485,6 +1617,7 @@ function App() {
       {modal === 'receive'       && <ReceiveModal       onClose={() => setModal(null)} address={evmAddr}/>}
       {modal === 'swap'          && <SwapModal          onClose={() => setModal(null)}/>}
       {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
+      {modal === 'address-book' && <AddressBookModal    onClose={() => setModal(null)}/>}
 
       <div className="app">
         <div className="app-body">
@@ -1495,7 +1628,7 @@ function App() {
           />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
-          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')}/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')}/>}
         </div>
         <div className="tabbar">
           {([

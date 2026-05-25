@@ -28,6 +28,12 @@ import {
   getAccountCount,       setAccountCount,
   MAX_ACCOUNTS,
 } from './lib/accounts';
+import {
+  loadContactsFromStorage, loadContacts, addContact, deleteContact,
+  syncContactsFromServer, onContactsChanged,
+  type Contact as AbContact,
+} from './lib/address-book';
+import { setContactEncryptionKey } from './lib/contact-crypto';
 
 // Initialise Sentry as the very first work the bundle does — no-op
 // when EXPO_PUBLIC_SENTRY_DSN is not set (local dev + EAS preview).
@@ -48,6 +54,7 @@ import {
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
+  Users, Trash2,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -1230,6 +1237,7 @@ function SettingsScreen() {
   const [changePwdOpen, setChangePwdOpen] = useState(false);
   const [autoLockOpen, setAutoLockOpen] = useState(false);
   const [rpcOpen, setRpcOpen]           = useState(false);
+  const [addrBookOpen, setAddrBookOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
   useEffect(() => { AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0)); }, []);
 
@@ -1418,6 +1426,10 @@ function SettingsScreen() {
       </View>
 
       <Section Icon={Shield} title="Security"   sub="Protect access to your wallet" items={SECURITY_OPTS}/>
+      <Section Icon={Users}  title="Address book" sub="Saved contacts, cloud-synced when signed in" items={[
+        { label: 'Manage contacts', desc: 'Add, view and remove saved addresses', Icon: Users,
+          onPress: () => setAddrBookOpen(true) },
+      ]}/>
       <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
 
       <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
@@ -1454,7 +1466,101 @@ function SettingsScreen() {
         onPick={(m) => { setAutoLockMin(m); AsyncStorage.setItem(PREF_AUTOLOCK, String(m)); setAutoLockOpen(false); }}
       />
       <CustomRpcModal visible={rpcOpen} onClose={() => setRpcOpen(false)}/>
+      <AddressBookModal visible={addrBookOpen} onClose={() => setAddrBookOpen(false)}/>
     </ScrollView>
+  );
+}
+
+/* ─── Address book modal ───────────────────────────────────────────────── */
+function AddressBookModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  const [contacts, setContacts] = useState<AbContact[]>([]);
+  const [name,     setName]     = useState('');
+  const [address,  setAddress]  = useState('');
+  const [err,      setErr]      = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    setContacts(loadContacts());
+    syncContactsFromServer()
+      .then(() => setContacts(loadContacts()))
+      .catch(() => { /* offline / not authed */ });
+    return onContactsChanged(() => setContacts(loadContacts()));
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const onAdd = async () => {
+    setErr(null); setBusy(true);
+    try {
+      await addContact({ name, address });
+      setName(''); setAddress('');
+      setContacts(loadContacts());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add contact');
+    } finally { setBusy(false); }
+  };
+  const onDelete = async (id: string) => {
+    try { if (await deleteContact(id)) setContacts(loadContacts()); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not delete'); }
+  };
+
+  return (
+    <SheetShell title="Address book" onClose={onClose}>
+      <View style={{ gap: 10 }}>
+        <TextInput
+          style={[styles.input, { color: C.textPrimary }]}
+          placeholder="Name (e.g. Sora)"
+          placeholderTextColor={C.textMuted}
+          value={name}
+          onChangeText={setName}
+        />
+        <TextInput
+          style={[styles.input, { color: C.textPrimary, fontFamily: address ? 'Menlo' : undefined, fontSize: address ? 12 : 14 }]}
+          placeholder="0x… or litho1…"
+          placeholderTextColor={C.textMuted}
+          value={address}
+          onChangeText={setAddress}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {err && <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text>}
+        <Pressable
+          style={[styles.btnPrimary, (busy || !name.trim() || !address.trim()) && { opacity: 0.5 }]}
+          onPress={onAdd}
+          disabled={busy || !name.trim() || !address.trim()}
+        >
+          <Text style={styles.btnPrimaryText}>{busy ? 'Saving…' : 'Save contact'}</Text>
+        </Pressable>
+
+        {contacts.length > 0 && (
+          <ScrollView style={{ maxHeight: 320, marginTop: 6 }}>
+            {contacts.map(c => (
+              <View key={c.id} style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10,
+                backgroundColor: C.bgElevated, marginBottom: 6,
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 14 }}>
+                    {c.name}
+                    {c.pendingSync && <Text style={{ color: C.textMuted, fontSize: 11 }}>  · not synced</Text>}
+                  </Text>
+                  <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontSize: 11, fontFamily: 'Menlo' }}>
+                    {c.evm}
+                  </Text>
+                </View>
+                <Pressable onPress={() => onDelete(c.id)} style={{ padding: 6 }}>
+                  <Trash2 size={16} color={C.red} strokeWidth={2}/>
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    </SheetShell>
   );
 }
 
@@ -2244,7 +2350,15 @@ export default function App() {
       setActiveIdx(getActiveAccountIndex());
       setAccountCountState(getAccountCount());
     });
+    void loadContactsFromStorage();
   }, []);
+
+  // Derive + cache the contact-encryption key from the unlocked seed.
+  // Cleared on lock so the address book falls back to ciphertext display.
+  useEffect(() => {
+    void setContactEncryptionKey(unlocked && walletSeed.length ? walletSeed : null);
+    return () => { void setContactEncryptionKey(null); };
+  }, [unlocked, walletSeed]);
   const switchAccount = (idx: number) => {
     if (idx < 0 || idx >= accountCount) return;
     setActiveAccountIndex(idx);

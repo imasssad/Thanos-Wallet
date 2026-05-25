@@ -25,6 +25,12 @@ import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
 import { connectLedger, type LedgerConnection } from './ledger-sign';
 import { connectTrezor, type TrezorConnection } from './trezor-sign';
+import {
+  loadContacts, addContact, deleteContact,
+  syncContactsFromServer, onContactsChanged,
+  type Contact as AbContact,
+} from './address-book';
+import { setContactEncryptionKey } from './contact-crypto';
 
 type SignerChoice = 'seed' | 'ledger' | 'trezor';
 
@@ -81,6 +87,8 @@ const Info      = Ic(<><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2=
 const KeyIcon   = Ic(<><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></>);
 const Lock2     = Ic(<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>);
 const ChevRight2 = Ic(<polyline points="9 18 15 12 9 6"/>);
+const User      = Ic(<><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></>);
+const Trash     = Ic(<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></>);
 
 /* ──────────────────────── Account ──────────────────────── */
 const ACCOUNT = { name: 'Thanos Wallet', address: '0x0000000000000000000000000000000000000000' };
@@ -1353,6 +1361,8 @@ function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => 
           </Row>
         </Section>
 
+        <AddressBookSection Section={Section}/>
+
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
             <select className="settings-select" value={autoLock} onChange={e => setAutoLock(e.target.value)}>
@@ -1406,6 +1416,107 @@ function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => 
         </Section>
       </div>
     </div>
+  );
+}
+
+/* ──────────────────────── Address book section ──────────────────────── */
+function AddressBookSection({
+  Section,
+}: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+}) {
+  const [contacts, setContacts] = useState<AbContact[]>([]);
+  const [name,     setName]     = useState('');
+  const [address,  setAddress]  = useState('');
+  const [err,      setErr]      = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
+
+  useEffect(() => {
+    setContacts(loadContacts());
+    syncContactsFromServer()
+      .then(() => setContacts(loadContacts()))
+      .catch(() => { /* offline / not authed */ });
+    return onContactsChanged(() => setContacts(loadContacts()));
+  }, []);
+
+  const onAdd = async () => {
+    setErr(null); setBusy(true);
+    try {
+      await addContact({ name, address });
+      setName(''); setAddress('');
+      setContacts(loadContacts());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add contact');
+    } finally { setBusy(false); }
+  };
+  const onDelete = async (id: string) => {
+    try { if (await deleteContact(id)) setContacts(loadContacts()); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not delete'); }
+  };
+
+  return (
+    <Section icon={User} title="Address book" sub="Saved contacts, cloud-synced when signed in">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14 }}>
+        <input
+          className="settings-select"
+          placeholder="Name (e.g. Sora)"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+        <input
+          className="settings-select"
+          placeholder="0x… or litho1…"
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          spellCheck={false}
+          autoCapitalize="off"
+          style={{ fontFamily: address ? 'Geist Mono, monospace' : undefined, fontSize: address ? 12 : undefined }}
+        />
+        {err && <div style={{ fontSize: 11, color: 'var(--red)' }}>{err}</div>}
+        <button
+          className="btn-primary"
+          onClick={onAdd}
+          disabled={busy || !name.trim() || !address.trim()}
+          style={{ marginTop: 4 }}
+        >
+          {busy ? 'Saving…' : 'Save contact'}
+        </button>
+
+        {contacts.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+            {contacts.map(c => (
+              <div key={c.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 10px', borderRadius: 8,
+                background: 'var(--bg-elevated)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    {c.name}
+                    {c.pendingSync && <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 8 }}>· not synced</span>}
+                  </div>
+                  <div style={{
+                    color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace',
+                    fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {c.evm}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onDelete(c.id)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--red)',
+                    cursor: 'pointer', fontSize: 12, padding: '4px 8px',
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -2060,6 +2171,13 @@ function App() {
     fetchEthBalance(walletAddr).then(b => { if (!cancelled) setLiveEth(b); });
     return () => { cancelled = true; };
   }, [unlocked, walletAddr, walletSeed.length]);
+
+  // Derive contact-encryption key from the unlocked seed so the address book
+  // can encrypt name + notes before pushing to /contacts. Cleared on lock.
+  useEffect(() => {
+    void setContactEncryptionKey(unlocked && walletSeed.length ? walletSeed : null);
+    return () => { void setContactEncryptionKey(null); };
+  }, [unlocked, walletSeed]);
 
   // Vault gate: migrate plaintext if present, then try the session-cached
   // key to skip the password prompt on refresh.

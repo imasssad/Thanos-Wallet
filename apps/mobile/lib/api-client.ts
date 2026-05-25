@@ -84,6 +84,36 @@ export interface SessionInfo {
   expires_at:  string;
 }
 
+/* ─── Address book (matches services/api/src/routes/contacts.ts) ───── */
+export type ContactAddressType = 'evm' | 'litho' | 'bitcoin' | 'solana' | 'cosmos';
+
+export interface ContactDto {
+  id:           string;
+  name:         string;
+  address:      string;
+  addressType:  ContactAddressType | null;
+  chainId:      number | null;
+  notes:        string | null;
+  isFavourite:  boolean;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export interface ContactCreate {
+  name:         string;
+  address:      string;
+  addressType?: ContactAddressType;
+  chainId?:     number;
+  notes?:       string;
+  isFavourite?: boolean;
+}
+
+export interface ContactPatch {
+  name?:        string;
+  notes?:       string | null;
+  isFavourite?: boolean;
+}
+
 export class ApiError extends Error {
   status: number;
   body:   unknown;
@@ -159,6 +189,24 @@ export class ThanosApiClient {
 
   async revokeSession(sessionId: string): Promise<{ ok: true }> {
     return this.req('DELETE', `/auth/sessions/${encodeURIComponent(sessionId)}`, undefined, true);
+  }
+
+  /* ─── Address book (cloud-synced contacts) ─────────────────────── */
+
+  async listContacts(): Promise<{ items: ContactDto[] }> {
+    return this.req('GET', '/contacts', undefined, true);
+  }
+
+  async createContact(input: ContactCreate): Promise<{ item: ContactDto }> {
+    return this.req('POST', '/contacts', input, true);
+  }
+
+  async updateContact(id: string, patch: ContactPatch): Promise<{ item: ContactDto }> {
+    return this.req('PUT', `/contacts/${encodeURIComponent(id)}`, patch, true);
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    await this.req('DELETE', `/contacts/${encodeURIComponent(id)}`, undefined, true);
   }
 
   /** Convenience — true if we have stored tokens. Doesn't validate them. */
