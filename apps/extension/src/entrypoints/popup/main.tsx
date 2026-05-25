@@ -1198,6 +1198,9 @@ function App() {
     }
     const tx = pendingRpc.params?.[0] as { to?: string; value?: string; from?: string } | undefined;
     if (!tx?.to) { setSimReport(null); return; }
+    // Narrow `to` for TS — the type guard above already proves it's set
+    // but the closure below loses that flow info under strict mode.
+    const toAddr = tx.to;
     let cancelled = false;
     (async () => {
       try {
@@ -1209,7 +1212,7 @@ function App() {
         const report = await sim.simulateSend({
           chainId: 700777,                       // Makalu — the only chain this wallet talks to today
           from:    tx.from || pendingRpc.address,
-          to:      tx.to,
+          to:      toAddr,
           amount:  amountEth,
         });
         if (!cancelled) setSimReport(report);

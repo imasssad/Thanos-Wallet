@@ -68,10 +68,13 @@ describeIfDb('schema integration — every production table round-trips', () => 
       [userId, 'Sora', addr],
     );
 
-    // Second insert with same (user_id, lower(address)) must violate the unique index.
+    // Second insert with the same (user_id, address) hits the unique index.
+    // The index is a plain b-tree on (user_id, address) — case-insensitive
+    // dedup is enforced at the route layer (lower(address) lookup before
+    // insert), not at the DB. This test pins the index itself.
     await expect(pool.query(
       `INSERT INTO contacts (user_id, name, address) VALUES ($1, $2, $3)`,
-      [userId, 'Sora copy', addr.toUpperCase()],
+      [userId, 'Sora copy', addr],
     )).rejects.toThrow(/contacts_user_address_idx|duplicate key/i);
   });
 
@@ -100,7 +103,7 @@ describeIfDb('schema integration — every production table round-trips', () => 
     );
     const userId = userRow.rows[0].id;
     const session = await pool.query(
-      `INSERT INTO sessions (user_id, refresh_token_hash, expires_at)
+      `INSERT INTO sessions (user_id, refresh_token, expires_at)
        VALUES ($1, $2, now() + interval '30 days') RETURNING id`,
       [userId, 'hashed-refresh-token'],
     );

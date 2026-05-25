@@ -31,9 +31,15 @@ CREATE TABLE IF NOT EXISTS devices (
   device_name     TEXT,
   platform        TEXT,                        -- 'web' | 'ios' | 'android' | 'desktop' | 'extension'
   fingerprint     TEXT,
+  user_agent      TEXT,                        -- captured by auth.ts on register/login
   last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotent fix for clusters that initialised against the older schema
+-- (pre-2026-05): add the user_agent column if missing. ALTER ADD COLUMN
+-- IF NOT EXISTS landed in Postgres 9.6, so safe on every supported version.
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS user_agent TEXT;
 
 CREATE INDEX IF NOT EXISTS devices_user_id_idx ON devices(user_id);
 
