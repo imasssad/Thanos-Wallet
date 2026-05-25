@@ -88,12 +88,16 @@ describe('DnnsService.register', () => {
   });
 
   it('defaults to 1 year when not specified', async () => {
-    let captured: { args?: unknown[] } | null = null;
+    // Wrap in a ref object — TS's strict flow analysis on a `let` binding
+    // assigned inside a callback narrows the type to `never` after the
+    // callback returns. A property assignment on a typed ref dodges that.
+    const ref: { call: { args?: unknown[] } | null } = { call: null };
     const lithic = mockLithic({
-      callContract: (req) => { captured = req; return '0xabc'; },
+      callContract: (req) => { ref.call = req; return '0xabc'; },
     });
     const svc = new DnnsService(lithic);
     await svc.register({ chainId: KAMET, name: 'a.litho', owner: '0x' + 'b'.repeat(40) });
-    expect(captured?.args?.[2]).toBe(1);
+    expect(ref.call).not.toBeNull();
+    expect(ref.call?.args?.[2]).toBe(1);
   });
 });

@@ -71,7 +71,8 @@ describe('Lep100Client', () => {
 
   it('balanceOf throws when owner is missing', async () => {
     const c = new Lep100Client(mockLithic().lithic);
-    // @ts-expect-error — owner intentionally missing for the test
+    // owner is typed `string | undefined` so this isn't a TS error,
+    // just a runtime guard the client enforces.
     await expect(c.balanceOf({ chainId: 700777, contractAddress: C })).rejects.toThrow(/owner.*required/i);
   });
 
@@ -125,7 +126,7 @@ describe('Lep100Client', () => {
 
   it('transferOwnership requires newOwner', async () => {
     const c = new Lep100Client(mockLithic().lithic);
-    // @ts-expect-error — newOwner intentionally missing
+    // newOwner is typed `string | undefined`; runtime guard, not TS error.
     await expect(c.transferOwnership({ chainId: 700777, contractAddress: C })).rejects.toThrow(/newOwner.*required/i);
   });
 

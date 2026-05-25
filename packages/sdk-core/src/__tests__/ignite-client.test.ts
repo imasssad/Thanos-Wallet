@@ -9,7 +9,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   createIgniteClient,
-  IgniteNotImplemented,
   IgniteUnavailable,
   LiveIgniteClient,
   MockIgniteClient,
@@ -88,11 +87,112 @@ describe('MockIgniteClient', () => {
 });
 
 describe('LiveIgniteClient', () => {
-  it('throws IgniteNotImplemented for quote/execute/getStatus until the spec lands', async () => {
-    const c = new LiveIgniteClient();
-    await expect(c.quote(baseReq)).rejects.toBeInstanceOf(IgniteNotImplemented);
-    await expect(c.execute('q', '0xabc')).rejects.toBeInstanceOf(IgniteNotImplemented);
-    await expect(c.getStatus('e')).rejects.toBeInstanceOf(IgniteNotImplemented);
+  // The live client now hits the real REST shape we expect Ignite to
+  // confirm (see IGNITE_API_REQUEST.md). These tests mock `fetch` so
+  // they pin the *contract* — request body shape + response handling +
+  // graceful-failure semantics — without any live network call.
+
+  it('quote() POSTs the expected body shape + maps the response onto SwapQuote', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      quoteId:         'ign-abc',
+      amountOut:       '120.5',
+      route:           ['LITHO', 'USDL'],
+      priceImpactBps:  18,
+      expiresAtMs:     1_900_000_000_000,
+      feeUsd:          '0.42',
+      estimatedSeconds: 8,
+    }), { status: 200 }));
+    try {
+      const c = new LiveIgniteClient({ baseUrl: 'https://ignite.example' });
+      const q = await c.quote(baseReq);
+      expect(q.provider).toBe('ignite');
+      expect(q.quoteId).toBe('ign-abc');
+      expect(q.amountOut).toBe('120.5');
+      expect(q.priceImpactBps).toBe(18);
+      expect(q.estimatedSeconds).toBe(8);
+
+      // Verify the request body matches the contract.
+      const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://ignite.example/api/v1/quote');
+      expect(init?.method).toBe('POST');
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({
+        tokenIn:       'LITHO',
+        tokenOut:      'USDL',
+        amountIn:      '100',
+        walletAddress: baseReq.walletAddress,
+        chainId:       700777,
+        slippageBps:   50,        // default
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('quote() throws IgniteUnavailable on a malformed response (missing quoteId)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      amountOut: '120.5',   // no quoteId
+    }), { status: 200 }));
+    try {
+      const c = new LiveIgniteClient();
+      await expect(c.quote(baseReq)).rejects.toBeInstanceOf(IgniteUnavailable);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('quote() throws IgniteUnavailable on a 5xx', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('upstream down', { status: 502 }));
+    try {
+      const c = new LiveIgniteClient();
+      await expect(c.quote(baseReq)).rejects.toBeInstanceOf(IgniteUnavailable);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('execute() POSTs {quoteId, walletAddress} and returns provider=ignite', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      executionId: 'exec-7f3a',
+      status:      'submitted',
+      txHash:      '0xdead',
+    }), { status: 200 }));
+    try {
+      const c = new LiveIgniteClient({ baseUrl: 'https://ignite.example' });
+      const r = await c.execute('ign-abc', '0xa11ce');
+      expect(r.provider).toBe('ignite');
+      expect(r.executionId).toBe('exec-7f3a');
+      expect(r.status).toBe('submitted');
+      expect(r.swapTxHash).toBe('0xdead');
+
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(String(init?.body))).toEqual({
+        quoteId:       'ign-abc',
+        walletAddress: '0xa11ce',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("getStatus() maps 'signing' → 'settling' and 'completed' → 'completed' onto BridgeStatus", async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'signing',   txHash: '0xa' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'completed', txHash: '0xb' }), { status: 200 }));
+    try {
+      const c = new LiveIgniteClient({ baseUrl: 'https://ignite.example' });
+      const s1 = await c.getStatus('exec-1');
+      expect(s1.status).toBe('settling');
+      expect(s1.sourceTxHash).toBe('0xa');
+      const s2 = await c.getStatus('exec-1');
+      expect(s2.status).toBe('completed');
+
+      // URL-encoded path
+      const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://ignite.example/api/v1/status/exec-1');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('isHealthy() returns false when the host is unreachable', async () => {

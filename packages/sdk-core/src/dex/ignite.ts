@@ -207,23 +207,33 @@ export interface LiveIgniteConfig {
 const DEFAULT_LIVE_BASE = 'https://ignite.litho.ai';
 
 /**
- * LiveIgniteClient — talks to https://ignite.litho.ai. Endpoints are
- * provisional (mirrored from the existing `apps/web/lib/ignite.ts`
- * which we authored ahead of the spec) and every method throws
- * `IgniteNotImplemented` until the Ignite team confirms the contract.
+ * LiveIgniteClient — talks to https://ignite.litho.ai.
  *
- * When the spec lands:
- *   1. Replace each `throw new IgniteNotImplemented(...)` with the
- *      mapped fetch + response shaping.
- *   2. Update the `pathTemplates` block below if endpoint paths change.
- *   3. Add an end-to-end test that hits a sandbox URL.
+ * **STATUS: PROVISIONAL.** The request/response shape below is a best-
+ * guess built on (a) the conventional same-chain DEX REST pattern
+ * (1inch, 0x, OpenOcean, Uniswap auto-router) and (b) the existing
+ * `apps/web/lib/ignite.ts` web client we authored ahead of confirmation.
+ * The wire contract has NOT been signed off by the Ignite team yet —
+ * see `IGNITE_API_REQUEST.md` for the exact spec we need them to confirm.
+ *
+ * `createIgniteClient()` defaults to `MockIgniteClient` so this code does
+ * NOT run in production by accident. Flip to live only after the Ignite
+ * team confirms the spec matches what's below; the production swap
+ * modal then sees `provider === 'ignite'` on real responses.
+ *
+ * Failure mode: any response that doesn't parse → throws
+ * `IgniteUnavailable`, which the SwapModal catches and falls back to
+ * the MultX route. So even with the spec mismatched, the wallet
+ * degrades to MultX rather than blowing up.
  */
 export class LiveIgniteClient implements IgniteClient {
   private readonly baseUrl:   string;
   private readonly timeoutMs: number;
 
-  /** Endpoint paths we expect — kept here as a single source of truth so
-   *  switching to the real spec is a one-block edit. */
+  /** Endpoint paths we expect — kept here as the single source of truth.
+   *  If Ignite's confirmed spec uses different paths, edit only this
+   *  block + the response-shape mapping below; the rest of the wallet
+   *  stays unchanged. */
   static readonly pathTemplates = {
     quote:    '/api/v1/quote',
     execute:  '/api/v1/swap',
@@ -236,19 +246,135 @@ export class LiveIgniteClient implements IgniteClient {
     this.timeoutMs = config.timeoutMs ?? 8_000;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async quote(_req: SwapQuoteRequest): Promise<SwapQuote> {
-    throw new IgniteNotImplemented('quote');
+  /** Wrapped fetch with timeout + graceful failure. Any non-2xx OR
+   *  network error throws `IgniteUnavailable` — the SwapModal catches
+   *  that and falls back to MultX, so a misshaped response never breaks
+   *  the wallet, just routes around it. */
+  private async json<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const ctrl = new AbortController();
+    const t    = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body:    body === undefined ? undefined : JSON.stringify(body),
+        signal:  ctrl.signal,
+      });
+      if (!res.ok) throw new IgniteUnavailable(`Ignite ${method} ${path}: ${res.status}`);
+      return res.json() as Promise<T>;
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') throw new IgniteUnavailable(`Ignite ${path} timed out`);
+      if (e instanceof IgniteUnavailable) throw e;
+      throw new IgniteUnavailable((e as Error).message || 'Ignite network error');
+    } finally {
+      clearTimeout(t);
+    }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async execute(_quoteId: string, _walletAddress: string): Promise<SwapExecutionResult> {
-    throw new IgniteNotImplemented('execute');
+  /** POST /api/v1/quote — same-chain swap quote.
+   *
+   *  Provisional request shape:
+   *    { tokenIn, tokenOut, amountIn, slippageBps?, walletAddress }
+   *  Provisional response shape:
+   *    { quoteId, amountOut, route[], priceImpactBps, expiresAtMs, feeUsd? }
+   */
+  async quote(req: SwapQuoteRequest): Promise<SwapQuote> {
+    interface RawQuote {
+      quoteId:         string;
+      amountOut:       string;
+      route?:          string[];
+      priceImpactBps?: number;
+      expiresAtMs?:    number;
+      feeUsd?:         string;
+      estimatedSeconds?: number;
+    }
+    const raw = await this.json<RawQuote>('POST', LiveIgniteClient.pathTemplates.quote, {
+      tokenIn:       req.fromToken,
+      tokenOut:      req.toToken,
+      amountIn:      req.amount,
+      slippageBps:   req.slippageBps ?? 50,        // 0.5% default
+      walletAddress: req.walletAddress,
+      chainId:       req.fromChainId,
+    });
+
+    if (!raw?.quoteId || !raw?.amountOut) {
+      throw new IgniteUnavailable('Ignite quote response missing quoteId/amountOut');
+    }
+    return {
+      provider:        'ignite',
+      quoteId:         raw.quoteId,
+      amountIn:        req.amount,
+      amountOut:       raw.amountOut,
+      route:           raw.route?.length ? raw.route : [req.fromToken, req.toToken],
+      estimatedSeconds: raw.estimatedSeconds ?? 6,
+      feeUsd:          raw.feeUsd,
+      priceImpactBps:  raw.priceImpactBps,
+      expiresAtMs:     raw.expiresAtMs,
+    };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async getStatus(_executionId: string): Promise<BridgeStatus> {
-    throw new IgniteNotImplemented('getStatus');
+  /** POST /api/v1/swap — execute a previously-issued quote.
+   *
+   *  Provisional request shape:
+   *    { quoteId, walletAddress, signedTx? }
+   *  Provisional response shape:
+   *    { executionId, status: 'submitted'|'pending'|'completed', txHash? }
+   */
+  async execute(quoteId: string, walletAddress: string): Promise<SwapExecutionResult> {
+    interface RawExec {
+      executionId: string;
+      status?:     'submitted' | 'pending' | 'completed';
+      txHash?:     string;
+    }
+    const raw = await this.json<RawExec>('POST', LiveIgniteClient.pathTemplates.execute, {
+      quoteId,
+      walletAddress,
+    });
+    if (!raw?.executionId) {
+      throw new IgniteUnavailable('Ignite execute response missing executionId');
+    }
+    return {
+      provider:    'ignite',
+      executionId: raw.executionId,
+      status:      raw.status ?? 'submitted',
+      swapTxHash:  raw.txHash,
+    };
+  }
+
+  /** GET /api/v1/status/:id — poll execution state.
+   *
+   *  Provisional response shape:
+   *    { status: 'pending'|'completed'|'failed', txHash?, error? }
+   *  Mapped onto our BridgeStatus union so the SwapModal can hold
+   *  MultX + Ignite results in one slot.
+   */
+  async getStatus(executionId: string): Promise<BridgeStatus> {
+    interface RawStatus {
+      status?: 'pending' | 'signing' | 'completed' | 'failed';
+      txHash?: string;
+      error?:  string;
+    }
+    const path = LiveIgniteClient.pathTemplates.status.replace(':id', encodeURIComponent(executionId));
+    const raw  = await this.json<RawStatus>('GET', path);
+
+    const mapped: BridgeStatus['status'] =
+      raw?.status === 'completed' ? 'completed' :
+      raw?.status === 'failed'    ? 'failed'    :
+      raw?.status === 'signing'   ? 'settling'  :
+      'bridging';
+
+    return {
+      executionId,
+      provider:          'ignite',
+      status:            mapped,
+      fromChainId:       0,
+      toChainId:         0,
+      fromToken:         '',
+      toToken:           '',
+      sourceTxHash:      raw?.txHash,
+      destinationTxHash: raw?.txHash,
+      updatedAt:         new Date().toISOString(),
+    };
   }
 
   /** Health is implementable without the spec — a 200 on / is enough to
