@@ -199,6 +199,40 @@ export function setSeedBackedUp(backedUp: boolean): void {
   else          localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
 }
 
+/* ─── Multi-account derivation index ────────────────────────────────
+   All accounts share the same vault (one seed); different "accounts"
+   are different HD-path indices: m/44'/60'/0'/0/{idx}. Tracks the
+   *active* index (the one the wallet derives + signs from) and the
+   user's accountCount. Defaults to 0 / 1 on a fresh install. */
+const STORAGE_KEY_ACTIVE_IDX = 'thanos.active_account_idx';
+const STORAGE_KEY_ACCT_COUNT = 'thanos.account_count';
+export const MAX_ACCOUNTS = 10;
+
+export function getActiveAccountIndex(): number {
+  if (typeof window === 'undefined') return 0;
+  const raw = localStorage.getItem(STORAGE_KEY_ACTIVE_IDX);
+  const n = Number.parseInt(raw ?? '0', 10);
+  if (!Number.isFinite(n) || n < 0 || n >= MAX_ACCOUNTS) return 0;
+  return n;
+}
+export function setActiveAccountIndex(idx: number): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_ACCOUNTS) return;
+  localStorage.setItem(STORAGE_KEY_ACTIVE_IDX, String(idx));
+}
+export function getAccountCount(): number {
+  if (typeof window === 'undefined') return 1;
+  const raw = localStorage.getItem(STORAGE_KEY_ACCT_COUNT);
+  const n = Number.parseInt(raw ?? '1', 10);
+  if (!Number.isFinite(n) || n < 1 || n > MAX_ACCOUNTS) return 1;
+  return n;
+}
+export function setAccountCount(n: number): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isInteger(n) || n < 1 || n > MAX_ACCOUNTS) return;
+  localStorage.setItem(STORAGE_KEY_ACCT_COUNT, String(n));
+}
+
 /* ─── Session key cache (refresh persistence, NOT cold-open) ────────────── */
 export function cacheSessionKey(key: Uint8Array): void {
   if (typeof window === 'undefined') return;

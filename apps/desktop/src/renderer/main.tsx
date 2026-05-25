@@ -1487,6 +1487,15 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
   const [importInput, setImportInput] = useState('');
+  /* Seed auto-mask — parity with web. After 30 s on the create-show
+     screen the phrase blurs out and the user has to tap to re-reveal. */
+  const [seedHidden, setSeedHidden] = useState(false);
+  useEffect(() => {
+    if (step !== 'create-show') { setSeedHidden(false); return; }
+    if (seedHidden) return;
+    const t = setTimeout(() => setSeedHidden(true), 30_000);
+    return () => clearTimeout(t);
+  }, [step, seedHidden]);
   /* Verify-phrase: only N indices missing; user fills them from a pool */
   const VERIFY_MISSING = 4;
   const [missingIdxs, setMissingIdxs] = useState<number[]>([]);
@@ -1625,14 +1634,37 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
           <>
             <h1 className="onboard-title">Your recovery phrase</h1>
             <p className="onboard-sub">Write these 12 words down in order. You'll confirm them next.</p>
-            <div className="seed-grid">
+            <div className="seed-grid" style={{ position: 'relative' }}>
               {seed.map((w, i) => (
                 <div key={i} className="seed-word">
-                  <span className="seed-num">{i + 1}.</span>{w}
+                  <span className="seed-num">{i + 1}.</span>
+                  <span style={{ filter: seedHidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
                 </div>
               ))}
+              {seedHidden && (
+                <button
+                  type="button"
+                  onClick={() => setSeedHidden(false)}
+                  style={{
+                    position: 'absolute', inset: 0,
+                    background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)',
+                    borderRadius: 12, border: 'none',
+                    color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  Tap to reveal
+                </button>
+              )}
             </div>
-            <button className="btn-link" onClick={() => navigator.clipboard?.writeText(seed.join(' '))}>Copy to clipboard</button>
+            <button
+              className="btn-link"
+              disabled={seedHidden}
+              onClick={() => navigator.clipboard?.writeText(seed.join(' '))}
+            >
+              Copy to clipboard
+            </button>
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('create-warn')}>Back</button>
               <button className="btn-primary" style={{ flex: 1 }} onClick={goToConfirm}>I've written it down</button>

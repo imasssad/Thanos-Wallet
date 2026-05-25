@@ -116,6 +116,17 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const [unlockErr, setUnlockErr] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [copiedSeed, setCopiedSeed] = useState(false);
+  /* Seed auto-mask — same defense as the web wallet. 30 s after the
+     create-show step mounts the words blur out + the user has to tap to
+     re-reveal. Guards against shoulder-surf + the "left laptop open"
+     case while the popup is the active window. */
+  const [seedHidden, setSeedHidden] = useState(false);
+  useEffect(() => {
+    if (step !== 'create-show') { setSeedHidden(false); return; }
+    if (seedHidden) return;
+    const t = setTimeout(() => setSeedHidden(true), 30_000);
+    return () => clearTimeout(t);
+  }, [step, seedHidden]);
 
   const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
   const goToVerify = () => {
@@ -239,15 +250,31 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
         {step === 'create-show' && <>
           <h1 className="onb-title">Recovery phrase</h1>
           <p className="onb-sub">Write all 12 words down in order.</p>
-          <div className="seed-grid">
+          <div className="seed-grid" style={{ position: 'relative' }}>
             {seed.map((w, i) => (
               <div key={i} className="seed-cell">
                 <span className="seed-num">{i + 1}.</span>
-                <span style={{ userSelect: 'text' }}>{w}</span>
+                <span style={{ userSelect: 'text', filter: seedHidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
               </div>
             ))}
+            {seedHidden && (
+              <button
+                type="button"
+                onClick={() => setSeedHidden(false)}
+                style={{
+                  position: 'absolute', inset: 0,
+                  background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)',
+                  borderRadius: 8, border: 'none',
+                  color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                Tap to reveal
+              </button>
+            )}
           </div>
-          <button className="btn-link" onClick={copySeed}>
+          <button className="btn-link" onClick={copySeed} disabled={seedHidden}>
             {copiedSeed ? <><Check size={13}/> Copied</> : <><Copy size={13}/> Copy phrase</>}
           </button>
           <div className="row-btns">
