@@ -612,6 +612,9 @@ function SendModal({ onClose }: { onClose: () => void }) {
   const [ledger, setLedger]         = useState<LedgerConnection | null>(null);
   const [trezor, setTrezor]         = useState<TrezorConnection | null>(null);
   const [hwBusy,  setHwBusy]        = useState(false);
+  // Pre-send simulation — parity with web Send modal. Runs on debounce
+  // when recipient + amount are both set. Critical issues gate canSend.
+  const [simReport, setSimReport]   = useState<import('@thanos/sdk-core').SimulationReport | null>(null);
 
   // Close any open hardware-wallet transport when the modal unmounts.
   useEffect(() => () => {
@@ -628,10 +631,37 @@ function SendModal({ onClose }: { onClose: () => void }) {
   // FROM account changes, so we don't gate on it (the device + RPC will).
   const overBalance = signer === 'seed' && !!coin && amtNum > coin.balance;
   const hwReady     = (signer === 'ledger' && !!ledger) || (signer === 'trezor' && !!trezor);
+  const simHasCritical = simReport?.issues.some(i => i.level === 'critical') ?? false;
   const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
-                  && (signer === 'seed' || hwReady);
+                  && (signer === 'seed' || hwReady)
+                  && !simHasCritical;
   const hwAddress: string | null = signer === 'ledger' ? (ledger?.address ?? null)
                                   : signer === 'trezor' ? (trezor?.address ?? null) : null;
+
+  /* Debounced pre-send simulation — keeps desktop parity with the web
+     Send modal. Only fires when recipient + amount are both valid. */
+  useEffect(() => {
+    if (!coin || !to.trim() || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    const toAddr   = to.trim();
+    const fromAddr = hwAddress || '';
+    const amt      = amount;
+    const sym      = coin.sym;
+    let cancelled  = false;
+    const t = setTimeout(async () => {
+      try {
+        const { TransactionSimulator } = await import('@thanos/sdk-core');
+        const r = await new TransactionSimulator().simulateSend({
+          chainId:     700777,
+          from:        fromAddr,
+          to:          toAddr,
+          amount:      amt,
+          tokenSymbol: sym,
+        });
+        if (!cancelled) setSimReport(r);
+      } catch { if (!cancelled) setSimReport(null); }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [coin, to, amount, amtNum, overBalance, hwAddress]);
 
   const chooseSigner = async (choice: SignerChoice) => {
     setError(null);
@@ -776,14 +806,39 @@ function SendModal({ onClose }: { onClose: () => void }) {
 
         {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10 }}>{error}</div>}
 
+        {/* Pre-send simulation — warning/critical only. Critical also
+            gates `canSend`, so the primary button below disables. */}
+        {simReport && simReport.issues.filter(i => i.level !== 'info').map((issue, i) => {
+          const isCritical = issue.level === 'critical';
+          return (
+            <div
+              key={`${issue.code}-${i}`}
+              style={{
+                marginTop: 8,
+                padding: '8px 10px',
+                borderRadius: 8,
+                background: isCritical ? 'rgba(239,68,68,0.10)' : 'rgba(247,144,9,0.10)',
+                border:     isCritical ? '1px solid var(--red)' : 'none',
+                color:      isCritical ? 'var(--red)' : 'var(--orange)',
+                fontSize: 12, lineHeight: 1.4,
+              }}
+            >
+              {issue.message}
+            </div>
+          );
+        })}
+
         <button
           className="btn-primary"
           style={{ marginTop: 18 }}
           disabled={!canSend}
           onClick={doSend}
+          title={simHasCritical ? 'Simulator found a critical issue — sending is blocked.' : undefined}
         >
           {sending
             ? (signer === 'seed' ? 'Sending…' : 'Confirm on device…')
+            : simHasCritical
+            ? 'Issue detected — blocked'
             : `Send ${coin?.sym ?? ''}${signer === 'ledger' ? ' (Ledger)' : signer === 'trezor' ? ' (Trezor)' : ''}`}
         </button>
       </div>

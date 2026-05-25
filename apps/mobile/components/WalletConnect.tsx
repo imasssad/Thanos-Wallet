@@ -32,6 +32,7 @@ import {
 import { executeWcRequest, summariseRequest, WcSignerError } from '../lib/wc-signer';
 import { QrScannerModal } from './QrScannerModal';
 import { isWalletConnectUri } from '../lib/qr';
+import { TransactionSimulator, type SimulationReport } from '@thanos/sdk-core';
 
 /* ─── Dark sheet palette ──────────────────────────────────────────── */
 const P = {
@@ -262,6 +263,10 @@ interface PendingReq {
 export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
   const [pending, setPending] = useState<PendingReq | null>(null);
   const [busy, setBusy]       = useState<'approve' | 'reject' | null>(null);
+  // Pre-sign simulation — runs whenever a pending eth_sendTransaction
+  // arrives. Other methods (personal_sign, eth_signTypedData_v4) don't
+  // touch on-chain state, so we skip simulation for them.
+  const [simReport, setSimReport] = useState<SimulationReport | null>(null);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -280,6 +285,34 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
     }).then(fn => { unsub = fn; }).catch(() => {});
     return () => { if (unsub) unsub(); };
   }, []);
+
+  /* Simulate the pending eth_sendTransaction so the approval sheet can
+     show contract-recipient warnings + insufficient-balance critical
+     before the user signs. Lithic chain → Makalu. */
+  useEffect(() => {
+    if (!pending || pending.method !== 'eth_sendTransaction') {
+      setSimReport(null); return;
+    }
+    const tx = (pending.params as unknown[] | undefined)?.[0] as { to?: string; value?: string; from?: string } | undefined;
+    if (!tx?.to) { setSimReport(null); return; }
+    const toAddr = tx.to;   // narrow for the async closure
+    let cancelled = false;
+    (async () => {
+      try {
+        const sim = new TransactionSimulator();
+        const valueWei  = BigInt(tx.value || '0x0');
+        const amountEth = (Number(valueWei) / 1e18).toString();
+        const report = await sim.simulateSend({
+          chainId: 700777,   // Makalu — the chain mobile WC sessions live on today
+          from:    tx.from || '',
+          to:      toAddr,
+          amount:  amountEth,
+        });
+        if (!cancelled) setSimReport(report);
+      } catch { if (!cancelled) setSimReport(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [pending]);
 
   const close = () => { setPending(null); setBusy(null); };
 
@@ -320,12 +353,45 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
             <Text style={s.permTitle}>{pending.method}</Text>
             <Text style={s.permBody}>{pending.summary}</Text>
           </View>
+
+          {/* Pre-sign simulation — warning/critical issues for tx requests.
+              Info-level issues are suppressed in the compact sheet view. */}
+          {simReport && simReport.issues.filter(i => i.level !== 'info').map((issue, i) => {
+            const isCritical = issue.level === 'critical';
+            return (
+              <View
+                key={`${issue.code}-${i}`}
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: isCritical ? 'rgba(248,113,113,0.10)' : 'rgba(245,158,11,0.10)',
+                  borderColor:     isCritical ? '#f87171' : 'transparent',
+                  borderWidth:     isCritical ? 1 : 0,
+                }}
+              >
+                <Text style={{ color: isCritical ? '#f87171' : '#f59e0b', fontSize: 12, lineHeight: 16 }}>
+                  {issue.message}
+                </Text>
+              </View>
+            );
+          })}
+
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
             <Pressable style={[s.secondaryBtn, { flex: 1 }]} onPress={onReject} disabled={busy === 'approve'}>
               <Text style={s.secondaryBtnText}>{busy === 'reject' ? '…' : 'Reject'}</Text>
             </Pressable>
-            <Pressable style={[s.primaryBtn, { flex: 1, marginTop: 0 }]} onPress={onApprove} disabled={busy === 'reject'}>
-              {busy === 'approve' ? <ActivityIndicator color="#fff"/> : <Text style={s.primaryBtnText}>Approve</Text>}
+            <Pressable
+              style={[s.primaryBtn, { flex: 1, marginTop: 0, opacity:
+                busy === 'reject' || (simReport?.issues.some(i => i.level === 'critical') ?? false) ? 0.5 : 1 }]}
+              onPress={onApprove}
+              disabled={busy === 'reject' || (simReport?.issues.some(i => i.level === 'critical') ?? false)}
+            >
+              {busy === 'approve'
+                ? <ActivityIndicator color="#fff"/>
+                : <Text style={s.primaryBtnText}>
+                    {simReport?.issues.some(i => i.level === 'critical') ? 'Blocked' : 'Approve'}
+                  </Text>}
             </Pressable>
           </View>
         </View>

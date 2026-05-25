@@ -585,13 +585,43 @@ function SendScreen({ goBack }: { goBack: () => void }) {
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  // Pre-send simulation — fires when recipient + amount are both valid,
+  // mirrors the web Send modal so mobile users get the same
+  // "contract recipient" + "insufficient balance" warnings before signing.
+  const [simReport, setSimReport] = useState<import('@thanos/sdk-core').SimulationReport | null>(null);
 
   const coin = assets.find((a) => a.sym === selectedSym) ?? assets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
   const usd = coin ? amtNum * coin.priceUsd : 0;
   const overBalance = !!coin && amtNum > coin.balance;
   const recipientOk = isValidRecipient(to);
-  const canReview = !!coin && amtNum > 0 && !overBalance && !!to && recipientOk && !sending;
+  const simHasCritical = simReport?.issues.some(i => i.level === 'critical') ?? false;
+  const canReview = !!coin && amtNum > 0 && !overBalance && !!to && recipientOk && !sending && !simHasCritical;
+
+  /* Debounced pre-send simulation. Only EVM/Lithic chains for now —
+     Bitcoin + Solana have their own checks elsewhere. */
+  useEffect(() => {
+    if (!coin || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    const toAddr = to;
+    const fromAddr = addr;
+    const amount = amt;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { TransactionSimulator } = await import('@thanos/sdk-core');
+        const sim = new TransactionSimulator();
+        const r = await sim.simulateSend({
+          chainId:     700777,
+          from:        fromAddr,
+          to:          toAddr,
+          amount,
+          tokenSymbol: coin.sym,
+        });
+        if (!cancelled) setSimReport(r);
+      } catch { if (!cancelled) setSimReport(null); }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [coin, to, amt, recipientOk, amtNum, overBalance, addr]);
 
   const doSend = async () => {
     if (!coin || sending) return;
@@ -781,12 +811,38 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         </View>
       )}
 
+      {/* Pre-send simulation — warning/critical issues above the
+          action button. Critical also gates `canReview`, so the button
+          itself disables. */}
+      {simReport && simReport.issues.filter(i => i.level !== 'info').map((issue, i) => {
+        const isCritical = issue.level === 'critical';
+        return (
+          <View
+            key={`${issue.code}-${i}`}
+            style={{
+              padding: 10,
+              marginBottom: 8,
+              borderRadius: 8,
+              backgroundColor: isCritical ? 'rgba(248,113,113,0.10)' : 'rgba(245,158,11,0.10)',
+              borderColor:     isCritical ? '#f87171' : 'transparent',
+              borderWidth:     isCritical ? 1 : 0,
+            }}
+          >
+            <Text style={{ color: isCritical ? '#f87171' : '#f59e0b', fontSize: 12, lineHeight: 16 }}>
+              {issue.message}
+            </Text>
+          </View>
+        );
+      })}
+
       <Pressable
         style={[styles.btnPrimary, !canReview && { opacity: 0.4 }]}
         disabled={!canReview}
         onPress={onReview}
       >
-        <Text style={styles.btnPrimaryText}>{sending ? 'Sending…' : 'Review send'}</Text>
+        <Text style={styles.btnPrimaryText}>
+          {sending ? 'Sending…' : simHasCritical ? 'Issue detected — blocked' : 'Review send'}
+        </Text>
       </Pressable>
     </ScrollView>
   );
