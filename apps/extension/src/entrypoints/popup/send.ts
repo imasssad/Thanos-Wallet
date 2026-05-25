@@ -58,28 +58,53 @@ export async function resolveRecipient(input: string): Promise<string> {
 
 /* ─── Send ───────────────────────────────────────────────────────────── */
 
+export type SendChain = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+
 export interface SendAssetArgs {
   seed:          string[];
+  chain?:        SendChain;
   to:            string;
   amount:        string;
   decimals:      number;
   tokenAddress?: string;
+  splMintAddress?: string;
+  memo?:         string;
 }
 
 /**
- * Sign + broadcast a transfer on Makalu — native LITHO when
- * `tokenAddress` is absent, otherwise a LEP100 transfer(to, amount).
- * Returns the broadcast transaction hash.
+ * Sign + broadcast a transfer on the chain identified by `args.chain`
+ * (default 'evm' for Makalu LITHO/LEP100).
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new Error('Wallet is locked');
+  const chain = args.chain ?? 'evm';
 
-  let value: bigint;
-  try {
-    value = parseUnits(args.amount, args.decimals);
-  } catch {
-    throw new Error('Invalid amount');
+  if (chain === 'bitcoin') {
+    const { sendBitcoin } = await import('../../lib/bitcoin');
+    return sendBitcoin({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
   }
+  if (chain === 'solana') {
+    if (args.splMintAddress) {
+      const { sendSplToken } = await import('../../lib/solana');
+      return sendSplToken({
+        mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount,
+        mintAddress: args.splMintAddress, decimals: args.decimals,
+      });
+    }
+    const { sendSol } = await import('../../lib/solana');
+    return sendSol({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
+  }
+  if (chain === 'cosmos') {
+    const { sendCosmos } = await import('../../lib/cosmos');
+    return sendCosmos({
+      mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount, memo: args.memo,
+    });
+  }
+
+  // ─── EVM / Makalu default ─────────────────────────────────────────────
+  let value: bigint;
+  try { value = parseUnits(args.amount, args.decimals); }
+  catch { throw new Error('Invalid amount'); }
   if (value <= 0n) throw new Error('Amount must be greater than zero');
 
   const wallet = HDNodeWallet

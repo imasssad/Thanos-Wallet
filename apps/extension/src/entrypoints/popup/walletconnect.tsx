@@ -44,6 +44,19 @@ function send<T = unknown>(message: object): Promise<T> {
   });
 }
 
+/** List of active WalletConnect sessions, exposed for the Permissions
+ *  modal. Goes through the same offscreen bridge so the popup never
+ *  initializes its own kit. */
+export async function listActiveSessions(): Promise<SessionRow[]> {
+  const r = await send<{ ok: boolean; sessions?: SessionRow[] }>({ type: 'wc.list' });
+  return r?.ok && r.sessions ? r.sessions : [];
+}
+
+/** Ask the offscreen kit to end a session by topic. */
+export async function disconnectSession(topic: string): Promise<void> {
+  await send<{ ok: boolean }>({ type: 'wc.disconnect', topic });
+}
+
 export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string; onClose: () => void }) {
   const seed = useWalletSeed();
   const [uri, setUri]           = useState('');

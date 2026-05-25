@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
 import './styles.css';
@@ -968,16 +968,69 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
 /* ──────────────────────── Swap modal ──────────────────────── */
 function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO');
-  const [to, setTo]     = useState('ETH');
+  const [to, setTo]     = useState('LitBTC');
   const [amt, setAmt]   = useState('100');
-  const rates: Record<string, Record<string, number>> = {
-    LITHO:  { wLITHO: 1.0,    FGPT: 20.0,   BTC: 0.0000050, ETH: 0.0000832, USDC: 0.30 },
-    wLITHO: { LITHO: 1.0,     FGPT: 20.0,   BTC: 0.0000050, ETH: 0.0000832, USDC: 0.30 },
-    FGPT:   { LITHO: 0.05,    wLITHO: 0.05, BTC: 0.00000025, ETH: 0.00000416, USDC: 0.015 },
-    BTC:    { LITHO: 199867,  wLITHO: 199867, FGPT: 4213333, ETH: 16.22, USDC: 63200 },
-    ETH:    { LITHO: 12018,   wLITHO: 12018,  FGPT: 259467,  BTC: 0.0617, USDC: 3892 },
+
+  type QuoteShape = {
+    quoteId: string; from: string; to: string;
+    fromAmount: string; toAmount: string; rate: number; feeFrom: string;
   };
-  const out = (rates[from]?.[to] ?? 1) * parseFloat(amt || '0');
+  const [quote,    setQuote]    = useState<QuoteShape | null>(null);
+  const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
+  const [err,      setErr]      = useState<string | null>(null);
+  const [pollMsg,  setPollMsg]  = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
+
+  useEffect(() => {
+    const v = amt.trim();
+    if (!v || parseFloat(v) <= 0 || from === to) {
+      setQuote(null); setProvider(null); setErr(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const [mux, ign] = await Promise.allSettled([
+        import('./multx').then(m => m.getQuote(from, to, v)),
+        import('./ignite').then(m => m.getQuote(from, to, v)),
+      ]);
+      if (cancelled) return;
+      const cands: Array<{ provider: 'multx' | 'ignite'; q: QuoteShape }> = [];
+      if (mux.status === 'fulfilled') cands.push({ provider: 'multx',  q: mux.value });
+      if (ign.status === 'fulfilled') cands.push({ provider: 'ignite', q: ign.value });
+      if (cands.length === 0) {
+        setQuote(null); setProvider(null);
+        setErr('Bridge + DEX unavailable — try again shortly');
+        return;
+      }
+      cands.sort((a, b) => Number(b.q.toAmount) - Number(a.q.toAmount));
+      setQuote(cands[0].q); setProvider(cands[0].provider); setErr(null);
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [from, to, amt]);
+
+  const onSwap = async () => {
+    if (!quote || !provider || busy) return;
+    setBusy(true); setPollMsg('Awaiting execution…');
+    try {
+      const mod = await import(provider === 'multx' ? './multx' : './ignite');
+      const exec = await mod.execute(quote.quoteId, '');
+      const id = exec.executionId;
+      if (exec.sourceHash) setPollMsg(`Source tx: ${exec.sourceHash.slice(0, 10)}…`);
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, Math.min(4000 + i * 2000, 30000)));
+        try {
+          const s = await mod.getStatus(id);
+          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); break; }
+          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); break; }
+          setPollMsg(`Status: ${s.state}`);
+        } catch { /* keep polling */ }
+      }
+    } catch (e) {
+      setErr((e as Error).message || 'Swap failed');
+    } finally { setBusy(false); }
+  };
+
+  const out = quote ? Number(quote.toAmount).toFixed(6) : '—';
 
   return (
     <Modal title="Swap" onClose={onClose}>
@@ -985,7 +1038,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="field-select" value={from} onChange={e => setFrom(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['LITHO','wLITHO','FGPT','BTC','ETH'].map(s => <option key={s}>{s}</option>)}
+            {['LITHO','wLITHO','FGPT','LitBTC','LitETH','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field-input" value={amt} onChange={e => setAmt(e.target.value)} type="number" placeholder="0.00" style={{ flex: 1 }}/>
         </div>
@@ -997,23 +1050,31 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">To</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <select className="field-select" value={to} onChange={e => setTo(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['wLITHO','LITHO','FGPT','ETH','BTC','USDC'].map(s => <option key={s}>{s}</option>)}
+            {['LitBTC','LitETH','LITHO','wLITHO','FGPT','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
-            {out.toFixed(4)}
+            {out}
           </div>
         </div>
 
         <div className="fee-row" style={{ marginTop: 14 }}>
           <span>Rate</span>
-          <span>1 {from} ≈ {(rates[from]?.[to] ?? 0).toLocaleString()} {to}</span>
+          <span>{quote ? `1 ${from} ≈ ${quote.rate.toFixed(6)} ${to}` : 'Quoting…'}</span>
         </div>
         <div className="fee-row">
-          <span>Network fee</span>
-          <span>~$2.10</span>
+          <span>Route</span>
+          <span>{provider ? <strong style={{ color: 'var(--text-primary)' }}>{provider}</strong> : '—'}</span>
         </div>
+        <div className="fee-row">
+          <span>Fee</span>
+          <span>{quote ? `${quote.feeFrom} ${from}` : '—'}</span>
+        </div>
+        {err && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{err}</div>}
+        {pollMsg && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>{pollMsg}</div>}
 
-        <button className="btn-primary" style={{ marginTop: 18 }}>Swap {from} → {to}</button>
+        <button className="btn-primary" style={{ marginTop: 18 }} disabled={!quote || busy} onClick={onSwap}>
+          {busy ? 'Swapping…' : `Swap ${from} → ${to}`}
+        </button>
       </div>
     </Modal>
   );
@@ -1362,6 +1423,7 @@ function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => 
         </Section>
 
         <AddressBookSection Section={Section}/>
+        <PermissionsSection Section={Section}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Auto-lock" sub="Lock wallet after inactivity">
@@ -1517,6 +1579,167 @@ function AddressBookSection({
         )}
       </div>
     </Section>
+  );
+}
+
+/* ──────────────────────── Permissions section ──────────────────────── */
+function PermissionsSection({
+  Section,
+}: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+}) {
+  const seed = useContext(WalletSeedContext);
+  const [tab, setTab] = useState<'allowances' | 'sessions'>('allowances');
+  return (
+    <Section icon={Shield} title="Permissions" sub="Token allowances + connected dApps">
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10 }}>
+          <button onClick={() => setTab('allowances')} style={{
+            padding: '6px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            background: tab === 'allowances' ? 'var(--bg-surface)' : 'transparent',
+            color: tab === 'allowances' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontSize: 12, fontWeight: 600,
+          }}>Token allowances</button>
+          <button onClick={() => setTab('sessions')} style={{
+            padding: '6px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            background: tab === 'sessions' ? 'var(--bg-surface)' : 'transparent',
+            color: tab === 'sessions' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontSize: 12, fontWeight: 600,
+          }}>Connected apps</button>
+        </div>
+        {tab === 'allowances' ? <DesktopAllowancesPanel seed={seed}/> : <DesktopSessionsPanel/>}
+      </div>
+    </Section>
+  );
+}
+
+function DesktopAllowancesPanel({ seed }: { seed: string[] }) {
+  const [rows, setRows] = useState<Array<{
+    tokenAddress: string; symbol: string; spender: string;
+    amount: string; unlimited: boolean; decimals: number;
+  }> | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true); setErr(null);
+    try {
+      const { fetchMakaluAllowances, getMakaluProvider } = await import('@thanos/sdk-core');
+      const { HDNodeWallet, Mnemonic } = await import('ethers');
+      const idx = getActiveAccountIndex();
+      const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${idx}`);
+      setRows(await fetchMakaluAllowances({ walletAddress: w.address, provider: getMakaluProvider() }));
+    } catch (e) {
+      setErr((e as Error).message); setRows([]);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const revoke = async (row: { tokenAddress: string; spender: string }) => {
+    if (!seed.length) { setErr('Wallet is locked'); return; }
+    const k = `${row.tokenAddress}|${row.spender}`;
+    setBusy(k); setErr(null);
+    try {
+      const { revokeAllowance, getMakaluProvider } = await import('@thanos/sdk-core');
+      const { HDNodeWallet, Mnemonic } = await import('ethers');
+      const idx = getActiveAccountIndex();
+      const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${idx}`)
+        .connect(getMakaluProvider());
+      const tx = await revokeAllowance({ signer: w, tokenAddress: row.tokenAddress, spender: row.spender });
+      await tx.wait();
+      void load();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  if (loading) return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Scanning approvals…</div>;
+  if (err)     return <div style={{ color: 'var(--red)', fontSize: 12 }}>{err}</div>;
+  if (!rows || rows.length === 0) {
+    return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No active allowances on Makalu.</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {rows.map(r => {
+        const k = `${r.tokenAddress}|${r.spender}`;
+        return (
+          <div key={k} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 10, background: 'var(--bg-elevated)', borderRadius: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>
+                {r.symbol}
+                {r.unlimited && <span style={{ marginLeft: 8, fontSize: 10, padding: '2px 6px', background: 'rgba(245,158,11,0.16)', color: '#f59e0b', borderRadius: 4 }}>UNLIMITED</span>}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.spender}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {r.unlimited ? 'Unlimited' : `${r.amount} ${r.symbol}`}
+              </div>
+            </div>
+            <button onClick={() => revoke(r)} disabled={busy === k} style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+              background: 'transparent', border: '1px solid var(--red)', color: 'var(--red)',
+              cursor: busy === k ? 'not-allowed' : 'pointer', opacity: busy === k ? 0.6 : 1,
+            }}>{busy === k ? 'Revoking…' : 'Revoke'}</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DesktopSessionsPanel() {
+  const [rows, setRows] = useState<Array<{ topic: string; name: string; url: string; chains: string }> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr]   = useState<string | null>(null);
+
+  const load = async () => {
+    setErr(null);
+    try {
+      const { listActiveSessions } = await import('./walletconnect');
+      const map = await listActiveSessions();
+      setRows(Object.values(map).map(s => ({
+        topic: s.topic,
+        name:  s.peer?.metadata?.name || 'Unknown dApp',
+        url:   s.peer?.metadata?.url  || '',
+        chains: (s.namespaces?.eip155?.chains ?? []).join(', ') || 'eip155:700777',
+      })));
+    } catch (e) { setErr((e as Error).message); setRows([]); }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const disconnect = async (topic: string) => {
+    setBusy(topic); setErr(null);
+    try {
+      const { disconnectSession } = await import('./walletconnect');
+      await disconnectSession(topic);
+      setRows(prev => prev?.filter(r => r.topic !== topic) ?? prev);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  if (!rows) return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading sessions…</div>;
+  if (rows.length === 0) return <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No active dApp connections.</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {err && <div style={{ color: 'var(--red)', fontSize: 11 }}>{err}</div>}
+      {rows.map(r => (
+        <div key={r.topic} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 10, background: 'var(--bg-elevated)', borderRadius: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.url}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{r.chains}</div>
+          </div>
+          <button onClick={() => disconnect(r.topic)} disabled={busy === r.topic} style={{
+            padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+            background: 'transparent', border: '1px solid var(--red)', color: 'var(--red)',
+            cursor: busy === r.topic ? 'not-allowed' : 'pointer', opacity: busy === r.topic ? 0.6 : 1,
+          }}>{busy === r.topic ? 'Disconnecting…' : 'Disconnect'}</button>
+        </div>
+      ))}
+    </div>
   );
 }
 

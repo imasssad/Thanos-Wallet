@@ -34,6 +34,13 @@ import {
   type Contact as AbContact,
 } from './lib/address-book';
 import { setContactEncryptionKey } from './lib/contact-crypto';
+import {
+  fetchMakaluAllowances, revokeAllowance, MAKALU_KNOWN_TOKENS,
+  type AllowanceRow,
+} from './lib/allowances';
+import {
+  getActiveSessions, disconnectSession as wcDisconnect,
+} from './lib/walletconnect';
 
 // Initialise Sentry as the very first work the bundle does — no-op
 // when EXPO_PUBLIC_SENTRY_DSN is not set (local dev + EAS preview).
@@ -1074,6 +1081,135 @@ function DappIcon({ id, name, color, size = 44 }: { id: string; name: string; co
   );
 }
 
+/* Swap — quotes MultX + Ignite in parallel, picks the better route,
+   executes + polls bridge/DEX status. Same model as web SwapModal. */
+function SwapScreen({ goBack }: { goBack: () => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  const [from, setFrom] = useState('LITHO');
+  const [to,   setTo]   = useState('LitBTC');
+  const [amt,  setAmt]  = useState('100');
+  type QuoteShape = {
+    quoteId: string; from: string; to: string;
+    fromAmount: string; toAmount: string; rate: number; feeFrom: string;
+  };
+  const [quote,    setQuote]    = useState<QuoteShape | null>(null);
+  const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
+  const [err,      setErr]      = useState<string | null>(null);
+  const [pollMsg,  setPollMsg]  = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
+
+  useEffect(() => {
+    const v = amt.trim();
+    if (!v || parseFloat(v) <= 0 || from === to) {
+      setQuote(null); setProvider(null); setErr(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const [mux, ign] = await Promise.allSettled([
+        import('./lib/multx').then(m => m.getQuote(from, to, v)),
+        import('./lib/ignite').then(m => m.getQuote(from, to, v)),
+      ]);
+      if (cancelled) return;
+      const cands: Array<{ provider: 'multx' | 'ignite'; q: QuoteShape }> = [];
+      if (mux.status === 'fulfilled') cands.push({ provider: 'multx',  q: mux.value });
+      if (ign.status === 'fulfilled') cands.push({ provider: 'ignite', q: ign.value });
+      if (cands.length === 0) {
+        setQuote(null); setProvider(null);
+        setErr('Bridge + DEX unavailable — try again shortly');
+        return;
+      }
+      cands.sort((a, b) => Number(b.q.toAmount) - Number(a.q.toAmount));
+      setQuote(cands[0].q); setProvider(cands[0].provider); setErr(null);
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [from, to, amt]);
+
+  const onSwap = async () => {
+    if (!quote || !provider || busy) return;
+    setBusy(true); setPollMsg('Awaiting execution…');
+    try {
+      const mod = await import(provider === 'multx' ? './lib/multx' : './lib/ignite');
+      const exec = await mod.execute(quote.quoteId, '');
+      const id = exec.executionId;
+      if (exec.sourceHash) setPollMsg(`Source tx: ${exec.sourceHash.slice(0, 10)}…`);
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, Math.min(4000 + i * 2000, 30000)));
+        try {
+          const s = await mod.getStatus(id);
+          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); break; }
+          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); break; }
+          setPollMsg(`Status: ${s.state}`);
+        } catch { /* keep polling */ }
+      }
+    } catch (e) {
+      setErr((e as Error).message || 'Swap failed');
+    } finally { setBusy(false); }
+  };
+
+  const out = quote ? Number(quote.toAmount).toFixed(6) : '—';
+
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.screenHeader}>
+        <Pressable onPress={goBack} hitSlop={16} style={styles.backBtn}>
+          <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+        </Pressable>
+        <Text style={styles.screenTitle}>Swap</Text>
+        <View style={{ width: 28 }}/>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, gap: 12 }}>
+        <Text style={styles.fieldLabel}>FROM</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={[styles.input, { flex: 0.4, paddingVertical: 0, justifyContent: 'center' }]}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{from}</Text>
+          </View>
+          <TextInput
+            style={[styles.input, { flex: 1, color: C.textPrimary }]}
+            value={amt} onChangeText={setAmt} keyboardType="decimal-pad" placeholder="0.00"
+            placeholderTextColor={C.textMuted}
+          />
+        </View>
+
+        <Pressable
+          onPress={() => { const t = from; setFrom(to); setTo(t); }}
+          style={{ alignSelf: 'center', padding: 8 }}
+        >
+          <Repeat size={20} color={C.textMuted}/>
+        </Pressable>
+
+        <Text style={styles.fieldLabel}>TO</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={[styles.input, { flex: 0.4, paddingVertical: 0, justifyContent: 'center' }]}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{to}</Text>
+          </View>
+          <View style={[styles.input, { flex: 1, justifyContent: 'center' }]}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{out}</Text>
+          </View>
+        </View>
+
+        <View style={{ paddingHorizontal: 4, marginTop: 4 }}>
+          <Text style={{ color: C.textMuted, fontSize: 11 }}>
+            {quote ? `1 ${from} ≈ ${quote.rate.toFixed(6)} ${to} · Route: ${provider} · Fee ${quote.feeFrom} ${from}` : 'Quoting…'}
+          </Text>
+          {err && <Text style={{ color: C.red, fontSize: 12, marginTop: 4 }}>{err}</Text>}
+          {pollMsg && <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>{pollMsg}</Text>}
+        </View>
+
+        <Pressable
+          style={[styles.btnPrimary, (!quote || busy) && { opacity: 0.5 }]}
+          disabled={!quote || busy}
+          onPress={onSwap}
+        >
+          <Text style={styles.btnPrimaryText}>{busy ? 'Swapping…' : `Swap ${from} → ${to}`}</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
 /* Earn — honest "coming soon" mirroring web StakingView; the Lithosphere
    staking contracts aren't deployed on Makalu yet. */
 function EarnScreen({ goBack }: { goBack: () => void }) {
@@ -1238,6 +1374,7 @@ function SettingsScreen() {
   const [autoLockOpen, setAutoLockOpen] = useState(false);
   const [rpcOpen, setRpcOpen]           = useState(false);
   const [addrBookOpen, setAddrBookOpen] = useState(false);
+  const [permsOpen, setPermsOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
   useEffect(() => { AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0)); }, []);
 
@@ -1430,6 +1567,10 @@ function SettingsScreen() {
         { label: 'Manage contacts', desc: 'Add, view and remove saved addresses', Icon: Users,
           onPress: () => setAddrBookOpen(true) },
       ]}/>
+      <Section Icon={Shield} title="Permissions" sub="Token allowances + connected dApps" items={[
+        { label: 'Manage permissions', desc: 'Audit & revoke approvals, disconnect dApps', Icon: Shield,
+          onPress: () => setPermsOpen(true) },
+      ]}/>
       <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
 
       <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
@@ -1467,6 +1608,163 @@ function SettingsScreen() {
       />
       <CustomRpcModal visible={rpcOpen} onClose={() => setRpcOpen(false)}/>
       <AddressBookModal visible={addrBookOpen} onClose={() => setAddrBookOpen(false)}/>
+      <PermissionsModal visible={permsOpen} onClose={() => setPermsOpen(false)} seed={seed}/>
+    </ScrollView>
+  );
+}
+
+/* ─── Permissions modal — token allowances + connected dApps ─────────── */
+function PermissionsModal({ visible, onClose, seed }: { visible: boolean; onClose: () => void; seed: string[] }) {
+  const C = useColors();
+  const [tab, setTab] = useState<'allowances' | 'sessions'>('allowances');
+
+  useEffect(() => { if (visible) setTab('allowances'); }, [visible]);
+  if (!visible) return null;
+
+  return (
+    <SheetShell title="Permissions" onClose={onClose}>
+      <View style={{ flexDirection: 'row', gap: 6, padding: 4, backgroundColor: C.bgElevated, borderRadius: 10 }}>
+        <Pressable onPress={() => setTab('allowances')} style={{
+          flex: 1, padding: 8, borderRadius: 6, alignItems: 'center',
+          backgroundColor: tab === 'allowances' ? C.bgCard : 'transparent',
+        }}>
+          <Text style={{ color: tab === 'allowances' ? C.textPrimary : C.textSecondary, fontWeight: '600', fontSize: 12 }}>Token allowances</Text>
+        </Pressable>
+        <Pressable onPress={() => setTab('sessions')} style={{
+          flex: 1, padding: 8, borderRadius: 6, alignItems: 'center',
+          backgroundColor: tab === 'sessions' ? C.bgCard : 'transparent',
+        }}>
+          <Text style={{ color: tab === 'sessions' ? C.textPrimary : C.textSecondary, fontWeight: '600', fontSize: 12 }}>Connected apps</Text>
+        </Pressable>
+      </View>
+      <View style={{ height: 8 }}/>
+      {tab === 'allowances' ? <MobileAllowancesPanel seed={seed}/> : <MobileSessionsPanel/>}
+    </SheetShell>
+  );
+}
+
+function MobileAllowancesPanel({ seed }: { seed: string[] }) {
+  const C = useColors();
+  const [rows, setRows] = useState<AllowanceRow[] | null>(null);
+  const [err, setErr]   = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    setErr(null);
+    try {
+      const ethers = require('ethers');
+      const provider = new ethers.JsonRpcProvider('https://rpc.litho.ai');
+      const w = ethers.HDNodeWallet.fromMnemonic(
+        ethers.Mnemonic.fromPhrase(seed.join(' ')),
+        `m/44'/60'/0'/0/0`,
+      );
+      setRows(await fetchMakaluAllowances({
+        walletAddress: w.address, provider,
+        knownTokens: MAKALU_KNOWN_TOKENS,
+      }));
+    } catch (e) { setErr((e as Error).message); setRows([]); }
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const revoke = async (r: AllowanceRow) => {
+    if (!seed.length) { setErr('Wallet is locked'); return; }
+    const k = `${r.tokenAddress}|${r.spender}`;
+    setBusy(k); setErr(null);
+    try {
+      const ethers = require('ethers');
+      const provider = new ethers.JsonRpcProvider('https://rpc.litho.ai');
+      const w = ethers.HDNodeWallet.fromMnemonic(
+        ethers.Mnemonic.fromPhrase(seed.join(' ')),
+        `m/44'/60'/0'/0/0`,
+      ).connect(provider);
+      const tx = await revokeAllowance({ signer: w, tokenAddress: r.tokenAddress, spender: r.spender });
+      await tx.wait();
+      void load();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  if (!rows) return <Text style={{ color: C.textMuted, fontSize: 12 }}>Scanning approvals…</Text>;
+  if (err) return <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text>;
+  if (rows.length === 0) return <Text style={{ color: C.textMuted, fontSize: 12 }}>No active allowances on Makalu.</Text>;
+
+  return (
+    <ScrollView style={{ maxHeight: 360 }}>
+      {rows.map(r => {
+        const k = `${r.tokenAddress}|${r.spender}`;
+        return (
+          <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: C.bgElevated, borderRadius: 10, marginBottom: 6 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 13 }}>
+                {r.symbol}
+                {r.unlimited && <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '800' }}>  · UNLIMITED</Text>}
+              </Text>
+              <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontFamily: 'Menlo', fontSize: 10 }}>{r.spender}</Text>
+              <Text style={{ color: C.textMuted, fontSize: 11 }}>{r.unlimited ? 'Unlimited' : `${r.amount} ${r.symbol}`}</Text>
+            </View>
+            <Pressable onPress={() => revoke(r)} disabled={busy === k} style={{
+              paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6,
+              borderWidth: 1, borderColor: C.red, opacity: busy === k ? 0.6 : 1,
+            }}>
+              <Text style={{ color: C.red, fontWeight: '700', fontSize: 11 }}>{busy === k ? 'Revoking…' : 'Revoke'}</Text>
+            </Pressable>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function MobileSessionsPanel() {
+  const C = useColors();
+  const [rows, setRows] = useState<Array<{ topic: string; name: string; url: string; chains: string }> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr]   = useState<string | null>(null);
+
+  const load = async () => {
+    setErr(null);
+    try {
+      const map = await getActiveSessions();
+      setRows(Object.values(map).map(s => ({
+        topic: s.topic,
+        name: s.peer?.metadata?.name || 'Unknown dApp',
+        url:  s.peer?.metadata?.url  || '',
+        chains: (s.namespaces?.eip155?.chains ?? []).join(', ') || 'eip155:700777',
+      })));
+    } catch (e) { setErr((e as Error).message); setRows([]); }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const disconnect = async (topic: string) => {
+    setBusy(topic); setErr(null);
+    try {
+      await wcDisconnect(topic);
+      setRows(prev => prev?.filter(r => r.topic !== topic) ?? prev);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  };
+
+  if (!rows) return <Text style={{ color: C.textMuted, fontSize: 12 }}>Loading…</Text>;
+  if (rows.length === 0) return <Text style={{ color: C.textMuted, fontSize: 12 }}>No active dApp connections.</Text>;
+
+  return (
+    <ScrollView style={{ maxHeight: 360 }}>
+      {err && <Text style={{ color: C.red, fontSize: 11 }}>{err}</Text>}
+      {rows.map(r => (
+        <View key={r.topic} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: C.bgElevated, borderRadius: 10, marginBottom: 6 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 13 }}>{r.name}</Text>
+            <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontSize: 11 }}>{r.url}</Text>
+            <Text style={{ color: C.textMuted, fontSize: 10, fontFamily: 'Menlo' }}>{r.chains}</Text>
+          </View>
+          <Pressable onPress={() => disconnect(r.topic)} disabled={busy === r.topic} style={{
+            paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6,
+            borderWidth: 1, borderColor: C.red, opacity: busy === r.topic ? 0.6 : 1,
+          }}>
+            <Text style={{ color: C.red, fontWeight: '700', fontSize: 11 }}>{busy === r.topic ? 'Disconnecting…' : 'Disconnect'}</Text>
+          </Pressable>
+        </View>
+      ))}
     </ScrollView>
   );
 }
@@ -2560,7 +2858,7 @@ export default function App() {
                 {screen === 'home'     && <HomeScreen navigate={setScreen}/>}
                 {screen === 'send'     && <SendScreen goBack={() => setScreen('home')}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
-                {screen === 'swap'     && <SendScreen goBack={() => setScreen('home')}/>}
+                {screen === 'swap'     && <SwapScreen goBack={() => setScreen('home')}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}

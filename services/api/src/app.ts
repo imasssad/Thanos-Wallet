@@ -13,6 +13,7 @@ import { requestId, type LoggedRequest } from './middleware/request-id.js';
 import { authRouter } from './routes/auth.js';
 import { contactsRouter } from './routes/contacts.js';
 import { dnnsRouter } from './routes/dnns.js';
+import { portfolioRouter } from './routes/portfolio.js';
 import { pushRouter } from './routes/push.js';
 import { metricsHandler, metricsMiddleware } from './lib/metrics.js';
 import { captureException } from './lib/sentry.js';
@@ -47,6 +48,7 @@ export function createApp(): express.Express {
   app.use('/auth', authRouter);
   app.use('/contacts', contactsRouter);
   app.use('/dnns', dnnsRouter);
+  app.use('/portfolio', portfolioRouter);
   app.use('/push', pushRouter);
 
   app.get('/health', async (_req, res) => {

@@ -22,20 +22,31 @@
     "zip:firefox": "wxt zip -b firefox",
     "zip:safari": "wxt zip -b safari",
     "safari:convert": "bash safari/convert.sh",
+    "safari:archive": "bash safari/archive.sh",
     "typecheck": "wxt prepare && tsc --noEmit",
     "lint": "echo 'no lint configured'"
   },
   "dependencies": {
+    "@cosmjs/encoding": "^0.32.4",
+    "@cosmjs/proto-signing": "^0.32.4",
+    "@cosmjs/stargate": "^0.32.4",
+    "@cosmjs/crypto": "^0.32.4",
     "@reown/walletkit": "^1.5.5",
+    "@solana/web3.js": "^1.98.0",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:^",
     "@walletconnect/core": "^2.21.6",
     "@walletconnect/types": "^2.21.6",
+    "bip32": "^5.0.0",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^6.1.6",
+    "ecpair": "^3.0.0",
     "ethers": "^6.13.4",
     "hash-wasm": "^4.12.0",
     "lucide-react": "^1.14.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "tiny-secp256k1": "^2.2.3"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.42",

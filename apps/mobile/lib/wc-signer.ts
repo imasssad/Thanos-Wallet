@@ -182,10 +182,14 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
 
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
+export type SendChain = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+
 export interface SendAssetArgs {
   /** Unlocked BIP-39 seed words. */
   seed: string[];
-  /** Resolved 0x recipient address. */
+  /** Target chain — defaults to 'evm' (Makalu native LITHO + LEP100). */
+  chain?: SendChain;
+  /** Recipient address — format depends on chain. */
   to: string;
   /** Human-readable amount, e.g. "12.5". */
   amount: string;
@@ -193,22 +197,46 @@ export interface SendAssetArgs {
   decimals: number;
   /** LEP100 / ERC-20 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
+  /** SPL mint address — required when chain='solana' and not native SOL. */
+  splMintAddress?: string;
+  /** Optional Cosmos memo. */
+  memo?: string;
 }
 
 /**
- * Sign + broadcast a transfer on Makalu — a native LITHO send when
- * `tokenAddress` is absent, otherwise a LEP100 `transfer(to, amount)`.
- * Returns the broadcast transaction hash. Throws WcSignerError.
+ * Sign + broadcast a transfer on the chain identified by `args.chain`
+ * (default 'evm' for Makalu). Returns the broadcast tx hash/signature.
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
+  const chain = args.chain ?? 'evm';
 
-  let value: bigint;
-  try {
-    value = parseUnits(args.amount, args.decimals);
-  } catch {
-    throw new WcSignerError(-32602, 'Invalid amount');
+  if (chain === 'bitcoin') {
+    const { sendBitcoin } = await import('./bitcoin');
+    return sendBitcoin({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
   }
+  if (chain === 'solana') {
+    if (args.splMintAddress) {
+      const { sendSplToken } = await import('./solana');
+      return sendSplToken({
+        mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount,
+        mintAddress: args.splMintAddress, decimals: args.decimals,
+      });
+    }
+    const { sendSol } = await import('./solana');
+    return sendSol({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
+  }
+  if (chain === 'cosmos') {
+    const { sendCosmos } = await import('./cosmos');
+    return sendCosmos({
+      mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount, memo: args.memo,
+    });
+  }
+
+  // ─── EVM / Makalu default ─────────────────────────────────────────────
+  let value: bigint;
+  try { value = parseUnits(args.amount, args.decimals); }
+  catch { throw new WcSignerError(-32602, 'Invalid amount'); }
   if (value <= 0n) throw new WcSignerError(-32602, 'Amount must be greater than zero');
 
   const wallet = walletFromSeed(args.seed, makaluProvider());
@@ -222,9 +250,7 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     return sent.hash;
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';
-    if (/insufficient funds/i.test(msg)) {
-      throw new WcSignerError(-32000, 'Insufficient balance for amount + gas');
-    }
+    if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance for amount + gas');
     throw new WcSignerError(-32603, msg);
   }
 }

@@ -37,6 +37,16 @@ const EVENTS = ['chainChanged', 'accountsChanged'];
 
 let kitPromise: Promise<IWalletKit> | null = null;
 
+export async function listActiveSessions(): Promise<Record<string, SessionTypes.Struct>> {
+  const kit = await getKit();
+  return kit.getActiveSessions();
+}
+
+export async function disconnectSession(topic: string): Promise<void> {
+  const kit = await getKit();
+  await kit.disconnectSession({ topic, reason: { code: 6000, message: 'User disconnected' } });
+}
+
 async function getKit(): Promise<IWalletKit> {
   if (kitPromise) return kitPromise;
   kitPromise = (async () => {

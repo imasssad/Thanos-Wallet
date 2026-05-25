@@ -756,13 +756,14 @@ function DiscoverScreen() {
 }
 
 function SettingsScreen({
-  isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook,
+  isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook, onOpenPermissions,
 }: {
   isDark: boolean;
   onToggleTheme: () => void;
   onLock: () => void;
   onOpenWalletConnect: () => void;
   onOpenAddressBook:   () => void;
+  onOpenPermissions:   () => void;
 }) {
   // Premium-pattern settings: icon-led section headers + a gradient title hero.
   // Adapted for the 360px popup — smaller paddings + tighter spacing.
@@ -839,6 +840,18 @@ function SettingsScreen({
           <div style={{ flex: 1 }}>
             <div className="set-label">WalletConnect</div>
             <div className="set-sub">Pair via wc: link (popup-scoped session)</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
+      </div>
+
+      <SectionHead Icon={Shield} title="Permissions" sub="Token allowances + connected apps"/>
+      <div className="card list">
+        <button className="set-row" onClick={onOpenPermissions} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+          <div className="set-icon"><Shield size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Manage permissions</div>
+            <div className="set-sub">Audit + revoke token approvals; disconnect dApps</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </button>
@@ -1146,22 +1159,86 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
 }
 
 function SwapModal({ onClose }: { onClose: () => void }) {
-  const [from, setFrom] = useState('LITHO'); const [to, setTo] = useState('ETH'); const [amt, setAmt] = useState('100');
-  const rates: Record<string, Record<string, number>> = {
-    LITHO:  { wLITHO: 1.0,    FGPT: 20.0,   ETH: 0.0000832, BTC: 0.0000050, USDC: 0.30 },
-    wLITHO: { LITHO: 1.0,     FGPT: 20.0,   ETH: 0.0000832, BTC: 0.0000050, USDC: 0.30 },
-    FGPT:   { LITHO: 0.05,    wLITHO: 0.05, ETH: 0.00000416, BTC: 0.00000025, USDC: 0.015 },
-    BTC:    { LITHO: 199867,  wLITHO: 199867, FGPT: 4213333, ETH: 16.22, USDC: 63200 },
-    ETH:    { LITHO: 12018,   wLITHO: 12018,  FGPT: 259467,  BTC: 0.0617, USDC: 3892 },
+  const [from, setFrom] = useState('LITHO');
+  const [to,   setTo]   = useState('LitBTC');
+  const [amt,  setAmt]  = useState('100');
+
+  type QuoteShape = {
+    quoteId: string; from: string; to: string;
+    fromAmount: string; toAmount: string; rate: number; feeFrom: string;
   };
-  const out = ((rates[from]?.[to] ?? 1) * parseFloat(amt || '0')).toFixed(4);
+  const [quote,    setQuote]    = useState<QuoteShape | null>(null);
+  const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
+  const [err,      setErr]      = useState<string | null>(null);
+  const [pollMsg,  setPollMsg]  = useState<string | null>(null);
+  const [busy,     setBusy]     = useState(false);
+
+  // Debounced parallel quote across MultX + Ignite — keep the better output.
+  useEffect(() => {
+    const v = amt.trim();
+    if (!v || parseFloat(v) <= 0 || from === to) {
+      setQuote(null); setProvider(null); setErr(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const [mux, ign] = await Promise.allSettled([
+        import('../../lib/multx').then(m => m.getQuote(from, to, v)),
+        import('../../lib/ignite').then(m => m.getQuote(from, to, v)),
+      ]);
+      if (cancelled) return;
+      const cands: Array<{ provider: 'multx' | 'ignite'; q: QuoteShape }> = [];
+      if (mux.status === 'fulfilled') cands.push({ provider: 'multx',  q: mux.value });
+      if (ign.status === 'fulfilled') cands.push({ provider: 'ignite', q: ign.value });
+      if (cands.length === 0) {
+        setQuote(null); setProvider(null);
+        setErr('Bridge + DEX unavailable — try again shortly');
+        return;
+      }
+      cands.sort((a, b) => Number(b.q.toAmount) - Number(a.q.toAmount));
+      setQuote(cands[0].q); setProvider(cands[0].provider); setErr(null);
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [from, to, amt]);
+
+  const onSwap = async () => {
+    if (!quote || !provider || busy) return;
+    setBusy(true); setPollMsg('Awaiting execution…');
+    try {
+      const mod = await import(provider === 'multx' ? '../../lib/multx' : '../../lib/ignite');
+      // The signed tx wire-format is provider-specific; the wallet expects
+      // the bridge/DEX to either build it server-side (multx today) or
+      // hand back tx params we sign locally (next API revision). Until
+      // signed-tx surface lands, pass the wallet address; multx returns
+      // a stub execution we can poll for the source tx.
+      const exec = await mod.execute(quote.quoteId, '');
+      const id = exec.executionId;
+      if (exec.sourceHash) setPollMsg(`Source tx: ${exec.sourceHash.slice(0, 10)}…`);
+
+      // Poll status with linear backoff up to 30 attempts (~5min).
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, Math.min(4000 + i * 2000, 30000)));
+        try {
+          const s = await mod.getStatus(id);
+          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); break; }
+          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); break; }
+          setPollMsg(`Status: ${s.state}`);
+        } catch { /* keep polling */ }
+      }
+    } catch (e) {
+      setErr((e as Error).message || 'Swap failed');
+    } finally { setBusy(false); }
+  };
+
+  const out = quote ? Number(quote.toAmount).toFixed(6) : '—';
+
   return (
     <Modal title="Swap" onClose={onClose}>
       <div className="modal-body">
         <label className="field-label">FROM</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={from} onChange={e => setFrom(e.target.value)}>
-            {['LITHO','wLITHO','FGPT','BTC','ETH'].map(s => <option key={s}>{s}</option>)}
+            {['LITHO','wLITHO','FGPT','LitBTC','LitETH','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
         </div>
@@ -1169,21 +1246,208 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">TO</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={to} onChange={e => setTo(e.target.value)}>
-            {['wLITHO','LITHO','FGPT','ETH','BTC','USDC'].map(s => <option key={s}>{s}</option>)}
+            {['LitBTC','LitETH','LITHO','wLITHO','FGPT','USDC'].map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>1 {from} ≈ 16.22 {to}</div>
-        <button className="btn-primary" style={{ marginTop: 12 }}>Swap</button>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+          {quote ? (
+            <>1 {from} ≈ {quote.rate.toFixed(6)} {to} · Route: <strong style={{ color: 'var(--text-primary)' }}>{provider}</strong> · Fee {quote.feeFrom} {from}</>
+          ) : err ? <span style={{ color: 'var(--red)' }}>{err}</span>
+          : 'Quoting…'}
+        </div>
+        {pollMsg && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>{pollMsg}</div>}
+        <button
+          className="btn-primary"
+          style={{ marginTop: 12 }}
+          disabled={!quote || busy}
+          onClick={onSwap}
+        >
+          {busy ? 'Swapping…' : 'Swap'}
+        </button>
       </div>
     </Modal>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Permissions modal — token allowances + connected dApps
+   ────────────────────────────────────────────────────────────────────── */
+
+function PermissionsModal({ onClose }: { onClose: () => void }) {
+  const seed = useWalletSeed();
+  const [tab, setTab] = useState<'allowances' | 'sessions'>('allowances');
+
+  return (
+    <Modal title="Permissions" onClose={onClose}>
+      <div style={{ display: 'flex', gap: 6, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, marginBottom: 10 }}>
+        <button onClick={() => setTab('allowances')} style={{
+          flex: 1, padding: '6px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+          background: tab === 'allowances' ? 'var(--bg-surface)' : 'transparent',
+          color: tab === 'allowances' ? 'var(--text-primary)' : 'var(--text-secondary)',
+          fontSize: 12, fontWeight: 600,
+        }}>Token allowances</button>
+        <button onClick={() => setTab('sessions')} style={{
+          flex: 1, padding: '6px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+          background: tab === 'sessions' ? 'var(--bg-surface)' : 'transparent',
+          color: tab === 'sessions' ? 'var(--text-primary)' : 'var(--text-secondary)',
+          fontSize: 12, fontWeight: 600,
+        }}>Connected apps</button>
+      </div>
+      {tab === 'allowances' ? <AllowancesPanel seed={seed}/> : <SessionsPanel/>}
+    </Modal>
+  );
+}
+
+function AllowancesPanel({ seed }: { seed: string[] }) {
+  const [rows, setRows]   = useState<Array<{
+    tokenAddress: string; symbol: string; spender: string;
+    amount: string; unlimited: boolean; decimals: number;
+  }> | null>(null);
+  const [err, setErr]     = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true); setErr(null);
+    try {
+      const [{ fetchMakaluAllowances }, { getMakaluProvider }, { HDNodeWallet, Mnemonic }] = await Promise.all([
+        import('@thanos/sdk-core'),
+        import('@thanos/sdk-core'),
+        import('ethers'),
+      ]);
+      // Derive the active address from the seed to query — uses the same
+      // path as the active-account TopNav switcher.
+      const idx = getActiveAccountIndex();
+      const m = Mnemonic.fromPhrase(seed.join(' '));
+      const w = HDNodeWallet.fromMnemonic(m, `m/44'/60'/0'/0/${idx}`);
+      const list = await fetchMakaluAllowances({
+        walletAddress: w.address, provider: getMakaluProvider(),
+      });
+      setRows(list);
+    } catch (e) {
+      setErr((e as Error).message || 'Failed to load allowances');
+      setRows([]);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const revoke = async (row: { tokenAddress: string; spender: string }) => {
+    if (!seed.length) { setErr('Wallet is locked'); return; }
+    const key = `${row.tokenAddress}|${row.spender}`;
+    setBusyKey(key); setErr(null);
+    try {
+      const { revokeAllowance, getMakaluProvider } = await import('@thanos/sdk-core');
+      const { HDNodeWallet, Mnemonic } = await import('ethers');
+      const idx = getActiveAccountIndex();
+      const m = Mnemonic.fromPhrase(seed.join(' '));
+      const w = HDNodeWallet.fromMnemonic(m, `m/44'/60'/0'/0/${idx}`).connect(getMakaluProvider());
+      const tx = await revokeAllowance({ signer: w, tokenAddress: row.tokenAddress, spender: row.spender });
+      await tx.wait();
+      void load();
+    } catch (e) {
+      setErr((e as Error).message || 'Revoke failed');
+    } finally { setBusyKey(null); }
+  };
+
+  if (loading) return <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 12 }}>Scanning approvals…</div>;
+  if (err) return <div style={{ color: 'var(--red)', fontSize: 12, padding: 10 }}>{err}</div>;
+  if (!rows || rows.length === 0) {
+    return <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>No active allowances on Makalu.</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflow: 'auto' }}>
+      {rows.map(r => {
+        const k = `${r.tokenAddress}|${r.spender}`;
+        const busy = busyKey === k;
+        return (
+          <div key={k} style={{ display: 'flex', gap: 8, padding: 10, background: 'var(--bg-elevated)', borderRadius: 8, alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>
+                {r.symbol}
+                {r.unlimited && <span style={{ marginLeft: 6, fontSize: 9, padding: '2px 5px', background: 'rgba(245,158,11,0.16)', color: '#f59e0b', borderRadius: 4, fontWeight: 800 }}>UNLIMITED</span>}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.spender}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                {r.unlimited ? 'Unlimited' : `${r.amount} ${r.symbol}`}
+              </div>
+            </div>
+            <button
+              onClick={() => revoke(r)}
+              disabled={busy}
+              style={{
+                padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                background: 'transparent', border: '1px solid var(--red)', color: 'var(--red)',
+                cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+              }}
+            >
+              {busy ? 'Revoking…' : 'Revoke'}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SessionsPanel() {
+  const [rows, setRows] = useState<Array<{ topic: string; name: string; url: string }> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr]   = useState<string | null>(null);
+
+  const load = async () => {
+    setErr(null);
+    try {
+      const { listActiveSessions } = await import('./walletconnect');
+      setRows(await listActiveSessions());
+    } catch (e) { setErr((e as Error).message); setRows([]); }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const disconnect = async (topic: string) => {
+    setBusy(topic); setErr(null);
+    try {
+      const { disconnectSession } = await import('./walletconnect');
+      await disconnectSession(topic);
+      setRows(prev => prev?.filter(r => r.topic !== topic) ?? prev);
+    } catch (e) {
+      setErr((e as Error).message || 'Disconnect failed');
+    } finally { setBusy(null); }
+  };
+
+  if (!rows) return <div style={{ padding: 20, fontSize: 12, color: 'var(--text-muted)' }}>Loading…</div>;
+  if (rows.length === 0) return <div style={{ padding: 20, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>No active dApp connections.</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {err && <div style={{ color: 'var(--red)', fontSize: 11 }}>{err}</div>}
+      {rows.map(r => (
+        <div key={r.topic} style={{ display: 'flex', gap: 10, padding: 10, background: 'var(--bg-elevated)', borderRadius: 8, alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.url}</div>
+          </div>
+          <button onClick={() => disconnect(r.topic)} disabled={busy === r.topic} style={{
+            padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+            background: 'transparent', border: '1px solid var(--red)', color: 'var(--red)',
+            cursor: busy === r.topic ? 'not-allowed' : 'pointer', opacity: busy === r.topic ? 0.6 : 1,
+          }}>
+            {busy === r.topic ? 'Disconnecting…' : 'Disconnect'}
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
 /* ──────────────────────── App shell ──────────────────────── */
 
 type Tab = 'home' | 'discover' | 'activity' | 'settings';
-type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | null;
+type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | 'permissions' | null;
 
 /* ─── EIP-1193 connection approval screen ──────────────────────────────── */
 function ApprovalScreen({
@@ -1618,6 +1882,7 @@ function App() {
       {modal === 'swap'          && <SwapModal          onClose={() => setModal(null)}/>}
       {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
       {modal === 'address-book' && <AddressBookModal    onClose={() => setModal(null)}/>}
+      {modal === 'permissions'  && <PermissionsModal    onClose={() => setModal(null)}/>}
 
       <div className="app">
         <div className="app-body">
@@ -1628,7 +1893,7 @@ function App() {
           />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
-          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')}/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')}/>}
         </div>
         <div className="tabbar">
           {([

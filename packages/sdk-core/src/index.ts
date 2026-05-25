@@ -26,6 +26,8 @@ export * from './hardware/ledger';
 export * from './hardware/trezor';
 export * from './portfolio/indexer-client';
 export * from './portfolio/price-history';
+export * from './portfolio/allowances';
+export * from './portfolio/makalu-allowances';
 export * from './walletconnect/client';
 export * from './imports/token-importer';
 export * from './dnns/service';

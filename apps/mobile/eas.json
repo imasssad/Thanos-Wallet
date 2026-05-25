@@ -21,20 +21,50 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease",
         "image": "latest",
-        "cache": {
-          "disabled": false
-        }
+        "cache": { "disabled": false }
       }
     },
-    "production-apk": {
-      "extends": "preview"
-    },
+    "production-apk": { "extends": "preview" },
     "production": {
-      "ios": { "distribution": "store" },
-      "android": { "buildType": "app-bundle" }
+      "node": "20.11.0",
+      "env": {
+        "EXPO_PUBLIC_ENV": "production",
+        "NODE_ENV": "production"
+      },
+      "ios": {
+        "distribution": "store",
+        "image": "latest",
+        "autoIncrement": true,
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "app-bundle",
+        "image": "latest",
+        "autoIncrement": true
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId":            "$ASC_APPLE_ID",
+        "ascAppId":           "$ASC_APP_ID",
+        "appleTeamId":        "$APPLE_TEAM_ID",
+        "ascApiKeyId":        "$ASC_API_KEY_ID",
+        "ascApiKeyIssuerId":  "$ASC_API_KEY_ISSUER_ID",
+        "ascApiKeyPath":      "./credentials/asc-api-key.p8"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./credentials/play-service-account.json",
+        "track":                 "production",
+        "releaseStatus":         "draft"
+      }
+    },
+    "preview": {
+      "android": {
+        "serviceAccountKeyPath": "./credentials/play-service-account.json",
+        "track":                 "internal"
+      }
+    }
   }
 }

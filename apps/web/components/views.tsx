@@ -951,6 +951,143 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
   );
 }
 
+/* ─── DNNS name-management section ─────────────────────────────────────── */
+function DnnsSection({ Section }: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+}) {
+  const wallet = useWallet();
+  const [name,    setName]    = useState('');
+  const [years,   setYears]   = useState('1');
+  const [status,  setStatus]  = useState<'idle' | 'checking' | 'available' | 'taken' | 'error'>('idle');
+  const [resolveAddr, setResolveAddr] = useState<string | null>(null);
+  const [err,     setErr]     = useState<string | null>(null);
+  const [busy,    setBusy]    = useState(false);
+  const [txHash,  setTxHash]  = useState<string | null>(null);
+  const [reverse, setReverse] = useState<string | null>(null);
+
+  // Reverse-lookup: show "you currently own X.litho" when the active
+  // address has a primary name.
+  useEffect(() => {
+    if (!wallet?.evmAddress) { setReverse(null); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { reverseLookup } = await import('../lib/dnns');
+        const n = await reverseLookup(wallet.evmAddress);
+        if (!cancelled) setReverse(n);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet?.evmAddress]);
+
+  // Debounced availability check on name input. A non-zero resolveAddr =
+  // taken; null = available (or unresolvable, which we treat the same).
+  useEffect(() => {
+    const v = name.trim().toLowerCase();
+    if (!v) { setStatus('idle'); setResolveAddr(null); return; }
+    if (!/^[a-z0-9-]+\.litho$/.test(v)) { setStatus('idle'); setResolveAddr(null); return; }
+    setStatus('checking');
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { resolveName } = await import('../lib/dnns');
+        const addr = await resolveName(v);
+        if (cancelled) return;
+        setResolveAddr(addr);
+        setStatus(addr ? 'taken' : 'available');
+      } catch {
+        if (!cancelled) { setStatus('error'); setResolveAddr(null); }
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [name]);
+
+  const onRegister = async () => {
+    setErr(null); setTxHash(null);
+    if (!wallet?.evmAddress) { setErr('Unlock your wallet first'); return; }
+    const v = name.trim().toLowerCase();
+    if (!/^[a-z0-9-]+\.litho$/.test(v)) {
+      setErr('Name must look like "alice.litho" (a-z, 0-9, hyphens)');
+      return;
+    }
+    if (status === 'taken') { setErr('Name already taken'); return; }
+    const yrs = parseInt(years, 10);
+    if (!Number.isFinite(yrs) || yrs < 1 || yrs > 10) {
+      setErr('Years must be between 1 and 10');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { DnnsService, MAKALU_TESTNET } = await import('@thanos/sdk-core');
+      const svc = new DnnsService();
+      const result = await svc.register({
+        chainId: MAKALU_TESTNET.chainId,
+        name:    v,
+        owner:   wallet.evmAddress,
+        years:   yrs,
+      });
+      setTxHash(result.txHash);
+      setName(''); setYears('1');
+    } catch (e) {
+      setErr((e as Error).message || 'Registration failed');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Section icon={Globe} title="Lithosphere names (.litho)" sub="Register a human-readable name for your wallet">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14 }}>
+        {reverse && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 8 }}>
+            You currently own <strong style={{ color: 'var(--text-primary)' }}>{reverse}</strong>
+          </div>
+        )}
+
+        <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-muted)' }}>NAME</label>
+        <input
+          className="field"
+          placeholder="alice.litho"
+          value={name}
+          onChange={e => setName(e.target.value.toLowerCase())}
+          spellCheck={false}
+          autoCapitalize="off"
+        />
+
+        {status === 'checking'  && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Checking availability…</div>}
+        {status === 'available' && <div style={{ fontSize: 11, color: 'var(--green, #10b981)' }}>✓ Available</div>}
+        {status === 'taken'     && (
+          <div style={{ fontSize: 11, color: 'var(--orange, #f59e0b)' }}>
+            Taken — owned by <span style={{ fontFamily: 'Geist Mono, monospace' }}>{resolveAddr}</span>
+          </div>
+        )}
+
+        <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-muted)' }}>YEARS</label>
+        <input
+          className="field"
+          type="number" min={1} max={10} step={1}
+          value={years}
+          onChange={e => setYears(e.target.value)}
+        />
+
+        {err && <div style={{ fontSize: 12, color: 'var(--red)' }}>{err}</div>}
+        {txHash && (
+          <div style={{ fontSize: 12, color: 'var(--green, #10b981)' }}>
+            Registration submitted · <span style={{ fontFamily: 'Geist Mono, monospace' }}>{txHash.slice(0, 14)}…</span>
+          </div>
+        )}
+
+        <button
+          className="btn-primary"
+          disabled={busy || status !== 'available'}
+          onClick={onRegister}
+          style={{ marginTop: 4 }}
+        >
+          {busy ? 'Submitting…' : status === 'taken' ? 'Not available' : 'Register name'}
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 export function SettingsView() {
   const wallet = useWallet();
   const [revealOpen, setRevealOpen] = useState(false);
@@ -1018,6 +1155,7 @@ export function SettingsView() {
         <AccountSection Section={Section} Row={Row}/>
 
         <AddressBookSection Section={Section} Row={Row}/>
+        <DnnsSection Section={Section}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
           <Row label="Permissions" sub="Token allowances + connected dApps">

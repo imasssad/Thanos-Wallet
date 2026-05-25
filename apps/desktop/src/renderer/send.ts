@@ -63,10 +63,14 @@ export async function resolveRecipient(input: string): Promise<string> {
 
 /* ─── Send ───────────────────────────────────────────────────────────── */
 
+export type SendChain = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+
 export interface SendAssetArgs {
   /** Unlocked BIP-39 seed words. Ignored when `signWith === 'ledger'`. */
   seed: string[];
-  /** Resolved 0x recipient address. */
+  /** Target chain — defaults to 'evm'. Only EVM supports hardware signers. */
+  chain?: SendChain;
+  /** Recipient address — format depends on chain. */
   to: string;
   /** Human-readable amount, e.g. "12.5". */
   amount: string;
@@ -74,6 +78,10 @@ export interface SendAssetArgs {
   decimals: number;
   /** LEP100 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
+  /** SPL mint — required when chain='solana' and not native SOL. */
+  splMintAddress?: string;
+  /** Optional Cosmos memo. */
+  memo?: string;
   /** Which signer to use. Defaults to the local seed. */
   signWith?: 'seed' | 'ledger' | 'trezor';
   /** Open Ledger connection (transport + derived address). Required when
@@ -90,6 +98,36 @@ export interface SendAssetArgs {
  * Returns the broadcast transaction hash.
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
+  const chain = args.chain ?? 'evm';
+
+  if (chain !== 'evm' && (args.signWith === 'ledger' || args.signWith === 'trezor')) {
+    throw new Error(`${args.signWith} signing is only available on EVM chains in this build`);
+  }
+  if (chain === 'bitcoin') {
+    if (!args.seed.length) throw new Error('Wallet is locked');
+    const { sendBitcoin } = await import('./bitcoin');
+    return sendBitcoin({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
+  }
+  if (chain === 'solana') {
+    if (!args.seed.length) throw new Error('Wallet is locked');
+    if (args.splMintAddress) {
+      const { sendSplToken } = await import('./solana');
+      return sendSplToken({
+        mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount,
+        mintAddress: args.splMintAddress, decimals: args.decimals,
+      });
+    }
+    const { sendSol } = await import('./solana');
+    return sendSol({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
+  }
+  if (chain === 'cosmos') {
+    if (!args.seed.length) throw new Error('Wallet is locked');
+    const { sendCosmos } = await import('./cosmos');
+    return sendCosmos({
+      mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount, memo: args.memo,
+    });
+  }
+
   let value: bigint;
   try {
     value = parseUnits(args.amount, args.decimals);

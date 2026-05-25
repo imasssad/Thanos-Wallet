@@ -22,21 +22,31 @@
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
+    "@cosmjs/crypto": "^0.32.4",
+    "@cosmjs/encoding": "^0.32.4",
+    "@cosmjs/proto-signing": "^0.32.4",
+    "@cosmjs/stargate": "^0.32.4",
     "@ledgerhq/hw-app-eth": "^6.46.0",
     "@ledgerhq/hw-transport-webhid": "^6.31.5",
     "@reown/walletkit": "^1.5.5",
+    "@solana/web3.js": "^1.98.0",
     "@thanos/api-client": "workspace:*",
     "@thanos/sdk-core": "workspace:*",
     "@trezor/connect-web": "^9.7.1",
     "@walletconnect/core": "^2.21.6",
     "@walletconnect/types": "^2.21.6",
+    "bip32": "^5.0.0",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^6.1.6",
+    "ecpair": "^3.0.0",
     "electron-log": "^5.2.4",
     "electron-updater": "^6.3.9",
     "ethers": "^6.13.4",
     "hash-wasm": "^4.12.0",
     "keytar": "^7.9.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "tiny-secp256k1": "^2.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",

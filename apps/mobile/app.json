@@ -15,7 +15,14 @@
     "ios": {
       "bundleIdentifier": "ai.thanos.wallet",
       "supportsTablet": true,
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
+        "NSFaceIDUsageDescription": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely.",
+        "NSLocalNetworkUsageDescription": "Thanos Wallet connects to local nodes when you configure a custom RPC endpoint.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "associatedDomains": ["applinks:thanos.fi"]
     },
     "android": {
       "package": "ai.thanos.wallet",
@@ -24,7 +31,20 @@
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#ffffff"
       },
-      "permissions": []
+      "permissions": [
+        "CAMERA",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "INTERNET",
+        "POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": [{ "scheme": "thanoswallet" }, { "scheme": "wc" }]
+        }
+      ]
     },
     "jsEngine": "hermes",
     "plugins": [
