@@ -21,17 +21,19 @@
 
 creation_rules:
   # Production env — most-restrictive recipient list.
+  #
+  # ╔════════════════════════════════════════════════════════════════════╗
+  # ║  REPLACE the age1placeholder... lines below with real public keys. ║
+  # ║  Generate one with:                                                ║
+  # ║      bash ops/secrets/bootstrap-age-keys.sh                        ║
+  # ║  The script prints the public key + the exact line to paste here.  ║
+  # ║  Multiple recipients = comma-separated on the same `age: >-` line. ║
+  # ╚════════════════════════════════════════════════════════════════════╝
   - path_regex: ops/secrets/prod\.enc\.env$
     age: >-
-      # Add prod-trusted age public keys here, comma-separated. Each
-      # one is a recipient — anyone whose corresponding *private* key
-      # is loaded into SOPS_AGE_KEY_FILE can decrypt.
-      #
-      # Production access list — gate adds via PR.
-      # Example: `age1abc...` (real key prefix is age1 + 58 base32 chars).
       age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
 
-  # Staging env — wider access for QA / contractors.
+  # Staging env — usually a superset of prod recipients + any QA / contractor keys.
   - path_regex: ops/secrets/staging\.enc\.env$
     age: >-
       age1placeholderstagingkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz,

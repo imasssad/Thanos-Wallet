@@ -20,7 +20,21 @@ ops/secrets/
 └── .gitignore           ← never commit a decrypted .env here
 ```
 
-## Adding yourself as a recipient
+## Quickest path: the bootstrap script
+
+```bash
+bash ops/secrets/bootstrap-age-keys.sh
+# → installs age + sops if missing
+# → generates ~/.config/sops/age/keys.txt if absent
+# → prints your PUBLIC key + the exact .sops.yaml line to update
+# → tells you what to commit + how to wire CI
+```
+
+Run it once on your laptop (so you can edit secrets) and once on the
+VPS (so deploy can decrypt). Paste each public key into `.sops.yaml`,
+then `sops updatekeys ops/secrets/*.enc.env` and commit.
+
+## Adding yourself as a recipient (manual path)
 
 1. Generate an age keypair (one-off):
    ```bash
