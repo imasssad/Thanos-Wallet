@@ -28,7 +28,7 @@ warn=0
 declare -a results
 
 probe() {
-  local label="$1" url="$2" method="${3:-GET}" body="${4:-}" timeout="${5:-5}"
+  local label="$1" url="$2" method="${3:-GET}" body="${4:-}" timeout="${5:-5}" expected_status="${6:-200}"
   local start end ms status
 
   start=$(date +%s%N)
@@ -45,12 +45,12 @@ probe() {
   ms=$(( (end - start) / 1000000 ))
 
   local sym col detail
-  if [ "$status" = "200" ] && [ "$ms" -lt 5000 ]; then
+  if [ "$status" = "$expected_status" ] && [ "$ms" -lt 5000 ]; then
     sym='✓'; col='32'; ((ok++))
-  elif [ "$status" = "200" ]; then
+  elif [ "$status" = "$expected_status" ]; then
     sym='⚠'; col='33'; ((warn++)); detail="slow (${ms}ms)"
   else
-    sym='✗'; col='31'; ((failed++)); detail="status=$status"
+    sym='✗'; col='31'; ((failed++)); detail="status=$status (expected $expected_status)"
   fi
 
   results+=("$status|$ms|$label|$url")
@@ -91,7 +91,7 @@ probe "cloudflare-eth.com" "https://cloudflare-eth.com" POST '{"jsonrpc":"2.0","
 section "Thanos services"
 probe "MultX bridge"      "https://bridge.litho.ai/health"
 probe "Ignite DEX"        "https://ignite.litho.ai/api/health"
-probe "Reown WC relay"    "https://relay.walletconnect.com" GET '' 3   # WSS handshake fails → 400 expected; we just check it answers
+probe "Reown WC relay"    "https://relay.walletconnect.com" GET '' 5 400  # WSS endpoint — HTTP GET returns 400 when reachable
 probe "CoinGecko"         "https://api.coingecko.com/api/v3/ping"
 
 # ─── Local thanos stack (if running) ─────────────────────────────────
