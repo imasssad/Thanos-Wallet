@@ -31,9 +31,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/web build
         env:
@@ -63,9 +63,9 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       # WXT's `zip` script produces a ready-for-upload .zip per browser
       # target. Safari needs the macOS Xcode converter (run on a Mac);
@@ -110,9 +110,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/desktop build
 
@@ -176,9 +176,9 @@ jobs:
     if: ${{ vars.EAS_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - name: Install EAS CLI
         run: npm install --global eas-cli@latest

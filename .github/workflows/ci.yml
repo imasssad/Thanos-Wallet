@@ -17,9 +17,9 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - name: Typecheck workspace
         run: pnpm typecheck
@@ -40,9 +40,9 @@ jobs:
     continue-on-error: false
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm lint
 
@@ -52,9 +52,9 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/web build
         env:
@@ -68,9 +68,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/extension build
       # Bundle-size budget — catches dep bloat in PRs before it ships.
@@ -84,9 +84,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       # SDK-core: BIP-39/44 derivation + bech32 round-trip + price-history math
       # + ecosystem helpers + phishing classifier. A regression here breaks
@@ -123,9 +123,9 @@ jobs:
           --health-retries 12
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - name: Run schema + contacts integration tests (api)
         run: pnpm --filter @thanos/api test -- integration
@@ -155,9 +155,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - name: pnpm audit (high+ severity, prod deps only)
         run: pnpm audit --audit-level=high --prod
