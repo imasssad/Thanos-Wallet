@@ -51,6 +51,31 @@ fail() { printf "${c_red}✗${c_reset} %s\n" "$*" >&2; exit 1; }
 
 # ─── 1. Install age + sops if missing ─────────────────────────────────
 
+# Install sops by direct binary download — Ubuntu 24.04+ dropped the apt
+# package, and several other distros never carried it. We pin a known-good
+# release; bump SOPS_VERSION when there's a security fix worth chasing.
+install_sops_binary() {
+  local sops_version="${SOPS_VERSION:-v3.9.1}"
+  local os arch dest url
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) fail "unsupported architecture for sops binary install: $arch" ;;
+  esac
+  url="https://github.com/getsops/sops/releases/download/${sops_version}/sops-${sops_version}.${os}.${arch}"
+  dest="/usr/local/bin/sops"
+  warn "downloading sops ${sops_version} from GitHub release → ${dest}"
+  if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+    sudo curl -fsSL -o "$dest" "$url"
+    sudo chmod +x "$dest"
+  else
+    curl -fsSL -o "$dest" "$url"
+    chmod +x "$dest"
+  fi
+}
+
 install_tool() {
   local tool="$1"
   if command -v "$tool" >/dev/null 2>&1; then
@@ -58,11 +83,25 @@ install_tool() {
     return
   fi
   warn "$tool not found — installing"
-  if   command -v apt-get  >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y "$tool"
-  elif command -v brew     >/dev/null 2>&1; then brew install "$tool"
-  elif command -v dnf      >/dev/null 2>&1; then sudo dnf install -y "$tool"
-  elif command -v pacman   >/dev/null 2>&1; then sudo pacman -S --noconfirm "$tool"
-  else fail "no supported package manager found — install $tool manually from https://github.com/FiloSottile/age (and https://github.com/getsops/sops)"
+  # Try the system package manager first. If that errors out (e.g. sops
+  # was dropped from Ubuntu 24.04's repos), fall back to GitHub-release
+  # binary install for sops; fail for age (age is in every modern repo).
+  local pm_ok=0
+  if   command -v apt-get  >/dev/null 2>&1; then
+    (sudo apt-get update -qq && sudo apt-get install -y "$tool" 2>/dev/null) && pm_ok=1 || pm_ok=0
+  elif command -v brew     >/dev/null 2>&1; then
+    brew install "$tool" && pm_ok=1 || pm_ok=0
+  elif command -v dnf      >/dev/null 2>&1; then
+    sudo dnf install -y "$tool" && pm_ok=1 || pm_ok=0
+  elif command -v pacman   >/dev/null 2>&1; then
+    sudo pacman -S --noconfirm "$tool" && pm_ok=1 || pm_ok=0
+  fi
+  if [ "$pm_ok" -eq 0 ] || ! command -v "$tool" >/dev/null 2>&1; then
+    if [ "$tool" = "sops" ]; then
+      install_sops_binary
+    else
+      fail "$tool not available via the package manager — install manually from https://github.com/FiloSottile/age"
+    fi
   fi
   command -v "$tool" >/dev/null 2>&1 || fail "$tool install reported success but the binary still isn't on PATH"
   ok "$tool installed: $(command -v "$tool")"
