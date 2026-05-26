@@ -20,26 +20,27 @@
 # line and run the same — SOPS re-encrypts to the remaining recipients.
 
 creation_rules:
-  # Production env — most-restrictive recipient list.
+  # Recipients per file. Each `age:` line is a comma-separated list of
+  # public keys; anyone whose corresponding *private* key is loaded into
+  # SOPS_AGE_KEY_FILE can decrypt that file. Add a new recipient by
+  # appending its public key + running `sops updatekeys` on the affected
+  # files.
   #
-  # ╔════════════════════════════════════════════════════════════════════╗
-  # ║  REPLACE the age1placeholder... lines below with real public keys. ║
-  # ║  Generate one with:                                                ║
-  # ║      bash ops/secrets/bootstrap-age-keys.sh                        ║
-  # ║  The script prints the public key + the exact line to paste here.  ║
-  # ║  Multiple recipients = comma-separated on the same `age: >-` line. ║
-  # ╚════════════════════════════════════════════════════════════════════╝
+  # Generate a new recipient key with:
+  #   bash ops/secrets/bootstrap-age-keys.sh
+
+  # Production env — most-restrictive recipient list.
   - path_regex: ops/secrets/prod\.enc\.env$
     age: >-
-      age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+      age1cfl2rkd92d97tsyv8galy9gn2fxkn3gl4e0jjud2va3quwp9r3gssdca25
 
-  # Staging env — usually a superset of prod recipients + any QA / contractor keys.
+  # Staging env — usually a superset of prod recipients + any QA /
+  # contractor keys. Append additional `age1...` keys comma-separated.
   - path_regex: ops/secrets/staging\.enc\.env$
     age: >-
-      age1placeholderstagingkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz,
-      age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+      age1cfl2rkd92d97tsyv8galy9gn2fxkn3gl4e0jjud2va3quwp9r3gssdca25
 
   # Generic catch-all for anything else under ops/secrets/.
   - path_regex: ops/secrets/.+\.enc\.(env|yml|json)$
     age: >-
-      age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+      age1cfl2rkd92d97tsyv8galy9gn2fxkn3gl4e0jjud2va3quwp9r3gssdca25
