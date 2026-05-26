@@ -44,6 +44,20 @@ export interface IgniteQuote {
   expiresAt:  number;
   /** Price impact of this trade as a percentage, when the DEX reports it. */
   priceImpact?: number;
+  /** Optional: unsigned router call the wallet should sign + broadcast.
+   *  Present when Ignite operates in "wallet broadcasts" mode (the
+   *  canonical Uniswap-style flow). When absent, the wallet calls
+   *  /api/swap with the quoteId and Ignite handles execution
+   *  server-side. */
+  unsignedTx?: {
+    to:                   string;
+    value?:               string;
+    data?:                string;
+    gas?:                 string;
+    maxFeePerGas?:        string;
+    maxPriorityFeePerGas?: string;
+    chainId?:             number;
+  };
 }
 
 export interface IgniteExecution {

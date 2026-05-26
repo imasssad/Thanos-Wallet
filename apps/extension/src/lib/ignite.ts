@@ -20,6 +20,16 @@ export interface IgniteQuote {
   feeFrom:    string;
   expiresAt:  number;
   priceImpact?: number;
+  /** Optional: router call the wallet should sign + broadcast. */
+  unsignedTx?: {
+    to:                   string;
+    value?:               string;
+    data?:                string;
+    gas?:                 string;
+    maxFeePerGas?:        string;
+    maxPriorityFeePerGas?: string;
+    chainId?:             number;
+  };
 }
 
 export interface IgniteExecution {

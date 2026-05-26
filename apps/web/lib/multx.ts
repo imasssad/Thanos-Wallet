@@ -49,6 +49,25 @@ export interface Quote {
   feeFrom:    string;
   /** Unix ms; quotes typically expire after ~30s. */
   expiresAt:  number;
+  /** Optional: an unsigned source-chain transaction the wallet should
+   *  sign + broadcast itself. When present, the wallet signs locally
+   *  and posts the resulting source-tx hash to /bridge/execute. When
+   *  absent, the wallet calls /bridge/execute with the quoteId alone
+   *  and the bridge runs the source-chain tx server-side.
+   *
+   *  Field is the EIP-1474 eth_sendTransaction shape — `to`, `value`,
+   *  `data`, optional gas hints. Same shape the WC eth_sendTransaction
+   *  handler accepts so the existing signer-worker code path applies.
+   */
+  unsignedTx?: {
+    to:                   string;
+    value?:               string;   // hex 0x… or decimal wei
+    data?:                string;
+    gas?:                 string;
+    maxFeePerGas?:        string;
+    maxPriorityFeePerGas?: string;
+    chainId?:             number;
+  };
 }
 
 export interface Execution {

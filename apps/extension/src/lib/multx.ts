@@ -19,6 +19,16 @@ export interface Quote {
   rate:       number;
   feeFrom:    string;
   expiresAt:  number;
+  /** Optional: source-chain tx the wallet should sign + broadcast. */
+  unsignedTx?: {
+    to:                   string;
+    value?:               string;
+    data?:                string;
+    gas?:                 string;
+    maxFeePerGas?:        string;
+    maxPriorityFeePerGas?: string;
+    chainId?:             number;
+  };
 }
 
 export interface Execution {

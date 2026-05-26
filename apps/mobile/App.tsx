@@ -1331,6 +1331,10 @@ function SwapScreen({ goBack }: { goBack: () => void }) {
     quoteId: string; from: string; to: string;
     fromAmount: string; toAmount: string; rate: number; feeFrom: string;
     expiresAt?: number;
+    unsignedTx?: {
+      to: string; value?: string; data?: string;
+      gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+    };
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
   const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
@@ -1387,7 +1391,27 @@ function SwapScreen({ goBack }: { goBack: () => void }) {
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
       const mod = await import(provider === 'multx' ? './lib/multx' : './lib/ignite');
-      const exec = await mod.execute(quote.quoteId, '');
+
+      // Dual-mode dispatch — sign+broadcast locally via the module-
+      // isolated signer when the quote includes an `unsignedTx`, else
+      // post quoteId alone and let the bridge/DEX run server-side.
+      let signedTxHash = '';
+      if (quote.unsignedTx) {
+        const signer = await import('./lib/signer');
+        if (signer.hasSeed()) {
+          signedTxHash = await signer.signAndBroadcast("m/44'/60'/0'/0/0", {
+            to:                   quote.unsignedTx.to,
+            value:                quote.unsignedTx.value ? BigInt(quote.unsignedTx.value) : undefined,
+            data:                 quote.unsignedTx.data,
+            gasLimit:             quote.unsignedTx.gas,
+            maxFeePerGas:         quote.unsignedTx.maxFeePerGas,
+            maxPriorityFeePerGas: quote.unsignedTx.maxPriorityFeePerGas,
+          });
+          setPollMsg(`Source tx: ${signedTxHash.slice(0, 10)}…`);
+        }
+      }
+
+      const exec = await mod.execute(quote.quoteId, signedTxHash);
       const id = exec.executionId;
       if (exec.sourceHash) setPollMsg(`Source tx: ${exec.sourceHash.slice(0, 10)}…`);
       for (let i = 0; i < 30; i++) {

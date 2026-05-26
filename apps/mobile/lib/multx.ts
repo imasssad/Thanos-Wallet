@@ -9,6 +9,11 @@ export interface Quote {
   quoteId: string; from: string; to: string;
   fromAmount: string; toAmount: string;
   rate: number; feeFrom: string; expiresAt: number;
+  unsignedTx?: {
+    to: string; value?: string; data?: string;
+    gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+    chainId?: number;
+  };
 }
 export interface Execution {
   executionId: string; sourceHash: string | null;

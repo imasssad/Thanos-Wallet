@@ -1315,6 +1315,7 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
 }
 
 function SwapModal({ onClose }: { onClose: () => void }) {
+  const seed = useWalletSeed();
   const [from, setFrom] = useState('LITHO');
   const [to,   setTo]   = useState('LitBTC');
   const [amt,  setAmt]  = useState('100');
@@ -1325,6 +1326,10 @@ function SwapModal({ onClose }: { onClose: () => void }) {
     quoteId: string; from: string; to: string;
     fromAmount: string; toAmount: string; rate: number; feeFrom: string;
     expiresAt?: number;
+    unsignedTx?: {
+      to: string; value?: string; data?: string;
+      gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+    };
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
   const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
@@ -1382,12 +1387,33 @@ function SwapModal({ onClose }: { onClose: () => void }) {
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
       const mod = await import(provider === 'multx' ? '../../lib/multx' : '../../lib/ignite');
-      // The signed tx wire-format is provider-specific; the wallet expects
-      // the bridge/DEX to either build it server-side (multx today) or
-      // hand back tx params we sign locally (next API revision). Until
-      // signed-tx surface lands, pass the wallet address; multx returns
-      // a stub execution we can poll for the source tx.
-      const exec = await mod.execute(quote.quoteId, '');
+
+      // Dual-mode dispatch — same pattern as the web SwapModal:
+      //   - If the quote came back with an `unsignedTx`, sign + broadcast
+      //     it locally via the popup's offscreen-isolated signer, then
+      //     forward the resulting tx hash as `signedTx`.
+      //   - Otherwise, post quoteId alone and let the bridge/DEX run the
+      //     source-chain tx server-side.
+      let signedTxHash = '';
+      const utx = (quote as { unsignedTx?: {
+        to: string; value?: string; data?: string;
+        gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+      } }).unsignedTx;
+      if (utx && seed.length) {
+        const { signAndBroadcastTx } = await import('./offscreen-sign');
+        signedTxHash = await signAndBroadcastTx({
+          seed,
+          tx: {
+            to: utx.to, value: utx.value, data: utx.data,
+            gas: utx.gas,
+            // popup signer accepts maxFee* via the EIP-1559 keys.
+            gasPrice: undefined,
+          },
+        });
+        setPollMsg(`Source tx: ${signedTxHash.slice(0, 10)}…`);
+      }
+
+      const exec = await mod.execute(quote.quoteId, signedTxHash);
       const id = exec.executionId;
       if (exec.sourceHash) setPollMsg(`Source tx: ${exec.sourceHash.slice(0, 10)}…`);
 

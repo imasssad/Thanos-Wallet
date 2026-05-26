@@ -1195,6 +1195,10 @@ function SwapModal({ onClose }: { onClose: () => void }) {
     quoteId: string; from: string; to: string;
     fromAmount: string; toAmount: string; rate: number; feeFrom: string;
     expiresAt?: number;
+    unsignedTx?: {
+      to: string; value?: string; data?: string;
+      gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+    };
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
   const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
@@ -1251,7 +1255,27 @@ function SwapModal({ onClose }: { onClose: () => void }) {
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
       const mod = await import(provider === 'multx' ? './multx' : './ignite');
-      const exec = await mod.execute(quote.quoteId, '');
+
+      // Dual-mode dispatch — sign+broadcast locally if the quote includes
+      // an `unsignedTx`, otherwise post the quoteId alone and let the
+      // bridge/DEX run the source-chain tx server-side.
+      let signedTxHash = '';
+      if (quote.unsignedTx) {
+        const bridge = window.thanosDesktop?.signer;
+        if (bridge && (await bridge.hasSeed())) {
+          signedTxHash = await bridge.sendTx("m/44'/60'/0'/0/0", {
+            to:                   quote.unsignedTx.to,
+            value:                quote.unsignedTx.value,
+            data:                 quote.unsignedTx.data,
+            gas:                  quote.unsignedTx.gas,
+            maxFeePerGas:         quote.unsignedTx.maxFeePerGas,
+            maxPriorityFeePerGas: quote.unsignedTx.maxPriorityFeePerGas,
+          });
+          setPollMsg(`Source tx: ${signedTxHash.slice(0, 10)}…`);
+        }
+      }
+
+      const exec = await mod.execute(quote.quoteId, signedTxHash);
       const id = exec.executionId;
       if (exec.sourceHash) setPollMsg(`Source tx: ${exec.sourceHash.slice(0, 10)}…`);
       for (let i = 0; i < 30; i++) {

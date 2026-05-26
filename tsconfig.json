@@ -1,0 +1,39 @@
+{
+  // Root tsconfig — used by VS Code / Cursor / WebStorm's TypeScript
+  // server to discover the workspace. CLI builds still go through
+  // each app's own tsconfig (apps/*/tsconfig*.json, services/*/
+  // tsconfig.json, packages/*/tsconfig.json); this file is just a
+  // map.
+  //
+  // Why this exists:
+  //   Without a root tsconfig.json, IDE TS servers fall back to
+  //   per-folder inference and the `"extends": "../../tsconfig.base.json"`
+  //   path in app tsconfigs gets flagged as unresolved (red squiggle)
+  //   even though `tsc --noEmit` resolves it fine from the CLI.
+  //   See https://github.com/microsoft/TypeScript/issues/41695.
+  //
+  // Why `files: []`:
+  //   Solution-style root — no files included directly here, only
+  //   project references. tsc -b at the root walks the references
+  //   and builds them in dependency order.
+  //
+  // To add a new workspace: append it to "references" below.
+
+  "extends":   "./tsconfig.base.json",
+  "files":     [],
+  "include":   [],
+  "references": [
+    { "path": "./packages/sdk-core" },
+    { "path": "./packages/sdk-react" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/api-client" },
+    { "path": "./apps/web" },
+    { "path": "./apps/extension" },
+    { "path": "./apps/desktop/tsconfig.main.json" },
+    { "path": "./apps/desktop/tsconfig.renderer.json" },
+    { "path": "./apps/mobile" },
+    { "path": "./services/api" },
+    { "path": "./services/indexer" },
+    { "path": "./services/worker" }
+  ]
+}

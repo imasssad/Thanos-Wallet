@@ -1600,6 +1600,7 @@ const iconRowBtn: React.CSSProperties = {
 type SwapStage = 'compose' | 'executing' | 'bridging' | 'settling' | 'completed' | 'failed';
 
 export function SwapModal({ onClose }: { onClose: () => void }) {
+  const wallet = useWallet();
   const [from, setFrom] = useState('LITHO');
   const [to, setTo]     = useState('LitBTC');
   const [amt, setAmt]   = useState('100');
@@ -1751,11 +1752,22 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
     };
   }, [executionId, stage, provider]);
 
-  /* Kick off the bridge execution. The real signedTx envelope is something
-     the bridge contract spec defines (not yet finalised), so today we send
-     an empty placeholder — the bridge will accept-or-reject and we surface
-     either path through the polling effect above. Once the spec lands the
-     signedTx construction goes here. */
+  /* Kick off the bridge / DEX execution. Two operating modes:
+   *
+   *   1. **Wallet-broadcast mode** — when the quote response includes an
+   *      `unsignedTx` field, the wallet signs + broadcasts it locally via
+   *      the existing signer worker (same path eth_sendTransaction goes
+   *      through), then posts the resulting source-tx hash to /execute
+   *      so the bridge/DEX can pick up the polling.
+   *
+   *   2. **Server-side mode** — when there's no `unsignedTx`, the wallet
+   *      just posts `{ quoteId, signedTx: '' }` and the upstream service
+   *      builds + broadcasts the source tx itself.
+   *
+   *  Both providers (MultX + Ignite) negotiate which mode they're in via
+   *  the quote response shape, so the wallet UI doesn't need to change
+   *  when the API spec lands.
+   */
   const onSwap = async () => {
     if (!quote || !provider) return;
     // Refuse to execute against an expired quote — the price moved and
@@ -1777,12 +1789,38 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
     setStage('executing');
     setExecError(null);
     try {
-      // Execute on the route that won the quote race.
+      // Branch on whether the quote came back with an unsignedTx the
+      // wallet should broadcast itself, or whether the upstream wants
+      // to run the source tx server-side.
+      let signedTxHash = '';
+      const unsignedTx = (quote as { unsignedTx?: {
+        to: string; value?: string; data?: string;
+        gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+      } }).unsignedTx;
+
+      if (unsignedTx && wallet?.seed?.length) {
+        // Wallet-broadcast mode: sign locally via the signer worker
+        // (same code path eth_sendTransaction takes), then forward the
+        // resulting tx hash as the `signedTx` field so the bridge/DEX
+        // picks it up + starts tracking.
+        const { signerSignTransaction } = await import('../lib/signer-client');
+        const r = await signerSignTransaction({
+          to:                   unsignedTx.to,
+          value:                unsignedTx.value,
+          data:                 unsignedTx.data,
+          gasLimit:             unsignedTx.gas,
+          maxFeePerGas:         unsignedTx.maxFeePerGas,
+          maxPriorityFeePerGas: unsignedTx.maxPriorityFeePerGas,
+        });
+        signedTxHash = r.hash;
+        setSourceHash(signedTxHash);
+      }
+
       const exec = provider === 'ignite'
-        ? await igniteExecute(quote.quoteId, /* signedTx */ '0x')
-        : await multxExecute(quote.quoteId, /* signedTx */ '0x');
+        ? await igniteExecute(quote.quoteId, signedTxHash)
+        : await multxExecute(quote.quoteId, signedTxHash);
       setExecutionId(exec.executionId);
-      setSourceHash(exec.sourceHash ?? null);
+      if (!signedTxHash) setSourceHash(exec.sourceHash ?? null);
       // MultX goes pending → bridging; an Ignite DEX swap is one tx so
       // pending maps straight to a short settling wait.
       setStage(exec.state === 'pending'

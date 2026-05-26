@@ -13,6 +13,11 @@ export interface IgniteQuote {
   quoteId: string; from: string; to: string;
   fromAmount: string; toAmount: string;
   rate: number; feeFrom: string; expiresAt: number; priceImpact?: number;
+  unsignedTx?: {
+    to: string; value?: string; data?: string;
+    gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+    chainId?: number;
+  };
 }
 export interface IgniteExecution {
   executionId: string; sourceHash: string | null;
