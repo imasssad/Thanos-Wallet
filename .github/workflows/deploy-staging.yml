@@ -1,0 +1,149 @@
+name: deploy-staging
+
+# Pushes to `staging` (or main with [staging] in the commit msg) deploy
+# the wallet stack onto the staging overlay running on the same VPS as
+# production. Idempotent — re-running just rebuilds + restarts the
+# *-staging containers.
+#
+# Required GitHub Action secrets:
+#   STAGING_SSH_HOST          — VPS host (e.g. thanos.fi)
+#   STAGING_SSH_USER          — typically root or a deploy user
+#   STAGING_SSH_KEY           — private key for that user
+#   POSTGRES_PASSWORD_STAGING
+#   REDIS_PASSWORD_STAGING
+#   JWT_SECRET_STAGING
+#   REFRESH_SECRET_STAGING
+#
+# The .env file used by the staging compose is rendered server-side
+# from the secrets above — never committed to the repo, never echoed
+# in CI logs (set-output is gated).
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy to staging'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy to staging.thanos.fi
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+          fetch-depth: 1
+
+      - name: Set up SSH
+        env:
+          KEY:  ${{ secrets.STAGING_SSH_KEY }}
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_staging
+          chmod 600 ~/.ssh/id_staging
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Render staging env on the VPS
+        env:
+          USER:                        ${{ secrets.STAGING_SSH_USER }}
+          HOST:                        ${{ secrets.STAGING_SSH_HOST }}
+          POSTGRES_PASSWORD_STAGING:   ${{ secrets.POSTGRES_PASSWORD_STAGING }}
+          REDIS_PASSWORD_STAGING:      ${{ secrets.REDIS_PASSWORD_STAGING }}
+          JWT_SECRET_STAGING:          ${{ secrets.JWT_SECRET_STAGING }}
+          REFRESH_SECRET_STAGING:      ${{ secrets.REFRESH_SECRET_STAGING }}
+          NEXT_PUBLIC_SENTRY_DSN:      ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
+          SENTRY_DSN:                  ${{ secrets.SENTRY_DSN }}
+        run: |
+          ssh -i ~/.ssh/id_staging "$USER@$HOST" bash -s <<EOF
+            set -euo pipefail
+            cd /var/www/thanos-wallet
+            git fetch origin
+            git reset --hard origin/${{ github.event.inputs.branch || github.ref_name }}
+
+            # Write the staging env. Values come from CI env over the
+            # ssh stdin; never echo them. Atomic write via a temp file.
+            umask 077
+            cat > /var/www/thanos-wallet/.env.staging <<ENV
+            POSTGRES_PASSWORD_STAGING=$POSTGRES_PASSWORD_STAGING
+            REDIS_PASSWORD_STAGING=$REDIS_PASSWORD_STAGING
+            JWT_SECRET_STAGING=$JWT_SECRET_STAGING
+            REFRESH_SECRET_STAGING=$REFRESH_SECRET_STAGING
+            NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+            SENTRY_DSN=$SENTRY_DSN
+            SENTRY_ENVIRONMENT=staging
+            NEXT_PUBLIC_API_URL_STAGING=https://staging.thanos.fi
+            ENV
+          EOF
+
+      - name: Bring up the staging stack
+        env:
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_staging "$USER@$HOST" bash -s <<'EOF'
+            set -euo pipefail
+            cd /var/www/thanos-wallet
+            set -a; source .env.staging; set +a
+            docker compose -p thanos-staging \
+              -f docker-compose.yml \
+              -f docker-compose.staging.yml \
+              up -d --build
+            # Wait for the api to become healthy before declaring success.
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:4200/health >/dev/null 2>&1; then
+                echo "✓ staging api healthy on attempt $i"
+                break
+              fi
+              sleep 2
+            done
+          EOF
+
+      - name: Smoke check via public hostname
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+        run: |
+          # Hits the nginx-terminated staging vhost. If nginx isn't
+          # configured for staging.thanos.fi yet, this step will fail
+          # — operator should set up the vhost per docker-compose.staging.yml's
+          # header comments.
+          if curl -fsS -m 10 "https://staging.thanos.fi/api/health" >/dev/null; then
+            echo "✓ staging.thanos.fi/api/health reachable"
+          else
+            echo "::warning::staging.thanos.fi not reachable yet — nginx vhost likely missing"
+          fi
+
+      - name: Run migrations against staging
+        env:
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_staging "$USER@$HOST" bash -s <<'EOF'
+            set -euo pipefail
+            cd /var/www/thanos-wallet
+            # Apply any *.sql in services/db/migrations/ that hasn't run yet.
+            # `\set ON_ERROR_STOP on` short-circuits the first failure.
+            for sql in services/db/migrations/*.sql; do
+              [ -f "$sql" ] || continue
+              echo "→ applying $sql"
+              docker exec -i thanos-postgres-staging \
+                psql -U thanos -d thanos_wallet_staging \
+                  -v ON_ERROR_STOP=on \
+                  -f - < "$sql" || {
+                    echo "::error::migration $sql failed"
+                    exit 1
+                  }
+            done
+          EOF

@@ -1,0 +1,43 @@
+# SOPS configuration — secrets in the repo, never in plaintext.
+#
+# Workflow:
+#   1. Each developer / CI runner has a public age key (created via
+#      `age-keygen`). Their public keys are listed below.
+#   2. To edit a secret:
+#        export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
+#        sops ops/secrets/prod.enc.env       # decrypts → opens $EDITOR → re-encrypts on save
+#   3. To deploy:
+#        sops -d ops/secrets/prod.enc.env > .env          # local dev
+#        # On the VPS, deploy.yml decrypts via the SOPS_AGE_KEY GH secret.
+#
+# What's *encrypted*: every key in every .enc.env file under
+# ops/secrets/.
+# What's *plaintext*: file structure + key names. So a diff still
+# reviews cleanly without leaking the value of POSTGRES_PASSWORD.
+#
+# Key rotation: add the new public key to `age` list below, run
+# `sops updatekeys ops/secrets/*.enc.env`. To remove a key, delete its
+# line and run the same — SOPS re-encrypts to the remaining recipients.
+
+creation_rules:
+  # Production env — most-restrictive recipient list.
+  - path_regex: ops/secrets/prod\.enc\.env$
+    age: >-
+      # Add prod-trusted age public keys here, comma-separated. Each
+      # one is a recipient — anyone whose corresponding *private* key
+      # is loaded into SOPS_AGE_KEY_FILE can decrypt.
+      #
+      # Production access list — gate adds via PR.
+      # Example: `age1abc...` (real key prefix is age1 + 58 base32 chars).
+      age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+
+  # Staging env — wider access for QA / contractors.
+  - path_regex: ops/secrets/staging\.enc\.env$
+    age: >-
+      age1placeholderstagingkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz,
+      age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+
+  # Generic catch-all for anything else under ops/secrets/.
+  - path_regex: ops/secrets/.+\.enc\.(env|yml|json)$
+    age: >-
+      age1placeholderprodkeyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
