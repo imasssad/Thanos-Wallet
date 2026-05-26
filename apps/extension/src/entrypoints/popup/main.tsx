@@ -902,37 +902,63 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+type ExtSendChain = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+const EXT_CHAIN_META: Record<ExtSendChain, { label: string; sym: string; decimals: number; placeholder: string }> = {
+  evm:     { label: 'Lithosphere', sym: 'LITHO', decimals: 18, placeholder: '0x… , litho1… or name.litho' },
+  bitcoin: { label: 'Bitcoin',     sym: 'BTC',   decimals: 8,  placeholder: 'bc1q… / 1… / 3…' },
+  solana:  { label: 'Solana',      sym: 'SOL',   decimals: 9,  placeholder: 'Base58 Solana address' },
+  cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
+};
+
 function SendModal({ onClose }: { onClose: () => void }) {
   const { coins } = usePortfolioCtx();
   const seed = useWalletSeed();
+  const [chain, setChain] = useState<ExtSendChain>('evm');
   const [selectedSym, setSelectedSym] = useState('');
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
+  const [memo, setMemo] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
   const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
   const amtNum = parseFloat(amt || '0');
-  const overBalance = !!coin && amtNum > coin.balance;
-  const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending;
+  const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
+  const recipientOk = (() => {
+    const v = to.trim();
+    if (!v) return false;
+    if (chain === 'bitcoin') return /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{6,}$/.test(v);
+    if (chain === 'solana')  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v);
+    if (chain === 'cosmos')  return /^cosmos1[0-9a-z]{38,}$/.test(v);
+    return true;
+  })();
+  const canSend =
+    chain === 'evm'
+      ? !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
+      : amtNum > 0 && recipientOk && !sending;
 
   const doSend = async () => {
-    if (!coin) return;
-    if (!coin.native && !coin.tokenAddress) {
-      setError(`${coin.sym} has no contract address available.`);
-      return;
+    if (chain === 'evm') {
+      if (!coin) return;
+      if (!coin.native && !coin.tokenAddress) {
+        setError(`${coin.sym} has no contract address available.`);
+        return;
+      }
     }
     setSending(true);
     setError(null);
     try {
-      const recipient = await resolveRecipient(to);
+      const meta = EXT_CHAIN_META[chain];
+      const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
       const hash = await sendAsset({
         seed,
+        chain,
         to:           recipient,
         amount:       amt,
-        decimals:     coin.decimals,
-        tokenAddress: coin.native ? undefined : coin.tokenAddress,
+        decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
+        tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        memo:         chain === 'cosmos' ? memo : undefined,
       });
       setTxHash(hash);
       setSending(false);
@@ -947,7 +973,9 @@ function SendModal({ onClose }: { onClose: () => void }) {
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
         <div style={{ fontSize: 28 }}>✓</div>
         <div style={{ fontWeight: 700 }}>Transaction sent</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{amt} {coin?.sym} broadcast on Makalu</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+          {amt} {chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? 'Makalu' : EXT_CHAIN_META[chain].label}
+        </div>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', margin: '8px 0' }}>{txHash}</div>
         <button className="btn-primary" onClick={onClose}>Done</button>
       </div>
@@ -957,27 +985,72 @@ function SendModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body">
-        <label className="field-label">ASSET</label>
-        <select className="field" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
-          {coins.length === 0 && <option value="">No assets available</option>}
-          {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
-        </select>
+        {/* Chain selector */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+          {(Object.keys(EXT_CHAIN_META) as ExtSendChain[]).map(c => {
+            const selected = c === chain;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => { setChain(c); setTo(''); setAmt(''); setMemo(''); }}
+                style={{
+                  flex: 1, padding: '6px 8px', borderRadius: 999, cursor: 'pointer',
+                  fontSize: 10, fontWeight: 700,
+                  background: selected ? 'var(--blue, #3b7af7)' : 'transparent',
+                  color: selected ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${selected ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                }}
+              >
+                {EXT_CHAIN_META[c].sym}
+              </button>
+            );
+          })}
+        </div>
+
+        {chain === 'evm' ? (
+          <>
+            <label className="field-label">ASSET</label>
+            <select className="field" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
+              {coins.length === 0 && <option value="">No assets available</option>}
+              {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
+            </select>
+          </>
+        ) : (
+          <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg-elevated)', fontSize: 12 }}>
+            Native <strong>{EXT_CHAIN_META[chain].sym}</strong> on {EXT_CHAIN_META[chain].label}
+          </div>
+        )}
+
         <label className="field-label" style={{ marginTop: 14 }}>RECIPIENT</label>
-        <input className="field" placeholder="0x… , litho1… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
+        <input className="field" placeholder={EXT_CHAIN_META[chain].placeholder} value={to} onChange={e => setTo(e.target.value)}/>
+        {!!to.trim() && !recipientOk && chain !== 'evm' && (
+          <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>Not a valid {EXT_CHAIN_META[chain].label} address</div>
+        )}
+
+        {chain === 'cosmos' && (
+          <>
+            <label className="field-label" style={{ marginTop: 14 }}>MEMO (optional)</label>
+            <input className="field" placeholder="Exchange tag, transfer note…" value={memo} onChange={e => setMemo(e.target.value)}/>
+          </>
+        )}
+
         <label className="field-label" style={{ marginTop: 14 }}>AMOUNT</label>
         <input className="field" placeholder="0.00" type="number" value={amt} onChange={e => setAmt(e.target.value)}/>
-        <div style={{ fontSize: 11, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 6 }}>
-          {overBalance ? 'Amount exceeds balance' : `Balance: ${coin?.balanceText ?? '—'} ${coin?.sym ?? ''}`}
-          {coin && (
-            <button
-              style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}
-              onClick={() => setAmt(String(coin.balance))}
-            >MAX</button>
-          )}
-        </div>
+        {chain === 'evm' && (
+          <div style={{ fontSize: 11, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 6 }}>
+            {overBalance ? 'Amount exceeds balance' : `Balance: ${coin?.balanceText ?? '—'} ${coin?.sym ?? ''}`}
+            {coin && (
+              <button
+                style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}
+                onClick={() => setAmt(String(coin.balance))}
+              >MAX</button>
+            )}
+          </div>
+        )}
         {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 8 }}>{error}</div>}
         <button className="btn-primary" disabled={!canSend} style={{ marginTop: 16 }} onClick={doSend}>
-          {sending ? 'Sending…' : `Send ${coin?.sym ?? ''}`}
+          {sending ? 'Sending…' : `Send ${chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym}`}
         </button>
       </div>
     </Modal>

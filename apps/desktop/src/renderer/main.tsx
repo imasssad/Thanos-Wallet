@@ -635,12 +635,23 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 /* ──────────────────────── Send modal ──────────────────────── */
+type DesktopSendChain = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+
+const DESKTOP_CHAIN_META: Record<DesktopSendChain, { label: string; sym: string; decimals: number; placeholder: string }> = {
+  evm:     { label: 'Lithosphere', sym: 'LITHO', decimals: 18, placeholder: '0x… , litho1… or name.litho' },
+  bitcoin: { label: 'Bitcoin',     sym: 'BTC',   decimals: 8,  placeholder: 'bc1q… / 1… / 3…' },
+  solana:  { label: 'Solana',      sym: 'SOL',   decimals: 9,  placeholder: 'Base58 Solana address' },
+  cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
+};
+
 function SendModal({ onClose }: { onClose: () => void }) {
   const { coins } = usePortfolioCtx();
   const seed = useWalletSeed();
+  const [chain, setChain] = useState<DesktopSendChain>('evm');
   const [selectedSym, setSelectedSym] = useState('');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
+  const [memo, setMemo] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -666,19 +677,29 @@ function SendModal({ onClose }: { onClose: () => void }) {
   const amtNum = parseFloat(amount || '0');
   // Balance is from the seed account; when signing with hardware the
   // FROM account changes, so we don't gate on it (the device + RPC will).
-  const overBalance = signer === 'seed' && !!coin && amtNum > coin.balance;
+  const overBalance = chain === 'evm' && signer === 'seed' && !!coin && amtNum > coin.balance;
   const hwReady     = (signer === 'ledger' && !!ledger) || (signer === 'trezor' && !!trezor);
   const simHasCritical = simReport?.issues.some(i => i.level === 'critical') ?? false;
-  const canSend = !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
-                  && (signer === 'seed' || hwReady)
-                  && !simHasCritical;
+  const recipientOk = (() => {
+    const v = to.trim();
+    if (!v) return false;
+    if (chain === 'bitcoin') return /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{6,}$/.test(v);
+    if (chain === 'solana')  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v);
+    if (chain === 'cosmos')  return /^cosmos1[0-9a-z]{38,}$/.test(v);
+    return true; // EVM validated server-side / via resolveRecipient
+  })();
+  const canSend =
+    chain === 'evm'
+      ? !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
+        && (signer === 'seed' || hwReady) && !simHasCritical
+      : amtNum > 0 && recipientOk && !sending;
   const hwAddress: string | null = signer === 'ledger' ? (ledger?.address ?? null)
                                   : signer === 'trezor' ? (trezor?.address ?? null) : null;
 
   /* Debounced pre-send simulation — keeps desktop parity with the web
      Send modal. Only fires when recipient + amount are both valid. */
   useEffect(() => {
-    if (!coin || !to.trim() || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    if (chain !== 'evm' || !coin || !to.trim() || amtNum <= 0 || overBalance) { setSimReport(null); return; }
     const toAddr   = to.trim();
     const fromAddr = hwAddress || '';
     const amt      = amount;
@@ -728,24 +749,29 @@ function SendModal({ onClose }: { onClose: () => void }) {
   };
 
   const doSend = async () => {
-    if (!coin) return;
-    if (!coin.native && !coin.tokenAddress) {
-      setError(`${coin.sym} has no contract address available.`);
-      return;
+    if (chain === 'evm') {
+      if (!coin) return;
+      if (!coin.native && !coin.tokenAddress) {
+        setError(`${coin.sym} has no contract address available.`);
+        return;
+      }
     }
     setSending(true);
     setError(null);
     try {
-      const recipient = await resolveRecipient(to);
+      const meta = DESKTOP_CHAIN_META[chain];
+      const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
       const hash = await sendAsset({
         seed,
+        chain,
         to:           recipient,
         amount,
-        decimals:     coin.decimals,
-        tokenAddress: coin.native ? undefined : coin.tokenAddress,
-        signWith:     signer,
-        ledger:       signer === 'ledger' ? ledger ?? undefined : undefined,
-        trezor:       signer === 'trezor' ? trezor ?? undefined : undefined,
+        decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
+        tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        memo:         chain === 'cosmos' ? memo : undefined,
+        signWith:     chain === 'evm' ? signer : 'seed',
+        ledger:       chain === 'evm' && signer === 'ledger' ? ledger ?? undefined : undefined,
+        trezor:       chain === 'evm' && signer === 'trezor' ? trezor ?? undefined : undefined,
       });
       setTxHash(hash);
       setSending(false);
@@ -760,7 +786,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
       <div className="modal-success">
         <div className="success-icon">✓</div>
         <div className="success-title">Transaction Sent</div>
-        <div className="success-sub">{amount} {coin?.sym} broadcast on Makalu</div>
+        <div className="success-sub">{amount} {chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? 'Makalu' : DESKTOP_CHAIN_META[chain].label}</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', margin: '10px 0' }}>{txHash}</div>
         <button className="btn-primary" onClick={onClose}>Done</button>
       </div>
@@ -770,20 +796,68 @@ function SendModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body">
-        <label className="field-label">Asset</label>
-        <select className="field-select" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
-          {coins.length === 0 && <option value="">No assets available</option>}
-          {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
-        </select>
+        {/* Chain selector — switching out of EVM hides the LEP-100 asset
+            picker and the hardware-signer panel (HW signing is EVM-only
+            in this build). */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {(Object.keys(DESKTOP_CHAIN_META) as DesktopSendChain[]).map(c => {
+            const selected = c === chain;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => { setChain(c); setTo(''); setAmount(''); setMemo(''); }}
+                style={{
+                  flex: 1, padding: '8px 10px', borderRadius: 999, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700,
+                  background: selected ? 'var(--blue, #3b7af7)' : 'transparent',
+                  color: selected ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${selected ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                }}
+              >
+                {DESKTOP_CHAIN_META[c].sym}
+              </button>
+            );
+          })}
+        </div>
+
+        {chain === 'evm' ? (
+          <>
+            <label className="field-label">Asset</label>
+            <select className="field-select" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
+              {coins.length === 0 && <option value="">No assets available</option>}
+              {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
+            </select>
+          </>
+        ) : (
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: 12 }}>
+            Sending native <strong>{DESKTOP_CHAIN_META[chain].sym}</strong> on {DESKTOP_CHAIN_META[chain].label}.
+          </div>
+        )}
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
-        <input className="field-input" placeholder="0x… , litho1… or name.litho" value={to} onChange={e => setTo(e.target.value)}/>
+        <input className="field-input" placeholder={DESKTOP_CHAIN_META[chain].placeholder} value={to} onChange={e => setTo(e.target.value)}/>
+        {!!to.trim() && !recipientOk && chain !== 'evm' && (
+          <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>
+            Not a valid {DESKTOP_CHAIN_META[chain].label} address
+          </div>
+        )}
+
+        {chain === 'cosmos' && (
+          <>
+            <label className="field-label" style={{ marginTop: 14 }}>Memo (optional)</label>
+            <input className="field-input" placeholder="Exchange tag, transfer note…" value={memo} onChange={e => setMemo(e.target.value)}/>
+          </>
+        )}
 
         <label className="field-label" style={{ marginTop: 14 }}>Amount</label>
         <div style={{ position: 'relative' }}>
           <input className="field-input" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} type="number" style={{ paddingRight: 60 }}/>
-          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{coin?.sym ?? ''}</span>
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+            {chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym}
+          </span>
         </div>
+        {chain === 'evm' && (
         <div style={{ fontSize: 11, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 4 }}>
           {overBalance ? 'Amount exceeds balance' : `Balance: ${coin?.balanceText ?? '—'} ${coin?.sym ?? ''}`}
           {coin && (
@@ -793,8 +867,10 @@ function SendModal({ onClose }: { onClose: () => void }) {
             >MAX</button>
           )}
         </div>
+        )}
 
-        {/* Signer choice: software wallet vs Ledger vs Trezor. */}
+        {/* Signer choice: software wallet vs Ledger vs Trezor — EVM-only. */}
+        {chain === 'evm' && (
         <div style={{
           marginTop: 16, padding: 12, borderRadius: 10,
           background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
@@ -840,6 +916,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Plug in your Trezor and approve the connection in the Trezor Connect window.</div>
           )}
         </div>
+        )}
 
         {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 10 }}>{error}</div>}
 
@@ -876,7 +953,7 @@ function SendModal({ onClose }: { onClose: () => void }) {
             ? (signer === 'seed' ? 'Sending…' : 'Confirm on device…')
             : simHasCritical
             ? 'Issue detected — blocked'
-            : `Send ${coin?.sym ?? ''}${signer === 'ledger' ? ' (Ledger)' : signer === 'trezor' ? ' (Trezor)' : ''}`}
+            : `Send ${chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym}${chain === 'evm' && signer === 'ledger' ? ' (Ledger)' : chain === 'evm' && signer === 'trezor' ? ' (Trezor)' : ''}`}
         </button>
       </div>
     </Modal>

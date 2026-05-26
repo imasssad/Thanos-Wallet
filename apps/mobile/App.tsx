@@ -593,18 +593,29 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
   );
 }
 
+type SendChainOption = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+
+const CHAIN_META: Record<SendChainOption, { label: string; sym: string; decimals: number; placeholder: string }> = {
+  evm:     { label: 'Lithosphere',  sym: 'LITHO', decimals: 18, placeholder: '0x… / litho1… / name.litho' },
+  bitcoin: { label: 'Bitcoin',      sym: 'BTC',   decimals: 8,  placeholder: 'bc1q… / 1… / 3…' },
+  solana:  { label: 'Solana',       sym: 'SOL',   decimals: 9,  placeholder: 'Base58 Solana address' },
+  cosmos:  { label: 'Cosmos Hub',   sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
+};
+
 function SendScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
   const { assets, loading } = usePortfolio(addr);
+  const [chain, setChain] = useState<SendChainOption>('evm');
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
   const [selectedSym, setSelectedSym] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [memo, setMemo] = useState('');
   // Pre-send simulation — fires when recipient + amount are both valid,
   // mirrors the web Send modal so mobile users get the same
   // "contract recipient" + "insufficient balance" warnings before signing.
@@ -612,16 +623,27 @@ function SendScreen({ goBack }: { goBack: () => void }) {
 
   const coin = assets.find((a) => a.sym === selectedSym) ?? assets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
-  const usd = coin ? amtNum * coin.priceUsd : 0;
-  const overBalance = !!coin && amtNum > coin.balance;
-  const recipientOk = isValidRecipient(to);
+  const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
+  const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
+
+  // Chain-specific recipient validation. The EVM path also accepts
+  // litho1… and name.litho — handled inside isValidRecipient.
+  const recipientOk =
+    chain === 'evm'     ? isValidRecipient(to)
+    : chain === 'bitcoin' ? /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{6,}$/.test(to.trim())
+    : chain === 'solana'  ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(to.trim())
+    : chain === 'cosmos'  ? /^cosmos1[0-9a-z]{38,}$/.test(to.trim())
+    : false;
   const simHasCritical = simReport?.issues.some(i => i.level === 'critical') ?? false;
-  const canReview = !!coin && amtNum > 0 && !overBalance && !!to && recipientOk && !sending && !simHasCritical;
+  const canReview =
+    chain === 'evm'
+      ? !!coin && amtNum > 0 && !overBalance && !!to && recipientOk && !sending && !simHasCritical
+      : amtNum > 0 && !!to && recipientOk && !sending;
 
   /* Debounced pre-send simulation. Only EVM/Lithic chains for now —
      Bitcoin + Solana have their own checks elsewhere. */
   useEffect(() => {
-    if (!coin || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    if (chain !== 'evm' || !coin || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
     const toAddr = to;
     const fromAddr = addr;
     const amount = amt;
@@ -644,30 +666,38 @@ function SendScreen({ goBack }: { goBack: () => void }) {
   }, [coin, to, amt, recipientOk, amtNum, overBalance, addr]);
 
   const doSend = async () => {
-    if (!coin || sending) return;
-    if (!coin.native && !coin.tokenAddress) {
-      Alert.alert('Cannot send', `${coin.sym} has no contract address available.`);
-      return;
+    if (sending) return;
+    if (chain === 'evm') {
+      if (!coin) return;
+      if (!coin.native && !coin.tokenAddress) {
+        Alert.alert('Cannot send', `${coin.sym} has no contract address available.`);
+        return;
+      }
     }
     setSending(true);
     try {
-      const recipient = await resolveRecipient(to);
+      const meta = CHAIN_META[chain];
+      const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
       const hash = await sendAsset({
         seed,
+        chain,
         to:           recipient,
         amount:       amt,
-        decimals:     coin.decimals,
-        tokenAddress: coin.native ? undefined : coin.tokenAddress,
+        decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
+        tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        memo:         chain === 'cosmos' ? memo : undefined,
       });
       setSending(false);
-      setAmt(''); setTo('');
+      setAmt(''); setTo(''); setMemo('');
+      const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
+      const network = chain === 'evm' ? 'Makalu' : meta.label;
       // Fire a local notification (works without a push server) when enabled.
       isNotificationsEnabled().then(on => {
-        if (on) notifyLocal('Transaction sent', `${amt} ${coin.sym} broadcast on Makalu.`);
+        if (on) notifyLocal('Transaction sent', `${amt} ${sym} broadcast on ${network}.`);
       });
       Alert.alert(
         'Transaction sent ✓',
-        `${amt} ${coin.sym} broadcast on Makalu.\n\nTx hash:\n${hash}`,
+        `${amt} ${sym} broadcast on ${network}.\n\nTx hash:\n${hash}`,
         [{ text: 'Done', onPress: goBack }],
       );
     } catch (e) {
@@ -677,10 +707,14 @@ function SendScreen({ goBack }: { goBack: () => void }) {
   };
 
   const onReview = () => {
-    if (!coin) return;
+    const meta = CHAIN_META[chain];
+    const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
+    const network = chain === 'evm' ? 'Makalu' : meta.label;
+    const usdLine = chain === 'evm' ? `\n≈ ${formatUsd(usd)}` : '';
+    if (chain === 'evm' && !coin) return;
     Alert.alert(
       'Confirm send',
-      `Send ${amt} ${coin.sym}\nTo: ${to}\n≈ ${formatUsd(usd)}\n\nThis broadcasts a real transaction on Makalu and cannot be undone.`,
+      `Send ${amt} ${sym}\nTo: ${to}${usdLine}\n\nThis broadcasts a real transaction on ${network} and cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Send', style: 'destructive', onPress: doSend },
@@ -698,7 +732,33 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         <View style={{ width: 36 }}/>
       </View>
 
-      {/* From asset card */}
+      {/* Chain selector — switching out of EVM hides the LEP-100 asset
+          picker and uses chain-native recipient validation. */}
+      <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginBottom: 8 }}>
+        {(Object.keys(CHAIN_META) as SendChainOption[]).map(c => {
+          const selected = c === chain;
+          return (
+            <Pressable
+              key={c}
+              onPress={() => { setChain(c); setTo(''); setAmt(''); setMemo(''); }}
+              style={{
+                flex: 1, paddingVertical: 8, borderRadius: 999,
+                backgroundColor: selected ? C.purple500 : C.bgElevated,
+                borderWidth: 1, borderColor: selected ? C.purple500 : C.borderDefault,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: selected ? '#fff' : C.textSecondary, fontWeight: '700', fontSize: 11 }}>
+                {CHAIN_META[c].sym}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* From asset card — only shown for EVM. Other chains have a fixed
+          native token (BTC/SOL/ATOM) so no picker is needed. */}
+      {chain === 'evm' ? (
       <View style={styles.assetSelectCard}>
         <Text style={styles.fieldLabel}>FROM</Text>
         <Pressable
@@ -723,17 +783,31 @@ function SendScreen({ goBack }: { goBack: () => void }) {
           <ChevronRight size={18} color={C.textMuted}/>
         </Pressable>
       </View>
+      ) : (
+        <View style={styles.assetSelectCard}>
+          <Text style={styles.fieldLabel}>FROM</Text>
+          <View style={styles.assetSelectRow}>
+            <Avatar symbol={CHAIN_META[chain].sym} color="#f59e0b" size={40}/>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.assetSelectName}>{CHAIN_META[chain].label}</Text>
+              <Text style={styles.assetSelectBal}>Native {CHAIN_META[chain].sym}</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Amount card */}
       <View style={styles.assetSelectCard}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <Text style={styles.fieldLabel}>AMOUNT</Text>
-          <Pressable
-            onPress={() => coin && setAmt(String(coin.balance))}
-            style={styles.maxBtn}
-          >
-            <Text style={styles.maxBtnText}>MAX</Text>
-          </Pressable>
+          {chain === 'evm' && (
+            <Pressable
+              onPress={() => coin && setAmt(String(coin.balance))}
+              style={styles.maxBtn}
+            >
+              <Text style={styles.maxBtnText}>MAX</Text>
+            </Pressable>
+          )}
         </View>
         <TextInput
           style={styles.bigAmountInput}
@@ -744,7 +818,9 @@ function SendScreen({ goBack }: { goBack: () => void }) {
           keyboardType="decimal-pad"
         />
         <Text style={[styles.amountUsdSub, overBalance && { color: C.red }]}>
-          {overBalance ? 'Amount exceeds balance' : `≈ ${formatUsd(usd)} USD`}
+          {chain === 'evm'
+            ? (overBalance ? 'Amount exceeds balance' : `≈ ${formatUsd(usd)} USD`)
+            : `${CHAIN_META[chain].sym}`}
         </Text>
       </View>
 
@@ -754,7 +830,7 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TextInput
             style={[styles.input, { flex: 1, backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14, fontFamily: 'monospace' }]}
-            placeholder="0x… , litho1… or name.litho"
+            placeholder={CHAIN_META[chain].placeholder}
             placeholderTextColor={C.textMuted}
             value={to}
             onChangeText={setTo}
@@ -772,10 +848,26 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         </View>
         {!!to && !recipientOk && (
           <Text style={[styles.rowSub, { marginTop: 8, color: C.red }]}>
-            Not a valid address or .litho name
+            Not a valid {CHAIN_META[chain].label} address
           </Text>
         )}
       </View>
+
+      {/* Optional Cosmos memo */}
+      {chain === 'cosmos' && (
+        <View style={styles.assetSelectCard}>
+          <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>MEMO (optional)</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14 }]}
+            placeholder="Exchange tag, transfer note, etc."
+            placeholderTextColor={C.textMuted}
+            value={memo}
+            onChangeText={setMemo}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+      )}
 
       {/* Camera QR scanner — decodes a recipient address (or bare 0x /
           litho1 / bc1 / base58) and drops it into the field. */}
@@ -872,9 +964,12 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
   const walletAddr = useWalletAddr();
+  const seed = useWalletSeed();
   const [copied, setCopied]   = useState(false);
   const [qrSvg, setQrSvg]     = useState<string | null>(null);
   const [showAlt, setShowAlt] = useState(false);   // false = litho1, true = 0x
+  /** Active chain — switches the displayed address + QR. */
+  const [chain, setChain] = useState<'lithosphere' | 'bitcoin' | 'solana' | 'cosmos'>('lithosphere');
 
   // Derive the Lithosphere bech32 form from the same 0x keypair — one
   // wallet, two formats. Defaults to showing the chain-native litho1.
@@ -883,7 +978,34 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
     try { return evmToLitho(walletAddr); } catch { return ''; }
   }, [walletAddr]);
 
-  const displayed = lithoAddr && !showAlt ? lithoAddr : walletAddr;
+  /** Derive BTC/SOL/ATOM addresses lazily — only when the user picks
+   *  that chain. Hermes can handle the imports but they pull large
+   *  deps so we don't load them until needed. */
+  const [btcAddr, setBtcAddr] = useState<string>('');
+  const [solAddr, setSolAddr] = useState<string>('');
+  const [atomAddr, setAtomAddr] = useState<string>('');
+
+  useEffect(() => {
+    if (chain === 'bitcoin' && !btcAddr && seed.length) {
+      void import('./lib/bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
+        .catch(() => setBtcAddr(''));
+    }
+    if (chain === 'solana' && !solAddr && seed.length) {
+      void import('./lib/solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
+        .catch(() => setSolAddr(''));
+    }
+    if (chain === 'cosmos' && !atomAddr && seed.length) {
+      void import('./lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
+        .then(setAtomAddr)
+        .catch(() => setAtomAddr(''));
+    }
+  }, [chain, seed, btcAddr, solAddr, atomAddr]);
+
+  const displayed =
+    chain === 'bitcoin' ? btcAddr
+    : chain === 'solana'  ? solAddr
+    : chain === 'cosmos'  ? atomAddr
+    : (lithoAddr && !showAlt ? lithoAddr : walletAddr);
 
   /* Generate a real QR for the currently-displayed address. Re-renders
      when the format toggle flips so the QR encodes the right form. */
@@ -914,15 +1036,44 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
       </View>
 
       <View style={styles.receiveCard}>
-        {/* Network selector */}
-        <Pressable style={styles.networkSelector}>
+        {/* Chain selector — switches the displayed address + QR. */}
+        <View style={{ flexDirection: 'row', gap: 4, padding: 3, alignSelf: 'center',
+                       backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault,
+                       borderRadius: 999 }}>
+          {([
+            { id: 'lithosphere', label: 'Litho' },
+            { id: 'bitcoin',     label: 'BTC'   },
+            { id: 'solana',      label: 'SOL'   },
+            { id: 'cosmos',      label: 'ATOM'  },
+          ] as const).map(o => {
+            const selected = o.id === chain;
+            return (
+              <Pressable key={o.id} onPress={() => setChain(o.id)} style={{
+                backgroundColor: selected ? C.bgCard : 'transparent',
+                borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: '700',
+                               color: selected ? C.textPrimary : C.textSecondary }}>
+                  {o.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Network label */}
+        <View style={[styles.networkSelector, { marginTop: 10 }]}>
           <View style={styles.netDot}/>
-          <Text style={styles.networkSelectorText}>Lithosphere · Makalu</Text>
-          <ChevronRight size={18} color={C.textMuted}/>
-        </Pressable>
+          <Text style={styles.networkSelectorText}>
+            {chain === 'lithosphere' ? 'Lithosphere · Makalu'
+             : chain === 'bitcoin'   ? 'Bitcoin · mainnet'
+             : chain === 'solana'    ? 'Solana · mainnet-beta'
+             : 'Cosmos Hub · cosmoshub-4'}
+          </Text>
+        </View>
 
         {/* Litho1 / EVM toggle — same wallet, two address formats. */}
-        {!!lithoAddr && (
+        {chain === 'lithosphere' && !!lithoAddr && (
           <View style={{
             flexDirection: 'row', alignSelf: 'center',
             backgroundColor: C.bgElevated,
