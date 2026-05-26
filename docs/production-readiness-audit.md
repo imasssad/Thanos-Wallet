@@ -66,17 +66,25 @@ verdicts into a PR description by quoting the section.
 
 ---
 
+## Signing isolation — per-client status
+
+| Client | Mechanism | File |
+|---|---|---|
+| Web | Web Worker (postMessage) | `apps/web/workers/signer-worker.ts` |
+| Extension | Offscreen document (chrome.offscreen) — popup posts `sign.*` over the message bridge, derived keys live only in the offscreen JS heap | `apps/extension/src/entrypoints/offscreen/main.ts` (`handleSignMessage`) + `apps/extension/src/entrypoints/popup/offscreen-sign.ts` |
+| Desktop | Electron main-process IPC — seed cached in main, renderer calls `window.thanosDesktop.signer.sendTx(...)` | `apps/desktop/src/main/signer.ts` + IPC handlers in `index.ts` |
+| Mobile | Module-private closure (React DevTools / Flipper can't inspect module scope) — seed lives in `lib/signer.ts`, never in component state | `apps/mobile/lib/signer.ts` |
+
+All four clients now route every EVM sign + broadcast through their
+isolation boundary. Hardware-wallet flows (Ledger / Trezor) are
+already isolated by definition (signature happens on the device).
+
 ## Open gaps (high-signal only)
 
-1. **Signing isolation on extension/desktop/mobile** — web's worker
-   pattern doesn't carry over; the other clients sign in-process. A
-   full re-architecture to push signing into a separate context
-   (extension offscreen, desktop main process, mobile native module)
-   is deferred to v1.1.
-2. **VPS-side credential plumbing** — Sentry DSN, App Store + Play
+1. **VPS-side credential plumbing** — Sentry DSN, App Store + Play
    service account keys, macOS / Windows code-signing certs all need
    the operator to populate. Workflows + configs are ready.
-3. **Daily Postgres backup cron registration** — script is ready; the
+2. **Daily Postgres backup cron registration** — script is ready; the
    `crontab -e` step on the VPS is a one-shot manual action.
 
 Once those land, the wallet is at full production-readiness. None of

@@ -253,6 +253,22 @@ export default defineBackground(() => {
       return true;
     }
 
+    // 0b) Signing requests — same proxy pattern, but for `sign.*` ops that
+    //     keep the actual ethers signing call out of the popup's JS context.
+    //     The popup posts {seed, tx} → background → offscreen → signedTx.
+    if (wcMsg.type?.startsWith('sign.') && wcMsg.__target !== 'offscreen') {
+      (async () => {
+        try {
+          await ensureOffscreen();
+          const resp = await browser.runtime.sendMessage({ ...m, __target: 'offscreen' });
+          sendResponse(resp);
+        } catch (e) {
+          sendResponse({ ok: false, error: (e as Error)?.message || 'offscreen unreachable' });
+        }
+      })();
+      return true;
+    }
+
     // 1) Direct RPC from content script.
     if (m?.type === 'thanos-rpc') {
       handleRpc(m).then(

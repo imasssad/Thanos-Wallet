@@ -6,8 +6,8 @@
  * Reuses sdk-core's litho1 decoder and failover RPC provider.
  */
 import { createContext, useContext } from 'react';
-import { HDNodeWallet, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
-import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
+import { parseUnits, getAddress } from 'ethers';
+import { lithoToEvm } from '@thanos/sdk-core';
 import { getActiveAccountIndex } from '../../lib/vault';
 
 /** HD path for the active account. Computed at sign time so an account
@@ -20,8 +20,6 @@ const API_BASE = String(
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
     'https://thanos.fi/api',
 ).replace(/\/$/, '');
-
-const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
 /* ─── Unlocked-seed context ──────────────────────────────────────────── */
 
@@ -102,23 +100,30 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   }
 
   // ─── EVM / Makalu default ─────────────────────────────────────────────
+  // Signing happens in the offscreen document — derived private keys
+  // never live in this popup's JS heap. See offscreen-sign.ts.
   let value: bigint;
   try { value = parseUnits(args.amount, args.decimals); }
   catch { throw new Error('Invalid amount'); }
   if (value <= 0n) throw new Error('Amount must be greater than zero');
 
-  const wallet = HDNodeWallet
-    .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath())
-    .connect(getMakaluProvider());
+  const { signAndBroadcastTx, transferErc20 } = await import('./offscreen-sign');
 
   try {
     if (args.tokenAddress) {
-      const token = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
-      const sent = await token.transfer(args.to, value);
-      return sent.hash as string;
+      return await transferErc20({
+        seed:         args.seed,
+        hdPath:       activeHdPath(),
+        tokenAddress: args.tokenAddress,
+        to:           args.to,
+        amount:       value,
+      });
     }
-    const sent = await wallet.sendTransaction({ to: args.to, value });
-    return sent.hash;
+    return await signAndBroadcastTx({
+      seed:   args.seed,
+      hdPath: activeHdPath(),
+      tx:     { to: args.to, value: '0x' + value.toString(16) },
+    });
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';
     if (/insufficient funds/i.test(msg)) throw new Error('Insufficient balance for amount + gas');

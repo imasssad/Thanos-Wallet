@@ -1,23 +1,21 @@
 /**
- * WalletConnect request signer for the extension popup. Duplicated
- * (intentionally) from apps/desktop/src/renderer/wc-signer.ts and
- * apps/mobile/lib/wc-signer.ts because each client lives in its own
- * tree with platform-specific deps; the contract is identical so a bug
- * here behaves the same as in the other two.
+ * WalletConnect request signer for the extension popup.
  *
- * The seed is only in the popup's memory (decrypted vault); the
- * offscreen relay never sees it. The popup signs, hands the result
- * back through the message bridge for kit.respondSessionRequest.
+ * Routes every cryptographic operation through the offscreen document
+ * (`./offscreen-sign`) so the popup process never holds derived private
+ * keys. The only data this module touches is the BIP-39 seed words
+ * (already in WalletSeedContext for unlock UX) plus the request params
+ * supplied by the dApp.
+ *
+ * The pure-display helpers (summariseRequest, account / chain-id
+ * lookups) stay local — they don't need to sign anything.
  */
-import {
-  HDNodeWallet, Mnemonic, getBytes, toUtf8Bytes, isHexString,
-} from 'ethers';
-import { getMakaluProvider } from '@thanos/sdk-core';
+import { getBytes, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic } from 'ethers';
 import { getActiveAccountIndex } from '../../lib/vault';
+import {
+  signAndBroadcastTx, signPersonalMessage, signTypedData,
+} from './offscreen-sign';
 
-/** HD-path template — the active account index from storage fills the
- *  last segment. Read at sign time (not import time) so an account
- *  switch in the popup takes effect on the very next signature. */
 function hdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
@@ -25,13 +23,14 @@ const MAKALU_CHAIN_ID = 700777;
 
 export class WcSignerError extends Error {
   constructor(public readonly code: number, message: string) {
-    super(message);
-    this.name = 'WcSignerError';
+    super(message); this.name = 'WcSignerError';
   }
 }
 
-function walletFromSeed(seed: string[]): HDNodeWallet {
-  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath());
+/** Derive only the address — no private key materialised, no signing.
+ *  Used for eth_accounts / eth_requestAccounts. */
+function deriveAddress(seed: string[]): string {
+  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath()).address;
 }
 
 export function summariseRequest(method: string, params: unknown): string {
@@ -65,24 +64,25 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
   if (!seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
+  const path = hdPath();
 
   switch (method) {
     case 'eth_accounts':
     case 'eth_requestAccounts':
-      return [walletFromSeed(seed).address];
+      return [deriveAddress(seed)];
 
     case 'eth_chainId':
       return `0x${MAKALU_CHAIN_ID.toString(16)}`;
 
     case 'personal_sign': {
       const hexMsg = params[0] as string;
-      const bytes = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
-      return walletFromSeed(seed).signMessage(bytes);
+      const message: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
+      return signPersonalMessage({ seed, hdPath: path, message });
     }
     case 'eth_sign': {
       const hexMsg = params[1] as string;
-      const bytes = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
-      return walletFromSeed(seed).signMessage(bytes);
+      const message: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
+      return signPersonalMessage({ seed, hdPath: path, message });
     }
     case 'eth_signTypedData_v4': {
       const typed = JSON.parse(params[1] as string) as {
@@ -90,13 +90,10 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         types:  Record<string, Array<{ name: string; type: string }>>;
         message: Record<string, unknown>;
       };
-      const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
-      void _omit;
-      return walletFromSeed(seed).signTypedData(
-        typed.domain,
-        types as Record<string, Array<{ name: string; type: string }>>,
-        typed.message,
-      );
+      return signTypedData({
+        seed, hdPath: path,
+        payload: { domain: typed.domain, types: typed.types, value: typed.message },
+      });
     }
     case 'eth_sendTransaction': {
       const tx = params[0] as {
@@ -104,17 +101,17 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         gas?: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       };
-      const wallet = walletFromSeed(seed).connect(getMakaluProvider());
       try {
-        const sent = await wallet.sendTransaction({
-          to:                   tx.to,
-          value:                tx.value ? BigInt(tx.value) : undefined,
-          data:                 tx.data,
-          gasLimit:             tx.gas ?? tx.gasLimit,
-          maxFeePerGas:         tx.maxFeePerGas,
-          maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+        return await signAndBroadcastTx({
+          seed, hdPath: path,
+          tx: {
+            to:       tx.to,
+            value:    tx.value,
+            data:     tx.data,
+            gas:      tx.gas ?? tx.gasLimit,
+            gasPrice: undefined,
+          },
         });
-        return sent.hash;
       } catch (e) {
         const msg = (e as Error).message || 'Broadcast failed';
         if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance');

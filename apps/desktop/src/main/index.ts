@@ -9,6 +9,7 @@ const TREZOR_VENDOR_IDS = [0x534c, 0x1209]; // Trezor One / Trezor T (Trezor Co.
 const HW_VENDOR_IDS     = new Set([LEDGER_VENDOR_ID, ...TREZOR_VENDOR_IDS]);
 const path = require('path') as typeof import('path');
 import { startAutoUpdater } from './updater';
+import * as signer from './signer';
 
 const SERVICE = 'thanos-wallet';
 
@@ -76,10 +77,31 @@ app.whenReady().then(() => {
     return Promise.resolve();
   });
 
+  /* Main-process signer — keys never leave this process once `set-seed`
+     has cached the seed in main memory. The renderer holds an "is
+     unlocked" flag only; signing requests round-trip through IPC. */
+  ipcMain.handle('signer:set-seed',    (_e, seed: string)            => { signer.setSeed(seed); });
+  ipcMain.handle('signer:clear-seed',  ()                            => { signer.clearSeed(); });
+  ipcMain.handle('signer:has-seed',    ()                            => signer.hasSeed());
+  ipcMain.handle('signer:address',     (_e, hdPath: string)          => signer.deriveAddress(hdPath));
+  ipcMain.handle('signer:send-tx',     (_e, hdPath: string, tx)      => signer.signAndBroadcast(hdPath, tx));
+  ipcMain.handle('signer:sign-tx',     (_e, hdPath: string, tx)      => signer.signTransaction(hdPath, tx));
+  ipcMain.handle('signer:personal',    (_e, hdPath: string, msg)     => signer.signPersonalMessage(hdPath, msg));
+  ipcMain.handle('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
+  ipcMain.handle('signer:erc20-transfer', (_e, hdPath: string, args) => signer.transferErc20(hdPath, args));
+
   nativeTheme.themeSource = 'system';
   createWindow();
 });
 
 app.on('window-all-closed', () => {
+  // Clear the cached seed before quitting so it doesn't linger in a
+  // background process on macOS where the app stays alive after window
+  // close.
+  signer.clearSeed();
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  signer.clearSeed();
 });

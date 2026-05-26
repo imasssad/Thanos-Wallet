@@ -45,6 +45,18 @@ type UpdaterEvent =
   | { kind: 'downloaded';  version: string; releaseNotes?: string | null }
   | { kind: 'error';       message: string };
 
+interface IpcTxRequest {
+  to?: string; value?: string; data?: string;
+  gas?: string; gasPrice?: string;
+  maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+  nonce?: number;
+}
+interface IpcTypedDataPayload {
+  domain: Record<string, unknown>;
+  types:  Record<string, Array<{ name: string; type: string }>>;
+  value:  Record<string, unknown>;
+}
+
 declare global {
   interface Window {
     thanosDesktop?: {
@@ -55,6 +67,20 @@ declare global {
       onUpdateEvent?:     (cb: (ev: UpdaterEvent) => void) => () => void;
       checkForUpdate?:    () => Promise<unknown>;
       installAndRestart?: () => Promise<unknown>;
+      /** Main-process signer bridge. The renderer never holds private
+       *  keys — the seed crosses IPC once at unlock, then signing
+       *  requests round-trip. See src/main/signer.ts for the receiver. */
+      signer?: {
+        setSeed(seed: string):                                       Promise<void>;
+        clearSeed():                                                 Promise<void>;
+        hasSeed():                                                   Promise<boolean>;
+        address(hdPath: string):                                     Promise<string>;
+        sendTx(hdPath: string, tx: IpcTxRequest):                    Promise<string>;
+        signTx(hdPath: string, tx: IpcTxRequest):                    Promise<string>;
+        personal(hdPath: string, msg: string | Uint8Array):          Promise<string>;
+        typedData(hdPath: string, payload: IpcTypedDataPayload):     Promise<string>;
+        erc20Transfer(hdPath: string, args: { tokenAddress: string; to: string; amount: string }): Promise<string>;
+      };
     };
   }
 }
@@ -2420,6 +2446,10 @@ function App() {
       if (mnemonic) {
         setWalletSeed(mnemonic.split(' '));
         setUnlocked(true);
+        // Push the seed into the main process so subsequent signing
+        // happens there, not in the renderer. Best-effort — older shells
+        // without the bridge just keep using the renderer signer.
+        try { await window.thanosDesktop?.signer?.setSeed(mnemonic); } catch { /* no bridge */ }
       } else {
         clearSessionKey();
       }
@@ -2454,6 +2484,8 @@ function App() {
           setWalletSeed(seed);
           setHasVault(true);
           setUnlocked(true);
+          // Mirror the seed into the main-process signer cache.
+          void window.thanosDesktop?.signer?.setSeed(seed.join(' ')).catch(() => { /* no bridge */ });
         }}
       />
     );
@@ -2463,6 +2495,7 @@ function App() {
     setUnlocked(false);
     setWalletSeed([]);
     clearSessionKey();
+    void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
   };
 
   return (

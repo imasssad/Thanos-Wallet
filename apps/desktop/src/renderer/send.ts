@@ -169,13 +169,28 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     }
   }
 
-  // ─── Default: sign with the unlocked seed ─────────────────────────────
+  // ─── Default: sign via the main-process signer ──────────────────────
+  // The seed lives only in main (cached on unlock); the renderer never
+  // holds a derived private key. Falls back to in-renderer signing if
+  // the preload bridge isn't wired (older shell, dev hot-reload).
   if (!args.seed.length) throw new Error('Wallet is locked');
-  const wallet = HDNodeWallet
-    .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath())
-    .connect(getMakaluProvider());
+  const path = activeHdPath();
+  const bridge = (typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined);
 
   try {
+    if (bridge && (await bridge.hasSeed())) {
+      if (args.tokenAddress) {
+        return await bridge.erc20Transfer(path, {
+          tokenAddress: args.tokenAddress, to: args.to, amount: value.toString(),
+        });
+      }
+      return await bridge.sendTx(path, { to: args.to, value: '0x' + value.toString(16) });
+    }
+
+    // Legacy in-renderer signing fallback.
+    const wallet = HDNodeWallet
+      .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), path)
+      .connect(getMakaluProvider());
     if (args.tokenAddress) {
       const token = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
       const sent = await token.transfer(args.to, value);

@@ -106,31 +106,38 @@ export function summariseRequest(method: string, params: unknown): string {
 }
 
 /** Execute a WC session_request. Throws WcSignerError (with a JSON-RPC
- *  error code) on failure so the host can respond cleanly to the dApp. */
+ *  error code) on failure so the host can respond cleanly to the dApp.
+ *
+ *  Routes every signing call through `./signer`, which holds the seed
+ *  in a module-private closure (not React state) — derived private keys
+ *  never live in any caller's scope. */
 export async function executeWcRequest(seed: string[], reqParams: WcRequestParams): Promise<unknown> {
   if (!seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
+  const path = activeHdPath();
+
+  const signer = await import('./signer');
+  if (!signer.hasSeed()) signer.setSeed(seed);
 
   switch (method) {
     case 'eth_accounts':
     case 'eth_requestAccounts':
-      return [walletFromSeed(seed).address];
+      return [signer.deriveAddress(path)];
 
     case 'eth_chainId':
       return `0x${MAKALU_CHAIN_ID.toString(16)}`;
 
     case 'personal_sign': {
       const hexMsg = params[0] as string;
-      const bytes = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
-      return walletFromSeed(seed).signMessage(bytes);
+      const bytes: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
+      return signer.signPersonalMessage(path, bytes);
     }
 
     case 'eth_sign': {
-      // params: [address, message] — second entry is the payload.
       const hexMsg = params[1] as string;
-      const bytes = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
-      return walletFromSeed(seed).signMessage(bytes);
+      const bytes: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
+      return signer.signPersonalMessage(path, bytes);
     }
 
     case 'eth_signTypedData_v4': {
@@ -139,14 +146,9 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         types:  Record<string, Array<{ name: string; type: string }>>;
         message: Record<string, unknown>;
       };
-      // ethers v6 wants `types` without the EIP712Domain entry.
-      const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
-      void _omit;
-      return walletFromSeed(seed).signTypedData(
-        typed.domain,
-        types as Record<string, Array<{ name: string; type: string }>>,
-        typed.message,
-      );
+      return signer.signTypedData(path, {
+        domain: typed.domain, types: typed.types, value: typed.message,
+      });
     }
 
     case 'eth_sendTransaction': {
@@ -155,9 +157,8 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         gas?: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       });
-      const wallet = walletFromSeed(seed, makaluProvider());
       try {
-        const sent = await wallet.sendTransaction({
+        return await signer.signAndBroadcast(path, {
           to:                   tx.to,
           value:                tx.value ? BigInt(tx.value) : undefined,
           data:                 tx.data,
@@ -165,7 +166,6 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
           maxFeePerGas:         tx.maxFeePerGas,
           maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
         });
-        return sent.hash;
       } catch (e) {
         const msg = (e as Error).message || 'Broadcast failed';
         if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance');
@@ -234,20 +234,24 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   }
 
   // ─── EVM / Makalu default ─────────────────────────────────────────────
+  // Signing happens in the module-isolated `./signer` so the caller's
+  // closure never holds a derived private key.
   let value: bigint;
   try { value = parseUnits(args.amount, args.decimals); }
   catch { throw new WcSignerError(-32602, 'Invalid amount'); }
   if (value <= 0n) throw new WcSignerError(-32602, 'Amount must be greater than zero');
 
-  const wallet = walletFromSeed(args.seed, makaluProvider());
+  const path = activeHdPath();
+  const signer = await import('./signer');
+  if (!signer.hasSeed()) signer.setSeed(args.seed);
+
   try {
     if (args.tokenAddress) {
-      const token = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
-      const sent = await token.transfer(args.to, value);
-      return sent.hash as string;
+      return await signer.transferErc20(path, {
+        tokenAddress: args.tokenAddress, to: args.to, amount: value,
+      });
     }
-    const sent = await wallet.sendTransaction({ to: args.to, value });
-    return sent.hash;
+    return await signer.signAndBroadcast(path, { to: args.to, value });
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';
     if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance for amount + gas');

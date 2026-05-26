@@ -128,12 +128,114 @@ function projectSession(s: SessionTypes.Struct) {
   };
 }
 
+/* ───────────── Isolated signer ─────────────────────────────────────────
+ * The popup posts `{seed, ...params}` over the message bridge; we build
+ * an ethers wallet here, sign, and return the result. The derived
+ * private key never lives in the popup process — it's instantiated,
+ * used, and immediately released inside this offscreen document.
+ *
+ * Threat-model improvement: the popup's JS heap can still be inspected
+ * (the seed is briefly serialized into postMessage). What changes is
+ * that the *signing operation itself* — the cryptographic primitive
+ * + the derived key — happens in a sibling document that the popup
+ * can't observe via React DevTools or any same-context introspection.
+ *
+ * Methods:
+ *   sign.evm-tx              { seed, hdPath, tx }      → { hash } (broadcasts)
+ *   sign.evm-sign-tx         { seed, hdPath, tx }      → { signed } (raw, no broadcast)
+ *   sign.evm-personal        { seed, hdPath, message } → { signature }
+ *   sign.evm-typed-data      { seed, hdPath, payload } → { signature }
+ *   sign.evm-erc20-transfer  { seed, hdPath, tokenAddress, to, amount } → { hash }
+ */
+async function handleSignMessage(msg: { type: string; [k: string]: unknown }): Promise<unknown> {
+  const { Mnemonic, HDNodeWallet, Contract } = await import('ethers');
+  const sdk = await import('@thanos/sdk-core');
+  type TransactionRequest = import('ethers').TransactionRequest;
+  type TypedDataDomain    = import('ethers').TypedDataDomain;
+  type TypedDataField     = import('ethers').TypedDataField;
+
+  const seed    = String(msg.seed ?? '');
+  const hdPath  = String(msg.hdPath ?? "m/44'/60'/0'/0/0");
+  if (!seed) throw new Error('seed required');
+
+  const mnemonic = Mnemonic.fromPhrase(seed);
+  const wallet   = HDNodeWallet.fromMnemonic(mnemonic, hdPath);
+
+  try {
+    switch (msg.type) {
+      case 'sign.evm-tx': {
+        const tx = msg.tx as TransactionRequest;
+        const provider = sdk.getMakaluProvider();
+        const connected = wallet.connect(provider);
+        const sent = await connected.sendTransaction(tx);
+        return { ok: true, hash: sent.hash };
+      }
+      case 'sign.evm-sign-tx': {
+        const tx = msg.tx as TransactionRequest;
+        const signed = await wallet.signTransaction(tx);
+        return { ok: true, signed };
+      }
+      case 'sign.evm-personal': {
+        const message = msg.message as string | Uint8Array;
+        const signature = await wallet.signMessage(message);
+        return { ok: true, signature };
+      }
+      case 'sign.evm-typed-data': {
+        const payload = msg.payload as {
+          domain: TypedDataDomain;
+          types:  Record<string, Array<TypedDataField>>;
+          value:  Record<string, unknown>;
+        };
+        // Drop the auto-injected EIP712Domain from `types` — ethers v6
+        // throws if it's there.
+        const cleaned = { ...payload.types };
+        delete (cleaned as { EIP712Domain?: unknown }).EIP712Domain;
+        const signature = await wallet.signTypedData(payload.domain, cleaned, payload.value);
+        return { ok: true, signature };
+      }
+      case 'sign.evm-erc20-transfer': {
+        const tokenAddress = String(msg.tokenAddress ?? '');
+        const to           = String(msg.to ?? '');
+        const amount       = String(msg.amount ?? '0');
+        const provider = sdk.getMakaluProvider();
+        const connected = wallet.connect(provider);
+        const abi = ['function transfer(address to, uint256 amount) returns (bool)'];
+        const c = new Contract(tokenAddress, abi, connected);
+        const sent = await c.transfer(to, BigInt(amount));
+        return { ok: true, hash: sent.hash };
+      }
+      default:
+        throw new Error(`unknown signer command: ${msg.type}`);
+    }
+  } finally {
+    // No explicit secret-wipe primitive in JS, but releasing the
+    // reference lets V8 collect it on the next GC pass.
+    // The seed string itself is owned by the caller and lives in
+    // the postMessage clone — not much we can do about that.
+  }
+}
+
 browser.runtime.onMessage.addListener(((raw: unknown, _sender: unknown, sendResponse: (v: unknown) => void) => {
   const msg = raw as { type?: string; __target?: string; [k: string]: unknown };
   // Only the background forwards us tagged messages; ignore the popup's
   // original broadcast (background will proxy it tagged).
   if (msg?.__target !== 'offscreen') return false;
-  if (!msg?.type || !msg.type.startsWith('wc.')) return false;
+  if (!msg?.type) return false;
+
+  // Signing fast-path — no kit needed, no relay round-trip.
+  if (msg.type.startsWith('sign.')) {
+    (async () => {
+      try {
+        const result = await handleSignMessage(msg as { type: string });
+        sendResponse(result);
+      } catch (e) {
+        sendResponse({ ok: false, error: (e as Error)?.message || 'sign failed' });
+      }
+    })();
+    return true;
+  }
+
+  if (!msg.type.startsWith('wc.')) return false;
 
   (async () => {
     try {

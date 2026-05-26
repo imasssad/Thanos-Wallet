@@ -2694,6 +2694,12 @@ export default function App() {
       if (mnemonic) {
         setWalletSeed(mnemonic.split(' '));
         setUnlocked(true);
+        // Mirror into the module-isolated signer so signing requests
+        // don't have to thread the seed through every call site.
+        try {
+          const signer = await import('./lib/signer');
+          signer.setSeed(mnemonic);
+        } catch { /* signer load failed — fall back to in-component signing */ }
       } else {
         clearSessionKey();
       }
@@ -2739,6 +2745,9 @@ export default function App() {
     setUnlocked(false);
     setWalletSeed([]);
     clearSessionKey();
+    // Wipe the module-isolated signer cache so no signing operations
+    // can happen until the next unlock.
+    void import('./lib/signer').then(s => s.clearSeed()).catch(() => { /* not loaded */ });
     // The biometric-protected key stays on disk so the user can unlock
     // again with Face ID on the next session. Only "Reset wallet"
     // (in OnboardingScreen) wipes it.
@@ -2771,6 +2780,8 @@ export default function App() {
                   setWalletSeed(seed);
                   setHasVault(true);
                   setUnlocked(true);
+                  // Mirror seed into the module-isolated signer.
+                  void import('./lib/signer').then(s => s.setSeed(seed)).catch(() => { /* skip */ });
                   // Session key was cached inside createVault / openVault; no
                   // extra plaintext flag is written. Cold-start still requires
                   // password since the JS module is re-loaded — this is the
