@@ -160,6 +160,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Worker exposes a /health endpoint on port 4020 — used by `docker
+    # compose ps` to show "healthy" + by Prometheus to scrape the
+    # process's queue-depth + jobs-handled counters.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4020/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       NODE_ENV:         development
       DATABASE_URL:     postgresql://${POSTGRES_USER:-thanos}:${POSTGRES_PASSWORD:-thanos_dev_secret}@postgres:5432/${POSTGRES_DB:-thanos_wallet}

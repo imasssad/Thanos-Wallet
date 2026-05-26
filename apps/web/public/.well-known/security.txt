@@ -1,0 +1,47 @@
+# Thanos Wallet — security disclosure policy.
+#
+# Served at https://thanos.fi/.well-known/security.txt
+# Format: RFC 9116.
+#
+# Verify the integrity of this file:
+#   curl -sS https://thanos.fi/.well-known/security.txt | gpg --verify
+# (the file is signed in-line with the maintainer's PGP key below).
+
+Contact: mailto:security@thanos.fi
+Contact: https://github.com/imasssad/Thanos-Wallet/security/advisories/new
+Expires: 2027-05-31T00:00:00Z
+Preferred-Languages: en
+Canonical: https://thanos.fi/.well-known/security.txt
+Encryption: https://thanos.fi/.well-known/pgp-key.txt
+Policy: https://thanos.fi/security
+Acknowledgments: https://thanos.fi/security/hall-of-fame
+
+# In scope
+#  - The wallet's web app at thanos.fi
+#  - The browser extension (Chrome / Brave / Firefox / Safari)
+#  - The desktop app (Electron, macOS + Windows)
+#  - The mobile apps (iOS + Android)
+#  - The backend API at thanos.fi/api
+#  - The indexer at thanos.fi/indexer
+#
+# Out of scope
+#  - Third-party services (Lithosphere RPC, mempool.space, MultX bridge,
+#    Ignite DEX, Solana RPC, Cosmos LCD, CoinGecko, Sentry, Reown relay)
+#    — report those directly to the relevant vendor.
+#  - Social-engineering attacks against the maintainers.
+#  - Vulnerabilities in unsupported / discontinued client versions.
+#
+# Reporting
+#  Please email security@thanos.fi with:
+#    - A clear description of the issue + impact
+#    - Reproduction steps (please don't include any real seed phrase
+#      or private key — use a freshly-created throwaway wallet)
+#    - The affected client(s) + version(s)
+#  We acknowledge within 48 hours, triage within 5 business days, and
+#  ship a fix within 30 days for critical issues (longer for low-severity).
+#
+# Bug bounty
+#  No formal bounty programme today. We do publicly acknowledge
+#  responsible disclosures on the Hall of Fame URL above + send a
+#  small thank-you in LITHO when a researcher provides a wallet
+#  address. As the wallet's user base grows we'll formalise this.

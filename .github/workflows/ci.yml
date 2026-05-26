@@ -73,6 +73,10 @@ jobs:
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @thanos/extension build
+      # Bundle-size budget — catches dep bloat in PRs before it ships.
+      # Trips when a single PR adds >25% to a popup/offscreen chunk.
+      - name: Bundle-size budget check
+        run: bash ops/bundle-size-check.sh
 
   test:
     name: tests (vault + auth)
