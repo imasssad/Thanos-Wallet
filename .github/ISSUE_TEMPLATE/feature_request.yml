@@ -1,0 +1,44 @@
+name: Feature request
+description: A capability the wallet should have but doesn't.
+title: "[feat]: "
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Start with the user pain — not the proposed solution. Good
+        feature requests describe the situation the user is in and
+        the gap that makes the wallet feel limited. Bad ones jump
+        straight to "the UI should have a button that does X."
+      placeholder: |
+        "When I'm bridging from BTC to LITHO I have to check
+        bridge.litho.ai in a separate tab to see if my swap completed."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: Optional — leave blank if you'd rather we figure it out.
+
+  - type: dropdown
+    id: affected
+    attributes:
+      label: Which clients does this affect?
+      multiple: true
+      options:
+        - Web
+        - Extension
+        - Desktop
+        - Mobile
+        - Shared sdk-core
+        - All of them
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: What you do today, why it doesn't work, links to comparable products.

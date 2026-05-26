@@ -1,0 +1,50 @@
+# GitHub CODEOWNERS — auto-request reviews from the right people based
+# on which paths a PR touches. The first matching rule wins per file,
+# so the *most general* line goes at the top, more specific ones
+# below.
+#
+# Reviewers listed here are auto-requested but the PR can still merge
+# without their approval unless a branch protection rule explicitly
+# requires it (Settings → Branches → Require review from Code Owners).
+#
+# Update path: open a PR to this file — current owners are auto-pinged.
+
+# ─── Default: catch-all so every PR has a least-one reviewer ─────────
+*                                       @imasssad
+
+# ─── Client surfaces ────────────────────────────────────────────────
+/apps/web/                              @imasssad
+/apps/extension/                        @imasssad
+/apps/desktop/                          @imasssad
+/apps/mobile/                           @imasssad
+
+# ─── Backend services ───────────────────────────────────────────────
+/services/api/                          @imasssad
+/services/indexer/                      @imasssad
+/services/worker/                       @imasssad
+/services/db/                           @imasssad
+
+# ─── Shared packages — every client depends on these, so changes need a
+#     stricter eye. Add a second reviewer here when the team grows. ──
+/packages/sdk-core/                     @imasssad
+
+# ─── Security-critical paths — vault, signers, key derivation. Bump the
+#     reviewer count when there's a second person on the team. ───────
+/apps/*/src/**/vault.ts                 @imasssad
+/apps/*/lib/vault.ts                    @imasssad
+/apps/web/workers/signer-worker.ts      @imasssad
+/apps/desktop/src/main/signer.ts        @imasssad
+/apps/extension/src/entrypoints/offscreen/main.ts  @imasssad
+/apps/mobile/lib/signer.ts              @imasssad
+/packages/sdk-core/src/security/        @imasssad
+
+# ─── Ops / infra ────────────────────────────────────────────────────
+/ops/                                   @imasssad
+/.github/                               @imasssad
+/Dockerfile                             @imasssad
+/docker-compose*.yml                    @imasssad
+/scripts/                               @imasssad
+
+# ─── Docs — anyone can review docs PRs ──────────────────────────────
+/docs/                                  @imasssad
+*.md                                    @imasssad

@@ -1,0 +1,86 @@
+name: sbom
+
+# Generate a CycloneDX Software Bill of Materials on every push to main
+# + every release tag. The SBOM lists every npm dep (transitive
+# included), every Docker base image, and their licenses + known CVEs
+# at the moment of generation.
+#
+# Why: supply-chain transparency. The SBOM gets attached as a release
+# artifact so users / auditors can answer "what code is in this wallet
+# build?" without trawling lockfiles.
+#
+# Stored at: GitHub Actions artifacts (7d retention) + Release assets
+# on tag pushes.
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write    # to upload to a Release on tag pushes
+  id-token: write    # for OIDC-signed SBOMs (sigstore)
+
+jobs:
+  sbom:
+    name: Generate CycloneDX SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Install @cyclonedx/cdxgen
+        run: npm i -g @cyclonedx/cdxgen@^11
+
+      - name: Generate root SBOM (CycloneDX JSON)
+        # cdxgen auto-detects pnpm + the workspace layout. The single
+        # call produces a flattened SBOM covering every workspace
+        # package (apps/*, services/*, packages/*).
+        env:
+          FETCH_LICENSE: 'true'
+          CDXGEN_DEBUG_MODE: 'true'
+        run: |
+          cdxgen -o sbom-cyclonedx.json -t js -r .
+          # Also produce an SPDX rendering for the licensing crowd.
+          cdxgen -o sbom-spdx.json -t js -r . --format SPDX || true
+
+      - name: Generate mobile SBOM (workspace-detached)
+        run: |
+          # The mobile workspace is not part of the root pnpm workspace
+          # (per docs/architecture.md). Generate its SBOM separately.
+          (cd apps/mobile && cdxgen -o ../../sbom-mobile.json -t js -r .) || true
+
+      - name: Print SBOM stats
+        run: |
+          for f in sbom-cyclonedx.json sbom-spdx.json sbom-mobile.json; do
+            if [ -f "$f" ]; then
+              count=$(jq -r '.components // .packages | length' "$f" 2>/dev/null || echo "?")
+              echo "  $f → $count components"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom-*.json
+          retention-days: 90
+
+      - name: Attach to Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sbom-*.json
+          generate_release_notes: false
+          append_body: |
+
+            ### Supply-chain transparency
+
+            The CycloneDX + SPDX SBOMs attached to this release enumerate
+            every npm dependency (including transitive) and their
+            licenses. Audit-friendly; safe to forward to compliance.

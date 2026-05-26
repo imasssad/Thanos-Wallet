@@ -1,0 +1,42 @@
+# EditorConfig — cross-IDE consistency.
+# https://editorconfig.org
+
+root = true
+
+[*]
+charset                  = utf-8
+end_of_line              = lf
+indent_style             = space
+indent_size              = 2
+insert_final_newline     = true
+trim_trailing_whitespace = true
+max_line_length          = 100
+
+# Markdown: trailing whitespace can be intentional (two-space line
+# break). Don't strip.
+[*.md]
+trim_trailing_whitespace = false
+max_line_length          = off
+
+# Shell scripts: 4 spaces is the de-facto standard.
+[*.sh]
+indent_size = 4
+
+# Makefiles require tabs.
+[Makefile]
+indent_style = tab
+
+# JSON files: 2 spaces, no trailing comma (jsonc is allowed in
+# VSCode settings only).
+[*.json]
+indent_size = 2
+
+# YAML — many tools choke on tabs. Force spaces.
+[*.{yml,yaml}]
+indent_style = space
+indent_size  = 2
+
+# Lockfiles: leave alone.
+[{pnpm-lock.yaml,package-lock.json,yarn.lock}]
+trim_trailing_whitespace = false
+insert_final_newline     = false

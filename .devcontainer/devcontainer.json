@@ -1,0 +1,85 @@
+{
+  // VS Code Dev Container — one-click dev environment.
+  //
+  // Open the repo in VS Code → "Reopen in Container." You get Node 20,
+  // pnpm 9, Postgres 16, Redis 7, all the right CLI tools (sops, age,
+  // docker compose), and a pre-warmed `pnpm install`. No "works on my
+  // machine" debugging.
+  //
+  // The mobile workspace is NOT inside the container — mobile dev
+  // needs Xcode + simulators (or Android Studio + emulators) which
+  // can't run in a Linux devcontainer. Mobile lives on the host.
+
+  "name": "Thanos Wallet dev",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm",
+
+  "features": {
+    // pnpm — npm equivalent the repo uses. Auto-installs the version
+    // pinned in package.json's `packageManager` field on first run.
+    "ghcr.io/devcontainers-contrib/features/pnpm:2": {
+      "version": "9.12.0"
+    },
+    // Docker-in-docker so contributors can run the full compose
+    // stack from inside the devcontainer.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "dockerDashComposeVersion": "v2"
+    },
+    // SOPS + age for secrets editing (see ops/secrets/README.md).
+    "ghcr.io/devcontainers-contrib/features/sops-asdf:2":  {},
+    "ghcr.io/devcontainers-contrib/features/age:1":        {}
+  },
+
+  // Things VS Code does the first time you open the project.
+  "postCreateCommand": "pnpm install --no-frozen-lockfile && echo 'devcontainer ready — try `pnpm typecheck`'",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "EditorConfig.EditorConfig",
+        "bradlc.vscode-tailwindcss",
+        "GitHub.copilot",
+        "eamodio.gitlens",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "editor.defaultFormatter":        "esbenp.prettier-vscode",
+        "editor.formatOnSave":            false,
+        "typescript.tsdk":                "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true,
+        "eslint.useFlatConfig":           true,
+        "files.eol":                      "\n"
+      }
+    }
+  },
+
+  // Forwarded ports so the containerised stack is reachable from the
+  // host browser without extra setup.
+  "forwardPorts": [
+    3000,    // web (Next.js)
+    4000,    // api
+    4010,    // indexer
+    5432,    // postgres
+    6379,    // redis
+    9090,    // prometheus
+    3001,    // grafana
+    3100     // loki
+  ],
+  "portsAttributes": {
+    "3000": { "label": "thanos-web",        "onAutoForward": "openBrowser" },
+    "4000": { "label": "thanos-api" },
+    "4010": { "label": "thanos-indexer" },
+    "5432": { "label": "postgres",          "onAutoForward": "silent" },
+    "6379": { "label": "redis",             "onAutoForward": "silent" },
+    "9090": { "label": "prometheus",        "onAutoForward": "silent" },
+    "3001": { "label": "grafana" },
+    "3100": { "label": "loki",              "onAutoForward": "silent" }
+  },
+
+  // Non-root user — matches the base image's default. Avoids
+  // permission churn on bind-mounted files.
+  "remoteUser": "node"
+}

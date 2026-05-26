@@ -1,0 +1,102 @@
+name: Bug report
+description: Something broke — wallet didn't do what it was supposed to do.
+title: "[bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug.
+
+        **DO NOT INCLUDE** your seed phrase, password, or any private
+        key in this report — even partially. If a value is sensitive,
+        say "redacted" and we'll DM you a secure channel.
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Which client?
+      description: Tick everything affected.
+      multiple: true
+      options:
+        - Web (thanos.fi)
+        - Browser extension (Chrome)
+        - Browser extension (Brave)
+        - Browser extension (Safari)
+        - Desktop (macOS)
+        - Desktop (Windows)
+        - Mobile (iOS)
+        - Mobile (Android)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Client version
+      description: Settings → About → version string (or git sha for self-built).
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chain
+    attributes:
+      label: Chain involved (if any)
+      multiple: true
+      options:
+        - "Lithosphere (Makalu)"
+        - "Lithosphere (Kamet)"
+        - Bitcoin
+        - Ethereum + EVM L2s
+        - Solana
+        - Cosmos
+        - "N/A — UI bug"
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: One paragraph. What did you do, what did you expect, what did you see instead?
+      placeholder: "I tapped Send, entered 0.01 BTC, … and got a 'broadcast failed' toast."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Numbered steps so we can hit the same path.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console / DevTools error (if any)
+      description: Web + extension + desktop only. Open DevTools → Console → paste anything red. **REDACT** any address/seed/PK.
+      render: text
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: |
+        - OS:           macOS 14.5 / Windows 11 / iOS 17.5 / Android 14
+        - Browser:      Chrome 132 / Brave 1.71 / Safari 17.5
+        - Hardware:     M3 MacBook / iPhone 15 Pro / etc.
+
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security
+      description: Confirm before we move on.
+      options:
+        - label: I have **not** pasted my seed phrase, password, or private key into this issue.
+          required: true
+        - label: If this is a security vulnerability, I've **also** emailed security@thanos.fi (PGP key at thanos.fi/.well-known/security.txt) rather than relying on a public issue.
+          required: true

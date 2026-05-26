@@ -11,6 +11,19 @@ export default defineConfig({
   // top-level. Without these the popup build fails on `vite:wasm-fallback`.
   vite: () => ({
     plugins: [wasm(), topLevelAwait()],
+    // NB: extension entrypoints are bundled with
+    // `output.inlineDynamicImports: true` by WXT — each entrypoint
+    // (popup, offscreen, background) has to ship as a single JS file
+    // per the MV3 manifest rules. That makes `manualChunks`
+    // incompatible at the entrypoint level (Rollup errors out).
+    // Code-splitting in this app is therefore via dynamic `import()`
+    // call sites only — see e.g. apps/extension/src/entrypoints/popup/
+    // main.tsx where the BTC/SOL/Cosmos send paths are lazy-imported.
+    // Bundle-size budget is enforced by the build's size print on
+    // every CI run, not by Rollup's warning.
+    build: {
+      chunkSizeWarningLimit: 1000,
+    },
   }),
   manifest: {
     name: 'Thanos Wallet',

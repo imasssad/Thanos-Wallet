@@ -1,0 +1,21 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: mailto:security@thanos.fi
+    about: |
+      Report security issues privately to security@thanos.fi (PGP key
+      at thanos.fi/.well-known/security.txt). Never use a public
+      issue for vulnerabilities.
+
+  - name: Support / how-to
+    url: mailto:support@thanos.fi
+    about: |
+      "How do I do X with the wallet?" or "I lost my seed" — these are
+      handled by support, not GitHub issues.
+
+  - name: Lithosphere status
+    url: https://status.thanos.fi
+    about: |
+      If the wallet feels broken AND the status page is red, the
+      bug isn't ours — we're catching the upstream outage. Subscribe
+      on the status page for resolution updates.

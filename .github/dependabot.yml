@@ -1,0 +1,98 @@
+# Dependabot — automated dependency updates.
+#
+# Weekly cadence, one PR per ecosystem (so the noise stays manageable),
+# minor + patch grouped to cut review load on routine bumps. Major
+# versions still get individual PRs since they almost always need
+# code changes.
+#
+# The wallet's auditing posture: dependency-audit is already a CI gate
+# (`pnpm audit --high --prod`), so Dependabot's job is supply-chain
+# freshness, not security-emergency. Security advisories ship as
+# separate auto-PRs regardless of the schedule below — that's the
+# `open-pull-requests-limit: …, ignore: …, security-updates: enabled`
+# default behaviour.
+
+version: 2
+updates:
+  # ─── Root monorepo + every workspace (Node.js / pnpm) ───────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Karachi
+    open-pull-requests-limit: 8
+    groups:
+      # Group all minor + patch bumps into one PR per ecosystem; the
+      # review effort is mostly verifying nothing broke, which is
+      # faster as a single PR than ten.
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    ignore:
+      # Pinned for compatibility; bumping requires a coordinated test.
+      - dependency-name: "@noble/hashes"
+        versions: ["3.x"]                   # noble 3.x changed exports
+      - dependency-name: "@noble/ciphers"
+        versions: ["3.x"]
+      - dependency-name: "@noble/secp256k1"
+        versions: ["3.x"]
+      - dependency-name: "grafana/loki"     # docker image, pinned at 2.9.x
+        versions: [">=3.0.0"]
+    labels: [dependencies, automated]
+    commit-message:
+      prefix: "deps"
+      include: scope
+
+  # ─── Mobile workspace (workspace-detached, separate lockfile) ───────
+  - package-ecosystem: npm
+    directory: /apps/mobile
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 4
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    ignore:
+      # Expo SDK upgrade requires a coordinated react-native + native
+      # module bump — Dependabot can't do that safely.
+      - dependency-name: "expo"
+      - dependency-name: "react-native"
+      - dependency-name: "@expo/*"
+    labels: [dependencies, mobile, automated]
+    commit-message:
+      prefix: "deps(mobile)"
+
+  # ─── GitHub Actions ─────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 4
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    labels: [ci, automated]
+    commit-message:
+      prefix: "ci"
+
+  # ─── Docker images referenced from docker-compose files ─────────────
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "grafana/loki"
+        versions: [">=3.0.0"]
+      - dependency-name: "prom/alertmanager"
+        versions: ["1.x"]                   # we pinned 0.27.x for routing-config compatibility
+    labels: [dependencies, docker, automated]
+    commit-message:
+      prefix: "deps(docker)"
