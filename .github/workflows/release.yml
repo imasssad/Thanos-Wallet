@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
@@ -110,7 +110,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
@@ -176,7 +176,7 @@ jobs:
     if: ${{ vars.EAS_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4.0.0
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: pnpm install --no-frozen-lockfile
