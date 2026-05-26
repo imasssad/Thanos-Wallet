@@ -1318,10 +1318,13 @@ function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO');
   const [to,   setTo]   = useState('LitBTC');
   const [amt,  setAmt]  = useState('100');
+  const [slippagePct, setSlippagePct] = useState<number>(0.5);
+  const [, setExpTick] = useState(0);
 
   type QuoteShape = {
     quoteId: string; from: string; to: string;
     fromAmount: string; toAmount: string; rate: number; feeFrom: string;
+    expiresAt?: number;
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
   const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
@@ -1357,8 +1360,25 @@ function SwapModal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [from, to, amt]);
 
+  const quoteExpired = !!(quote?.expiresAt && Date.now() > quote.expiresAt);
+  const quoteSecsLeft = quote?.expiresAt && quote.expiresAt > Date.now()
+    ? Math.max(0, Math.round((quote.expiresAt - Date.now()) / 1000))
+    : 0;
+  const minReceived = quote ? Number(quote.toAmount) * (1 - slippagePct / 100) : 0;
+
+  useEffect(() => {
+    if (!quote?.expiresAt) return;
+    const id = setInterval(() => setExpTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [quote?.expiresAt]);
+
   const onSwap = async () => {
     if (!quote || !provider || busy) return;
+    if (quoteExpired) {
+      setErr('Quote expired — refresh to get a new rate.');
+      setQuote(null); setProvider(null);
+      return;
+    }
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
       const mod = await import(provider === 'multx' ? '../../lib/multx' : '../../lib/ignite');
@@ -1412,14 +1432,47 @@ function SwapModal({ onClose }: { onClose: () => void }) {
           ) : err ? <span style={{ color: 'var(--red)' }}>{err}</span>
           : 'Quoting…'}
         </div>
+
+        {/* Slippage selector + min received line — same surface as the
+            web SwapModal so behaviour stays consistent. */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 8, fontSize: 11 }}>
+          <span style={{ color: 'var(--text-muted)' }}>Slippage</span>
+          {[0.1, 0.5, 1, 2].map(s => {
+            const active = slippagePct === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSlippagePct(s)}
+                style={{
+                  padding: '2px 6px', fontSize: 10, fontWeight: 700,
+                  borderRadius: 999, cursor: 'pointer',
+                  border: `1px solid ${active ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                  background: active ? 'var(--blue, #3b7af7)' : 'transparent',
+                  color: active ? '#fff' : 'var(--text-secondary)',
+                }}
+              >{s}%</button>
+            );
+          })}
+        </div>
+        {quote && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+            Min received: <strong style={{ color: 'var(--text-primary)' }}>{minReceived.toFixed(6)} {to}</strong>
+          </div>
+        )}
+        {quote?.expiresAt && (
+          <div style={{ fontSize: 11, color: quoteExpired ? 'var(--red)' : 'var(--text-muted)', marginTop: 2 }}>
+            {quoteExpired ? 'Quote expired — refresh to retry' : `Quote expires in ${quoteSecsLeft}s`}
+          </div>
+        )}
         {pollMsg && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>{pollMsg}</div>}
         <button
           className="btn-primary"
           style={{ marginTop: 12 }}
-          disabled={!quote || busy}
+          disabled={!quote || busy || quoteExpired}
           onClick={onSwap}
         >
-          {busy ? 'Swapping…' : 'Swap'}
+          {busy ? 'Swapping…' : quoteExpired ? 'Quote expired' : 'Swap'}
         </button>
       </div>
     </Modal>

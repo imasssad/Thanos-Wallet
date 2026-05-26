@@ -692,7 +692,8 @@ function SendModal({ onClose }: { onClose: () => void }) {
     chain === 'evm'
       ? !!coin && amtNum > 0 && !overBalance && !!to.trim() && !sending
         && (signer === 'seed' || hwReady) && !simHasCritical
-      : amtNum > 0 && recipientOk && !sending;
+      : amtNum > 0 && recipientOk && !sending
+        && (signer === 'seed' || hwReady);
   const hwAddress: string | null = signer === 'ledger' ? (ledger?.address ?? null)
                                   : signer === 'trezor' ? (trezor?.address ?? null) : null;
 
@@ -732,11 +733,33 @@ function SendModal({ onClose }: { onClose: () => void }) {
     setHwBusy(true);
     try {
       if (choice === 'ledger') {
-        const conn = await connectLedger();
-        setLedger(conn);
+        // The Ledger app loaded on-device must match the active chain.
+        // EVM → Ethereum app; bitcoin → Bitcoin app; solana → Solana app.
+        if (chain === 'bitcoin') {
+          const m = await import('./ledger-btc-sign');
+          const conn = await m.connectLedgerBtc();
+          setLedger({ address: conn.address, transport: conn.transport, close: conn.close } as LedgerConnection);
+        } else if (chain === 'solana') {
+          const m = await import('./ledger-sol-sign');
+          const conn = await m.connectLedgerSol();
+          setLedger({ address: conn.address, transport: conn.transport, close: conn.close } as LedgerConnection);
+        } else if (chain === 'cosmos') {
+          throw new Error('Ledger Cosmos support not yet in this build');
+        } else {
+          const conn = await connectLedger();
+          setLedger(conn);
+        }
       } else {
-        const conn = await connectTrezor();
-        setTrezor(conn);
+        if (chain === 'bitcoin') {
+          const m = await import('./trezor-btc-sign');
+          const conn = await m.connectTrezorBtc();
+          setTrezor({ address: conn.address, close: conn.close } as TrezorConnection);
+        } else if (chain === 'solana' || chain === 'cosmos') {
+          throw new Error(`Trezor ${chain} support not yet in this build`);
+        } else {
+          const conn = await connectTrezor();
+          setTrezor(conn);
+        }
       }
       setSigner(choice);
     } catch (e) {
@@ -761,6 +784,29 @@ function SendModal({ onClose }: { onClose: () => void }) {
     try {
       const meta = DESKTOP_CHAIN_META[chain];
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
+
+      // Hardware-wallet paths for BTC / SOL bypass `sendAsset` since
+      // sendAsset's hardware support is EVM-only by design. We dispatch
+      // directly to the chain-specific signer modules instead.
+      if (signer === 'ledger' && chain === 'bitcoin' && ledger) {
+        const m = await import('./ledger-btc-sign');
+        const conn = ledger as unknown as Awaited<ReturnType<typeof m.connectLedgerBtc>>;
+        const hash = await m.sendViaLedgerBtc(conn, { recipient, amount });
+        setTxHash(hash); setSending(false); return;
+      }
+      if (signer === 'ledger' && chain === 'solana' && ledger) {
+        const m = await import('./ledger-sol-sign');
+        const conn = ledger as unknown as Awaited<ReturnType<typeof m.connectLedgerSol>>;
+        const hash = await m.sendViaLedgerSol(conn, { recipient, amount });
+        setTxHash(hash); setSending(false); return;
+      }
+      if (signer === 'trezor' && chain === 'bitcoin' && trezor) {
+        const m = await import('./trezor-btc-sign');
+        const conn = trezor as unknown as Awaited<ReturnType<typeof m.connectTrezorBtc>>;
+        const hash = await m.sendViaTrezorBtc(conn, { recipient, amount });
+        setTxHash(hash); setSending(false); return;
+      }
+
       const hash = await sendAsset({
         seed,
         chain,
@@ -869,8 +915,10 @@ function SendModal({ onClose }: { onClose: () => void }) {
         </div>
         )}
 
-        {/* Signer choice: software wallet vs Ledger vs Trezor — EVM-only. */}
-        {chain === 'evm' && (
+        {/* Signer choice: software wallet vs Ledger vs Trezor.
+            EVM: all three. BTC: seed / Ledger / Trezor. SOL: seed / Ledger.
+            Cosmos: seed only (Ledger Cosmos app integration is a follow-up). */}
+        {chain !== 'cosmos' && (
         <div style={{
           marginTop: 16, padding: 12, borderRadius: 10,
           background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
@@ -878,24 +926,28 @@ function SendModal({ onClose }: { onClose: () => void }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 }}>Sign with</div>
           <div style={{ display: 'flex', gap: 6 }}>
             {([
-              ['seed',   'Software'],
-              ['ledger', 'Ledger'],
-              ['trezor', 'Trezor'],
-            ] as const).map(([key, label]) => {
+              ['seed',   'Software', true],
+              ['ledger', 'Ledger',   true],                                  // EVM + BTC + SOL all supported via chain-specific signer modules
+              ['trezor', 'Trezor',   chain === 'evm' || (chain as string) === 'bitcoin'],
+            ] as const).map(([key, label, supported]) => {
               const active = signer === key;
+              const disabledForChain = !supported;
               return (
                 <button
                   key={key}
                   type="button"
-                  disabled={hwBusy || sending}
+                  disabled={hwBusy || sending || disabledForChain}
                   onClick={() => void chooseSigner(key)}
                   style={{
-                    flex: 1, padding: '8px 10px', borderRadius: 8, cursor: hwBusy ? 'wait' : 'pointer',
+                    flex: 1, padding: '8px 10px', borderRadius: 8,
+                    cursor: hwBusy ? 'wait' : disabledForChain ? 'not-allowed' : 'pointer',
                     fontSize: 12, fontWeight: 700,
                     background: active ? 'var(--blue, #3b7af7)' : 'transparent',
-                    color: active ? '#fff' : 'var(--text-secondary)',
+                    color: active ? '#fff' : disabledForChain ? 'var(--text-muted)' : 'var(--text-secondary)',
                     border: `1px solid ${active ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                    opacity: disabledForChain ? 0.5 : 1,
                   }}
+                  title={disabledForChain ? `${label} doesn't support ${DESKTOP_CHAIN_META[chain].label} on this build` : ''}
                 >
                   {label}
                 </button>
@@ -910,7 +962,10 @@ function SendModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {signer === 'ledger' && !ledger && !hwBusy && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Plug in your Ledger, unlock it, and open the Ethereum app.</div>
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              Plug in your Ledger, unlock it, and open the {' '}
+              {chain === 'bitcoin' ? 'Bitcoin' : chain === 'solana' ? 'Solana' : 'Ethereum'} app.
+            </div>
           )}
           {signer === 'trezor' && !trezor && !hwBusy && (
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>Plug in your Trezor and approve the connection in the Trezor Connect window.</div>
@@ -1133,10 +1188,13 @@ function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO');
   const [to, setTo]     = useState('LitBTC');
   const [amt, setAmt]   = useState('100');
+  const [slippagePct, setSlippagePct] = useState<number>(0.5);
+  const [, setExpTick] = useState(0);
 
   type QuoteShape = {
     quoteId: string; from: string; to: string;
     fromAmount: string; toAmount: string; rate: number; feeFrom: string;
+    expiresAt?: number;
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
   const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
@@ -1171,8 +1229,25 @@ function SwapModal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [from, to, amt]);
 
+  const quoteExpired = !!(quote?.expiresAt && Date.now() > quote.expiresAt);
+  const quoteSecsLeft = quote?.expiresAt && quote.expiresAt > Date.now()
+    ? Math.max(0, Math.round((quote.expiresAt - Date.now()) / 1000))
+    : 0;
+  const minReceived = quote ? Number(quote.toAmount) * (1 - slippagePct / 100) : 0;
+
+  useEffect(() => {
+    if (!quote?.expiresAt) return;
+    const id = setInterval(() => setExpTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [quote?.expiresAt]);
+
   const onSwap = async () => {
     if (!quote || !provider || busy) return;
+    if (quoteExpired) {
+      setErr('Quote expired — refresh to get a new rate.');
+      setQuote(null); setProvider(null);
+      return;
+    }
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
       const mod = await import(provider === 'multx' ? './multx' : './ignite');
@@ -1232,11 +1307,50 @@ function SwapModal({ onClose }: { onClose: () => void }) {
           <span>Fee</span>
           <span>{quote ? `${quote.feeFrom} ${from}` : '—'}</span>
         </div>
+
+        {/* Slippage tolerance */}
+        <div className="fee-row" style={{ alignItems: 'center' }}>
+          <span>Slippage</span>
+          <span style={{ display: 'inline-flex', gap: 4 }}>
+            {[0.1, 0.5, 1, 2].map(s => {
+              const active = slippagePct === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSlippagePct(s)}
+                  style={{
+                    padding: '3px 8px', fontSize: 11, fontWeight: 700,
+                    borderRadius: 999, cursor: 'pointer',
+                    border: `1px solid ${active ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                    background: active ? 'var(--blue, #3b7af7)' : 'transparent',
+                    color: active ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >{s}%</button>
+              );
+            })}
+          </span>
+        </div>
+
+        <div className="fee-row">
+          <span>Minimum received</span>
+          <span>{quote ? `${minReceived.toFixed(6)} ${to}` : '—'}</span>
+        </div>
+
+        {quote?.expiresAt && (
+          <div className="fee-row">
+            <span>Quote</span>
+            <span style={{ color: quoteExpired ? 'var(--red)' : (quoteSecsLeft < 5 ? 'var(--orange, #f59e0b)' : 'var(--text-muted)') }}>
+              {quoteExpired ? 'Expired — refresh to retry' : `Expires in ${quoteSecsLeft}s`}
+            </span>
+          </div>
+        )}
+
         {err && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{err}</div>}
         {pollMsg && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>{pollMsg}</div>}
 
-        <button className="btn-primary" style={{ marginTop: 18 }} disabled={!quote || busy} onClick={onSwap}>
-          {busy ? 'Swapping…' : `Swap ${from} → ${to}`}
+        <button className="btn-primary" style={{ marginTop: 18 }} disabled={!quote || busy || quoteExpired} onClick={onSwap}>
+          {busy ? 'Swapping…' : quoteExpired ? 'Quote expired' : `Swap ${from} → ${to}`}
         </button>
       </div>
     </Modal>

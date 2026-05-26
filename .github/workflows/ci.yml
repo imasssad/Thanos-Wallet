@@ -29,6 +29,23 @@ jobs:
           NEXT_PUBLIC_REOWN_PROJECT_ID: 6d05d9a84112ca2f7c1bb77a76a18c81
           NEXT_PUBLIC_MULTX_API_URL:    https://bridge.litho.ai
 
+  lint:
+    name: lint (eslint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Lint runs in parallel with typecheck. Failing on warnings would
+    # break CI on every signal-noise change, so we set a budget via
+    # `--max-warnings 500` (see root package.json). The budget should
+    # ratchet down as the codebase converges, not up.
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm lint
+
   build-web:
     name: build (web)
     runs-on: ubuntu-latest

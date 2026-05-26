@@ -1,0 +1,61 @@
+# Centralized logging stack — Loki + Promtail.
+#
+# Co-resident with prometheus/grafana in docker-compose.observability.yml.
+# Bring both up together:
+#
+#   docker compose \
+#     -f ops/observability/docker-compose.observability.yml \
+#     -f ops/observability/docker-compose.logs.yml \
+#     up -d
+#
+# Grafana auto-discovers Loki as a datasource via the provisioning file
+# at grafana-datasources.yml (which already lists both Prometheus + Loki).
+#
+# Storage is local-only (filesystem backend). For >7d retention or >5 GB
+# of logs, swap the storage_config in loki-config.yml for an S3 backend.
+
+services:
+  loki:
+    # Pinned — Loki 3.x changed the schema config and we haven't migrated
+    # the dashboards yet. 2.9.x is stable + fully-compatible with the
+    # current Promtail config.
+    image: grafana/loki:2.9.10
+    container_name: thanos-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks:
+      - default      # observability internal
+      - thanos-net   # grafana on the obs side scrapes via DNS
+
+  # Promtail tails Docker container stdout/stderr and ships every line to
+  # Loki with the container name as a label. Pino's structured JSON
+  # output stays intact — Loki indexes by labels, search inside the JSON
+  # via LogQL `json` parser at query time.
+  promtail:
+    image: grafana/promtail:2.9.10
+    container_name: thanos-promtail
+    restart: unless-stopped
+    depends_on: [loki]
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      # Mount the host's Docker socket + container log dir so promtail
+      # can discover containers via the docker_sd_config + tail logs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - default
+      - thanos-net
+
+volumes:
+  loki_data:
+
+networks:
+  default:
+  thanos-net:
+    external: true

@@ -1603,6 +1603,13 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const [from, setFrom] = useState('LITHO');
   const [to, setTo]     = useState('LitBTC');
   const [amt, setAmt]   = useState('100');
+  /** User-configured slippage tolerance (percent). Lets us derive the
+   *  Minimum-received line from the quote and gate execution when the
+   *  quote drifts more than slippage between fetch and tap. */
+  const [slippagePct, setSlippagePct] = useState<number>(0.5);
+  /** Tick that re-renders the "quote expires in Ns" countdown without
+   *  re-fetching. Pinned to setInterval, scoped to mount. */
+  const [, setExpTick] = useState(0);
 
   /** Best live quote across MultX (cross-chain bridge) and Ignite
    *  (same-chain DEX). `provider` records which route won so execute +
@@ -1688,6 +1695,22 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
   const displayedRate = quote ? quote.rate : fallbackRate;
   const displayedOut  = quote ? Number(quote.toAmount) : fallbackOut;
   const feeLine = quote ? `${quote.feeFrom} ${quote.from}` : 'Rate-only preview';
+  /** Minimum received = toAmount × (1 − slippage). Drives both the UI
+   *  hint and a defensive client-side check before broadcast. */
+  const minReceived = quote ? displayedOut * (1 - slippagePct / 100) : 0;
+  /** True when the quote has a real expiry stamped and it's already in
+   *  the past. Disables the Swap button + shows "expired" indicator. */
+  const quoteExpired = !!(quote?.expiresAt && quote.expiresAt > 0 && Date.now() > quote.expiresAt);
+  const quoteSecsLeft = quote?.expiresAt && quote.expiresAt > Date.now()
+    ? Math.max(0, Math.round((quote.expiresAt - Date.now()) / 1000))
+    : 0;
+
+  // Re-render once per second so the "expires in Ns" countdown ticks.
+  useEffect(() => {
+    if (!quote?.expiresAt) return;
+    const id = setInterval(() => setExpTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [quote?.expiresAt]);
 
   /* Poll the bridge / DEX status with exponential backoff. The bridge SLA
      is "minutes, not seconds" — a fixed 4s loop wastes RPC budget once
@@ -1735,6 +1758,14 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
      signedTx construction goes here. */
   const onSwap = async () => {
     if (!quote || !provider) return;
+    // Refuse to execute against an expired quote — the price moved and
+    // the user almost certainly wants a fresh one. The quote-fetch
+    // debounce kicks back in once they retry.
+    if (quoteExpired) {
+      setQuoteError('Quote expired — refresh to get a new rate.');
+      setQuote(null); setProvider(null);
+      return;
+    }
     // Dedup guards — sync ref + per-quoteId set. Bail without surfacing
     // an error: a fast double-click should be silently coalesced, not
     // shown to the user as a "swap already in progress" toast.
@@ -1843,10 +1874,55 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
           <span>Rate</span>
           <span>1 {from} ≈ {displayedRate.toLocaleString('en-US', { maximumFractionDigits: 6 })} {to}</span>
         </div>
+
+        {/* Slippage tolerance — picked from a small preset list so the
+            user can't fat-finger 50%. 0.5% covers most LIT pairs; raise
+            to 1% for volatile cross-chain bridges. */}
+        <div className="fee-row" style={{ alignItems: 'center' }}>
+          <span>Slippage</span>
+          <span style={{ display: 'inline-flex', gap: 4 }}>
+            {[0.1, 0.5, 1, 2].map(s => {
+              const active = slippagePct === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSlippagePct(s)}
+                  style={{
+                    padding: '3px 8px', fontSize: 11, fontWeight: 700,
+                    borderRadius: 999, cursor: 'pointer',
+                    border: `1px solid ${active ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+                    background: active ? 'var(--blue, #3b7af7)' : 'transparent',
+                    color: active ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >{s}%</button>
+              );
+            })}
+          </span>
+        </div>
+
+        <div className="fee-row">
+          <span>Minimum received</span>
+          <span>
+            {quote
+              ? `${minReceived.toLocaleString('en-US', { maximumFractionDigits: 6 })} ${to}`
+              : '—'}
+          </span>
+        </div>
+
         <div className="fee-row">
           <span>{provider === 'ignite' ? 'DEX fee' : 'Bridge fee'}</span>
           <span>{feeLine}</span>
         </div>
+
+        {quote?.expiresAt && (
+          <div className="fee-row">
+            <span>Quote</span>
+            <span style={{ color: quoteExpired ? 'var(--red)' : (quoteSecsLeft < 5 ? 'var(--orange, #f59e0b)' : 'var(--text-muted)') }}>
+              {quoteExpired ? 'Expired — refresh to retry' : `Expires in ${quoteSecsLeft}s`}
+            </span>
+          </div>
+        )}
         {provider && (
           <div className="fee-row">
             <span>Route</span>
@@ -1868,11 +1944,17 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
         <button
           className="btn-primary"
           style={{ marginTop: 18 }}
-          disabled={!quote || bridgeOffline}
+          disabled={!quote || bridgeOffline || quoteExpired}
           onClick={onSwap}
-          title={bridgeOffline ? 'Bridge offline — cannot execute' : ''}
+          title={
+            bridgeOffline ? 'Bridge offline — cannot execute'
+            : quoteExpired ? 'Quote expired — wait for a new rate'
+            : ''
+          }
         >
-          {quote ? `Swap ${from} → ${to}` : (bridgeOffline ? 'Bridge offline' : 'Fetching quote…')}
+          {quoteExpired ? 'Quote expired'
+            : quote ? `Swap ${from} → ${to}`
+            : (bridgeOffline ? 'Bridge offline' : 'Fetching quote…')}
         </button>
       </div>
     </Modal>

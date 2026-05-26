@@ -9,3 +9,22 @@ datasources:
     url:        http://prometheus:9090
     isDefault:  true
     editable:   true
+
+  # Loki — log streams from every wallet/observability container via
+  # Promtail. Provisioned alongside Prometheus so a fresh Grafana install
+  # has both metrics + logs without operator clicks.
+  - name:       Loki
+    type:       loki
+    access:     proxy
+    url:        http://loki:3100
+    editable:   true
+    jsonData:
+      maxLines: 1000
+      # Link a `req_id` JSON field in Loki to the same field in
+      # Prometheus' http_requests_total via Grafana's derived field.
+      # Operator can extend this in the UI as more correlation paths
+      # emerge.
+      derivedFields:
+        - matcherRegex: '"req_id":"([0-9a-f-]+)"'
+          name:         RequestId
+          url:          '$${__value.raw}'

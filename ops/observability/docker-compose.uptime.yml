@@ -1,0 +1,41 @@
+# External uptime monitor — Uptime Kuma.
+#
+# Self-hosted alternative to UptimeRobot / StatusCake. Runs on the same
+# VPS as the wallet stack but exposed on a different port (3002) so a
+# co-resident outage doesn't take the monitor down with it — Kuma is a
+# single Node process with SQLite persistence, very low overhead.
+#
+# Bring up:
+#   docker compose -f ops/observability/docker-compose.uptime.yml up -d
+#
+# First-time setup (the operator does this once after bringing it up):
+#   1. http://VPS_IP:3002 → set admin password
+#   2. Add monitors:
+#        - https://thanos.fi/                — HTTP, every 60s, expect 200
+#        - https://thanos.fi/api/health      — HTTP, every 60s, expect {ok: true}
+#        - https://thanos.fi/indexer/health  — HTTP, every 60s
+#        - https://rpc.litho.ai/             — HTTP, every 5m  (Lithosphere RPC)
+#        - https://bridge.litho.ai/health    — HTTP, every 5m  (MultX)
+#   3. Notification: Slack / email / Discord webhook of choice
+#   4. Optional public status page: Kuma → Status Pages → New → publish at
+#      https://status.thanos.fi (point a CNAME to the host first)
+#
+# For a fully hosted alternative (no self-host), use UptimeRobot's free
+# tier instead — same checks, just configured in their UI. The two
+# approaches aren't mutually exclusive; running both gives extra
+# redundancy in case the VPS itself goes dark.
+
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: thanos-uptime
+    restart: unless-stopped
+    volumes:
+      - uptime_data:/app/data
+    ports:
+      - "127.0.0.1:3002:3001"
+    environment:
+      UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN: "false"
+
+volumes:
+  uptime_data:

@@ -15,6 +15,7 @@ import { contactsRouter } from './routes/contacts.js';
 import { dnnsRouter } from './routes/dnns.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import { pushRouter } from './routes/push.js';
+import { wcSessionsRouter } from './routes/wc-sessions.js';
 import { metricsHandler, metricsMiddleware } from './lib/metrics.js';
 import { captureException } from './lib/sentry.js';
 
@@ -50,6 +51,7 @@ export function createApp(): express.Express {
   app.use('/dnns', dnnsRouter);
   app.use('/portfolio', portfolioRouter);
   app.use('/push', pushRouter);
+  app.use('/wc/sessions', wcSessionsRouter);
 
   // Forced-exception endpoint for verifying Sentry wiring after a
   // first deploy. Gated on SENTRY_DEBUG_ENDPOINT=1 so it doesn't ship

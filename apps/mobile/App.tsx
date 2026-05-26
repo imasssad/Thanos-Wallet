@@ -1325,9 +1325,12 @@ function SwapScreen({ goBack }: { goBack: () => void }) {
   const [from, setFrom] = useState('LITHO');
   const [to,   setTo]   = useState('LitBTC');
   const [amt,  setAmt]  = useState('100');
+  const [slippagePct, setSlippagePct] = useState<number>(0.5);
+  const [, setExpTick] = useState(0);
   type QuoteShape = {
     quoteId: string; from: string; to: string;
     fromAmount: string; toAmount: string; rate: number; feeFrom: string;
+    expiresAt?: number;
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
   const [provider, setProvider] = useState<'multx' | 'ignite' | null>(null);
@@ -1362,8 +1365,25 @@ function SwapScreen({ goBack }: { goBack: () => void }) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [from, to, amt]);
 
+  const quoteExpired = !!(quote?.expiresAt && Date.now() > quote.expiresAt);
+  const quoteSecsLeft = quote?.expiresAt && quote.expiresAt > Date.now()
+    ? Math.max(0, Math.round((quote.expiresAt - Date.now()) / 1000))
+    : 0;
+  const minReceived = quote ? Number(quote.toAmount) * (1 - slippagePct / 100) : 0;
+
+  useEffect(() => {
+    if (!quote?.expiresAt) return;
+    const id = setInterval(() => setExpTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [quote?.expiresAt]);
+
   const onSwap = async () => {
     if (!quote || !provider || busy) return;
+    if (quoteExpired) {
+      setErr('Quote expired — refresh to get a new rate.');
+      setQuote(null); setProvider(null);
+      return;
+    }
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
       const mod = await import(provider === 'multx' ? './lib/multx' : './lib/ignite');
@@ -1430,16 +1450,52 @@ function SwapScreen({ goBack }: { goBack: () => void }) {
           <Text style={{ color: C.textMuted, fontSize: 11 }}>
             {quote ? `1 ${from} ≈ ${quote.rate.toFixed(6)} ${to} · Route: ${provider} · Fee ${quote.feeFrom} ${from}` : 'Quoting…'}
           </Text>
+
+          {/* Slippage tolerance picker. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+            <Text style={{ color: C.textMuted, fontSize: 11 }}>Slippage</Text>
+            {[0.1, 0.5, 1, 2].map(s => {
+              const active = slippagePct === s;
+              return (
+                <Pressable
+                  key={s}
+                  onPress={() => setSlippagePct(s)}
+                  style={{
+                    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
+                    borderWidth: 1, borderColor: active ? C.purple500 : C.borderDefault,
+                    backgroundColor: active ? C.purple500 : 'transparent',
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 10, fontWeight: '700',
+                    color: active ? '#fff' : C.textSecondary,
+                  }}>{s}%</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {quote && (
+            <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>
+              Min received: <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{minReceived.toFixed(6)} {to}</Text>
+            </Text>
+          )}
+          {quote?.expiresAt && (
+            <Text style={{ color: quoteExpired ? C.red : C.textMuted, fontSize: 11, marginTop: 2 }}>
+              {quoteExpired ? 'Quote expired — refresh to retry' : `Quote expires in ${quoteSecsLeft}s`}
+            </Text>
+          )}
+
           {err && <Text style={{ color: C.red, fontSize: 12, marginTop: 4 }}>{err}</Text>}
           {pollMsg && <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>{pollMsg}</Text>}
         </View>
 
         <Pressable
-          style={[styles.btnPrimary, (!quote || busy) && { opacity: 0.5 }]}
-          disabled={!quote || busy}
+          style={[styles.btnPrimary, (!quote || busy || quoteExpired) && { opacity: 0.5 }]}
+          disabled={!quote || busy || quoteExpired}
           onPress={onSwap}
         >
-          <Text style={styles.btnPrimaryText}>{busy ? 'Swapping…' : `Swap ${from} → ${to}`}</Text>
+          <Text style={styles.btnPrimaryText}>{busy ? 'Swapping…' : quoteExpired ? 'Quote expired' : `Swap ${from} → ${to}`}</Text>
         </Pressable>
       </View>
     </ScrollView>

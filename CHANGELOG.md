@@ -9,6 +9,119 @@ so the wallet team can see at a glance which surface a change affected.
 
 ---
 
+## [1.0.0] — 2026-05-26
+
+The production-launch tag. Closes every code-blocked gap from the
+final scope audit. What remains is operator-side credential
+provisioning (signing certs, dev-store accounts, VPS-side Sentry DSN
++ backup cron registration) — paste-able install scripts for each
+live in `ops/`.
+
+### Wallet — multi-chain parity across every client
+
+- Extension, desktop, and mobile gain real Bitcoin, Solana, and Cosmos
+  Hub send/receive. Each client's Send screen has a chain selector
+  chip strip; Receive surfaces the chain-specific derived address with
+  a real QR (replaces the decorative SVG placeholder that previously
+  shipped on desktop + extension).
+- Desktop hardware-wallet support extends to Ledger Bitcoin, Ledger
+  Solana, and Trezor Bitcoin (in addition to the existing EVM paths).
+  Each SendModal signer panel gates the device list per active chain
+  + tells the user which on-device app to open.
+- Dashboards on every non-web client now show BTC / SOL / ATOM
+  positions alongside LEP-100 — the `usePortfolio` hook derives the
+  chain-specific addresses from the unlocked seed and merges their
+  native balances. Zero-balance positions are hidden so dust addresses
+  don't clutter the list.
+
+### Security — signing isolation across the matrix
+
+- Tx signing now happens in an isolation boundary appropriate to each
+  client's runtime:
+  - Web — Worker (pre-existing).
+  - Extension — offscreen document (`sign.*` messages via the chrome
+    bridge); the popup never holds derived private keys.
+  - Desktop — Electron main-process IPC; the renderer pushes the seed
+    once on unlock, then signing requests round-trip via
+    `window.thanosDesktop.signer.*`.
+  - Mobile — module-private closure (React DevTools / Flipper can't
+    inspect module scope), wiped on lock + auto-lock.
+- WalletConnect risk scoring (`sdk-core/security/wc-risk.ts`)
+  combines phishing-domain detection + method-specific heuristics
+  (max-uint approvals, setApprovalForAll, eth_sign) into a
+  safe/caution/review/block verdict surfaced on the approval sheet.
+- Security regression tests pin the Pino redact contract (mnemonic /
+  password / seed / private_key / token / authorization) and assert
+  the brute-force rate-limiter (429 on the 11th failed attempt in a
+  15-min window).
+
+### Swap + bridge polish
+
+- Slippage tolerance picker (0.1 / 0.5 / 1 / 2%), live "minimum
+  received" display, quote-expiration countdown, and refusal to
+  execute against an expired quote — uniform across the web, extension,
+  desktop, and mobile swap UIs.
+- Route optimisation already shipped in 0.2; this release wires the
+  same MultX + Ignite quote race + execute + status polling to the
+  non-web clients (was static-rate-table mocks on extension/desktop).
+
+### Backend
+
+- New `/portfolio/:address?chains=` aggregation endpoint —
+  parallelizes Lithosphere indexer + mempool.space + Solana RPC +
+  Cosmos LCD + CoinGecko spot prices, 5-second in-process cache,
+  per-chain health flags so a single upstream blip doesn't fail the
+  request.
+- New `/wc/sessions` routes — multi-device WalletConnect session
+  cache (Reown's relay still owns the encrypted material; we cache
+  topic + metadata + chain coverage + last-seen for the cross-device
+  "connected apps" view).
+- `/debug/sentry-test` endpoint gated on `SENTRY_DEBUG_ENDPOINT=1` for
+  one-shot verification after wiring the DSN.
+
+### Observability
+
+- Loki + Promtail centralized-logs stack lands in
+  `ops/observability/docker-compose.logs.yml` — Docker SD discovers
+  every container, Pino's JSON output ships intact, Grafana
+  auto-provisions Loki as a datasource alongside Prometheus.
+- Uptime-Kuma compose at `ops/observability/docker-compose.uptime.yml`
+  — self-hosted external uptime monitor with public status-page
+  capability.
+
+### Operator paste-able installers
+
+- `ops/backups/install-cron.sh` — idempotent installer for the daily
+  Postgres backup + weekly restore-verify crons; writes the env
+  template, creates the backup dirs, runs the script once, registers
+  the cron lines.
+- `ops/install-sentry.sh` — drops `SENTRY_DSN` into the prod `.env`,
+  restarts api / indexer / worker, health-checks each container.
+
+### Store-listing readiness (credential-blocked, not code-blocked)
+
+- Full listing copy for Chrome Web Store, App Store Connect, and Play
+  Console under `apps/extension/store/` and
+  `apps/mobile/store-listing/`.
+- Privacy policy at `docs/privacy-policy.md` — real document
+  enumerating every endpoint the wallet talks to.
+- Playwright screenshot-capture script at
+  `apps/web/scripts/capture-screenshots.ts`.
+- `eas.json` full production submit blocks for both stores (reads
+  `ASC_API_KEY_*` + `play-service-account.json` from env at submit
+  time).
+- macOS hardened-runtime entitlements fixed in
+  `apps/desktop/build/entitlements.mac.plist` — JIT, unsigned-exec
+  memory, USB device access — without these the notarised app
+  crashes on first launch.
+
+### Tooling
+
+- ESLint flat-config landed at the repo root. `pnpm lint` runs the
+  whole monorepo + CI gates on the same step.
+
+---
+
 ## [0.2.0] — 2026-05-23
 
 First production-grade tag. All four clients (web, desktop, extension, mobile)

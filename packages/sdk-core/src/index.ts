@@ -14,6 +14,7 @@ export * from './utils/mnemonic';
 export * from './utils/litho-address';
 export * from './security/phishing';
 export * from './security/simulator';
+export * from './security/wc-risk';
 export * from './clients/evm-client';
 export * from './clients/lithic-client';
 export * from './clients/lep100-client';

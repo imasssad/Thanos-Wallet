@@ -1,0 +1,63 @@
+# Promtail — Docker container log tailer for Loki.
+#
+# Strategy: docker_sd_config auto-discovers every container running on
+# the host, drops noisy infra labels, keeps `service`/`stack`/`container`
+# as the Loki stream labels, and pushes Pino JSON (or whatever the
+# container writes to stdout) line-by-line.
+#
+# Loki indexes by labels — keep cardinality low. We deliberately don't
+# label by request-id (Pino emits those as a JSON field that LogQL can
+# parse at query time via `| json | req_id="..."`).
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: thanos-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      # Container short name (api / indexer / worker / postgres / redis / nginx).
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+
+      # Compose project = our "stack" tag. Lets us split wallet vs
+      # observability vs anything else running on the host.
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: stack
+
+      # Promote the compose service name to the canonical `service`
+      # label — handy in dashboards.
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: service
+
+      # Drop sidecars / orchestration noise we don't care about. The
+      # `__name` ones are Promtail-internal; the rest is the alertmanager
+      # entrypoint script chatter.
+      - source_labels: ['service']
+        regex: 'alertmanager-init|.*-init'
+        action: drop
+
+    pipeline_stages:
+      # Pino emits JSON; let LogQL parse it on demand. Promtail only
+      # needs to extract the timestamp so the Loki sample ordering is
+      # correct — everything else stays as the original log line.
+      - json:
+          expressions:
+            ts:    time
+            level: level
+      - timestamp:
+          source: ts
+          format: UnixMs
+          fallback_formats: [RFC3339Nano, RFC3339]
+      - labels:
+          level:
