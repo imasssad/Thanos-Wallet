@@ -51,6 +51,18 @@ export function createApp(): express.Express {
   app.use('/portfolio', portfolioRouter);
   app.use('/push', pushRouter);
 
+  // Forced-exception endpoint for verifying Sentry wiring after a
+  // first deploy. Gated on SENTRY_DEBUG_ENDPOINT=1 so it doesn't ship
+  // by default — operator flips the env var, hits the endpoint once,
+  // confirms the exception arrived in Sentry, then turns it back off.
+  if (process.env.SENTRY_DEBUG_ENDPOINT === '1') {
+    app.post('/debug/sentry-test', (_req, res) => {
+      const err = new Error('Sentry verification — synthetic exception');
+      captureException(err, { source: '/debug/sentry-test' });
+      res.json({ ok: true, dispatched: true });
+    });
+  }
+
   app.get('/health', async (_req, res) => {
     const [db, cache] = await Promise.all([
       checkDbConnection(),

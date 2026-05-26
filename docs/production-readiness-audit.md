@@ -79,13 +79,26 @@ All four clients now route every EVM sign + broadcast through their
 isolation boundary. Hardware-wallet flows (Ledger / Trezor) are
 already isolated by definition (signature happens on the device).
 
-## Open gaps (high-signal only)
+## Open gaps — all reduced to single paste-able operator steps
 
-1. **VPS-side credential plumbing** — Sentry DSN, App Store + Play
-   service account keys, macOS / Windows code-signing certs all need
-   the operator to populate. Workflows + configs are ready.
-2. **Daily Postgres backup cron registration** — script is ready; the
-   `crontab -e` step on the VPS is a one-shot manual action.
+Every "open gap" from earlier audit revisions now has a one-shot
+installer script. Each requires only the operator credential the script
+is gated on; no editing, no manual cron lines, no plist surgery.
 
-Once those land, the wallet is at full production-readiness. None of
-them are code-blocked.
+| Gap | Script (paste into Termius / shell) | Requires |
+|---|---|---|
+| Daily Postgres backup cron | `sudo bash ops/backups/install-cron.sh` | nothing — runs on the VPS as root |
+| Sentry DSN active | `sudo SENTRY_DSN='https://…' ops/install-sentry.sh` | a Sentry project DSN |
+| macOS code-sign + notarize | `pnpm --filter @thanos/desktop dist` | `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` env / repo secrets |
+| Windows code-sign | same `pnpm dist` | `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` env / repo secrets |
+| Signing verification | `bash apps/desktop/scripts/verify-signing.sh` | nothing — runs after `pnpm dist` to confirm |
+| Chrome Web Store upload | manual: drop `apps/extension/.output/thanosextension-*-chrome.zip` into the dev console; listing copy in `apps/extension/store/chrome-listing.md` | Chrome Web Store dev account ($5 one-off) |
+| iOS App Store upload | `cd apps/mobile && eas submit --platform ios --profile production` | EAS auth, ASC API key (`.p8`), `APPLE_TEAM_ID` |
+| Play Console upload | `eas submit --platform android --profile production` | EAS auth, `credentials/play-service-account.json` |
+| Safari extension archive | `pnpm --filter @thanos/extension safari:archive` + `xcrun altool --upload-app …` | Apple Developer cert in keychain |
+| Screenshots (web) | `pnpm --filter @thanos/web exec tsx scripts/capture-screenshots.ts` | running web wallet at localhost:3000 |
+| Privacy policy | publish `docs/privacy-policy.md` at `https://thanos.fi/privacy` | nothing (already in the repo) |
+
+Everything else from path A + path B is already on `main`. The wallet
+is code-complete; the remaining work is exclusively credential
+acquisition + the one-paste installs above.
