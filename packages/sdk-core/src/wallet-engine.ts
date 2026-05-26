@@ -44,10 +44,20 @@ export class WalletEngine {
   readonly solana = new SolanaClient();
   readonly simulator = new TransactionSimulator(this.evm, this.lithic);
   readonly multx = new MultXClient();
-  /** Same-chain DEX. Defaults to the mock client so a misconfigured deploy
-   *  falls back to safe canned data; swap for `createIgniteClient({ kind:
-   *  'live' })` once Ignite confirms their API spec. */
-  readonly ignite: IgniteClient = createIgniteClient();
+  /** Same-chain DEX. Defaults to live (https://ignite.litho.ai) — any
+   *  parse/network failure throws IgniteUnavailable, which the SwapModal
+   *  catches and falls back to MultX, so a half-matched API spec degrades
+   *  gracefully rather than blowing up. Force the mock client (e.g. in
+   *  CI or local dev with no network) by setting THANOS_IGNITE=mock. */
+  readonly ignite: IgniteClient = createIgniteClient({
+    kind: (typeof process !== 'undefined' && process.env?.THANOS_IGNITE === 'mock')
+      ? 'mock'
+      : 'live',
+    live: {
+      baseUrl: (typeof process !== 'undefined' &&
+        (process.env?.IGNITE_API_URL || process.env?.NEXT_PUBLIC_IGNITE_API_URL)) || undefined,
+    },
+  });
   readonly tokenImporter = new TokenImporter();
   readonly indexer = new IndexerClient();
   readonly walletConnect = new WalletConnectBridge();

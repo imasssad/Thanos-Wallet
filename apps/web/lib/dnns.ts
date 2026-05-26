@@ -77,12 +77,28 @@ export async function resolveName(name: string): Promise<string | null> {
 }
 
 /** Reverse-resolve an EVM address → DNNS name (e.g. for the "you're sending
- *  to alice.litho" label in the Send modal). Returns null on miss. */
+ *  to alice.litho" label in the Send modal). Returns null on miss.
+ *
+ *  Two-step resolution mirrors forward lookup: API first (cached + forward
+ *  -verified server-side), SDK contract-read fallback when the API is
+ *  unreachable. */
 export async function reverseLookup(address: string): Promise<string | null> {
-  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address.trim())) return null;
+  const trimmed = address?.trim();
+  if (!trimmed || !/^0x[a-fA-F0-9]{40}$/.test(trimmed)) return null;
+
+  // 1. API path — uses the dnns_cache table + forward-verified reverse
+  //    resolution on Kamet (services/api/src/lib/dnns-chain.ts).
   try {
-    const { record } = await apiClient.lookupDnnsAddress(address.trim(), MAKALU_CHAIN_ID);
+    const { record } = await apiClient.lookupDnnsAddress(trimmed, MAKALU_CHAIN_ID);
     return record?.name ?? null;
+  } catch {
+    /* API unreachable — fall through to the SDK direct-contract path. */
+  }
+
+  // 2. SDK fallback — direct ENS-style read against the Kamet Registry.
+  //    Forward-verifies the claimed name internally before returning.
+  try {
+    return await getService().reverseResolve(MAKALU_CHAIN_ID, trimmed);
   } catch {
     return null;
   }

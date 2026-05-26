@@ -64,6 +64,41 @@ describe('DnnsService.resolve', () => {
   });
 });
 
+describe('DnnsService.reverseResolve', () => {
+  it('returns null for an invalid address shape', async () => {
+    const svc = new DnnsService(mockLithic());
+    expect(await svc.reverseResolve(KAMET, 'not-an-address')).toBeNull();
+    expect(await svc.reverseResolve(KAMET, '0x123')).toBeNull();
+    expect(await svc.reverseResolve(KAMET, '')).toBeNull();
+  });
+
+  it('returns null when no verified reverse record exists (RPC unavailable in tests)', async () => {
+    // In the unit-test environment no Kamet RPC is reachable, so the
+    // on-chain registry.resolver() call throws → reverseResolve returns
+    // null. This pins the "graceful degradation" contract.
+    const svc = new DnnsService(mockLithic());
+    const r = await svc.reverseResolve(KAMET, '0x' + 'a'.repeat(40));
+    expect(r).toBeNull();
+  });
+
+  it('accepts a provider override + returns null when registry has no resolver', async () => {
+    // Inject a stub provider so we can drive registry.resolver() to
+    // return the zero address — that's an unset record, not a failure.
+    const stubProvider = {
+      // ethers Contract uses call() for view methods
+      call: vi.fn().mockResolvedValue('0x' + '0'.repeat(64)),
+      getNetwork: vi.fn().mockResolvedValue({ chainId: KAMET, name: 'kamet' }),
+      _isProvider: true,
+      // ethers v6 Contract.call() path
+      send: vi.fn().mockResolvedValue('0x' + '0'.repeat(64)),
+    } as unknown as import('ethers').Provider;
+    const svc = new DnnsService({ provider: stubProvider, lithic: mockLithic() });
+    const r = await svc.reverseResolve(KAMET, '0x' + 'b'.repeat(40));
+    // No resolver registered → null (verified by graceful-degradation path).
+    expect(r).toBeNull();
+  });
+});
+
 describe('DnnsService.register', () => {
   it('builds register(name, owner, years) on the dnns-registry contract', async () => {
     let captured: { chainId: number; contract: string; method: string; args: unknown[] } | null = null;
