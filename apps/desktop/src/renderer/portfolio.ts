@@ -137,12 +137,17 @@ async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
   }
 }
 
-/** Fetch + price the wallet's portfolio and activity. Re-runs on address change. */
-export function usePortfolio(address: string): PortfolioState {
+/** Fetch + price the wallet's portfolio and activity. Re-runs on
+ *  address change. When `seed` is supplied, also derives BTC/SOL/ATOM
+ *  addresses and includes their native balances in the displayed
+ *  portfolio so the total reflects every chain the wallet manages. */
+export function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Omit<PortfolioState, 'reload'>>({
     coins: [], activity: [], totalUsd: 0, loading: true, offline: false,
   });
+
+  const seedKey = seed?.join(' ') ?? '';
 
   useEffect(() => {
     if (!/^0x[0-9a-fA-F]{40}$/.test(address || '')) {
@@ -153,7 +158,10 @@ export function usePortfolio(address: string): PortfolioState {
     setState((s) => ({ ...s, loading: true, offline: false }));
     (async () => {
       try {
-        const [pf, prices] = await Promise.all([fetchPortfolio(address), fetchEcosystemPrices()]);
+        const [pf, prices] = await Promise.all([
+          fetchPortfolio(address).catch(() => ({ assets: [], activity: [], walletAddress: address, updatedAt: '' } as IndexerPortfolio)),
+          fetchEcosystemPrices(),
+        ]);
         if (cancelled) return;
 
         const priced = pf.assets.map((a) => {
@@ -162,15 +170,59 @@ export function usePortfolio(address: string): PortfolioState {
           const priceUsd = prices[a.symbol] ?? 0;
           return { a, bal, priceUsd, usdValue: bal * priceUsd };
         });
-        const totalUsd = priced.reduce((s, x) => s + x.usdValue, 0);
-        const coins: DisplayCoin[] = priced.map(({ a, bal, priceUsd, usdValue }) => ({
-          sym: a.symbol, name: a.name,
-          balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
-          priceUsd, usdValue,
-          pct: totalUsd > 0 ? Math.round((usdValue / totalUsd) * 100) : 0,
-          color: coinColor(a.symbol),
-          tokenAddress: a.tokenAddress, native: !!a.native,
-        }));
+
+        // Cross-chain native positions — only when the seed is unlocked.
+        // Each chain runs best-effort; one RPC failure doesn't poison the
+        // whole dashboard.
+        const xchain: DisplayCoin[] = [];
+        if (seedKey) {
+          const phrase = seedKey;
+          const tries = await Promise.allSettled([
+            (async () => {
+              const m = await import('./bitcoin');
+              const addr = m.getBitcoinAddress(phrase);
+              const bal = parseFloat(await m.getBitcoinBalance(addr)) || 0;
+              return { sym: 'BTC',  name: 'Bitcoin',    bal, decimals: 8 };
+            })(),
+            (async () => {
+              const m = await import('./solana');
+              const addr = m.getSolanaAddress(phrase);
+              const bal = parseFloat(await m.getSolanaBalance(addr)) || 0;
+              return { sym: 'SOL',  name: 'Solana',     bal, decimals: 9 };
+            })(),
+            (async () => {
+              const m = await import('./cosmos');
+              const addr = await m.getCosmosAddress(phrase);
+              const bal = parseFloat(await m.getCosmosBalance(addr)) || 0;
+              return { sym: 'ATOM', name: 'Cosmos Hub', bal, decimals: 6 };
+            })(),
+          ]);
+          for (const r of tries) {
+            if (r.status !== 'fulfilled' || r.value.bal <= 0) continue;
+            const priceUsd = prices[r.value.sym] ?? 0;
+            const usdValue = r.value.bal * priceUsd;
+            xchain.push({
+              sym: r.value.sym, name: r.value.name,
+              balance: r.value.bal, balanceText: formatAmount(r.value.bal),
+              decimals: r.value.decimals, priceUsd, usdValue,
+              pct: 0, color: coinColor(r.value.sym), native: true,
+            });
+          }
+        }
+
+        const totalUsd = priced.reduce((s, x) => s + x.usdValue, 0)
+                       + xchain.reduce((s, x) => s + x.usdValue, 0);
+        const coins: DisplayCoin[] = [
+          ...priced.map(({ a, bal, priceUsd, usdValue }) => ({
+            sym: a.symbol, name: a.name,
+            balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
+            priceUsd, usdValue,
+            pct: totalUsd > 0 ? Math.round((usdValue / totalUsd) * 100) : 0,
+            color: coinColor(a.symbol),
+            tokenAddress: a.tokenAddress, native: !!a.native,
+          })),
+          ...xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 })),
+        ];
 
         const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {
           const { type, pos } = txType(t.type);
@@ -191,7 +243,7 @@ export function usePortfolio(address: string): PortfolioState {
       }
     })();
     return () => { cancelled = true; };
-  }, [address, nonce]);
+  }, [address, nonce, seedKey]);
 
   return { ...state, reload: () => setNonce((n) => n + 1) };
 }

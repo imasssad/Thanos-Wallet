@@ -2543,7 +2543,7 @@ function App() {
   };
   const walletAddr = addrs.evm;
   const shortAddr  = addrs.short;
-  const portfolio  = usePortfolio(walletAddr);
+  const portfolio  = usePortfolio(walletAddr, walletSeed);
 
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;

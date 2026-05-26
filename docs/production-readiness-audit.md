@@ -68,17 +68,16 @@ verdicts into a PR description by quoting the section.
 
 ## Multi-chain UI — per-client status
 
-| Client | Send | Receive | Live balance |
+| Client | Send | Receive | Dashboard portfolio |
 |---|---|---|---|
-| Web | EVM | EVM | EVM |
-| Extension | EVM + BTC + SOL + ATOM (chain selector) | EVM + BTC + SOL + ATOM (chain selector + real QR) | EVM via dashboard; BTC/SOL/ATOM shown live on Receive modal |
-| Desktop | EVM + BTC + SOL + ATOM (chain selector) | EVM + BTC + SOL + ATOM (chain selector + real QR) | EVM via dashboard; BTC/SOL/ATOM shown live on Receive modal |
-| Mobile | EVM + BTC + SOL + ATOM (chain chip strip) | EVM + BTC + SOL + ATOM (chain chip strip + real QR) | EVM via dashboard; BTC/SOL/ATOM shown live on Receive screen |
+| Web | EVM + BTC + SOL + Cosmos (Send modal chain dropdown) | All chains (Receive modal) | All chains via `useLiveBalances` (EVM + per-chain natives + BTC + SOL + ATOM) |
+| Extension | EVM + BTC + SOL + ATOM (chain selector) | EVM + BTC + SOL + ATOM (chain selector + real QR) | All chains — `usePortfolio(addr, seed)` merges LEP-100 + BTC/SOL/ATOM natives |
+| Desktop | EVM + BTC + SOL + ATOM (chain selector) | EVM + BTC + SOL + ATOM (chain selector + real QR) | All chains — `usePortfolio(addr, seed)` merges LEP-100 + BTC/SOL/ATOM natives |
+| Mobile | EVM + BTC + SOL + ATOM (chain chip strip) | EVM + BTC + SOL + ATOM (chain chip strip + real QR) | All chains — `usePortfolio(addr, seed)` merges LEP-100 + BTC/SOL/ATOM natives |
 
-Out of scope today: showing the non-EVM balances in the main dashboard
-portfolio chart. The backend `/portfolio/:address` endpoint can return
-multi-chain positions; the dashboard widget that consumes them ships
-in 1.1.
+Each non-EVM chain runs `Promise.allSettled`-style so a single RPC
+outage doesn't poison the whole dashboard; zero-balance positions are
+hidden so dust addresses don't clutter the list.
 
 ## Signing isolation — per-client status
 

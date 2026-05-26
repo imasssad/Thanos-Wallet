@@ -1709,7 +1709,7 @@ function App() {
   }, [unlocked]);
 
   const evmAddr   = seed.length ? deriveEvm(seed, activeIdx) : '';
-  const portfolio = usePortfolio(evmAddr);
+  const portfolio = usePortfolio(evmAddr, seed);
 
   /** Switch to a different derived account. Updates storage so the
    *  next popup open + the signer paths pick up the same index. */

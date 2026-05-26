@@ -236,13 +236,19 @@ interface PortfolioState {
   reload: () => void;
 }
 
-/** Fetch + price the wallet's portfolio from the indexer. */
-function usePortfolio(address: string): PortfolioState {
+/** Fetch + price the wallet's portfolio from the indexer.
+ *  When `seed` is provided, also derives BTC/SOL/ATOM addresses and
+ *  fetches their native balances, merging them as additional assets so
+ *  the dashboard shows a true cross-chain portfolio total. */
+function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce]   = useState(0);
   const [assets, setAssets] = useState<DisplayAsset[]>([]);
   const [totalUsd, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+
+  // Memoise the seed string so the effect doesn't re-fire on every render.
+  const seedKey = seed?.join(' ') ?? '';
 
   useEffect(() => {
     if (!address) { setAssets([]); setTotal(0); setLoading(false); setOffline(false); return; }
@@ -251,11 +257,12 @@ function usePortfolio(address: string): PortfolioState {
     (async () => {
       try {
         const [portfolio, prices] = await Promise.all([
-          getPortfolio(address),
+          getPortfolio(address).catch(() => ({ assets: [], activity: [], walletAddress: address, updatedAt: '' })),
           fetchEcosystemPrices(),
         ]);
         if (cancelled) return;
-        const next: DisplayAsset[] = portfolio.assets.map((a) => {
+
+        const evmRows: DisplayAsset[] = portfolio.assets.map((a) => {
           let bal = 0;
           try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
           const priceUsd = prices[a.symbol] ?? 0;
@@ -267,6 +274,48 @@ function usePortfolio(address: string): PortfolioState {
             tokenAddress: a.tokenAddress, native: !!a.native,
           };
         });
+
+        // Cross-chain natives — only attempted when the seed is unlocked.
+        // Each chain's call is best-effort; a single RPC outage doesn't
+        // poison the whole portfolio.
+        const xchain: DisplayAsset[] = [];
+        if (seedKey) {
+          const phrase = seedKey;
+          const tries = await Promise.allSettled([
+            (async () => {
+              const m = await import('./lib/bitcoin');
+              const addr = m.getBitcoinAddress(phrase);
+              const bal = parseFloat(await m.getBitcoinBalance(addr)) || 0;
+              return { sym: 'BTC', name: 'Bitcoin',     chainId: 0, balance: bal, decimals: 8 };
+            })(),
+            (async () => {
+              const m = await import('./lib/solana');
+              const addr = m.getSolanaAddress(phrase);
+              const bal = parseFloat(await m.getSolanaBalance(addr)) || 0;
+              return { sym: 'SOL', name: 'Solana',      chainId: 0, balance: bal, decimals: 9 };
+            })(),
+            (async () => {
+              const m = await import('./lib/cosmos');
+              const addr = await m.getCosmosAddress(phrase);
+              const bal = parseFloat(await m.getCosmosBalance(addr)) || 0;
+              return { sym: 'ATOM', name: 'Cosmos Hub', chainId: 0, balance: bal, decimals: 6 };
+            })(),
+          ]);
+          for (const r of tries) {
+            if (r.status !== 'fulfilled') continue;
+            if (r.value.balance <= 0) continue; // hide zero positions
+            const priceUsd = prices[r.value.sym] ?? 0;
+            xchain.push({
+              sym: r.value.sym, name: r.value.name, chainId: r.value.chainId,
+              balance: r.value.balance, balanceText: formatAmount(r.value.balance),
+              decimals: r.value.decimals, priceUsd, usdValue: r.value.balance * priceUsd,
+              color: assetColor(r.value.sym), native: true,
+            });
+          }
+        }
+
+        const next = [...evmRows, ...xchain];
+        if (cancelled) return;
         setAssets(next);
         setTotal(next.reduce((s, a) => s + a.usdValue, 0));
         setLoading(false);
@@ -276,7 +325,7 @@ function usePortfolio(address: string): PortfolioState {
       }
     })();
     return () => { cancelled = true; };
-  }, [address, nonce]);
+  }, [address, nonce, seedKey]);
 
   return { assets, totalUsd, loading, offline, reload: () => setNonce((n) => n + 1) };
 }
@@ -436,7 +485,8 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
-  const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr);
+  const seed = useWalletSeed();
+  const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr, seed);
   const networks = new Set(assets.map((a) => a.chainId)).size;
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
   useEffect(() => { isSeedBackedUp().then(setBackedUp).catch(() => {}); }, []);
