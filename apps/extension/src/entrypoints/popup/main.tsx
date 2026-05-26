@@ -1058,17 +1058,85 @@ function SendModal({ onClose }: { onClose: () => void }) {
 }
 
 function ReceiveModal({ onClose, address }: { onClose: () => void; address: string }) {
-  const [copied, setCopied]     = useState(false);
-  const [showAlt, setShowAlt]   = useState(false);   // false = litho1, true = 0x
+  const seed = useWalletSeed();
+  const [chain, setChain] = useState<'evm'|'btc'|'sol'|'atom'>('evm');
+  const [copied, setCopied]   = useState(false);
+  const [showAlt, setShowAlt] = useState(false);
+  const [btcAddr,  setBtcAddr]  = useState('');
+  const [solAddr,  setSolAddr]  = useState('');
+  const [atomAddr, setAtomAddr] = useState('');
+  const [chainBalance, setChainBalance] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState('');
 
   const lithoAddr = useMemo(() => {
     if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return '';
     try { return evmToLitho(address); } catch { return ''; }
   }, [address]);
 
-  const displayed = lithoAddr && !showAlt ? lithoAddr : address;
+  // Lazy chain-address derivation — only run when the tab is opened.
+  useEffect(() => {
+    if (chain === 'btc' && !btcAddr && seed.length) {
+      void import('../../lib/bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
+        .catch(() => setBtcAddr(''));
+    }
+    if (chain === 'sol' && !solAddr && seed.length) {
+      void import('../../lib/solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
+        .catch(() => setSolAddr(''));
+    }
+    if (chain === 'atom' && !atomAddr && seed.length) {
+      void import('../../lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
+        .then(setAtomAddr).catch(() => setAtomAddr(''));
+    }
+  }, [chain, seed, btcAddr, solAddr, atomAddr]);
+
+  // Reset dual-format toggle when switching chains.
+  useEffect(() => { setShowAlt(false); }, [chain]);
+
+  // Live balance for the active non-EVM chain.
+  useEffect(() => {
+    setChainBalance('');
+    if (chain === 'evm') return;
+    const addr = chain === 'btc' ? btcAddr : chain === 'sol' ? solAddr : atomAddr;
+    if (!addr) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (chain === 'btc') {
+          const m = await import('../../lib/bitcoin');
+          const b = await m.getBitcoinBalance(addr);
+          if (!cancelled) setChainBalance(`${b} BTC`);
+        } else if (chain === 'sol') {
+          const m = await import('../../lib/solana');
+          const b = await m.getSolanaBalance(addr);
+          if (!cancelled) setChainBalance(`${b} SOL`);
+        } else {
+          const m = await import('../../lib/cosmos');
+          const b = await m.getCosmosBalance(addr);
+          if (!cancelled) setChainBalance(`${b} ATOM`);
+        }
+      } catch { if (!cancelled) setChainBalance('—'); }
+    })();
+    return () => { cancelled = true; };
+  }, [chain, btcAddr, solAddr, atomAddr]);
+
+  const displayed =
+    chain === 'evm'  ? (lithoAddr && !showAlt ? lithoAddr : address)
+    : chain === 'btc'  ? btcAddr
+    : chain === 'sol'  ? solAddr
+    : atomAddr;
+
+  // Real QR — drawn lazily for whatever address is in view.
+  useEffect(() => {
+    if (!displayed) { setQrDataUrl(''); return; }
+    let cancelled = false;
+    void import('qrcode').then(qr => qr.toDataURL(displayed, { width: 180, margin: 1 }))
+      .then(url => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(''); });
+    return () => { cancelled = true; };
+  }, [displayed]);
 
   const copy = async () => {
+    if (!displayed) return;
     let ok = false;
     try { await navigator.clipboard.writeText(displayed); ok = true; } catch {}
     if (!ok) {
@@ -1079,11 +1147,30 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
     }
     if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1800); }
   };
+
   return (
     <Modal title="Receive" onClose={onClose}>
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
-        {/* Lithosphere dual-format toggle — same wallet, two formats. */}
-        {lithoAddr && (
+        {/* Chain selector */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 12, width: '100%' }}>
+          {(['evm','btc','sol','atom'] as const).map(c => {
+            const selected = c === chain;
+            return (
+              <button key={c} onClick={() => setChain(c)} style={{
+                flex: 1, padding: '6px 8px', borderRadius: 999, cursor: 'pointer',
+                fontSize: 10, fontWeight: 700,
+                background: selected ? 'var(--blue, #3b7af7)' : 'transparent',
+                color: selected ? '#fff' : 'var(--text-secondary)',
+                border: `1px solid ${selected ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
+              }}>
+                {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : c === 'sol' ? 'SOL' : 'ATOM'}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Lithosphere dual-format toggle — only on EVM tab. */}
+        {chain === 'evm' && lithoAddr && (
           <div style={{
             display: 'inline-flex', marginBottom: 12,
             background: 'var(--bg-elevated)',
@@ -1096,38 +1183,34 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
             ].map(o => {
               const selected = o.isAlt === showAlt;
               return (
-                <button
-                  key={o.label}
-                  onClick={() => setShowAlt(o.isAlt)}
-                  style={{
-                    background: selected ? 'var(--bg-card)' : 'transparent',
-                    border: 'none', cursor: 'pointer',
-                    padding: '5px 14px', borderRadius: 999,
-                    fontSize: 11, fontWeight: 600,
-                    color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  }}
-                >{o.label}</button>
+                <button key={o.label} onClick={() => setShowAlt(o.isAlt)} style={{
+                  background: selected ? 'var(--bg-card)' : 'transparent',
+                  border: 'none', cursor: 'pointer',
+                  padding: '5px 14px', borderRadius: 999,
+                  fontSize: 11, fontWeight: 600,
+                  color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                }}>{o.label}</button>
               );
             })}
           </div>
         )}
-        <div className="qr-box">
-          <svg viewBox="0 0 100 100" width="160" height="160">
-            <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="14" y="14" width="20" height="20" rx="2" fill="currentColor"/>
-            <rect x="57" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="66" y="14" width="20" height="20" rx="2" fill="currentColor"/>
-            <rect x="5" y="57" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="14" y="66" width="20" height="20" rx="2" fill="currentColor"/>
-            {[57,63,69,75,81,87,93].map((x,i) =>
-              [57,63,69,75,81,87,93].map((y,j) =>
-                (i+j)%2===0 ? <rect key={`${i}${j}`} x={x} y={y} width="4" height="4" fill="currentColor" opacity="0.7"/> : null
-              )
-            )}
-          </svg>
+
+        {/* Real QR */}
+        <div className="qr-box" style={{ background: '#fff', borderRadius: 8, padding: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 180, height: 180 }}>
+          {qrDataUrl
+            ? <img src={qrDataUrl} alt={displayed} width={168} height={168}/>
+            : <span style={{ fontSize: 11, color: '#666' }}>{displayed ? 'Generating QR…' : 'Loading…'}</span>}
         </div>
-        <div className="addr-box">{displayed.slice(0, 16)}…{displayed.slice(-6)}</div>
-        <button className="btn-primary" onClick={copy}>{copied ? '✓ Copied' : 'Copy address'}</button>
+
+        {chain !== 'evm' && chainBalance && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginTop: 8 }}>
+            Balance: {chainBalance}
+          </div>
+        )}
+        <div className="addr-box" style={{ wordBreak: 'break-all', marginTop: 8, fontSize: 10, fontFamily: 'Geist Mono, monospace' }}>
+          {displayed || '—'}
+        </div>
+        <button className="btn-primary" onClick={copy} disabled={!displayed}>{copied ? '✓ Copied' : 'Copy address'}</button>
       </div>
     </Modal>
   );

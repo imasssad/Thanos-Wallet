@@ -962,33 +962,98 @@ function SendModal({ onClose }: { onClose: () => void }) {
 
 /* ──────────────────────── Receive modal ──────────────────────── */
 function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?: { evm: string; btc: string; sol: string } }) {
-  const fallback = { evm: '0x70cA2F2B7E3d9F1a4C8b5D2e6A0f3C9B7E1d4F2a', btc: 'bc1q…', sol: '11111…' };
-  const ad = addresses ?? fallback;
-  const [chain, setChain] = useState<'evm'|'btc'|'sol'>('evm');
+  void addresses; // legacy prop — addresses are now derived lazily from the unlocked seed
+  const seed = useContext(WalletSeedContext);
+  const evmAddr = useMemo(() => seed.length ? deriveAddressesFromSeed(seed).evm : '', [seed]);
+  const [chain, setChain] = useState<'evm'|'btc'|'sol'|'atom'>('evm');
   const [copied, setCopied] = useState(false);
   const [showAlt, setShowAlt] = useState(false);   // EVM tab: false=litho1, true=0x
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [btcAddr, setBtcAddr] = useState<string>('');
+  const [solAddr, setSolAddr] = useState<string>('');
+  const [atomAddr, setAtomAddr] = useState<string>('');
+  const [chainBalance, setChainBalance] = useState<string>('');
 
   // Derive the Lithosphere bech32 form from the same 0x keypair.
   const lithoAddr = useMemo(() => {
-    if (!/^0x[0-9a-fA-F]{40}$/.test(ad.evm)) return '';
-    try { return evmToLitho(ad.evm); } catch { return ''; }
-  }, [ad.evm]);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(evmAddr)) return '';
+    try { return evmToLitho(evmAddr); } catch { return ''; }
+  }, [evmAddr]);
+
+  // Lazy derivation — BTC/SOL/ATOM addresses are computed only when the
+  // user picks that tab. Avoids loading 4 chain libs at modal open.
+  useEffect(() => {
+    if (chain === 'btc' && !btcAddr && seed.length) {
+      void import('./bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
+        .catch(() => setBtcAddr(''));
+    }
+    if (chain === 'sol' && !solAddr && seed.length) {
+      void import('./solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
+        .catch(() => setSolAddr(''));
+    }
+    if (chain === 'atom' && !atomAddr && seed.length) {
+      void import('./cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
+        .then(setAtomAddr)
+        .catch(() => setAtomAddr(''));
+    }
+  }, [chain, seed, btcAddr, solAddr, atomAddr]);
+
+  // Live balance for the active chain.
+  useEffect(() => {
+    setChainBalance('');
+    if (chain === 'evm') return;
+    let cancelled = false;
+    const addr = chain === 'btc' ? btcAddr : chain === 'sol' ? solAddr : atomAddr;
+    if (!addr) return;
+    const fetchFor = async () => {
+      try {
+        if (chain === 'btc') {
+          const m = await import('./bitcoin');
+          const b = await m.getBitcoinBalance(addr);
+          if (!cancelled) setChainBalance(`${b} BTC`);
+        } else if (chain === 'sol') {
+          const m = await import('./solana');
+          const b = await m.getSolanaBalance(addr);
+          if (!cancelled) setChainBalance(`${b} SOL`);
+        } else {
+          const m = await import('./cosmos');
+          const b = await m.getCosmosBalance(addr);
+          if (!cancelled) setChainBalance(`${b} ATOM`);
+        }
+      } catch { if (!cancelled) setChainBalance('—'); }
+    };
+    void fetchFor();
+    return () => { cancelled = true; };
+  }, [chain, btcAddr, solAddr, atomAddr]);
 
   // Reset the dual-format toggle when switching chains.
   useEffect(() => { setShowAlt(false); }, [chain]);
 
   const meta = {
-    evm: { label: 'Lithosphere / Ethereum / EVM',  network: 'Lithosphere Makalu + every EVM chain', color: '#627eea' },
-    btc: { label: 'Bitcoin',          network: 'Mainnet · Native SegWit',       color: '#f7931a' },
-    sol: { label: 'Lithosphere',      network: 'Makalu · LITHO/FGPT',           color: '#8b7df7' },
+    evm:  { label: 'Lithosphere / EVM', network: 'Lithosphere Makalu + every EVM chain', color: '#627eea' },
+    btc:  { label: 'Bitcoin',           network: 'Mainnet · Native SegWit (BIP84)',      color: '#f7931a' },
+    sol:  { label: 'Solana',            network: 'Mainnet-Beta · ed25519',               color: '#14f195' },
+    atom: { label: 'Cosmos Hub',        network: 'cosmoshub-4',                          color: '#2e3148' },
   } as const;
 
-  // For the EVM tab, prefer the litho1 form (Lithosphere's chain-native
-  // format) and let the user toggle to the 0x form. The two are the
-  // same wallet — one keypair, two formats.
-  const addr = chain === 'evm' && lithoAddr && !showAlt ? lithoAddr : ad[chain];
+  const addr =
+    chain === 'evm'  ? (lithoAddr && !showAlt ? lithoAddr : evmAddr)
+    : chain === 'btc'  ? btcAddr
+    : chain === 'sol'  ? solAddr
+    : atomAddr;
+
+  // Render a real QR for whatever address is displayed.
+  useEffect(() => {
+    if (!addr) { setQrDataUrl(''); return; }
+    let cancelled = false;
+    void import('qrcode').then(qr => qr.toDataURL(addr, { width: 220, margin: 1 }))
+      .then(url => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(''); });
+    return () => { cancelled = true; };
+  }, [addr]);
 
   const copy = () => {
+    if (!addr) return;
     navigator.clipboard.writeText(addr).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -999,9 +1064,9 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
         {/* Chain selector */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 12, width: '100%' }}>
-          {(['evm','btc','sol'] as const).map(c => (
+          {(['evm','btc','sol','atom'] as const).map(c => (
             <button key={c} onClick={() => setChain(c)} className={`filter-pill ${chain === c ? 'active' : ''}`} style={{ flex: 1, fontSize: 11 }}>
-              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : 'SOL'}
+              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : c === 'sol' ? 'SOL' : 'ATOM'}
             </button>
           ))}
         </div>
@@ -1036,28 +1101,23 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
           </div>
         )}
 
-        {/* QR placeholder */}
-        <div className="qr-box">
-          <svg viewBox="0 0 100 100" width="140" height="140">
-            <rect x="5" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="14" y="14" width="20" height="20" rx="2" fill="currentColor"/>
-            <rect x="57" y="5" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="66" y="14" width="20" height="20" rx="2" fill="currentColor"/>
-            <rect x="5" y="57" width="38" height="38" rx="4" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <rect x="14" y="66" width="20" height="20" rx="2" fill="currentColor"/>
-            {[57,63,69,75,81,87,93].map((x,i) =>
-              [57,63,69,75,81,87,93].map((y,j) =>
-                (i+j)%2===0 ? <rect key={`${i}${j}`} x={x} y={y} width="4" height="4" fill="currentColor" opacity="0.7"/> : null
-              )
-            )}
-          </svg>
+        {/* Real QR encoding the displayed address. */}
+        <div className="qr-box" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 220, height: 220, background: '#fff', borderRadius: 10 }}>
+          {qrDataUrl
+            ? <img src={qrDataUrl} alt={addr} width={220} height={220}/>
+            : <span style={{ fontSize: 12, color: '#666' }}>{addr ? 'Generating QR…' : 'Loading…'}</span>}
         </div>
 
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{meta[chain].label}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, marginTop: 12 }}>{meta[chain].label}</div>
         <div style={{ fontSize: 10, color: meta[chain].color, fontWeight: 600, marginBottom: 8 }}>● {meta[chain].network}</div>
-        <div className="addr-box" style={{ fontSize: 10 }}>{addr.length > 50 ? `${addr.slice(0,30)}…${addr.slice(-12)}` : addr}</div>
+        {chain !== 'evm' && chainBalance && (
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+            Balance: {chainBalance}
+          </div>
+        )}
+        <div className="addr-box" style={{ fontSize: 10 }}>{addr ? (addr.length > 50 ? `${addr.slice(0,30)}…${addr.slice(-12)}` : addr) : '—'}</div>
 
-        <button className="btn-primary" onClick={copy} style={{ marginTop: 14, width: '100%' }}>
+        <button className="btn-primary" onClick={copy} style={{ marginTop: 14, width: '100%' }} disabled={!addr}>
           {copied ? '✓ Copied!' : 'Copy Address'}
         </button>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.6 }}>
@@ -1885,24 +1945,18 @@ interface DerivedAddresses {
 function deriveAddressesFromSeed(seed: string[], accountIdx = 0): DerivedAddresses {
   const phrase = seed.join(' ');
   let evm = '0x0000000000000000000000000000000000000000';
-  let btc = 'bc1qplaceholder';
-  let sol = '11111111111111111111111111111111';
   try {
     // Real EVM address from BIP44 m/44'/60'/0'/0/{idx}
     const evmNode = HDNodeWallet.fromPhrase(phrase, undefined, `m/44'/60'/0'/0/${accountIdx}`);
     evm = evmNode.address;
-
-    // BTC: BIP84 native segwit path m/84'/0'/0'/0/0 — use compressed public key as display
-    // (proper P2WPKH would need bech32 encoding; we display the pubkey hex prefixed for now)
-    const btcNode = HDNodeWallet.fromPhrase(phrase, undefined, "m/84'/0'/0'/0/0");
-    btc = 'bc1q' + btcNode.publicKey.slice(4, 44).toLowerCase();
-
-    // SOL: deterministic display address derived from a separate path until tweetnacl is added
-    const solNode = HDNodeWallet.fromPhrase(phrase, undefined, "m/44'/501'/0'/0'");
-    sol = solNode.address.slice(2);  // 40-char hex stand-in
-  } catch (e) { console.warn('Address derivation failed:', e); }
+  } catch (e) { console.warn('EVM derivation failed:', e); }
+  // BTC + SOL + ATOM addresses are derived lazily inside ReceiveModal /
+  // SendModal using their respective chain-specific modules (bitcoin.ts,
+  // solana.ts, cosmos.ts). They aren't returned here because the
+  // synchronous ethers-only derivation produces invalid bech32 / base58
+  // addresses — sending coins there would lose them.
   const short = evm.length > 12 ? `${evm.slice(0,6)}…${evm.slice(-4)}` : evm;
-  return { evm, btc, sol, short };
+  return { evm, btc: '', sol: '', short };
 }
 
 function deriveAddressFromSeed(seed: string[]): string {

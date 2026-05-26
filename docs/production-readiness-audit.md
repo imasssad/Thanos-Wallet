@@ -66,6 +66,20 @@ verdicts into a PR description by quoting the section.
 
 ---
 
+## Multi-chain UI — per-client status
+
+| Client | Send | Receive | Live balance |
+|---|---|---|---|
+| Web | EVM | EVM | EVM |
+| Extension | EVM + BTC + SOL + ATOM (chain selector) | EVM + BTC + SOL + ATOM (chain selector + real QR) | EVM via dashboard; BTC/SOL/ATOM shown live on Receive modal |
+| Desktop | EVM + BTC + SOL + ATOM (chain selector) | EVM + BTC + SOL + ATOM (chain selector + real QR) | EVM via dashboard; BTC/SOL/ATOM shown live on Receive modal |
+| Mobile | EVM + BTC + SOL + ATOM (chain chip strip) | EVM + BTC + SOL + ATOM (chain chip strip + real QR) | EVM via dashboard; BTC/SOL/ATOM shown live on Receive screen |
+
+Out of scope today: showing the non-EVM balances in the main dashboard
+portfolio chart. The backend `/portfolio/:address` endpoint can return
+multi-chain positions; the dashboard widget that consumes them ships
+in 1.1.
+
 ## Signing isolation — per-client status
 
 | Client | Mechanism | File |

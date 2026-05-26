@@ -984,6 +984,7 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const [btcAddr, setBtcAddr] = useState<string>('');
   const [solAddr, setSolAddr] = useState<string>('');
   const [atomAddr, setAtomAddr] = useState<string>('');
+  const [chainBalance, setChainBalance] = useState<string>('');
 
   useEffect(() => {
     if (chain === 'bitcoin' && !btcAddr && seed.length) {
@@ -1000,6 +1001,33 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
         .catch(() => setAtomAddr(''));
     }
   }, [chain, seed, btcAddr, solAddr, atomAddr]);
+
+  // Live balance for the active non-Lithosphere chain.
+  useEffect(() => {
+    setChainBalance('');
+    if (chain === 'lithosphere') return;
+    const addr = chain === 'bitcoin' ? btcAddr : chain === 'solana' ? solAddr : atomAddr;
+    if (!addr) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (chain === 'bitcoin') {
+          const m = await import('./lib/bitcoin');
+          const b = await m.getBitcoinBalance(addr);
+          if (!cancelled) setChainBalance(`${b} BTC`);
+        } else if (chain === 'solana') {
+          const m = await import('./lib/solana');
+          const b = await m.getSolanaBalance(addr);
+          if (!cancelled) setChainBalance(`${b} SOL`);
+        } else {
+          const m = await import('./lib/cosmos');
+          const b = await m.getCosmosBalance(addr);
+          if (!cancelled) setChainBalance(`${b} ATOM`);
+        }
+      } catch { if (!cancelled) setChainBalance('—'); }
+    })();
+    return () => { cancelled = true; };
+  }, [chain, btcAddr, solAddr, atomAddr]);
 
   const displayed =
     chain === 'bitcoin' ? btcAddr
@@ -1071,6 +1099,13 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
              : 'Cosmos Hub · cosmoshub-4'}
           </Text>
         </View>
+
+        {/* Live balance for the active non-Lithosphere chain. */}
+        {chain !== 'lithosphere' && !!chainBalance && (
+          <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '700', marginTop: 6, alignSelf: 'center' }}>
+            Balance: {chainBalance}
+          </Text>
+        )}
 
         {/* Litho1 / EVM toggle — same wallet, two address formats. */}
         {chain === 'lithosphere' && !!lithoAddr && (
