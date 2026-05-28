@@ -30,6 +30,7 @@
     "@ledgerhq/hw-app-eth": "^6.46.0",
     "@ledgerhq/hw-app-solana": "^7.2.4",
     "@ledgerhq/hw-transport-webhid": "^6.31.5",
+    "@ledgerhq/hw-transport-node-hid-noevents": "^6.30.6",
     "@reown/walletkit": "^1.5.5",
     "@solana/web3.js": "^1.98.0",
     "@thanos/api-client": "workspace:*",

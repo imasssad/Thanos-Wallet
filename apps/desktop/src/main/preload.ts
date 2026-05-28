@@ -52,6 +52,22 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
       ipcRenderer.invoke('signer:erc20-transfer', hdPath, args) as Promise<string>,
   },
 
+  /* ─── Native-HID Ledger fallback ────────────────────────────────────
+     Renderer's primary Ledger path is WebHID (works on macOS + Windows).
+     On Linux (or any env where WebHID is unavailable), the renderer
+     can call into this bridge instead — the transport lives in the
+     main process so node-hid is reachable.
+
+     `available()` is a cheap probe — returns false if the optional
+     `@ledgerhq/hw-transport-node-hid-noevents` dep isn't installed. The
+     renderer uses it to decide whether to advertise the fallback path
+     in the UI. */
+  ledgerNative: {
+    available:  ()                                                 => ipcRenderer.invoke('ledger-native:available')           as Promise<boolean>,
+    getAddress: (hdPath?: string)                                  => ipcRenderer.invoke('ledger-native:get-address', hdPath) as Promise<string>,
+    signEvmTx:  (hdPath: string, unsignedHex: string)              => ipcRenderer.invoke('ledger-native:sign-evm-tx', hdPath, unsignedHex) as Promise<{ v: string; r: string; s: string }>,
+  },
+
   /* electron-updater bridge.
      onUpdateEvent returns a teardown function so React useEffects can
      subscribe + clean up without leaking listeners. */

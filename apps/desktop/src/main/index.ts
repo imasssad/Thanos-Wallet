@@ -10,6 +10,7 @@ const HW_VENDOR_IDS     = new Set([LEDGER_VENDOR_ID, ...TREZOR_VENDOR_IDS]);
 const path = require('path') as typeof import('path');
 import { startAutoUpdater } from './updater';
 import * as signer from './signer';
+import * as ledgerHid from './ledger-hid-bridge';
 
 const SERVICE = 'thanos-wallet';
 
@@ -90,6 +91,14 @@ app.whenReady().then(() => {
   ipcMain.handle('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
   ipcMain.handle('signer:erc20-transfer', (_e, hdPath: string, args) => signer.transferErc20(hdPath, args));
 
+  /* Native-HID Ledger bridge — used by the renderer as a fallback when
+     WebHID is unavailable (typically Linux). Lazy-loaded so a missing
+     @ledgerhq/hw-transport-node-hid-noevents dep just makes `available`
+     return false; the wallet still works via WebHID on macOS/Windows. */
+  ipcMain.handle('ledger-native:available',   ()                            => ledgerHid.isAvailable());
+  ipcMain.handle('ledger-native:get-address', (_e, hdPath?: string)         => ledgerHid.getAddress(hdPath));
+  ipcMain.handle('ledger-native:sign-evm-tx', (_e, hdPath: string, hex: string) => ledgerHid.signTransaction(hdPath, hex));
+
   nativeTheme.themeSource = 'system';
   createWindow();
 });
@@ -104,4 +113,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   signer.clearSeed();
+  // Close any cached node-hid transport so the device is released even
+  // when Electron's macOS dock lingers after window close.
+  ledgerHid.dispose().catch(() => { /* best-effort */ });
 });

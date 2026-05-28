@@ -199,6 +199,7 @@ export async function emitChainChanged(topic: string, chainId: number): Promise<
 
 type ProposalListener = (proposal: WalletKitTypes.SessionProposal) => void;
 type RequestListener  = (request:  WalletKitTypes.SessionRequest)  => void;
+type SessionLifecycleListener = (event: { topic: string }) => void;
 
 export async function onSessionProposal(fn: ProposalListener) {
   const kit = await getWalletKit();
@@ -210,4 +211,50 @@ export async function onSessionRequest(fn: RequestListener) {
   const kit = await getWalletKit();
   kit.on('session_request', fn);
   return () => kit.off('session_request', fn);
+}
+
+/**
+ * Fired whenever an active session is removed — for any reason:
+ *   - User pressed Disconnect on the wallet side (we called `disconnectSession`).
+ *   - dApp called disconnect from its end.
+ *   - Session TTL expired (WalletKit garbage-collects stale sessions).
+ *   - Relay-level cleanup.
+ *
+ * WalletKit v1.5 unifies all of these into `session_delete` rather than
+ * exposing separate `session_update` / `session_expire` events (those
+ * names exist in lower-level libs but not in WalletKit's public surface
+ * — see WalletKitTypes.Event). UI code should drop the topic from the
+ * connected-apps list and surface a toast if the user didn't initiate.
+ */
+export async function onSessionDelete(fn: SessionLifecycleListener) {
+  const kit = await getWalletKit();
+  const handler = (event: { topic: string }) => fn({ topic: event.topic });
+  kit.on('session_delete', handler);
+  return () => kit.off('session_delete', handler);
+}
+
+/**
+ * Fired when a pending session proposal expires before the user accepts
+ * or rejects it. The proposal id passed here matches the id from
+ * `onSessionProposal`; UI code should drop any approval modal it was
+ * about to render.
+ */
+export async function onProposalExpire(fn: (event: { id: number }) => void) {
+  const kit = await getWalletKit();
+  const handler = (event: { id: number }) => fn({ id: event.id });
+  kit.on('proposal_expire', handler);
+  return () => kit.off('proposal_expire', handler);
+}
+
+/**
+ * Fired when a pending session request (e.g. an unsigned tx) expires
+ * before the user approves or rejects it. The id matches the request
+ * from `onSessionRequest`; UI code should close any signing modal that
+ * referenced it and surface "this request expired — try again".
+ */
+export async function onSessionRequestExpire(fn: (event: { id: number }) => void) {
+  const kit = await getWalletKit();
+  const handler = (event: { id: number }) => fn({ id: event.id });
+  kit.on('session_request_expire', handler);
+  return () => kit.off('session_request_expire', handler);
 }

@@ -1,13 +1,21 @@
 /**
  * Ledger sign + broadcast for the desktop Send flow.
  *
- * Uses @ledgerhq/hw-transport-webhid (renderer-side WebHID, unblocked by
- * the Ledger vendor allowlist in src/main/index.ts) + @ledgerhq/hw-app-eth
- * to sign an EIP-1559 transaction with the device, then broadcasts the
- * signed serialized hex through Makalu's FallbackProvider.
+ * Primary transport: @ledgerhq/hw-transport-webhid (renderer-side
+ * WebHID, unblocked by the Ledger vendor allowlist in
+ * src/main/index.ts) + @ledgerhq/hw-app-eth to sign an EIP-1559
+ * transaction, then broadcast through Makalu's FallbackProvider.
  *
- * The seed never participates in this path — the user's HD wallet stays
- * untouched and the broadcast is `from` the Ledger's own derived address.
+ * Fallback transport: if WebHID isn't available (typically Linux
+ * configurations where the browser-side WebHID API is disabled), the
+ * renderer routes signing through the main-process native-HID bridge
+ * — see src/main/ledger-hid-bridge.ts and the `ledgerNative.*`
+ * surface in src/main/preload.ts. The renderer never touches node-hid
+ * directly; everything crosses IPC.
+ *
+ * The seed never participates in either path — the user's HD wallet
+ * stays untouched and the broadcast is `from` the Ledger's own
+ * derived address.
  */
 import { Transaction, getAddress, type Provider } from 'ethers';
 import TransportWebHID from '@ledgerhq/hw-transport-webhid';
@@ -16,26 +24,75 @@ import { getMakaluProvider } from '@thanos/sdk-core';
 
 const HD_PATH = "44'/60'/0'/0/0"; // Ledger uses the path without leading m/
 
-export interface LedgerConnection {
-  address:   string;
-  transport: Awaited<ReturnType<typeof TransportWebHID.create>>;
-  close:     () => Promise<void>;
-}
-
-/** Open WebHID + derive the first EVM account from the connected Ledger. */
-export async function connectLedger(): Promise<LedgerConnection> {
-  const transport = await TransportWebHID.create();
-  try {
-    const eth = new Eth(transport);
-    const { address } = await eth.getAddress(HD_PATH, /* display */ false);
-    return {
-      address: getAddress(address),
-      transport,
-      close: async () => { try { await transport.close(); } catch { /* best-effort */ } },
+/** Discriminated union — the WebHID path keeps a live transport handle
+ *  in the renderer; the native-HID path keeps everything in the main
+ *  process and the renderer only holds the derived address + a tag. */
+export type LedgerConnection =
+  | {
+      kind:      'webhid';
+      address:   string;
+      transport: Awaited<ReturnType<typeof TransportWebHID.create>>;
+      close:     () => Promise<void>;
+    }
+  | {
+      kind:    'native';
+      address: string;
+      close:   () => Promise<void>;
     };
-  } catch (e) {
-    try { await transport.close(); } catch { /* ignore */ }
-    throw e;
+
+/** Try WebHID; on failure, fall back to the main-process native-HID
+ *  bridge if the optional dep is installed. Throws a clear error when
+ *  neither path is available so the UI can prompt for next steps. */
+export async function connectLedger(): Promise<LedgerConnection> {
+  // 1. Try WebHID — primary path, works on Electron's Chromium on
+  //    macOS and Windows. The Ledger vendor allowlist in
+  //    src/main/index.ts permits enumeration.
+  try {
+    const transport = await TransportWebHID.create();
+    try {
+      const eth = new Eth(transport);
+      const { address } = await eth.getAddress(HD_PATH, /* display */ false);
+      return {
+        kind: 'webhid',
+        address: getAddress(address),
+        transport,
+        close: async () => { try { await transport.close(); } catch { /* best-effort */ } },
+      };
+    } catch (e) {
+      try { await transport.close(); } catch { /* ignore */ }
+      throw e;
+    }
+  } catch (webhidErr) {
+    // 2. WebHID failed — try the native-HID bridge over IPC. Available
+    //    when the optional @ledgerhq/hw-transport-node-hid-noevents dep
+    //    is installed in the main process.
+    const native = window.thanosDesktop?.ledgerNative;
+    if (native) {
+      try {
+        const available = await native.available();
+        if (available) {
+          const addr = await native.getAddress(HD_PATH);
+          return {
+            kind: 'native',
+            address: getAddress(addr),
+            // Native transport is process-scoped (closed on app quit
+            // via ledgerHid.dispose() in main/index.ts), so there's
+            // nothing to release per-connection here.
+            close: async () => { /* no-op */ },
+          };
+        }
+      } catch {
+        // fall through to the combined error below
+      }
+    }
+    // Neither WebHID nor the native bridge worked — surface a useful
+    // message rather than the raw WebHID error.
+    const msg = (webhidErr as Error)?.message || 'WebHID unavailable';
+    throw new Error(
+      `Ledger transport unavailable: ${msg}. ` +
+      `Install @ledgerhq/hw-transport-node-hid-noevents and restart for ` +
+      `native-HID fallback (Linux), or enable WebHID in your browser/OS.`,
+    );
   }
 }
 
@@ -86,12 +143,21 @@ export async function sendViaLedger(
     maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
   });
 
-  // Ledger signs the unsigned RLP (hex without 0x).
-  const eth = new Eth(connection.transport);
+  // Ledger signs the unsigned RLP (hex without 0x). Branch on transport
+  // kind — WebHID uses the renderer-side Eth() wrapper; native-HID goes
+  // through the main-process IPC bridge.
   const unsignedHex = tx.unsignedSerialized.startsWith('0x')
     ? tx.unsignedSerialized.slice(2)
     : tx.unsignedSerialized;
-  const sig = await eth.signTransaction(HD_PATH, unsignedHex, null);
+  let sig: { v: string; r: string; s: string };
+  if (connection.kind === 'webhid') {
+    const eth = new Eth(connection.transport);
+    sig = await eth.signTransaction(HD_PATH, unsignedHex, null);
+  } else {
+    const native = window.thanosDesktop?.ledgerNative;
+    if (!native) throw new Error('native Ledger bridge missing from preload');
+    sig = await native.signEvmTx(HD_PATH, unsignedHex);
+  }
 
   tx.signature = {
     r: '0x' + sig.r,

@@ -81,6 +81,15 @@ declare global {
         typedData(hdPath: string, payload: IpcTypedDataPayload):     Promise<string>;
         erc20Transfer(hdPath: string, args: { tokenAddress: string; to: string; amount: string }): Promise<string>;
       };
+      /** Native-HID Ledger fallback — present only on desktop builds
+       *  whose main process has the optional
+       *  @ledgerhq/hw-transport-node-hid-noevents dep installed. The
+       *  renderer probes `available()` before advertising the path. */
+      ledgerNative?: {
+        available():                                                 Promise<boolean>;
+        getAddress(hdPath?: string):                                 Promise<string>;
+        signEvmTx(hdPath: string, unsignedHex: string):              Promise<{ v: string; r: string; s: string }>;
+      };
     };
   }
 }
@@ -738,11 +747,11 @@ function SendModal({ onClose }: { onClose: () => void }) {
         if (chain === 'bitcoin') {
           const m = await import('./ledger-btc-sign');
           const conn = await m.connectLedgerBtc();
-          setLedger({ address: conn.address, transport: conn.transport, close: conn.close } as LedgerConnection);
+          setLedger({ kind: 'webhid', address: conn.address, transport: conn.transport, close: conn.close } as LedgerConnection);
         } else if (chain === 'solana') {
           const m = await import('./ledger-sol-sign');
           const conn = await m.connectLedgerSol();
-          setLedger({ address: conn.address, transport: conn.transport, close: conn.close } as LedgerConnection);
+          setLedger({ kind: 'webhid', address: conn.address, transport: conn.transport, close: conn.close } as LedgerConnection);
         } else if (chain === 'cosmos') {
           throw new Error('Ledger Cosmos support not yet in this build');
         } else {
