@@ -10,7 +10,7 @@
  * `shutdown()` closes them in the correct order on SIGTERM/SIGINT so the
  * container stops cleanly under docker-compose / k8s rolling updates.
  */
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue, QueueEvents, type ConnectionOptions } from 'bullmq';
 import { Redis } from 'ioredis';
 import pg from 'pg';
 import { QUEUES, type QueueName } from '../queues/definitions.js';
@@ -23,11 +23,19 @@ if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required');
 
 /* ─── Redis (BullMQ requires maxRetriesPerRequest: null) ──────────── */
 
-export const redis = new Redis(process.env.REDIS_URL, {
+const redisInstance = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck:     false,
 });
-redis.on('error', err => log.error({ err: err.message }, 'redis error'));
+redisInstance.on('error', err => log.error({ err: err.message }, 'redis error'));
+
+/* Cast to ConnectionOptions at the export site — at runtime BullMQ
+ * accepts a Redis instance directly (its type union explicitly includes
+ * IORedis.Redis), but the monorepo hoists ioredis at multiple versions
+ * so the structural-type comparison can fail at the API boundary. The
+ * cast happens once here so callers see clean types. */
+export const redis: Redis & ConnectionOptions =
+  redisInstance as Redis & ConnectionOptions;
 
 /* Separate Redis for cache reads / writes — BullMQ holds the main one
    in a blocking BRPOPLPUSH; a price-write while the worker is parked

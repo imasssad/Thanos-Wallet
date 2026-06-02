@@ -74,10 +74,17 @@ describe('MockIgniteClient', () => {
   });
 
   it('honours latencyMs without blocking forever', async () => {
-    const c = new MockIgniteClient({ latencyMs: 5 });
+    // 20ms target with a ~3ms grace window — node's setTimeout can fire
+    // a few ms early under load (CI tickers are notoriously imprecise);
+    // a tight `>= latencyMs` makes this flaky. The intent of the test
+    // is "latency is roughly observed", not "millisecond-exact".
+    const latencyMs = 20;
+    const c = new MockIgniteClient({ latencyMs });
     const start = Date.now();
     await c.isHealthy();
-    expect(Date.now() - start).toBeGreaterThanOrEqual(5);
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(latencyMs - 5);
+    expect(elapsed).toBeLessThan(latencyMs * 4); // sanity cap — should never block forever
   });
 
   it('healthy flag flips isHealthy() result', async () => {
