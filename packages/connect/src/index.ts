@@ -1,5 +1,5 @@
 /**
- * @thanos/connect — Sign-In With Thanos for third-party dApps.
+ * thanos-connect — Sign-In With Thanos for third-party dApps.
  *
  * One small import, one method call, and the dApp gets:
  *   • EIP-6963 multi-wallet discovery + fallback to window.thanos
@@ -13,7 +13,7 @@
  *
  * Minimal browser usage:
  *
- *   import { ThanosConnect } from '@thanos/connect';
+ *   import { ThanosConnect } from 'thanos-connect';
  *
  *   const thanos = new ThanosConnect({ appName: 'Ignite DEX' });
  *   const session = await thanos.signIn();
@@ -279,7 +279,7 @@ export class ThanosConnect {
   }
 
   private log(...args: unknown[]) {
-    if (this.cfg.debug) console.debug('[@thanos/connect]', ...args);
+    if (this.cfg.debug) console.debug('[thanos-connect]', ...args);
   }
 
   /** Synchronous "is window.thanos present" check. Doesn't open a

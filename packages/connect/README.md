@@ -1,17 +1,17 @@
-# @thanos/connect
+# thanos-connect
 
 Drop-in Sign-In With Thanos integration for third-party dApps.
 
 ```
-npm install @thanos/connect
+npm install thanos-connect
 # or
-pnpm add @thanos/connect
+pnpm add thanos-connect
 # or
-yarn add @thanos/connect
+yarn add thanos-connect
 ```
 
 Zero runtime dependencies. Tree-shakeable. Works with any frontend
-framework (React component shipped separately at `@thanos/connect/react`).
+framework (React component shipped separately at `thanos-connect/react`).
 
 ## Why this exists
 
@@ -29,7 +29,7 @@ your own auth server too.
 ## 60-second integration (vanilla JS / TypeScript)
 
 ```ts
-import { ThanosConnect } from '@thanos/connect';
+import { ThanosConnect } from 'thanos-connect';
 
 const thanos = new ThanosConnect({
   appName: 'Ignite DEX',
@@ -54,7 +54,7 @@ nonce fetch, signature, and backend verify.
 ## 60-second integration (React)
 
 ```tsx
-import { ThanosConnectButton } from '@thanos/connect/react';
+import { ThanosConnectButton } from 'thanos-connect/react';
 
 export function Header() {
   return (
@@ -76,7 +76,7 @@ The button auto-detects whether Thanos is installed and switches to an
 For custom UI, use the hook:
 
 ```tsx
-import { useThanos } from '@thanos/connect/react';
+import { useThanos } from 'thanos-connect/react';
 
 export function MyConnect() {
   const { signIn, signOut, session, isSigningIn, isAvailable } = useThanos({
@@ -120,7 +120,7 @@ a session.
 
 ```ts
 import { verifyMessage } from 'ethers';
-import { parseSiweMessage } from '@thanos/connect';
+import { parseSiweMessage } from 'thanos-connect';
 
 app.post('/api/auth/verify', async (req, res) => {
   const { message, signature, address } = req.body;
@@ -164,7 +164,7 @@ package — use them to keep the wire format identical on both sides.
 ## Errors
 
 ```ts
-import { ThanosUnavailable, SignInRejected } from '@thanos/connect';
+import { ThanosUnavailable, SignInRejected } from 'thanos-connect';
 
 try {
   await thanos.signIn();
@@ -206,7 +206,7 @@ wave. Each is < 15 lines.
 ### Ignite DEX (https://ignite.litho.ai)
 
 ```tsx
-import { ThanosConnectButton } from '@thanos/connect/react';
+import { ThanosConnectButton } from 'thanos-connect/react';
 
 <ThanosConnectButton
   config={{ appName: 'Ignite DEX', chainId: 700777 }}
@@ -300,7 +300,7 @@ client-only boundary:
 
 ```tsx
 'use client';
-import { ThanosConnectButton } from '@thanos/connect/react';
+import { ThanosConnectButton } from 'thanos-connect/react';
 // ... use as normal
 ```
 

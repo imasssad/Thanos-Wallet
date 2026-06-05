@@ -1,12 +1,12 @@
 /**
- * React bindings for @thanos/connect.
+ * React bindings for thanos-connect.
  *
  * Two surfaces:
  *   • <ThanosConnectButton />   — drop-in styled connect button
  *   • useThanos(config)         — headless hook for custom UI
  *
  * Import path:
- *   import { ThanosConnectButton, useThanos } from '@thanos/connect/react';
+ *   import { ThanosConnectButton, useThanos } from 'thanos-connect/react';
  *
  * Both are zero-dependency outside of React (peerDep). Style the
  * button with className / inline style for tight integration with the
