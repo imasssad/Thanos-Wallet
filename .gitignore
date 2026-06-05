@@ -3,6 +3,12 @@ node_modules/
 dist/
 dist-client/
 build/
+# electron-builder reads icon sources from apps/desktop/build/icons/ at
+# release time — those files are deliberately tracked even though the
+# blanket build/ rule above would otherwise ignore them.
+!apps/desktop/build/
+!apps/desktop/build/icons/
+!apps/desktop/build/icons/**
 coverage/
 
 # Env / secrets

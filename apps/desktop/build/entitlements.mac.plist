@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- App-sandbox stays off: Electron + native modules (keytar, USB
+       transports) don't sandbox cleanly on macOS. The hardened runtime
+       + notarization still apply. -->
+  <key>com.apple.security.app-sandbox</key>
+  <false/>
+
+  <!-- Network access — the wallet talks to RPCs, indexer, MultX, Sentry. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+
+  <!-- Hardware-wallet transports go through native USB / HID.
+       Both bits required so the @ledgerhq + @trezor packages can
+       enumerate devices via WebHID / WebUSB inside Electron. -->
+  <key>com.apple.security.device.usb</key>
+  <true/>
+
+  <!-- Electron / V8 use JIT and writable + executable memory pages.
+       Without these, notarization passes but the app crashes on
+       launch under the hardened runtime. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!-- electron-updater downloads + executes a temporary installer at
+       update time; the hardened runtime needs explicit permission. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>
