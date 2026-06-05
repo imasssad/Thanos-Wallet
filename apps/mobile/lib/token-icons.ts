@@ -27,19 +27,26 @@ const BUNDLED: Record<string, ImageSourcePropType> = {
   mansa:  require('../assets/images/tokens/mansa.png'),
   agii:   require('../assets/images/tokens/agii.png'),
   quantt: require('../assets/images/tokens/quantt.png'),
+  // Mainstream coins — bundled now too, so they load offline + render
+  // identically across desktop/extension/mobile.
+  atom:   require('../assets/images/tokens/atom.png'),
+  eth:    require('../assets/images/tokens/eth.png'),
+  trx:    require('../assets/images/tokens/trx.png'),
+  hype:   require('../assets/images/tokens/hype.png'),
 };
 
-/* Remote — mainstream coins, CoinGecko CDN. Stable numeric asset ids. */
+/* Remote — fallbacks for coins not yet bundled. `large/` variant —
+   `small/` was occasionally returning placeholder ghosts. */
 const REMOTE: Record<string, string> = {
-  btc:   'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
-  litbtc:'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
-  eth:   'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-  sol:   'https://assets.coingecko.com/coins/images/4128/small/solana.png',
-  atom:  'https://assets.coingecko.com/coins/images/1481/small/cosmos_hub.png',
-  bnb:   'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png',
-  usdc:  'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
-  pol:   'https://assets.coingecko.com/coins/images/4713/small/polygon.png',
-  avax:  'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png',
+  btc:   'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+  litbtc:'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+  sol:   'https://assets.coingecko.com/coins/images/4128/large/solana.png',
+  bnb:   'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
+  usdc:  'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
+  usdt:  'https://assets.coingecko.com/coins/images/325/large/Tether.png',
+  xrp:   'https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png',
+  pol:   'https://assets.coingecko.com/coins/images/4713/large/polygon.png',
+  avax:  'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png',
 };
 
 /** Resolve a token's icon. Returns null when neither a bundled asset

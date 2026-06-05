@@ -69,13 +69,19 @@ const BUNDLED_ICONS: Record<string, string> = {
   furgpt: '/images/tokens/furgpt.png',
   ignite: '/images/tokens/ignite.png',
   quantt: '/images/tokens/quantt.png',
+  atom:   '/images/tokens/atom.png',
+  eth:    '/images/tokens/eth.png',
+  trx:    '/images/tokens/trx.png',
+  hype:   '/images/tokens/hype.png',
 };
 const REMOTE_ICONS: Record<string, string> = {
-  btc:    'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
-  litbtc: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
-  eth:    'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-  sol:    'https://assets.coingecko.com/coins/images/4128/small/solana.png',
-  usdc:   'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+  btc:    'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+  litbtc: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+  sol:    'https://assets.coingecko.com/coins/images/4128/large/solana.png',
+  usdc:   'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
+  usdt:   'https://assets.coingecko.com/coins/images/325/large/Tether.png',
+  bnb:    'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
+  xrp:    'https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png',
 };
 function iconFor(sym: string): string | null {
   const k = (sym || '').toLowerCase();

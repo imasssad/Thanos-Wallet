@@ -153,7 +153,7 @@ export const TOKENS: Token[] = [
     address: null, // native
     decimals: 9,
     color: '#14f195',
-    icon: '',               // no bundled asset — token-logos resolves sol → CoinGecko CDN
+    icon: '',               // intentionally empty — token-logos resolves sol → CoinGecko CDN
     priceUsd: 150.00,       // fetched live from CoinGecko via pricing.ts
     balance: '0',
     change24h: 0,
@@ -186,7 +186,7 @@ export const TOKENS: Token[] = [
     address: null, // native
     decimals: 6,
     color: '#6f7390',
-    icon: '',               // no bundled asset — token-logos resolves atom → CoinGecko CDN
+    icon: '/images/tokens/atom.png',  // bundled — cropped CoinGecko logo
     priceUsd: 8.50,         // fetched live from CoinGecko via pricing.ts
     balance: '0',
     change24h: 0,
