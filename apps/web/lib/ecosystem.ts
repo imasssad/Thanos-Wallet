@@ -23,10 +23,12 @@ export interface EcosystemApp extends BaseEcosystemApp {
  *  coin/asset logos in /images/tokens/. Only ids with a curated app icon
  *  are listed; the rest fall back to a letter avatar. */
 const WEB_ICONS: Record<string, string> = {
-  agii:  '/images/dapps/agii.png',
-  colle: '/images/dapps/colle.png',
-  mansa: '/images/dapps/mansa.png',
-  // furgpt, imagen, litho-deals: pending client app-icon assets
+  agii:   '/images/dapps/agii.png',
+  colle:  '/images/dapps/colle.png',
+  mansa:  '/images/dapps/mansa.png',
+  furgpt: '/images/dapps/furgpt.png', // reuses the token logo as the app mark
+  imagen: '/images/dapps/imagen.png', // sourced from imagen.network's official watermark
+  // litho-deals: pending client app-icon asset
 };
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = BASE_APPS.map(a => ({

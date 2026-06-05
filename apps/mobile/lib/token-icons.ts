@@ -64,10 +64,11 @@ export function tokenIconSource(sym: string): ImageSourcePropType | null {
  * assets land in assets/images/dapps/; ids without an asset fall back to
  * the colour+initial avatar in the Discover screen. */
 const DAPP_ICONS: Record<string, ImageSourcePropType> = {
-  agii:  require('../assets/images/dapps/agii.png'),
-  colle: require('../assets/images/dapps/colle.png'),
-  mansa: require('../assets/images/dapps/mansa.png'),
-  // furgpt: pending client asset (Dropbox /preview link not downloadable)
+  agii:   require('../assets/images/dapps/agii.png'),
+  colle:  require('../assets/images/dapps/colle.png'),
+  mansa:  require('../assets/images/dapps/mansa.png'),
+  furgpt: require('../assets/images/dapps/furgpt.png'), // reuses the token logo
+  imagen: require('../assets/images/dapps/imagen.png'), // sourced from imagen.network
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */
