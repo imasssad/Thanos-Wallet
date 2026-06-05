@@ -67,8 +67,11 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   agii:   require('../assets/images/dapps/agii.png'),
   colle:  require('../assets/images/dapps/colle.png'),
   mansa:  require('../assets/images/dapps/mansa.png'),
-  furgpt: require('../assets/images/dapps/furgpt.png'), // reuses the token logo
-  imagen: require('../assets/images/dapps/imagen.png'), // sourced from imagen.network
+  furgpt: require('../assets/images/dapps/furgpt.png'),
+  imagen: require('../assets/images/dapps/imagen.png'),
+  ignite: require('../assets/images/dapps/ignite.png'),
+  // atua, ego, makalu-explorer, kamet-explorer, litho-deals: pending
+  // client assets — fall through to letter avatar in the Discover screen.
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */

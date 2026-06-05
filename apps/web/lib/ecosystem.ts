@@ -28,7 +28,9 @@ const WEB_ICONS: Record<string, string> = {
   mansa:  '/images/dapps/mansa.png',
   furgpt: '/images/dapps/furgpt.png', // reuses the token logo as the app mark
   imagen: '/images/dapps/imagen.png', // sourced from imagen.network's official watermark
-  // litho-deals: pending client app-icon asset
+  ignite: '/images/dapps/ignite.png', // reuses the token logo
+  // atua, ego, makalu-explorer, kamet-explorer, litho-deals:
+  // pending client app-icon assets — fall through to letter avatar.
 };
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = BASE_APPS.map(a => ({

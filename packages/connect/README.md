@@ -200,10 +200,12 @@ await provider.request({
 
 ## Per-app drop-in snippets
 
-These are the literal copy-paste hooks for the 9 apps in the integration
-wave. Each is < 15 lines.
+Literal copy-paste hooks for the 9 apps in the integration wave. Each
+< 15 lines. The Lithosphere ecosystem catalogue lives at
+https://ecosystem.litho.ai — these are the apps already wired into
+the Thanos Discover screen, so consistency matters across both.
 
-### Ignite DEX (https://ignite.litho.ai)
+### Ignite DEX — https://ignite.litho.ai
 
 ```tsx
 import { ThanosConnectButton } from 'thanos-connect/react';
@@ -217,7 +219,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### EGO Exchange
+### EGO Exchange — *URL TBD with Esha*
 
 ```tsx
 <ThanosConnectButton
@@ -226,7 +228,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### COLLE AI
+### COLLE AI — https://colle.ai
 
 ```tsx
 <ThanosConnectButton
@@ -235,7 +237,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### AGII
+### AGII — https://agii.app
 
 ```tsx
 <ThanosConnectButton
@@ -244,7 +246,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### ATUA AI
+### ATUA AI — https://atua.ai
 
 ```tsx
 <ThanosConnectButton
@@ -253,7 +255,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### IMAGEN Network
+### Imagen Network — https://imagen.network
 
 ```tsx
 <ThanosConnectButton
@@ -262,7 +264,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### MANSA AI
+### Mansa AI — https://mansa.world
 
 ```tsx
 <ThanosConnectButton
@@ -271,7 +273,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
-### Makalu Explorer (https://makalu.litho.ai)
+### Makalu Explorer — https://makalu.litho.ai
 
 Makalu is the Lithosphere main chain — use the default chainId:
 
@@ -282,7 +284,7 @@ Makalu is the Lithosphere main chain — use the default chainId:
 />
 ```
 
-### Kamet Explorer (https://kamet.litho.ai)
+### Kamet Explorer — https://kamet.litho.ai
 
 Kamet is the sister chain (DNNS lives here) — use chainId 900523:
 
@@ -290,6 +292,18 @@ Kamet is the sister chain (DNNS lives here) — use chainId 900523:
 <ThanosConnectButton
   config={{ appName: 'Kamet Explorer', chainId: 900523 }}
   onSignIn={(s) => loginExplorer(s)}
+/>
+```
+
+### Bonus: ecosystem.litho.ai itself
+
+The ecosystem directory has no wallet-connect flow today. If you wire
+one, the snippet is identical:
+
+```tsx
+<ThanosConnectButton
+  config={{ appName: 'Lithosphere Ecosystem', chainId: 700777 }}
+  onSignIn={(s) => /* gate the listing dashboard */ null}
 />
 ```
 

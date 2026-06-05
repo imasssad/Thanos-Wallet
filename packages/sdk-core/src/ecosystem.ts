@@ -7,9 +7,10 @@
  * category) but NOT icon asset paths, since those differ per client
  * (web public/, RN require(), etc.). Each client layers in its own icons.
  *
- * NOTE on URLs: the canonical directory is ecosystem.litho.ai. Until the
- * per-app deep links are confirmed, every app points at the hub. Swap in
- * the real URL per app as they're confirmed.
+ * URLs: the canonical directory lives at https://ecosystem.litho.ai —
+ * each entry below points at its real product domain when known,
+ * falling back to the hub when a public URL hasn't been confirmed
+ * (currently only EGO Exchange).
  */
 export const ECOSYSTEM_HUB = 'https://ecosystem.litho.ai';
 
@@ -28,14 +29,21 @@ export interface EcosystemApp {
 }
 
 /** Section headers in display order. Apps render grouped under these. */
-export const ECOSYSTEM_SECTIONS = ['AI & Agents', 'DeFi & Yield', 'NFTs', 'Rewards'] as const;
+export const ECOSYSTEM_SECTIONS = [
+  'AI & Agents',
+  'DeFi & Yield',
+  'NFTs',
+  'Infrastructure',
+  'Rewards',
+] as const;
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = [
+  // ─── AI & Agents ─────────────────────────────────────────────────────
   {
     id: 'agii',
     name: 'AGII',
     description: 'AI infrastructure and agents built on Lithosphere.',
-    url: ECOSYSTEM_HUB,
+    url: 'https://agii.app',
     color: '#8b7df7',
     category: 'AI',
     section: 'AI & Agents',
@@ -44,7 +52,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     id: 'imagen',
     name: 'Imagen Network',
     description: 'Decentralized AI image generation network.',
-    url: ECOSYSTEM_HUB,
+    url: 'https://imagen.network',
     color: '#10b981',
     category: 'AI',
     section: 'AI & Agents',
@@ -53,29 +61,79 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     id: 'furgpt',
     name: 'FurGPT',
     description: 'AI agents and tooling on Lithosphere.',
-    url: ECOSYSTEM_HUB,
+    url: 'https://furgpt.org',
     color: '#10b981',
     category: 'AI',
     section: 'AI & Agents',
   },
   {
+    id: 'atua',
+    name: 'ATUA AI',
+    description: 'AI-driven analytics and on-chain insights.',
+    url: 'https://atua.ai',
+    color: '#06b6d4',
+    category: 'AI',
+    section: 'AI & Agents',
+  },
+  // ─── DeFi & Yield ────────────────────────────────────────────────────
+  {
+    id: 'ignite',
+    name: 'Ignite DEX',
+    description: 'Same-chain AMM and routing on Lithosphere.',
+    url: 'https://ignite.litho.ai',
+    color: '#22c55e',
+    category: 'DEX',
+    section: 'DeFi & Yield',
+  },
+  {
+    id: 'ego',
+    name: 'EGO Exchange',
+    description: 'Cross-chain swap exchange on the Lithosphere bridge.',
+    // URL TBD — Esha to confirm. Falls back to the ecosystem hub for now.
+    url: ECOSYSTEM_HUB,
+    color: '#f97316',
+    category: 'DEX',
+    section: 'DeFi & Yield',
+  },
+  {
     id: 'mansa',
     name: 'Mansa AI',
     description: 'AI-driven DeFi and liquidity on Lithosphere.',
-    url: ECOSYSTEM_HUB,
+    url: 'https://mansa.world',
     color: '#eab308',
     category: 'AI · DeFi',
     section: 'DeFi & Yield',
   },
+  // ─── NFTs ────────────────────────────────────────────────────────────
   {
     id: 'colle',
     name: 'Colle AI',
     description: 'Multi-chain, AI-powered NFT creation and trading.',
-    url: ECOSYSTEM_HUB,
+    url: 'https://colle.ai',
     color: '#a3e635',
     category: 'NFT · AI',
     section: 'NFTs',
   },
+  // ─── Infrastructure ──────────────────────────────────────────────────
+  {
+    id: 'makalu-explorer',
+    name: 'Makalu Explorer',
+    description: 'Block explorer + portal for the Makalu main chain (700777).',
+    url: 'https://makalu.litho.ai',
+    color: '#3b7af7',
+    category: 'Explorer',
+    section: 'Infrastructure',
+  },
+  {
+    id: 'kamet-explorer',
+    name: 'Kamet Explorer',
+    description: 'Block explorer + portal for the Kamet sister chain (900523, DNNS).',
+    url: 'https://kamet.litho.ai',
+    color: '#6366f1',
+    category: 'Explorer',
+    section: 'Infrastructure',
+  },
+  // ─── Rewards ─────────────────────────────────────────────────────────
   {
     id: 'litho-deals',
     name: 'LITHO Deals',
