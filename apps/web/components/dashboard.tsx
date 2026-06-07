@@ -491,7 +491,7 @@ export function Dashboard() {
   /* Network filter for the Tokens tab. The wallet today has assets on
      four "kinds" of chain: Lithosphere Makalu, EVM-imported tokens,
      Bitcoin, and Solana. 'all' keeps the current behaviour (everything). */
-  type NetFilter = 'all' | 'Makalu' | 'EVM' | 'Bitcoin' | 'Solana';
+  type NetFilter = 'all' | 'Makalu' | 'Kamet' | 'EVM' | 'Bitcoin' | 'Solana';
   const [netFilter, setNetFilter] = useState<NetFilter>('all');
 
   /* Privacy: hide the dollar total when shoulder-surfing risk. Stored
@@ -705,6 +705,7 @@ export function Dashboard() {
                   options={[
                     { value: 'all',     label: 'All networks' },
                     { value: 'Makalu',  label: 'Lithosphere Makalu' },
+                    { value: 'Kamet',   label: 'Lithosphere Kamet' },
                     { value: 'EVM',     label: 'Ethereum & EVM' },
                     { value: 'Bitcoin', label: 'Bitcoin' },
                     { value: 'Solana',  label: 'Solana' },
