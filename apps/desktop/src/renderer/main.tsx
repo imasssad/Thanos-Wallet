@@ -2124,7 +2124,7 @@ function deriveAddressFromSeed(seed: string[]): string {
 
 async function fetchEthBalance(addr: string): Promise<string | null> {
   try {
-    const provider = new JsonRpcProvider('https://eth.llamarpc.com');
+    const provider = new JsonRpcProvider('https://ethereum.publicnode.com');
     const wei = await provider.getBalance(addr);
     return formatEther(wei);
   } catch (e) {

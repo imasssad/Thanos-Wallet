@@ -31,7 +31,10 @@ export const STATIC_LOGOS: Record<string, string> = {
   sol:    'https://assets.coingecko.com/coins/images/4128/large/solana.png',
   bnb:    'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
   matic:  'https://assets.coingecko.com/coins/images/4713/large/polygon.png',
-  pol:    'https://assets.coingecko.com/coins/images/32440/large/polygon_pos.png',
+  // POL = the rebranded MATIC; CoinGecko's image 32440 (polygon_pos) was
+  // returning 403 as of Jun 2026, so we reuse the still-served 4713
+  // (the old MATIC mark, which Polygon still uses everywhere).
+  pol:    'https://assets.coingecko.com/coins/images/4713/large/polygon.png',
   avax:   'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png',
   ada:    'https://assets.coingecko.com/coins/images/975/large/cardano.png',
   dot:    'https://assets.coingecko.com/coins/images/12171/large/polkadot.png',

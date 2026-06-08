@@ -125,7 +125,7 @@ services:
       KAMET_RPC_FALLBACK:  ${KAMET_RPC_FALLBACK:-https://rpc-3.litho.ai}
       KAMET_CHAIN_ID:      ${KAMET_CHAIN_ID:-900523}
       # EVM RPCs
-      ETH_RPC_URL:         ${ETH_RPC_URL:-https://eth.llamarpc.com}
+      ETH_RPC_URL:         ${ETH_RPC_URL:-https://ethereum.publicnode.com}
       BNB_RPC_URL:         ${BNB_RPC_URL:-https://bsc-dataseed.binance.org}
       # BTC
       BTC_RPC_URL:         ${BTC_RPC_URL:-https://blockstream.info/api}

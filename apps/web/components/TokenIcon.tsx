@@ -55,7 +55,7 @@ interface BadgeSpec { url?: string; bg: string; letter: string }
 const CHAIN_BADGE: Record<number, BadgeSpec> = {
   1:     { url: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png',                       bg: '#627eea', letter: 'E' },
   56:    { url: 'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',                   bg: '#f3ba2f', letter: 'B' },
-  137:   { url: 'https://assets.coingecko.com/coins/images/32440/large/polygon_pos.png',                  bg: '#8247e5', letter: 'P' },
+  137:   { url: 'https://assets.coingecko.com/coins/images/4713/large/polygon.png',                      bg: '#8247e5', letter: 'P' },
   43114: { url: 'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png', bg: '#e84142', letter: 'A' },
   // Ethereum L2s — no widely-recognised mini-logo on CoinGecko's CDN at
   // these sizes, so render the chain's letter on its brand colour.

@@ -23,7 +23,7 @@ const RPC_URLS: Record<number, string[]> = {
   900523: urls(process.env.KAMET_RPC_PRIMARY && `${process.env.KAMET_RPC_PRIMARY},${process.env.KAMET_RPC_FALLBACK ?? 'https://rpc-3.litho.ai'}`,
                'https://rpc.kamet.litho.ai,https://rpc-3.litho.ai'),
   // Public chains
-  1:     ['https://eth.llamarpc.com'],
+  1:     ['https://ethereum.publicnode.com', 'https://eth.merkle.io'],
   56:    ['https://bsc-dataseed.binance.org'],
   137:   ['https://polygon-rpc.com'],
   8453:  ['https://mainnet.base.org'],

@@ -57,7 +57,7 @@ export const EVM_CHAINS: readonly EvmChain[] = [
     chainId:      1,
     name:         'Ethereum',
     slug:         'ethereum',
-    rpcUrl:       'https://eth.llamarpc.com',
+    rpcUrl:       'https://ethereum.publicnode.com',
     nativeSymbol: 'ETH',
     nativeName:   'Ether',
     decimals:     18,

@@ -28,7 +28,15 @@ export const ETHEREUM: NetworkConfig = {
   chainId: 1,
   name: 'Ethereum',
   kind: 'evm',
-  rpcUrls: ['https://eth.llamarpc.com'],
+  // ethereum.publicnode.com is reliable + no auth + no rate-limit error
+  // header. eth.merkle.io is the secondary so a stalled primary rotates
+  // transparently via FallbackProvider. The previous default
+  // (eth.llamarpc.com) started returning Cloudflare 526 (Invalid SSL
+  // Certificate) intermittently in Jun 2026 — moved off it entirely.
+  rpcUrls: [
+    'https://ethereum.publicnode.com',
+    'https://eth.merkle.io',
+  ],
   blockExplorerUrl: 'https://etherscan.io',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }
 };
