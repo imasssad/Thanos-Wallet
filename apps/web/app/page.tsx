@@ -542,6 +542,15 @@ function Footer() {
           <img src="/images/Thanos_Logo_Transparent.png" alt="" width={22} height={22}/>
           <span>Thanos Wallet</span>
         </div>
+        {/* Legal + transparency links. Required as a public discovery
+            surface by App Store + Google Play submission reviewers,
+            and the basic-decency move for any wallet. */}
+        <nav className="lp-footer-nav" aria-label="Legal and transparency">
+          <a href="/privacy">Privacy</a>
+          <a href="/.well-known/security.txt">Security</a>
+          <a href="https://github.com/imasssad/Thanos-Wallet/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a>
+          <a href="mailto:devs@thanos.fi">Contact</a>
+        </nav>
         <div className="lp-footer-links">
           <a href="https://github.com/imasssad/Thanos-Wallet" target="_blank" rel="noreferrer" aria-label="GitHub"><IconGithub size={16}/></a>
           <a href="https://x.com/lithospherenet" target="_blank" rel="noreferrer" aria-label="X"><IconX size={16}/></a>

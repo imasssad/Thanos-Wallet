@@ -1215,6 +1215,26 @@ export function SettingsView() {
               View <ChevronRight size={14}/>
             </a>
           </Row>
+          <Row label="Privacy policy" sub="What data leaves your device, and where it goes">
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-btn settings-btn-link"
+            >
+              View <ChevronRight size={14}/>
+            </a>
+          </Row>
+          <Row label="Security disclosures" sub="Report a vulnerability + PGP key">
+            <a
+              href="/.well-known/security.txt"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-btn settings-btn-link"
+            >
+              View <ChevronRight size={14}/>
+            </a>
+          </Row>
         </Section>
       </div>
 

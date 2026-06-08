@@ -3354,6 +3354,19 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border-color: var(--blue);
   background: rgba(59,122,247,0.06);
 }
+.lp-footer-nav {
+  display: flex; gap: 18px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.lp-footer-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.lp-footer-nav a:hover {
+  color: var(--text-primary);
+}
 .lp-footer-meta {
   font-size: 11px;
   color: var(--text-muted);
