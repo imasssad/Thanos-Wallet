@@ -55,13 +55,22 @@ probe() {
 
   local start end ms status sym col detail
   start=$(date +%s%N)
+  # Pose as a current Chrome — Cloudflare and other WAF layers
+  # routinely 403 a bare "curl/8.x" user-agent, which made our probe
+  # report false-negative breakage on every CF-fronted site
+  # (lithosphere.network, etc.) from datacenter IPs. Real users
+  # never hit those URLs as curl, so the probe should match.
+  local UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
   if [ "$method" = "POST" ]; then
     status=$(curl -sS -m "$timeout" -o /dev/null \
+      -A "$UA" \
       -H "content-type: application/json" \
       -w "%{http_code}" \
       -X POST -d "$body" "$url" 2>/dev/null || echo "000")
   else
     status=$(curl -sS -m "$timeout" -o /dev/null \
+      -A "$UA" \
+      -H "accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
       -w "%{http_code}" "$url" 2>/dev/null || echo "000")
   fi
   end=$(date +%s%N)
