@@ -241,10 +241,12 @@ export function ThanosConnectButton({
       aria-label={displayLabel}
     >
       {!hideIcon && (
+        // Inlined SVG so the package stays CSP-friendly (no external
+        // image fetches). The HTML is a fixed string constant, not
+        // user input — no injection surface.
         <span
           aria-hidden
           style={{ display: 'inline-flex' }}
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: THANOS_ICON_SVG }}
         />
       )}

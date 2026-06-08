@@ -166,15 +166,35 @@ jobs:
     name: secret scan (gitleaks)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # The official gitleaks-action started requiring a paid GITLEAKS_LICENSE
+    # for org repos as of late 2024 — every run errored with
+    # "missing gitleaks license" even though we don't actually need their
+    # billing layer. Drop the action and run the CLI directly: it's the
+    # same scanner, MIT-licensed, no license check.
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }  # full history so gitleaks can scan all commits on a PR
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          # gitleaks-action's default config scans the repo for AWS keys, GitHub
-          # tokens, JWT-shaped strings, etc. Add a .gitleaks.toml to tune.
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # optional — only needed for org-wide use
+        with: { fetch-depth: 0 }  # full history so the scan covers every commit on a PR
+      - name: Install gitleaks CLI
+        run: |
+          GITLEAKS_VERSION=8.20.1
+          curl -fsSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Run gitleaks scan
+        # `detect` scans the working tree + git history. --redact keeps
+        # any matched secret out of the log output (we don't want CI logs
+        # to surface a real leak; the report file is for the operator).
+        # Exit code 1 = leaks found → fails the job. Exit 0 = clean.
+        run: gitleaks detect --redact --verbose --report-format json --report-path gitleaks-report.json
+      - name: Upload gitleaks report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          retention-days: 14
 
   link-probe-prod:
     name: link-probe (production endpoints)
