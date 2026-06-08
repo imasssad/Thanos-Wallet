@@ -153,7 +153,7 @@ export const TOKENS: Token[] = [
     address: null, // native
     decimals: 9,
     color: '#14f195',
-    icon: '',               // intentionally empty — token-logos resolves sol → CoinGecko CDN
+    icon: '/images/tokens/sol.png',  // official solana.com/branding logomark (rendered from canonical SVG)
     priceUsd: 150.00,       // fetched live from CoinGecko via pricing.ts
     balance: '0',
     change24h: 0,

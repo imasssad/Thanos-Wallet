@@ -33,6 +33,7 @@ const BUNDLED: Record<string, ImageSourcePropType> = {
   eth:    require('../assets/images/tokens/eth.png'),
   trx:    require('../assets/images/tokens/trx.png'),
   hype:   require('../assets/images/tokens/hype.png'),
+  sol:    require('../assets/images/tokens/sol.png'),  // official solana.com brand logomark
 };
 
 /* Remote — fallbacks for coins not yet bundled. `large/` variant —
@@ -40,7 +41,6 @@ const BUNDLED: Record<string, ImageSourcePropType> = {
 const REMOTE: Record<string, string> = {
   btc:   'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
   litbtc:'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-  sol:   'https://assets.coingecko.com/coins/images/4128/large/solana.png',
   bnb:   'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
   usdc:  'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
   usdt:  'https://assets.coingecko.com/coins/images/325/large/Tether.png',

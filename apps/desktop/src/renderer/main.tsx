@@ -146,13 +146,16 @@ const BUNDLED_ICONS: Record<string, string> = {
   eth:    '/images/tokens/eth.png',
   trx:    '/images/tokens/trx.png',
   hype:   '/images/tokens/hype.png',
+  // Solana — rendered from the official solana.com/branding SVG so it
+  // matches Solana Foundation brand guidelines (purple→green gradient
+  // logomark) rather than the CoinGecko thumbnail.
+  sol:    '/images/tokens/sol.png',
 };
 const REMOTE_ICONS: Record<string, string> = {
   // Fallbacks for coins we don't bundle yet. CoinGecko CDN; `large/`
   // variant — `small/` was occasionally returning placeholder ghosts.
   btc:    'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
   litbtc: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-  sol:    'https://assets.coingecko.com/coins/images/4128/large/solana.png',
   usdc:   'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
   usdt:   'https://assets.coingecko.com/coins/images/325/large/Tether.png',
   bnb:    'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
