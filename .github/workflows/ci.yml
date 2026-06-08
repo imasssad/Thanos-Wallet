@@ -175,3 +175,46 @@ jobs:
           # gitleaks-action's default config scans the repo for AWS keys, GitHub
           # tokens, JWT-shaped strings, etc. Add a .gitleaks.toml to tune.
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # optional — only needed for org-wide use
+
+  link-probe-prod:
+    name: link-probe (production endpoints)
+    # Only on push to main — a PR can't break production yet, and running
+    # this on every PR would waste minutes + give noisy failures when
+    # an external upstream (CoinGecko, etc.) hiccups during a CI run.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # External upstreams can flap. Don't fail the build on a single CI
+    # run finding one CoinGecko 403; the 5-min VPS cron is the source
+    # of truth for real outages (it'll alarm if the flap persists). CI
+    # gives us the second monitoring layer + a paper trail per commit.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe thanos.fi production endpoints
+        # --category prod isolates the check to /api/health, /privacy,
+        # icons, etc. — the user-facing surface a commit could break.
+        # Exits 1 when a CRITICAL group is fully down (homepage, /app,
+        # /api/health). Exits 2 on non-critical red (an icon 404), in
+        # which case continue-on-error keeps the build green.
+        run: bash ops/link-probe.sh --category prod
+
+  link-probe-external:
+    name: link-probe (external upstreams)
+    # Same gate — only on push to main, never PRs.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Always continue-on-error — external upstreams (Lithosphere RPC,
+    # mempool.space, CoinGecko CDN, etc.) are not our SLO. This job is
+    # a visibility check, not a build gate. The cron on the VPS pages
+    # the operator if a real outage persists.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Lithosphere + external chain RPCs
+        run: bash ops/link-probe.sh --category litho
+      - name: Probe external chain RPCs (BTC / SOL / Cosmos / ETH / BSC)
+        run: bash ops/link-probe.sh --category rpc
+      - name: Probe CoinGecko CDN icons (still-referenced)
+        run: bash ops/link-probe.sh --category cdn
