@@ -1,168 +1,180 @@
 # Privacy Policy
 
-**Effective date:** 2026-05-25
-**Operator:** Thanos Wallet
-**Contact:** devs@thanos.fi
+**Effective date:** June 2026
+**ThanosWallet.ai** · Maintained by **KaJ Labs**
 
-This document explains what data Thanos Wallet handles, where it goes,
-and what control you have over it. It applies to every Thanos client:
-the browser extension (Chrome / Brave / Firefox / Safari), the desktop
-app (macOS / Windows), the mobile app (iOS / Android), and the web
-wallet at thanos.fi.
+Thanos Wallet is a self-custodial, multi-chain cryptocurrency wallet.
+This policy explains what information we collect, why we collect it,
+and how we use it. We have written it to be read by a person, not a
+lawyer.
 
-We wrote this to be a real description of what the software actually
-does, not a generic template. If anything below is inaccurate, file an
-issue at https://github.com/imasssad/Thanos-Wallet/issues — we'll fix
-it.
+> The short version: your private keys and seed phrase never leave
+> your device. We do not sell your data. We collect only what we need
+> to make the wallet work.
 
 ---
 
-## TL;DR
+## 1. What We Collect
 
-- We don't run a custodial service. We never see your seed phrase.
-- We don't sell, share, or build advertising profiles from your data.
-- We don't include any third-party analytics SDKs (no Google Analytics,
-  no Facebook SDK, no Mixpanel, no Amplitude).
-- The only data that leaves your device is what's strictly necessary
-  to look at the blockchain: public addresses, transaction hashes,
-  contract call data — exactly what's published on-chain anyway.
-- An optional cloud-sync feature (address book + DNNS cache) requires
-  you to sign in with an email + password. The contents are encrypted
-  on your device before they're uploaded.
+### Information you provide
 
----
+- Email address and password, if you create an account on the Thanos
+  backend. Your password is hashed with Argon2id before storage and is
+  never readable by us.
+- Wallet name and address book contacts you choose to save and sync
+  across devices.
+- DNNS names you register or resolve through the wallet.
 
-## 1. Data we DO NOT handle
+### Information collected automatically
 
-To make the boundary clear:
+- On-chain data: wallet addresses, transaction hashes, token balances,
+  and block events. This data is public on the blockchain by its
+  nature.
+- Device session data: device type, platform (iOS, Android, web,
+  desktop, extension), and session tokens used to keep you logged in
+  securely.
+- Error and crash reports via Sentry, which may include the app
+  version, device OS, and stack trace. Crash reports do not include
+  your seed phrase, private keys, or wallet balances.
+- Basic usage metrics: which features are used and how frequently, to
+  help us improve the app. This data is aggregated and not tied to
+  your identity.
 
-- **Your seed phrase** — generated on your device, encrypted with a
-  key derived from your password (Argon2id), stored in the OS keychain
-  (Keychain on iOS, EncryptedSharedPreferences + KeyStore on Android,
-  Credential Manager on Windows, Keychain on macOS, IndexedDB on web).
-  It never crosses the network in any form.
-- **Your password** — only the password's Argon2id-derived encryption
-  key ever exists outside your typing. The password itself is never
-  stored, transmitted, or logged.
-- **Your private keys** — derived on the fly from the seed inside an
-  isolated signing context (Worker on web, offscreen document on
-  extension, main process on desktop, module-private scope on mobile).
-  They never appear in any error report, breadcrumb, or log line.
-- **Behavioural analytics** — we don't ship any third-party SDK that
-  records clicks, scrolls, time-on-page, or session replays.
+### What we never collect
 
-## 2. Data sent directly from your device
+- Your seed phrase or private keys. These are generated on your
+  device, encrypted with your own password, and stored only on your
+  device. They are never transmitted to our servers.
+- The contents of transactions you have not yet broadcast.
+- Your location.
+- Any data from websites you visit outside of the wallet.
 
-When you use the wallet, the app talks to several public services on
-your behalf. Each request includes your wallet address (this is
-public on-chain anyway) and whatever's needed to fulfil it. We don't
-proxy these — they go straight from your device to the third party.
+## 2. How We Use Your Information
 
-| Service | What we send | Purpose |
-|---|---|---|
-| Lithosphere RPC (rpc.litho.ai, rpc-2.litho.ai) | Your wallet address; signed transactions | Read balances, send transactions on Makalu |
-| Bitcoin (mempool.space) | Your BTC address; raw transaction hex | Read BTC balance + UTXOs, broadcast sends |
-| Ethereum / EVM RPCs (configurable) | Your EVM address; signed transactions | Read balances, send transactions |
-| Solana RPC (api.mainnet-beta.solana.com) | Your SOL address; signed transactions | Read SOL/SPL balances, send transactions |
-| Cosmos REST LCD (cosmos-rest.publicnode.com) | Your Cosmos address; signed transactions | Read ATOM balance, send transactions |
-| MultX bridge (bridge.litho.ai) | Source token, destination token, amount | Cross-chain swap quotes + execution |
-| Ignite DEX (ignite.litho.ai) | Token pair, amount | Same-chain swap quotes + execution |
-| WalletConnect relay (relay.walletconnect.com) | Encrypted dApp pairing payloads | dApp connectivity (the wallet's relay is a thin pipe — Reown can't decrypt the payloads) |
-| CoinGecko (api.coingecko.com) | Token symbols only | Spot prices for the dashboard |
+We use the information we collect to:
 
-Each request goes over HTTPS or WSS. You can override the Lithosphere
-RPC + Ethereum RPC URLs in Settings; pointing at your own node bypasses
-the public services entirely.
+- Run the wallet and keep it secure, including authenticating your
+  account, syncing contacts, and resolving names.
+- Index token balances and transaction history from public blockchain
+  data so your portfolio stays up to date.
+- Detect and fix bugs using crash reports and error logs.
+- Improve the wallet based on aggregate usage patterns.
+- Communicate with you about important security updates if you have
+  provided an email address.
 
-## 3. Data sent to the Thanos backend (thanos.fi/api)
+**We do not use your information to show you advertisements. We do not
+sell your data to third parties. We do not use your data to train AI
+models.**
 
-The backend is the *optional* cloud-sync layer. None of the wallet's
-core functionality (create / unlock / send / receive / sign) requires
-it. When you sign in, the following endpoints become available:
+## 3. How Your Keys and Seed Phrase Are Stored
 
-| Endpoint | What we receive | Why |
-|---|---|---|
-| `POST /auth/register` | Email, password (Argon2id-hashed on the server too), display name | Create an account so address book + DNNS records sync across your devices |
-| `POST /auth/login` | Email, password | Issue an access + refresh token pair |
-| `GET  /contacts`  | (auth required) | Return your encrypted contacts |
-| `POST /contacts`  | Ciphertext blob for `name` + `notes`, plaintext wallet address | Store a contact you saved |
-| `GET  /dnns/resolve?name=…` | A DNNS name | Cache the on-chain owner of a name |
-| `GET  /portfolio/:address` | A wallet address | Aggregate balances across chains |
-| `POST /push/register` | Expo / FCM push token, wallet address | Send you a notification when funds arrive (mobile only) |
+Thanos Wallet is non-custodial. This means:
 
-The contact `name` and `notes` fields are encrypted on your device
-(AES-256-GCM, key derived from your seed via HKDF-SHA256) before the
-bytes leave. The server only sees opaque ciphertext for those two
-fields — a DBA dump won't reveal who's in your address book. The
-wallet address itself is stored plaintext (the server deduplicates on
-it; it's public on-chain regardless).
+- Your seed phrase is shown to you once during wallet creation. After
+  that, it is encrypted on your device using a key derived from your
+  password via Argon2id. The encrypted vault is stored in your
+  device's secure storage (Keychain on iOS, Keystore on Android, OS
+  vault on desktop, encrypted localStorage on web).
+- We cannot recover your seed phrase if you forget your password.
+  There is no "forgot password" for the seed. Keep your seed phrase
+  written down somewhere safe.
+- If you enable cloud sync, only encrypted vault data is synced. The
+  encryption key is derived from your password and is never sent to
+  our servers.
 
-## 4. Error reports (when enabled)
+## 4. Third-Party Services
 
-If the operator running this Thanos instance has set `SENTRY_DSN`,
-the backend services (api, indexer, worker) and optionally the web
-client will send crash reports to Sentry. Before any event is sent,
-we recursively strip any key matching the regex
-`/mnemonic|password|seed|private[_-]?key|vault|session[_-]?key|authorization|token/i`
-from the event body, breadcrumbs, and tags. Stack traces, request
-URLs, and timing data still travel.
+The wallet interacts with the following external services:
 
-For the public thanos.fi instance, Sentry is enabled. To opt out
-entirely, run the wallet against your own deployment or block the
-relevant Sentry ingestion domain in your browser/firewall.
+- **Blockchain RPC nodes** (rpc.litho.ai, rpc-2.litho.ai,
+  rpc.kamet.litho.ai, public Ethereum/Solana/Bitcoin nodes): used to
+  read balances and broadcast transactions. These services receive
+  your wallet address and transaction data as part of normal
+  blockchain operation.
+- **CoinGecko**: used to fetch token prices. Requests do not include
+  your wallet address or identity.
+- **bridge.litho.ai**: used for cross-chain bridge operations.
+  Transaction details are shared only when you initiate a bridge.
+- **Sentry**: used for crash reporting. See Section 1 for what is
+  included.
+- **WalletConnect** (Reown relay): used to connect the wallet to
+  decentralised applications. Session metadata is relayed through
+  Reown's infrastructure.
 
-## 5. Cookies + local storage
+We are not responsible for the privacy practices of these third
+parties. We recommend reviewing their policies if you have concerns.
 
-| Storage | What we put there |
-|---|---|
-| `localStorage` (web + extension + desktop renderer) | Encrypted vault, theme preference, active-account index, address-book cache, token-logo cache, custom RPC URL |
-| `sessionStorage` (web only) | Argon2id-derived AES key while a tab is open — wiped on tab close |
-| `AsyncStorage` (mobile) | Same as localStorage for mobile-specific equivalents |
-| iOS Keychain / Android KeyStore | The encrypted vault, biometric-unlock token |
-| `IndexedDB` | Token-logo blob cache (optional) |
-| HTTP cookies | None. We use bearer tokens in `Authorization` headers, not cookies. |
+## 5. Data Retention
 
-## 6. Children
+- Account data (email, hashed password, device sessions): retained
+  while your account is active. You can delete your account at any
+  time from Settings, which removes all server-side data.
+- Blockchain index data (balances, transaction history): retained to
+  power your portfolio view. This data is derived from public
+  blockchain records.
+- Crash reports: retained for 90 days.
+- Usage metrics: retained in aggregate for up to 12 months.
 
-The wallet is not directed at users under 13. If you become aware
-that a child under 13 has provided us with personal information,
-contact us at devs@thanos.fi and we will delete the account.
+## 6. Your Rights
 
-## 7. Your rights
+Depending on where you live, you may have the right to access,
+correct, or delete the personal data we hold about you. To exercise
+any of these rights, contact us at the address in Section 9.
 
-If you have an account on the cloud-sync layer:
+- **Access:** you can request a copy of the data we hold about your
+  account.
+- **Correction:** you can update your email address from Settings at
+  any time.
+- **Deletion:** you can delete your account and all associated
+  server-side data from Settings. On-chain data is public and cannot
+  be deleted.
+- **Portability:** you can export your address book and transaction
+  history from Settings.
+- **Objection:** you can opt out of usage metric collection from
+  Settings > Privacy.
 
-- **Access.** `GET /auth/me` returns everything we have associated
-  with you. The mobile app surfaces this in Settings → Account.
-- **Deletion.** `DELETE /auth/account` wipes your account, every
-  contact, and every cached DNNS record. The token at the moment of
-  deletion is also revoked. This is irreversible.
-- **Export.** `GET /contacts` returns your contacts in JSON. Decrypt
-  the `name` + `notes` fields client-side with your seed-derived key.
+## 7. Security
 
-You don't need an account to use the wallet. Skipping sign-in skips
-this entire section.
+We take security seriously. Key measures include:
 
-## 8. Security incidents
+- All data in transit is encrypted with TLS 1.3.
+- Passwords are hashed with Argon2id (t=3, m=64MB, p=4) before storage.
+- Authentication tokens use short-lived JWTs (15 minutes) with
+  rotating refresh tokens.
+- Rate limiting is enforced on all authentication endpoints.
+- Private keys and seed phrases are never transmitted to our servers
+  under any circumstances.
+- We conduct regular dependency audits and maintain a security
+  incident runbook.
 
-If we discover that user data has been disclosed without authorisation,
-we will publish an incident report at https://thanos.fi/security
-within seven days of confirming the scope, including:
-- What data was disclosed
-- How many users were affected
-- What we've changed to prevent recurrence
+No system is perfectly secure. If you discover a vulnerability,
+please report it responsibly to our security contact before disclosing
+it publicly.
 
-Material incidents are pushed via the wallet's in-app notification.
+## 8. Children
 
-## 9. Changes to this policy
+Thanos Wallet is not intended for use by anyone under the age of 18.
+We do not knowingly collect personal information from children. If
+you believe a child has provided us with personal information, please
+contact us and we will delete it promptly.
 
-We'll update the **Effective date** at the top of this document when
-we change anything material. The git history at
-github.com/imasssad/Thanos-Wallet/commits/main/docs/privacy-policy.md
-is the canonical changelog.
+## 9. Changes to This Policy
+
+We may update this policy from time to time. When we do, we will
+update the effective date at the top of this page and, for
+significant changes, notify users who have provided an email address.
+Continued use of the wallet after changes are posted constitutes
+acceptance of the updated policy.
 
 ## 10. Contact
 
-- **General questions:** devs@thanos.fi
-- **Security disclosures:** security@thanos.fi (PGP key at thanos.fi/.well-known/security.txt)
-- **Mailing address:** [TODO: physical address required by California / EU rules]
+If you have questions about this policy or want to exercise your data
+rights, you can reach us at:
+
+- Thanos Wallet by KaJ Labs
+- Website: ThanosWallet.ai
+- Support: support@thanos.fi
+
+---
+
+Thanos Wallet is self-custodial. Your keys, your crypto.
