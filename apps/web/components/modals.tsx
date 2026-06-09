@@ -1651,6 +1651,39 @@ const iconRowBtn: React.CSSProperties = {
 
 type SwapStage = 'compose' | 'executing' | 'bridging' | 'settling' | 'completed' | 'failed';
 
+/** Translate a raw bridge / DEX error string into user-readable copy.
+ *  Bridge and Ignite return developer shorthand like "no runners?!",
+ *  "execution reverted (0x…)", "INSUFFICIENT_FUNDS_FOR_GAS". Surfacing
+ *  that verbatim teaches users nothing and looks like a crash. We map
+ *  the common shapes to a concise message and fall through to a generic
+ *  "couldn't complete" for anything else. */
+function translateSwapError(raw?: string | null): string {
+  const txt = (raw || '').trim().toLowerCase();
+  if (!txt) return 'Swap couldn’t complete. Try again in a moment.';
+  if (txt.includes('runner') || txt.includes('relayer')) {
+    return 'No bridge relayers available right now. Try again in a few minutes.';
+  }
+  if (txt.includes('insufficient') && txt.includes('gas')) {
+    return 'Not enough native balance to cover gas. Top up and retry.';
+  }
+  if (txt.includes('insufficient')) {
+    return 'Insufficient balance for this swap.';
+  }
+  if (txt.includes('slippage') || txt.includes('price impact')) {
+    return 'Price moved beyond your slippage tolerance. Raise slippage or refresh the quote.';
+  }
+  if (txt.includes('rejected') || txt.includes('denied') || txt.includes('user')) {
+    return 'Swap cancelled.';
+  }
+  if (txt.includes('timeout') || txt.includes('timed out')) {
+    return 'Bridge timed out. Try again shortly.';
+  }
+  if (txt.includes('not implemented') || txt.includes('501')) {
+    return 'Bridge is temporarily unavailable. Try again later.';
+  }
+  return 'Swap couldn’t complete. Try again in a moment.';
+}
+
 export function SwapModal({ onClose }: { onClose: () => void }) {
   const wallet = useWallet();
   const [from, setFrom] = useState('LITHO');
@@ -1785,7 +1818,15 @@ export function SwapModal({ onClose }: { onClose: () => void }) {
         if (s.sourceHash) setSourceHash(s.sourceHash);
         if ('destHash' in s && s.destHash) setDestHash(s.destHash);
         if (s.state === 'completed') { setStage('completed'); return; }
-        if (s.state === 'failed')    { setStage('failed'); setExecError(s.error || 'Swap reported failure'); return; }
+        if (s.state === 'failed') {
+          setStage('failed');
+          // Bridge / DEX error strings are not user-facing copy — they're
+          // dev shorthand (e.g. "no runners?!", "execution reverted (0x…)").
+          // Surface a clean message; the raw text is still in Sentry via
+          // the API client logger for triage.
+          setExecError(translateSwapError(s.error));
+          return;
+        }
         if (s.state === 'settling')  setStage('settling');
         else if (s.state === 'bridging') setStage('bridging');
       } catch {

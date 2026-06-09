@@ -85,16 +85,8 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     category: 'DEX',
     section: 'DeFi & Yield',
   },
-  {
-    id: 'ego',
-    name: 'EGO Exchange',
-    description: 'Cross-chain swap exchange on the Lithosphere bridge.',
-    // URL TBD — Esha to confirm. Falls back to the ecosystem hub for now.
-    url: ECOSYSTEM_HUB,
-    color: '#f97316',
-    category: 'DEX',
-    section: 'DeFi & Yield',
-  },
+  // EGO Exchange removed per Esha 2026-06-10 — re-add when the team
+  // confirms a real product URL + the integration is ready.
   {
     id: 'mansa',
     name: 'Mansa AI',

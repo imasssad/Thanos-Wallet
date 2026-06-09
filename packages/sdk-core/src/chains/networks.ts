@@ -18,7 +18,13 @@ export const KAMET_TESTNET: NetworkConfig = {
   chainId: 900523,
   name: 'Lithosphere Kamet',
   kind: 'lithic',
-  rpcUrls: ['https://rpc.kamet.litho.ai', 'https://rpc-3.litho.ai'],
+  // rpc-3.litho.ai listed first because rpc.kamet.litho.ai has been
+  // reliably failing TLS handshake behind Cloudflare since 2026-06.
+  // Until Litho ops fixes the cert / SNI on the kamet.* subdomain,
+  // every Kamet read should hit the working endpoint on the first try
+  // rather than wait for the 1.5s stallTimeout to rotate the
+  // FallbackProvider. Order will revert once the primary is healthy.
+  rpcUrls: ['https://rpc-3.litho.ai', 'https://rpc.kamet.litho.ai'],
   blockExplorerUrl: 'https://kamet.litho.ai',
   nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 }
 };

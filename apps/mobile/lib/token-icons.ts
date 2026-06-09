@@ -70,8 +70,9 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   furgpt: require('../assets/images/dapps/furgpt.png'),
   imagen: require('../assets/images/dapps/imagen.png'),
   ignite: require('../assets/images/dapps/ignite.png'),
-  // atua, ego, makalu-explorer, kamet-explorer, litho-deals: pending
-  // client assets — fall through to letter avatar in the Discover screen.
+  atua:   require('../assets/images/dapps/atua.png'),
+  // makalu-explorer, kamet-explorer, litho-deals: pending client
+  // assets — fall through to letter avatar in the Discover screen.
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */

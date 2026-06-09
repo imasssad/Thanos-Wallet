@@ -32,7 +32,8 @@ interface MarketRow {
   sym:   string;
   name:  string;
   price: string;
-  chg24: number;
+  /** null → "—" placeholder; a number is rendered with sign + percent. */
+  chg24: number | null;
   chg7:  number | null;
   cap:   string;
   vol:   string;
@@ -100,10 +101,17 @@ function useMainstreamMarkets(): MarketRow[] | null {
 export function MarketView() {
   const [search, setSearch] = useState('');
   const prices       = usePrices();
-  const mainstream   = useMainstreamMarkets();
 
-  /* Lithosphere rows derived from canonical TOKENS + live priceUsd.
-     No fabricated caps/vols — they show '—' until we have a real source. */
+  /* Lithosphere-focused market view — we no longer pull the top
+     market-cap-desc page from CoinGecko (TRON / DOGE / HYPE / FIGR_HELOC
+     etc. are noise to a Lithosphere wallet user). The market screen
+     now lists ONLY the canonical Lithosphere ecosystem tokens plus the
+     mainstream coins the wallet actually transacts on (BTC / SOL).
+
+     For the litho ecosystem rows the 24h/7d % stays null — we don't
+     have a live tracker for those tokens yet. The table renders "—"
+     instead of a fake "+0.00%" so users don't read a placeholder as
+     a real number. */
   const lithoRows: MarketRow[] = React.useMemo(() => TOKENS.map(t => {
     const live = prices?.[t.sym];
     const p    = typeof live === 'number' ? live : t.priceUsd;
@@ -111,7 +119,7 @@ export function MarketView() {
       sym:   t.sym,
       name:  t.name,
       price: fmtUsd(p, 4),
-      chg24: 0,    // no live 24h tracking for Litho ecosystem yet
+      chg24: null,   // no live 24h tracking for Litho ecosystem yet — render "—"
       chg7:  null,
       cap:   '—',
       vol:   '—',
@@ -119,12 +127,7 @@ export function MarketView() {
     };
   }), [prices]);
 
-  /* Drop mainstream rows that duplicate Lithosphere rows (BTC/SOL appear
-     in TOKENS already; we don't want them twice). Comparison by symbol. */
-  const lithoSyms = new Set(lithoRows.map(r => r.sym.toUpperCase()));
-  const mainstreamFiltered = (mainstream ?? []).filter(r => !lithoSyms.has(r.sym));
-
-  const market = [...lithoRows, ...mainstreamFiltered];
+  const market = lithoRows;
   const filtered = market.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="main-area" style={{ width: '100%' }}>
@@ -163,7 +166,9 @@ export function MarketView() {
                   </td>
                   <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 12, fontWeight: 600 }}>{c.price}</td>
                   <td style={{ textAlign: 'right' }}>
-                    <span className={c.chg24 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg24 >= 0 ? '+' : ''}{c.chg24}%</span>
+                    {c.chg24 === null
+                      ? <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      : <span className={c.chg24 >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg24 >= 0 ? '+' : ''}{c.chg24}%</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {c.chg7 === null

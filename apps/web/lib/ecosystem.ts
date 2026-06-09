@@ -29,7 +29,8 @@ const WEB_ICONS: Record<string, string> = {
   furgpt: '/images/dapps/furgpt.png', // reuses the token logo as the app mark
   imagen: '/images/dapps/imagen.png', // sourced from imagen.network's official watermark
   ignite: '/images/dapps/ignite.png', // reuses the token logo
-  // atua, ego, makalu-explorer, kamet-explorer, litho-deals:
+  atua:   '/images/dapps/atua.png',   // sourced from atua.ai brand kit
+  // makalu-explorer, kamet-explorer, litho-deals:
   // pending client app-icon assets — fall through to letter avatar.
 };
 
