@@ -16,7 +16,7 @@ import { SecurityPanel } from './SecurityPanel';
 import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
-import { usePrices, priceOr } from '../lib/usePrices';
+import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
 import { getAllEvmNativeBalances, type EvmChain } from '../lib/evm-chains';
@@ -111,6 +111,138 @@ function useMarketChart(coingeckoId: string, days = 7) {
     return () => { cancelled = true; };
   }, [coingeckoId, days]);
   return data;
+}
+
+type ChartRange = 7 | 30 | 365;
+
+const RANGE_LABELS: Record<ChartRange, string> = {
+  7:   '7D',
+  30:  '30D',
+  365: '1Y',
+};
+
+/* Single date formatter — used by AssetPerformanceCard's first/last
+ * labels. Caches the en-GB formatter once so the chart re-renders
+ * without recreating the Intl instance. */
+const DAY_FMT = typeof Intl !== 'undefined'
+  ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short' })
+  : null;
+function fmtDay(msSinceEpoch: number): string {
+  if (!DAY_FMT) return new Date(msSinceEpoch).toLocaleDateString();
+  return DAY_FMT.format(new Date(msSinceEpoch));
+}
+function fmtUsdShort(n: number): string {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+}
+
+/** Asset performance card with a working 7D / 30D / 1Y toggle.
+ *  Replaces the prior placeholder card that hardcoded $5,240 / $12,900
+ *  / "1 Dec 2025" and shipped a dead "This week ▾" button. Pulls real
+ *  BTC market history from CoinGecko's /market_chart endpoint — we use
+ *  BTC as a portfolio-proxy until a Lithosphere price oracle exists. */
+function AssetPerformanceCard() {
+  const [range, setRange] = useState<ChartRange>(7);
+  const points = useMarketChart('bitcoin', range);
+  const path = useMemo(() => points ? pricesToPath(points, 520, 192) : null, [points]);
+
+  const firstPoint = points?.[0];
+  const lastPoint  = points?.[points.length - 1];
+  const change = firstPoint && lastPoint && firstPoint[1] > 0
+    ? ((lastPoint[1] - firstPoint[1]) / firstPoint[1]) * 100
+    : null;
+
+  // X-axis labels — evenly-spaced ticks across the actual data range
+  // instead of static Mon..Sun. For 7D we show day names, for 30D / 1Y
+  // we show dates.
+  const xAxisLabels: string[] = useMemo(() => {
+    if (!points || points.length < 2) return [];
+    const TICKS = range === 7 ? 7 : 6;
+    const step = (points.length - 1) / (TICKS - 1);
+    const labels: string[] = [];
+    for (let i = 0; i < TICKS; i++) {
+      const idx = Math.min(points.length - 1, Math.round(i * step));
+      const ts = points[idx][0];
+      if (range === 7) {
+        const dayName = new Date(ts).toLocaleDateString('en-US', { weekday: 'short' });
+        labels.push(dayName);
+      } else {
+        labels.push(fmtDay(ts));
+      }
+    }
+    return labels;
+  }, [points, range]);
+
+  return (
+    <div className="card perf-chart-card">
+      <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <span className="card-title">Asset performance</span>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>BTC · {RANGE_LABELS[range]}</div>
+        </div>
+        <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-elevated)', padding: 3, borderRadius: 8 }}>
+          {(Object.keys(RANGE_LABELS) as Array<`${ChartRange}`>).map((k) => {
+            const r = Number(k) as ChartRange;
+            const active = r === range;
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRange(r)}
+                style={{
+                  background: active ? 'var(--bg-card)' : 'transparent',
+                  color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                  border: 'none', padding: '4px 10px', borderRadius: 6,
+                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                }}
+              >{RANGE_LABELS[r]}</button>
+            );
+          })}
+        </div>
+      </div>
+
+      {firstPoint && lastPoint && change !== null ? (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '0 16px 8px' }}>
+          <span style={{ fontSize: 22, fontWeight: 800 }}>{fmtUsdShort(lastPoint[1])}</span>
+          <span className={change >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 13, fontWeight: 700 }}>
+            {change >= 0 ? '+' : ''}{change.toFixed(2)}%
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            {fmtDay(firstPoint[0])} → {fmtDay(lastPoint[0])}
+          </span>
+        </div>
+      ) : null}
+
+      {path ? (
+        <svg width="100%" viewBox="0 0 520 192" style={{ display: 'block', overflow: 'visible' }}>
+          <defs>
+            <linearGradient id="apcLine" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%"   stopColor="#3b7af7"/>
+              <stop offset="100%" stopColor="#06b6d4"/>
+            </linearGradient>
+            <linearGradient id="apcArea" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%"   stopColor="rgba(59,122,247,0.16)"/>
+              <stop offset="100%" stopColor="rgba(59,122,247,0.00)"/>
+            </linearGradient>
+          </defs>
+          {[42, 84, 126, 168].map(y => (
+            <line key={y} x1="0" y1={y} x2="520" y2={y} stroke="currentColor" opacity="0.06" strokeWidth="1"/>
+          ))}
+          <path d={path.area} fill="url(#apcArea)"/>
+          <path d={path.line} fill="none" stroke="url(#apcLine)" strokeWidth="2.25" strokeLinejoin="round"/>
+        </svg>
+      ) : (
+        <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+          Loading market data…
+        </div>
+      )}
+
+      {xAxisLabels.length > 0 && (
+        <div className="chart-xaxis">
+          {xAxisLabels.map((d, i) => <span key={i}>{d}</span>)}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PerformanceChart() {
@@ -312,6 +444,7 @@ export function Dashboard() {
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices    = usePrices();
+  const quotes    = useQuotes();
 
   const [liveAssets,   setLiveAssets]   = useState<IndexerAsset[] | null>(null);
   const [liveActivity, setLiveActivity] = useState<IndexerActivityItem[] | null>(null);
@@ -470,9 +603,28 @@ export function Dashboard() {
                .map(c => ({ sym: c.sym, qty: c.balNum, usd: c.usdNum })),
     [COINS],
   );
-  // 24h change: weighted average of per-coin changes by USD value.
-  const weighted = COINS.reduce((s, c) => s + (c.chg * c.usdNum), 0);
-  const change24h = totalUsd > 0 ? (weighted / totalUsd) : 0;
+  /* 24h change — weighted average of per-coin REAL changes by USD value.
+     A coin without a real % source (Litho ecosystem tokens not on
+     CoinGecko) is excluded from BOTH the numerator AND the
+     denominator, so the average reflects only the assets we have a
+     real movement source for. If no coin has a real change, change24h
+     is `null` and the hero shows "—" rather than fake 0.00%. */
+  const { change24h, change24hCoveredUsd } = (() => {
+    let weighted = 0;
+    let coveredUsd = 0;
+    for (const c of COINS) {
+      const q = quotes?.[c.sym];
+      const chg = q?.chg24h;
+      if (typeof chg === 'number') {
+        weighted   += chg * c.usdNum;
+        coveredUsd += c.usdNum;
+      }
+    }
+    return {
+      change24h:           coveredUsd > 0 ? (weighted / coveredUsd) : null,
+      change24hCoveredUsd: coveredUsd,
+    };
+  })();
 
   // For the Exchange widget — map of lowercase symbol → live balance number.
   const liveBalances = useMemo(() => {
@@ -607,9 +759,22 @@ export function Dashboard() {
             marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 12,
             fontSize: 17, color: 'var(--text-secondary)',
           }}>
-            <span className={change24h >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontSize: 19, fontWeight: 700 }}>
-              {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
-            </span>
+            {change24h === null ? (
+              <span
+                style={{ fontSize: 19, fontWeight: 700, color: 'var(--text-muted)' }}
+                title={change24hCoveredUsd === 0
+                  ? 'No public price feed for your assets — % unavailable'
+                  : '24h change loading…'}
+              >—</span>
+            ) : (
+              <span
+                className={change24h >= 0 ? 'amt-pos' : 'amt-neg'}
+                style={{ fontSize: 19, fontWeight: 700 }}
+                title={`Based on ${change24hCoveredUsd > 0 ? 'tracked' : 'no'} assets — Litho ecosystem tokens excluded until a price oracle ships`}
+              >
+                {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+              </span>
+            )}
             <span style={{ color: 'var(--text-muted)' }}>·</span>
             <a href="/app/discover" style={{
               color: 'var(--blue)', textDecoration: 'none', fontWeight: 600,
@@ -829,27 +994,7 @@ export function Dashboard() {
             {/* Charts — analytics on the user's portfolio */}
             <div>
               <SectionHead title="Analytics" sub="Portfolio performance over time"/>
-              <div className="charts-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div className="card price-analytics-card">
-                  <div className="card-header"><span className="card-title">Price analytics</span></div>
-                  <PriceSparkline/>
-                  <div className="analytics-prices">
-                    <span className="analytics-price">$5,240.00</span>
-                    <span className="analytics-price">$12,900.00</span>
-                  </div>
-                  <div className="analytics-date"><span>1 Dec, 2025</span><span>31 Dec, 2025</span></div>
-                </div>
-                <div className="card perf-chart-card">
-                  <div className="card-header">
-                    <span className="card-title">Asset performance</span>
-                    <button className="chart-selector">This week ▾</button>
-                  </div>
-                  <PerformanceChart/>
-                  <div className="chart-xaxis">
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => <span key={d}>{d}</span>)}
-                  </div>
-                </div>
-              </div>
+              <AssetPerformanceCard/>
             </div>
           </div>
         )}
