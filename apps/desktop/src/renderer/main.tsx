@@ -1795,7 +1795,25 @@ function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => 
             <button className="settings-btn">Clear</button>
           </Row>
           <Row label="Documentation" sub="Read the desktop guide">
-            <a href="#" className="settings-btn settings-btn-link">View <ChevRight2 size={14}/></a>
+            <button
+              type="button"
+              className="settings-btn settings-btn-link"
+              onClick={() => { void window.thanosDesktop?.openExternal?.('https://thanos.fi/app'); }}
+            >View <ChevRight2 size={14}/></button>
+          </Row>
+          <Row label="Privacy policy" sub="What data the wallet sends, where, and why">
+            <button
+              type="button"
+              className="settings-btn settings-btn-link"
+              onClick={() => { void window.thanosDesktop?.openExternal?.('https://thanos.fi/privacy'); }}
+            >View <ChevRight2 size={14}/></button>
+          </Row>
+          <Row label="Security disclosures" sub="Report a vulnerability + PGP key">
+            <button
+              type="button"
+              className="settings-btn settings-btn-link"
+              onClick={() => { void window.thanosDesktop?.openExternal?.('https://thanos.fi/.well-known/security.txt'); }}
+            >View <ChevRight2 size={14}/></button>
           </Row>
         </Section>
       </div>

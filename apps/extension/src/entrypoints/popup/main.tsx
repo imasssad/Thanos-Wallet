@@ -886,6 +886,39 @@ function SettingsScreen({
         </button>
       </div>
 
+      {/* Legal + transparency — opens in a new tab since the popup is
+          a tiny surface and a 360px policy render would be unreadable.
+          browser.tabs API is preferred over <a target="_blank"> because
+          MV3 popups close on focus loss; using tabs.create guarantees
+          the new tab actually opens and the user sees content. */}
+      <SectionHead Icon={Shield} title="Legal" sub="Privacy policy and security disclosures"/>
+      <div className="card list">
+        <button
+          className="set-row row-border"
+          style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+          onClick={() => { browser.tabs.create({ url: 'https://thanos.fi/privacy' }); }}
+        >
+          <div className="set-icon"><Shield size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Privacy policy</div>
+            <div className="set-sub">What data leaves your device, and where it goes</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
+        <button
+          className="set-row"
+          style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+          onClick={() => { browser.tabs.create({ url: 'https://thanos.fi/.well-known/security.txt' }); }}
+        >
+          <div className="set-icon"><AlertTriangle size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Security disclosures</div>
+            <div className="set-sub">Report a vulnerability + PGP key</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
+      </div>
+
       <div className="x-set-version">Thanos Wallet · v0.8.1</div>
     </div>
   );

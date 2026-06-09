@@ -1889,6 +1889,17 @@ function SettingsScreen() {
       ]}/>
       <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
 
+      {/* Legal + transparency — required by App Store + Google Play
+          submission reviewers, and standard wallet-UX hygiene. Opens
+          in the device's default browser via Linking.openURL so users
+          stay in-context (browser back returns them to the wallet). */}
+      <Section Icon={Shield} title="Legal" sub="Privacy policy and security disclosures" items={[
+        { label: 'Privacy policy', desc: 'What data leaves your device, and where it goes', Icon: Shield,
+          onPress: () => { Linking.openURL('https://thanos.fi/privacy').catch(() => {}); } },
+        { label: 'Security disclosures', desc: 'Report a vulnerability + PGP key', Icon: AlertTriangle,
+          onPress: () => { Linking.openURL('https://thanos.fi/.well-known/security.txt').catch(() => {}); } },
+      ]}/>
+
       <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
       <View style={styles.card}>
         <Pressable style={styles.settingRow} onPress={toggle}>
