@@ -141,6 +141,22 @@ export const TOKENS: Token[] = [
     balance: '0',
     change24h: 0,
   },
+  {
+    // Legacy FurGPT contract — the pre-launch deployment. Users who
+    // received tokens during early testing still hold them at this
+    // address; surfacing it as a separate row keeps those balances
+    // visible until the team migrates everyone to the new contract.
+    sym: 'FGPT',
+    name: 'FurGPT (legacy)',
+    chain: 'Makalu',
+    address: '0xa25c2a49893B0296977E2E70Da56AF47241d592F',
+    decimals: 18,
+    color: '#a855f7',
+    icon: '/images/tokens/furgpt.png',
+    priceUsd: 0.015,
+    balance: '0',
+    change24h: 0,
+  },
   // ─── Solana ────────────────────────────────────────────────────────────
   // Native SOL: `address: null` follows the same convention as LITHO. The
   // wallet derives a Solana keypair from the BIP39 seed at the SLIP-0010

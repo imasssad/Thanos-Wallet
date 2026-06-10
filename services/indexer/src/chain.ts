@@ -81,6 +81,11 @@ const DEFAULT_MAKALU_TOKENS: ReadonlyArray<{ symbol: string; address: string }> 
   { symbol: 'LAX',    address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d' },
   { symbol: 'IMAGE',  address: '0xAcD98E323968647936887aD4934e64B01060727e' },
   { symbol: 'FurGPT', address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D' },
+  // Legacy FurGPT deployment — kept so wallets that received tokens
+  // at the pre-launch contract still see a non-zero balance. The two
+  // contracts surface as separate rows in the UI; both feed into the
+  // portfolio. Drop this once everyone has migrated.
+  { symbol: 'FGPT',   address: '0xa25c2a49893B0296977E2E70Da56AF47241d592F' },
 ];
 
 /** Build the canonical Makalu token list. Env-var overrides (one per

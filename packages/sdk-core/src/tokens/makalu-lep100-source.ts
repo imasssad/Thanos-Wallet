@@ -34,7 +34,19 @@ export const MAKALU_LEP100_SOURCE: MakaluLep100SourceConfig = {
     { symbol: 'IMAGE', name: 'Imagen Network', decimals: 18, totalSupply: '10000000000', addressPreview: '0x7a29252B...15c844', verified: true },
     { symbol: 'AGII', name: 'AGII', decimals: 18, totalSupply: '1000000000', addressPreview: '0x9984ad7a...6Fe020', verified: true },
     { symbol: 'BLDR', name: 'Built AI', decimals: 18, totalSupply: '1000000000', addressPreview: '0x07039884...85A26F', verified: true },
-    { symbol: 'FGPT', name: 'FurGPT', decimals: 18, totalSupply: '1000000000', addressPreview: '0xa25c2a49...1d592F', verified: true },
+    // Two FurGPT contracts on Makalu — both kept so balances on either
+    // surface in the UI:
+    //   FurGPT (0xDB829be...EA1c5D) — canonical / live address. This is
+    //     the symbol the wallet's send / receive flows use; matches
+    //     services/indexer DEFAULT_MAKALU_TOKENS and apps/web/lib/tokens.ts.
+    //   FGPT   (0xa25c2a49...1d592F) — pre-launch preview deployment.
+    //     Some users still hold balances at this contract from early
+    //     testing, so we surface it under its legacy symbol rather
+    //     than silently dropping it. Esha's "FGPT balance shows 0" was
+    //     caused by us only tracking ONE of these contracts under the
+    //     name FurGPT, while the actual transfer landed at the other.
+    { symbol: 'FurGPT', name: 'FurGPT',          decimals: 18, totalSupply: '1000000000', addressPreview: '0xDB829be...EA1c5D', verified: true },
+    { symbol: 'FGPT',   name: 'FurGPT (legacy)', decimals: 18, totalSupply: '1000000000', addressPreview: '0xa25c2a49...1d592F', verified: true },
     { symbol: 'MUSA', name: 'Mansa AI', decimals: 18, totalSupply: '1000000000', addressPreview: '0xDEE12eD9...A97EFa', verified: true }
   ]
 };

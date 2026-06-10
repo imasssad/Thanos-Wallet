@@ -790,16 +790,26 @@ export function SendModal({ onClose }: { onClose: () => void }) {
       // secret in its own context; the main thread only sees the tx hash
       // come back. If the worker is unavailable (race condition during
       // init, or unsupported browser) we fall back to in-process signing.
+      // Convert litho1… recipients to 0x BEFORE handing off to the
+      // signer worker — the worker hard-rejects any address that
+      // doesn't start with 0x with "invalid_address", which surfaces
+      // in the Send modal as a misleading "Transaction failed" even
+      // though the litho1 address was valid. Same dual-address
+      // helper the Ledger/Trezor branches above already use.
+      const recipientForWorker = resolveToEvm(to.trim()) ?? to.trim();
       let hash: string;
       try {
-        const result = await signerSend({ symbol: coin, recipient: to, amount });
+        const result = await signerSend({ symbol: coin, recipient: recipientForWorker, amount });
         hash = result.hash;
       } catch (workerErr) {
         const code = workerErr instanceof SignerError ? workerErr.code : '';
         if (code === 'worker_locked' || code === 'worker_crashed') {
+          // Same litho1 → 0x conversion on the main-thread fallback path —
+          // sendTokens delegates to ethers Wallet.sendTransaction which
+          // also rejects non-0x recipients.
           const fallback = await sendTokens(
             wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
-            { symbol: coin, recipient: to, amount },
+            { symbol: coin, recipient: recipientForWorker, amount },
           );
           hash = fallback.hash;
           // Background: legacy path exposes a wait() for confirmation polling.

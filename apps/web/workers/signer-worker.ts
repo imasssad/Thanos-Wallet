@@ -24,7 +24,7 @@ import {
   parseUnits, formatEther,
   type Provider,
 } from 'ethers';
-import { BitcoinClient } from '@thanos/sdk-core';
+import { BitcoinClient, lithoToEvm, isLithoAddress } from '@thanos/sdk-core';
 
 /* ─── In-worker secret state ─────────────────────────────────────────── */
 
@@ -96,6 +96,7 @@ const TOKEN_REGISTRY: Record<string, { address: string | null; decimals: number 
   LAX:    { address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d', decimals: 18 },
   IMAGE:  { address: '0xAcD98E323968647936887aD4934e64B01060727e', decimals: 18 },
   FurGPT: { address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', decimals: 18 },
+  FGPT:   { address: '0xa25c2a49893B0296977E2E70Da56AF47241d592F', decimals: 18 },
 };
 
 const LEP100_TRANSFER_ABI = [
@@ -166,7 +167,17 @@ async function handleSetAccountIndex(p: SetIdxPayload): Promise<SetIdxReply> {
 async function handleSend(p: SendPayload): Promise<SendReply> {
   const token = TOKEN_REGISTRY[p.symbol];
   if (!token) throw new Error('invalid_token');
-  const to = p.recipient.startsWith('0x') ? p.recipient : '';
+  // Accept either an EVM hex address OR a bech32 litho1… address —
+  // they map 1:1 on Lithosphere chains. The Send modal already
+  // converts most flows, but defending in depth here means a future
+  // caller can't accidentally surface "invalid_address" on a valid
+  // litho1 input.
+  let to = '';
+  const raw = (p.recipient || '').trim();
+  if (raw.startsWith('0x')) to = raw;
+  else if (isLithoAddress(raw)) {
+    try { to = lithoToEvm(raw); } catch { /* fall through to invalid_address */ }
+  }
   if (!to) throw new Error('invalid_address');
   let value: bigint;
   try { value = parseUnits(p.amount, token.decimals); }
