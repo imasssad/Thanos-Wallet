@@ -81,20 +81,24 @@ describe('MultXClient', () => {
     expect(await new MultXClient().isHealthy()).toBe(false);
   });
 
-  it('quote() POSTs to /bridge/quote with a JSON body', async () => {
-    fetchSpy.mockResolvedValueOnce(jsonResp({ provider: 'multx', quoteId: 'q1', amountIn: '1', amountOut: '1', route: [] }));
-    await new MultXClient().quote({
+  it('quote()/execute() throw MultXQuotesUnsupported without any network call', async () => {
+    await expect(new MultXClient().quote({
       fromChainId: 700777, toChainId: 1,
       fromToken: 'LITHO', toToken: 'ETH',
       amount: '1', walletAddress: '0xabc',
-    });
-    const call = fetchSpy.mock.calls[0];
-    const init = call[1] as { method: string; body: string; headers: Record<string,string> };
-    expect(call[0]).toBe('https://bridge.litho.ai/bridge/quote');
-    expect(init.method).toBe('POST');
-    expect(init.headers['content-type']).toBe('application/json');
-    const body = JSON.parse(init.body);
-    expect(body.fromChainId).toBe(700777);
-    expect(body.walletAddress).toBe('0xabc');
+    })).rejects.toThrow(/Ignite/);
+    await expect(new MultXClient().execute('q1', '0xabc')).rejects.toThrow(/Ignite/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('transactions() GETs /bridge/transactions/:address and pages via cursor', async () => {
+    fetchSpy.mockResolvedValueOnce(jsonResp({ transactions: [], nextCursor: null, count: 0 }));
+    const out = await new MultXClient().transactions('0xAbC');
+    expect(fetchSpy.mock.calls[0][0]).toBe('https://bridge.litho.ai/bridge/transactions/0xAbC');
+    expect(out).toEqual({ transactions: [], nextCursor: null, count: 0 });
+
+    fetchSpy.mockResolvedValueOnce(jsonResp({ transactions: [], nextCursor: null, count: 0 }));
+    await new MultXClient().transactions('0xAbC', 'page2');
+    expect(fetchSpy.mock.calls[1][0]).toBe('https://bridge.litho.ai/bridge/transactions/0xAbC?cursor=page2');
   });
 });

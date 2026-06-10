@@ -46,12 +46,27 @@ async function json<T>(method: string, path: string, body?: unknown, timeoutMs =
   } finally { clearTimeout(t); }
 }
 
+/** @deprecated The bridge has no quote API (it's validator-signature
+ *  based) — quotes come from the Ignite DEX. Throws immediately so the
+ *  swap picker falls through to Ignite without a network round-trip.
+ *  Confirmed by Litho infra 2026-06-10. */
 export async function getQuote(from: string, to: string, fromAmount: string): Promise<Quote> {
-  return json<Quote>('POST', '/bridge/quote', { from, to, fromAmount });
+  void from; void to; void fromAmount;
+  throw new MultXUnavailable('MultX bridge has no quote API — swaps route via Ignite DEX');
 }
+/** @deprecated See getQuote — execution belongs to the Ignite path. */
 export async function execute(quoteId: string, signedTx: string): Promise<Execution> {
-  return json<Execution>('POST', '/bridge/execute', { quoteId, signedTx });
+  void quoteId; void signedTx;
+  throw new MultXUnavailable('MultX bridge has no execute API — swaps route via Ignite DEX');
 }
 export async function getStatus(id: string): Promise<Status> {
   return json<Status>('GET', `/bridge/status/${encodeURIComponent(id)}`);
+}
+/** Bridge history for an address (verified live route, paged). */
+export async function getTransactions(
+  address: string,
+  cursor?: string,
+): Promise<{ transactions: unknown[]; nextCursor: string | null; count: number }> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  return json('GET', `/bridge/transactions/${encodeURIComponent(address)}${qs}`);
 }

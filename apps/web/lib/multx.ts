@@ -10,14 +10,18 @@
  * the real endpoint shapes land we can drop them in without touching the
  * SwapModal.
  *
- * Endpoints — status + health are verified against bridge.litho.ai/docs;
- * quote/execute are unconfirmed (the live bridge API is validator-
- * signature based and exposes no quote/execute REST flow yet), so those
- * two degrade gracefully via MultXUnavailable until that API lands:
- *   POST /bridge/quote          — { from, to, fromAmount } -> Quote
- *   POST /bridge/execute        — { quoteId, signedTx }    -> Execution
- *   GET  /bridge/status/:txHash —                          -> Status
- *   GET  /health                —                          -> { ok: true }
+ * Confirmed API surface (Litho infra team 2026-06-10, verified live):
+ *   GET /bridge/status/:txHash        -> Status
+ *   GET /bridge/signatures/:txHash    -> validator signatures
+ *   GET /bridge/transactions/:address -> bridge history (paged)
+ *   GET /chains                       -> supported chains
+ *   GET /health                       -> { status: 'ok' }
+ *
+ * The bridge does NOT quote or route — it is validator-signature based.
+ * Swap quotes come from the Ignite DEX (lib/ignite.ts). getQuote/execute
+ * below throw MultXUnavailable immediately so the SwapModal's
+ * Promise.allSettled picker falls through to the Ignite candidate (or the
+ * indicative price-table rate) without a wasted network round-trip.
  */
 
 const DEFAULT_BASE = 'https://bridge.litho.ai';
@@ -120,17 +124,45 @@ async function json<T>(method: string, path: string, body?: unknown, timeoutMs =
 
 /* ─── Public API ──────────────────────────────────────────────────────── */
 
+/** @deprecated The bridge has no quote API — quotes come from Ignite
+ *  (lib/ignite.ts). Throws immediately; the SwapModal's allSettled picker
+ *  treats that as "no MultX candidate" and uses the Ignite quote. */
 export async function getQuote(from: string, to: string, fromAmount: string): Promise<Quote> {
-  return json<Quote>('POST', '/bridge/quote', { from, to, fromAmount });
+  void from; void to; void fromAmount;
+  throw new MultXUnavailable('MultX bridge has no quote API — swaps route via Ignite DEX');
 }
 
+/** @deprecated See getQuote — execution belongs to the Ignite path. */
 export async function execute(quoteId: string, signedTx: string): Promise<Execution> {
-  return json<Execution>('POST', '/bridge/execute', { quoteId, signedTx });
+  void quoteId; void signedTx;
+  throw new MultXUnavailable('MultX bridge has no execute API — swaps route via Ignite DEX');
 }
 
 /** Bridge status — keyed on the source-chain tx hash (pass it as `txHash`). */
 export async function getStatus(txHash: string): Promise<Status> {
   return json<Status>('GET', `/bridge/status/${encodeURIComponent(txHash)}`);
+}
+
+/** One row of GET /bridge/transactions/:address. */
+export interface BridgeTransaction {
+  txHash:         string;
+  status:         'pending' | 'signing' | 'completed' | 'failed';
+  fromAddress?:   string;
+  tokenAddress?:  string;
+  amount?:        string;
+  targetChain?:   number;
+  releaseTxHash?: string | null;
+  timestamp?:     string;
+}
+
+/** Bridge history for an address (verified live route). Paged — pass the
+ *  previous page's `nextCursor` to continue. */
+export async function getTransactions(
+  address: string,
+  cursor?: string,
+): Promise<{ transactions: BridgeTransaction[]; nextCursor: string | null; count: number }> {
+  const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  return json('GET', `/bridge/transactions/${encodeURIComponent(address)}${qs}`);
 }
 
 export async function isHealthy(): Promise<boolean> {

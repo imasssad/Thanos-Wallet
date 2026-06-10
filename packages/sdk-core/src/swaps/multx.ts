@@ -6,17 +6,17 @@ import type { SwapExecutionResult, SwapQuote, SwapQuoteRequest } from '../types'
  * Per the Litho team this is an internal service: no API key, no auth
  * layer. Replaces the earlier `api.multx.local` placeholder stub.
  *
- * Verified endpoints (from bridge.litho.ai/docs — OpenAPI):
- *   GET /bridge/status/{txHash}      — bridge transaction status
- *   GET /bridge/signatures/{txHash}  — collected validator signatures
- *   GET /chains                      — supported bridge chains
- *   GET /health                      — liveness
+ * Confirmed API surface (Litho infra team, 2026-06-10, all verified live):
+ *   GET /bridge/status/{txHash}        — bridge transaction status
+ *   GET /bridge/signatures/{txHash}    — collected validator signatures
+ *   GET /bridge/transactions/{address} — bridge history for an address
+ *   GET /chains                        — supported bridge chains
+ *   GET /health                        — liveness ({ status: 'ok' })
  *
- * `quote` / `execute` below target the expected request/response shape
- * for a swap flow; the live bridge API does not expose those routes yet
- * (it is validator-signature based), so they will error until that API
- * lands. They are kept so the wallet's swap intent path compiles and
- * degrades gracefully.
+ * The bridge does NOT do quoting or routing — it is validator-signature
+ * based. Swap quotes/routing come from the Ignite DEX (`dex/ignite.ts`);
+ * `quote`/`execute` below throw immediately with a clear error so legacy
+ * callers degrade to the Ignite path without a wasted network round-trip.
  */
 export interface MultXConfig {
   /** Base URL; defaults to the production bridge. */
@@ -47,6 +47,35 @@ export interface MultXChain {
   bridge:  string;
 }
 
+/** One row of GET /bridge/transactions/{address}. */
+export interface MultXBridgeTransaction {
+  txHash:        string;
+  status:        'pending' | 'signing' | 'completed' | 'failed';
+  fromAddress?:  string;
+  tokenAddress?: string;
+  amount?:       string;
+  targetChain?:  number;
+  releaseTxHash?: string | null;
+  timestamp?:    string;
+}
+
+/** Paged response of GET /bridge/transactions/{address}. */
+export interface MultXBridgeTransactionPage {
+  transactions: MultXBridgeTransaction[];
+  nextCursor:   string | null;
+  count:        number;
+}
+
+/** Thrown by the deprecated quote/execute methods — the bridge has no
+ *  quote/routing API by design. Callers should quote via the Ignite DEX
+ *  client instead (see `dex/ignite.ts`). */
+export class MultXQuotesUnsupported extends Error {
+  constructor(method: string) {
+    super(`MultX bridge has no ${method} API — swap quotes/routing come from the Ignite DEX`);
+    this.name = 'MultXQuotesUnsupported';
+  }
+}
+
 export class MultXClient {
   private readonly baseUrl: string;
 
@@ -64,14 +93,18 @@ export class MultXClient {
     return res.json() as Promise<T>;
   }
 
-  /** Quote a cross-chain swap. See the note above — endpoint unconfirmed. */
+  /** @deprecated The bridge has no quote API. Quote via the Ignite DEX
+   *  client (`createIgniteClient`) instead. Throws immediately. */
   async quote(request: SwapQuoteRequest): Promise<SwapQuote> {
-    return this.json<SwapQuote>('POST', '/bridge/quote', request);
+    void request;
+    throw new MultXQuotesUnsupported('quote');
   }
 
-  /** Execute a quoted swap. See the note above — endpoint unconfirmed. */
+  /** @deprecated The bridge has no execute API. Execute swaps via the
+   *  Ignite DEX client instead. Throws immediately. */
   async execute(quoteId: string, walletAddress: string): Promise<SwapExecutionResult> {
-    return this.json<SwapExecutionResult>('POST', '/bridge/execute', { quoteId, walletAddress });
+    void quoteId; void walletAddress;
+    throw new MultXQuotesUnsupported('execute');
   }
 
   /** Bridge transaction status — keyed on the source-chain tx hash. */
@@ -82,6 +115,15 @@ export class MultXClient {
   /** Collected validator signatures for a bridge transaction. */
   async signatures(txHash: string): Promise<unknown> {
     return this.json('GET', `/bridge/signatures/${encodeURIComponent(txHash)}`);
+  }
+
+  /** Bridge transaction history for an address (verified live route).
+   *  Pass `cursor` from a previous page's `nextCursor` to paginate. */
+  async transactions(address: string, cursor?: string): Promise<MultXBridgeTransactionPage> {
+    const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    return this.json<MultXBridgeTransactionPage>(
+      'GET', `/bridge/transactions/${encodeURIComponent(address)}${qs}`,
+    );
   }
 
   /** Supported bridge chains. */
