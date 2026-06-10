@@ -75,17 +75,22 @@ export interface TokenSpec {
  * MAKALU_LEP100_*_ADDRESS replaces the built-in entry, and setting
  * MAKALU_LEP100_DISABLE_DEFAULTS=1 removes them entirely.
  */
+// Verified live on-chain by Litho infra team 2026-06-10 (kmp/kamet-network-config).
+// Mirrors packages/sdk-core/src/tokens/makalu-lep100-source.ts — kept here as a
+// hard-coded copy because services/indexer must boot without an SDK import.
 const DEFAULT_MAKALU_TOKENS: ReadonlyArray<{ symbol: string; address: string }> = [
+  { symbol: 'wLITHO', address: '0x599a7E135f1790ae117b4EdDc0422D24Bc766161' },
   { symbol: 'LitBTC', address: '0xC4645CA5411D6E27556780AB4cdd0DF7e609df74' },
-  { symbol: 'JOT',    address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e' },
   { symbol: 'LAX',    address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d' },
+  { symbol: 'JOT',    address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e' },
+  { symbol: 'COLLE',  address: '0x10D4BB600c96e9243E2f50baFED8b2478F25af61' },
   { symbol: 'IMAGE',  address: '0xAcD98E323968647936887aD4934e64B01060727e' },
-  { symbol: 'FurGPT', address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D' },
-  // Legacy FurGPT deployment — kept so wallets that received tokens
-  // at the pre-launch contract still see a non-zero balance. The two
-  // contracts surface as separate rows in the UI; both feed into the
-  // portfolio. Drop this once everyone has migrated.
-  { symbol: 'FGPT',   address: '0xa25c2a49893B0296977E2E70Da56AF47241d592F' },
+  { symbol: 'AGII',   address: '0x10052B8ccD2160b8F9880C6b4F5DD117fF253B1c' },
+  { symbol: 'BLDR',   address: '0x798eD6bFc5bfCFc60938d5098825b354427A0786' },
+  // FGPT = Finesse GPT, MUSA = Musa AI. The old "FurGPT" labels at
+  // 0xDB829be (=MUSA) and 0xa25c2a49 (dead) were Kamet-explorer mislabels.
+  { symbol: 'FGPT',   address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e' },
+  { symbol: 'MUSA',   address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D' },
 ];
 
 /** Build the canonical Makalu token list. Env-var overrides (one per

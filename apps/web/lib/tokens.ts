@@ -1,9 +1,9 @@
 /**
  * Lithosphere ecosystem tokens — single source of truth for the wallet UI.
  *
- * Confirmed by the client; addresses are on Makalu mainnet (chain 700777).
- * NOTE: COLLE is intentionally truncated to 32 hex chars in the source the
- * client provided — flagging for verification on the explorer.
+ * Confirmed on-chain by Litho infra team 2026-06-10 (kmp/kamet-network-config).
+ * Addresses are on Makalu (chain 700777 — still testnet) and the verified
+ * source-of-truth lives at packages/sdk-core/src/tokens/makalu-lep100-source.ts.
  *
  * Icon paths point at `apps/web/public/images/tokens/{file}`. The client
  * icon pack (litho/jot/lax/colle/furgpt/ignite/quantt) is committed there.
@@ -106,8 +106,8 @@ export const TOKENS: Token[] = [
   {
     sym: 'COLLE',
     name: 'Colle AI',
-    // Truncated as provided — only 32 hex chars instead of 40. Verify on explorer.
-    address: '0x10D4BB600c96e9243E2f50baFED8b247',
+    // Verified on Makalu by Litho infra 2026-06-10 (was truncated to 32 hex chars).
+    address: '0x10D4BB600c96e9243E2f50baFED8b2478F25af61',
     chain: 'Makalu',
     decimals: 18,
     color: '#29b6d8',       // teal — matches the colle.png circuit accent
@@ -129,31 +129,34 @@ export const TOKENS: Token[] = [
     change24h: 0,
   },
   {
-    sym: 'FurGPT',
-    name: 'FurGPT',
-    chain: 'Makalu',
-    address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D',
-    decimals: 18,
-    color: '#a855f7',       // purple — matches the furgpt.png glyph (icon is transparent,
-                            //          so this is the circle it's composited onto)
-    icon: '/images/tokens/furgpt.png',
-    priceUsd: 0.015,        // fetched live — pricing.ts overrides this on load
-    balance: '0',
-    change24h: 0,
-  },
-  {
-    // Legacy FurGPT contract — the pre-launch deployment. Users who
-    // received tokens during early testing still hold them at this
-    // address; surfacing it as a separate row keeps those balances
-    // visible until the team migrates everyone to the new contract.
+    // FGPT = Finesse GPT (verified on-chain symbol). The Kamet explorer's
+    // /api/tokens previously mislabelled this as "FurGPT" with the dead
+    // 0xa25c2a49 address — both were wrong. There is no FurGPT contract
+    // on chain; this is the only "GPT" token. Confirmed by Litho infra
+    // team 2026-06-10 (kmp/kamet-network-config).
     sym: 'FGPT',
-    name: 'FurGPT (legacy)',
+    name: 'Finesse GPT',
     chain: 'Makalu',
-    address: '0xa25c2a49893B0296977E2E70Da56AF47241d592F',
+    address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e',
     decimals: 18,
     color: '#a855f7',
     icon: '/images/tokens/furgpt.png',
     priceUsd: 0.015,
+    balance: '0',
+    change24h: 0,
+  },
+  {
+    // MUSA = Musa AI. Was previously listed as "Mansa AI" at the same
+    // address — the Kamet explorer swaps MUSA/FGPT names. On-chain
+    // symbol() is authoritative.
+    sym: 'MUSA',
+    name: 'Musa AI',
+    chain: 'Makalu',
+    address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D',
+    decimals: 18,
+    color: '#a855f7',
+    icon: '',
+    priceUsd: 0.01,
     balance: '0',
     change24h: 0,
   },

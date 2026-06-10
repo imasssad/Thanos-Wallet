@@ -90,13 +90,17 @@ function getSigner(withProvider: boolean): HDNodeWallet | Wallet {
 // Mirror of apps/web/lib/tokens.ts — we only need the address + decimals here,
 // not the icon / colour / price fields. Keep in sync manually.
 const TOKEN_REGISTRY: Record<string, { address: string | null; decimals: number }> = {
-  LITHO:  { address: null,                                          decimals: 18 },
+  LITHO:  { address: null,                                         decimals: 18 },
   LitBTC: { address: '0xC4645CA5411D6E27556780AB4cdd0DF7e609df74', decimals: 18 },
   JOT:    { address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e', decimals: 18 },
   LAX:    { address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d', decimals: 18 },
+  COLLE:  { address: '0x10D4BB600c96e9243E2f50baFED8b2478F25af61', decimals: 18 },
   IMAGE:  { address: '0xAcD98E323968647936887aD4934e64B01060727e', decimals: 18 },
-  FurGPT: { address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', decimals: 18 },
-  FGPT:   { address: '0xa25c2a49893B0296977E2E70Da56AF47241d592F', decimals: 18 },
+  // FGPT = Finesse GPT (verified on-chain). The old "FurGPT" entries at
+  // 0xDB829be / 0xa25c2a49 were both wrong: 0xDB829be is MUSA, and
+  // 0xa25c2a49 is dead. See packages/sdk-core/src/tokens/makalu-lep100-source.ts.
+  FGPT:   { address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e', decimals: 18 },
+  MUSA:   { address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', decimals: 18 },
 };
 
 const LEP100_TRANSFER_ABI = [
