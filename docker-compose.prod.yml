@@ -34,6 +34,19 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # NEXT_PUBLIC_* vars are read by Next.js during `next build` and
+      # inlined into the client bundle — they MUST be passed as build
+      # args, not just runtime env, or the browser sees `undefined`.
+      # That's how the Permissions screen got its "NEXT_PUBLIC_REOWN_
+      # PROJECT_ID is not set" banner: the value was in .env but the
+      # build never saw it. Source-of-truth values live in the VPS .env
+      # file alongside this compose; pnpm-version'd defaults below keep
+      # local docker compose up working when the var isn't set.
+      args:
+        NEXT_PUBLIC_API_URL:          ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        NEXT_PUBLIC_REOWN_PROJECT_ID: ${NEXT_PUBLIC_REOWN_PROJECT_ID:-}
+        NEXT_PUBLIC_INDEXER_URL:      ${NEXT_PUBLIC_INDEXER_URL:-/indexer}
+        NEXT_PUBLIC_MULTX_API_URL:    ${NEXT_PUBLIC_MULTX_API_URL:-https://bridge.litho.ai}
     container_name: thanos-web
     restart: unless-stopped
     environment:

@@ -33,6 +33,22 @@ COPY packages/sdk-core     packages/sdk-core
 COPY packages/sdk-react    packages/sdk-react
 COPY packages/ui           packages/ui
 
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time —
+# they must be set as ENV BEFORE `next build` runs, otherwise they end
+# up as `undefined` in the browser. Each is fed in via docker compose
+# build args (see docker-compose.prod.yml -> web.build.args). The
+# ARG-default chain keeps a missing value buildable in CI / local Docker
+# while making the production deploy fail loudly if .env forgets to set
+# them.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_REOWN_PROJECT_ID
+ARG NEXT_PUBLIC_INDEXER_URL
+ARG NEXT_PUBLIC_MULTX_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_REOWN_PROJECT_ID=${NEXT_PUBLIC_REOWN_PROJECT_ID}
+ENV NEXT_PUBLIC_INDEXER_URL=${NEXT_PUBLIC_INDEXER_URL}
+ENV NEXT_PUBLIC_MULTX_API_URL=${NEXT_PUBLIC_MULTX_API_URL}
+
 # Build (next.config.js has output: 'standalone')
 RUN pnpm --filter @thanos/web build
 
