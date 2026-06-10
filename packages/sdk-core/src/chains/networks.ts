@@ -9,25 +9,43 @@ export const MAKALU_TESTNET: NetworkConfig = {
   name: 'Lithosphere Makalu',
   kind: 'lithic',
   rpcUrls: ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'],
-  blockExplorerUrl: 'https://explorer.litho.ai',
-  nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 }
+  // makalu.litho.ai is the canonical explorer host (explorer.litho.ai
+  // does not resolve). Confirmed with Litho team 2026-06-10.
+  blockExplorerUrl: 'https://makalu.litho.ai',
+  nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+  extras: {
+    restUrl: 'https://api.litho.ai',
+    wsUrl: 'wss://rpc.litho.ai/websocket',
+    cosmosChainId: 'lithosphere_700777-2',
+    bech32Prefix: 'litho',
+    isTestnet: true
+  }
 };
 
-export const KAMET_TESTNET: NetworkConfig = {
+// Kamet was promoted from testnet to mainnet on 2026-05-18 (chainId / state
+// unchanged). EVM chainId 900523 (0xDBDAB) verified live via eth_chainId
+// on rpc-3.litho.ai. rpc.kamet.litho.ai is intentionally NOT a fallback:
+// the 2-level host TLS-fails behind Cloudflare and Litho ops has marked it
+// deprecated. Keep this as the canonical RPC list.
+export const KAMET_MAINNET: NetworkConfig = {
   id: 'lithosphere-kamet',
   chainId: 900523,
   name: 'Lithosphere Kamet',
   kind: 'lithic',
-  // rpc-3.litho.ai listed first because rpc.kamet.litho.ai has been
-  // reliably failing TLS handshake behind Cloudflare since 2026-06.
-  // Until Litho ops fixes the cert / SNI on the kamet.* subdomain,
-  // every Kamet read should hit the working endpoint on the first try
-  // rather than wait for the 1.5s stallTimeout to rotate the
-  // FallbackProvider. Order will revert once the primary is healthy.
-  rpcUrls: ['https://rpc-3.litho.ai', 'https://rpc.kamet.litho.ai'],
+  rpcUrls: ['https://rpc-3.litho.ai'],
   blockExplorerUrl: 'https://kamet.litho.ai',
-  nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 }
+  nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+  extras: {
+    restUrl: 'https://api-3.litho.ai',
+    wsUrl: 'wss://rpc-3.litho.ai/websocket',
+    cosmosChainId: 'lithosphere_900523-2',
+    bech32Prefix: 'litho',
+    isMainnet: true
+  }
 };
+
+/** @deprecated Kamet is mainnet since 2026-05-18 — use KAMET_MAINNET. Retained for back-compat. */
+export const KAMET_TESTNET = KAMET_MAINNET;
 
 export const ETHEREUM: NetworkConfig = {
   id: 'ethereum',
@@ -99,7 +117,7 @@ export const SOLANA_DEVNET: NetworkConfig = {
 
 export const SUPPORTED_NETWORKS = [
   MAKALU_TESTNET,
-  KAMET_TESTNET,
+  KAMET_MAINNET,
   ETHEREUM,
   BSC,
   BITCOIN_MAINNET,

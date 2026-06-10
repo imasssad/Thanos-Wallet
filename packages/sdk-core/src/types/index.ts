@@ -31,7 +31,7 @@ export interface TokenConfig {
     version?: string;
     assetId?: string;
     verifiedSource?: 'registry' | 'imported';
-    sourceChain?: 'makalu';
+    sourceChain?: 'makalu' | 'kamet';
     syncMode?: 'rpc' | 'explorer' | 'hybrid';
     explorerAddressPreview?: string;
     contractAddressStatus?: 'verified' | 'preview-only' | 'unresolved';

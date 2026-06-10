@@ -7,6 +7,8 @@ export * from './tokens/pricing';
 export * from './tokens/logos';
 export * from './tokens/lep100-registry';
 export * from './tokens/makalu-lep100-source';
+export * from './tokens/kamet-lep100-source';
+export * from './bridge/kamet-config';
 export * from './storage/memory-store';
 export * from './storage/browser-store';
 export * from './utils/key-derivation';
