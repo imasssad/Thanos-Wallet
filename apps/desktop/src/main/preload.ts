@@ -35,6 +35,29 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
   /** Open an http(s) URL in the user's default browser. */
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
 
+  /* ─── In-app dApp browser ────────────────────────────────────────────
+     Mounts a sandboxed WebContentsView over the renderer area. The
+     renderer draws the chrome (back / forward / reload / URL / close)
+     and tells the main process where the BrowserView should sit via
+     `setBounds`. Navigation events stream back via onDappEvent. */
+  dapp: {
+    open:      (url: string, bounds: { x: number; y: number; width: number; height: number }) =>
+                 ipcRenderer.invoke('dapp:open', { url, bounds }) as Promise<{ ok: boolean; url?: string; error?: string }>,
+    close:     () => ipcRenderer.invoke('dapp:close')             as Promise<{ ok: boolean }>,
+    setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
+                 ipcRenderer.invoke('dapp:set-bounds', bounds)    as Promise<{ ok: boolean }>,
+    back:      () => ipcRenderer.invoke('dapp:back')              as Promise<{ ok: boolean }>,
+    forward:   () => ipcRenderer.invoke('dapp:forward')           as Promise<{ ok: boolean }>,
+    reload:    () => ipcRenderer.invoke('dapp:reload')            as Promise<{ ok: boolean }>,
+    navigate:  (url: string) => ipcRenderer.invoke('dapp:navigate', url) as Promise<{ ok: boolean; url?: string }>,
+    current:   () => ipcRenderer.invoke('dapp:current') as Promise<{ open: boolean; url: string; canGoBack: boolean; canGoForward: boolean }>,
+    onEvent:   (cb: (ev: { kind: string; url?: string; title?: string; canGoBack?: boolean; canGoForward?: boolean; code?: number; description?: string }) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, ev: { kind: string; [k: string]: unknown }) => cb(ev as Parameters<typeof cb>[0]);
+      ipcRenderer.on('dapp:event', handler);
+      return () => ipcRenderer.off('dapp:event', handler);
+    },
+  },
+
   /* ─── Isolated signer ────────────────────────────────────────────────
      The seed travels into the main process exactly once at unlock; from
      then on the renderer only knows the *address* derived from each HD

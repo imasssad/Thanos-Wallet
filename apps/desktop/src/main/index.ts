@@ -11,6 +11,7 @@ const path = require('path') as typeof import('path');
 import { startAutoUpdater } from './updater';
 import * as signer from './signer';
 import * as ledgerHid from './ledger-hid-bridge';
+import { installDappBrowser } from './dapp-browser';
 
 const SERVICE = 'thanos-wallet';
 
@@ -59,6 +60,11 @@ const createWindow = () => {
   // electron-updater starts polling once the renderer is mounted so the
   // banner UI is ready to receive `updater:event` IPC messages.
   startAutoUpdater(win);
+
+  // In-app dApp browser — wires IPC handlers (`dapp:open`, `dapp:close`,
+  // navigation, bounds) and manages a sandboxed WebContentsView over
+  // the renderer area. Renderer-side chrome lives in DappBrowserOverlay.
+  installDappBrowser(win);
 };
 
 app.whenReady().then(() => {

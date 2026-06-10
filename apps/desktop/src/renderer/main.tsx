@@ -13,6 +13,7 @@ import {
   MAX_ACCOUNTS,
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
+import { DappBrowserOverlay } from './components/DappBrowserOverlay';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
@@ -89,6 +90,28 @@ declare global {
         available():                                                 Promise<boolean>;
         getAddress(hdPath?: string):                                 Promise<string>;
         signEvmTx(hdPath: string, unsignedHex: string):              Promise<{ v: string; r: string; s: string }>;
+      };
+      /** In-app dApp browser bridge. The renderer opens a sandboxed
+       *  WebContentsView in main, manages its bounds, and listens for
+       *  navigation events to keep the chrome (back/forward/URL) in
+       *  sync. See src/main/dapp-browser.ts. */
+      dapp?: {
+        open(url: string, bounds: { x: number; y: number; width: number; height: number }):
+                                                                     Promise<{ ok: boolean; url?: string; error?: string }>;
+        close():                                                     Promise<{ ok: boolean }>;
+        setBounds(bounds: { x: number; y: number; width: number; height: number }):
+                                                                     Promise<{ ok: boolean }>;
+        back():                                                      Promise<{ ok: boolean }>;
+        forward():                                                   Promise<{ ok: boolean }>;
+        reload():                                                    Promise<{ ok: boolean }>;
+        navigate(url: string):                                       Promise<{ ok: boolean; url?: string }>;
+        current():                                                   Promise<{ open: boolean; url: string; canGoBack: boolean; canGoForward: boolean }>;
+        onEvent(cb: (ev: {
+          kind: 'loading-start' | 'loading-stop' | 'did-navigate' | 'did-navigate-in-page' | 'title' | 'load-fail';
+          url?: string; title?: string;
+          canGoBack?: boolean; canGoForward?: boolean;
+          code?: number; description?: string;
+        }) => void): () => void;
       };
     };
   }
@@ -2504,11 +2527,32 @@ function openExternal(url: string) {
   window.thanosDesktop?.openExternal?.(url);
 }
 
+/** Handler-injection context for opening a dApp inside the in-app
+ *  browser. Set by App() and consumed by DiscoverAppRow / DiscoverView
+ *  so we don't have to prop-drill the openDapp callback through every
+ *  parent. Null fallback → just call openExternal as before. */
+const DappOpenerContext = React.createContext<((url: string, name: string) => void) | null>(null);
+
+/** Wrapper around openExternal that prefers the in-app browser when
+ *  the desktop bridge is available. Used by every Discover entry
+ *  point (app rows, hub button, the search-bar Open Link affordance). */
+function useOpenDapp() {
+  const openDapp = useContext(DappOpenerContext);
+  return (url: string, name?: string) => {
+    if (openDapp && window.thanosDesktop?.dapp) {
+      openDapp(url, name || '');
+    } else {
+      openExternal(url);
+    }
+  };
+}
+
 function DiscoverAppRow({ app }: { app: EcosystemApp }) {
+  const open = useOpenDapp();
   return (
     <button
       className="discover-row"
-      onClick={() => openExternal(app.url)}
+      onClick={() => open(app.url, app.name)}
       style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: 14,
         padding: '14px 16px', background: 'transparent', border: 'none',
@@ -2542,6 +2586,7 @@ function DiscoverAppRow({ app }: { app: EcosystemApp }) {
 
 function DiscoverView() {
   const [q, setQ] = useState('');
+  const open = useOpenDapp();
   const query = q.trim().toLowerCase();
   const isLink = looksLikeUrl(q);
   const apps = query && !isLink
@@ -2552,7 +2597,7 @@ function DiscoverView() {
         a.section.toLowerCase().includes(query))
     : ECOSYSTEM_APPS;
   const groups = groupBySection(apps);
-  const submit = () => { const u = normalizeUrl(q); if (u) openExternal(u); };
+  const submit = () => { const u = normalizeUrl(q); if (u) open(u); };
 
   return (
     <div className="view-wrap" style={{ maxWidth: 760, margin: '0 auto', padding: '24px' }}>
@@ -2595,7 +2640,7 @@ function DiscoverView() {
       )}
 
       <button
-        onClick={() => openExternal(ECOSYSTEM_HUB)}
+        onClick={() => open(ECOSYSTEM_HUB, 'Lithosphere ecosystem')}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: 16,
           borderRadius: 16, marginBottom: 20, cursor: 'pointer', textAlign: 'left',
@@ -2687,6 +2732,9 @@ function App() {
   const [view, setView]     = useState<View>('dashboard');
   const [isDark, setIsDark] = useState(false);
   const [modal, setModal]   = useState<Modal>(null);
+  // In-app dApp browser — null when closed. Set by useOpenDapp() via
+  // the DappOpenerContext below; closing comes from the overlay itself.
+  const [dapp, setDapp]     = useState<{ url: string; name: string } | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   const [hasVault, setHasVault] = useState(false);
@@ -2809,12 +2857,25 @@ function App() {
   return (
     <WalletSeedContext.Provider value={walletSeed}>
     <PortfolioContext.Provider value={portfolio}>
+    <DappOpenerContext.Provider value={(url, name) => setDapp({ url, name })}>
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
       {/* Auto-update banner — mounts above the topnav so it's seen first
           but never blocks app interaction. Renders null when there's
           nothing to show. */}
       <UpdateBanner/>
+
+      {/* In-app dApp browser — when set, the overlay mounts a sandboxed
+          WebContentsView from the main process over the workspace area
+          and renders its own chrome on top. Wallet UI stays in the DOM
+          but is occluded by the BrowserView until close. */}
+      {dapp && (
+        <DappBrowserOverlay
+          initialUrl={dapp.url}
+          initialTitle={dapp.name}
+          onClose={() => setDapp(null)}
+        />
+      )}
 
       {/* Top navigation */}
       <nav className="topnav">
@@ -2991,6 +3052,7 @@ function App() {
       </div>
 
     </div>
+    </DappOpenerContext.Provider>
     </PortfolioContext.Provider>
     </WalletSeedContext.Provider>
   );
