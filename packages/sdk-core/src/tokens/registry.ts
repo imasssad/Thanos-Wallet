@@ -5,9 +5,7 @@ import {
   MAKALU_TESTNET,
   KAMET_MAINNET,
   SOLANA_MAINNET,
-  SOLANA_DEVNET,
-  ETHEREUM,
-  BSC
+  SOLANA_DEVNET
 } from '../chains/networks';
 import { getMakaluLep100Tokens } from './lep100-registry';
 import { getKametLep100Tokens } from './kamet-lep100-source';
@@ -48,62 +46,11 @@ export const DEFAULT_TOKENS: TokenConfig[] = [
     chainIds: [MAKALU_TESTNET.chainId, KAMET_MAINNET.chainId],
     addresses: {}
   },
-  // Cross-chain ERC20 samples (ETH/BSC/Makalu). Kamet is intentionally excluded
-  // here — verified Kamet LEP100 contracts are supplied by getKametLep100Tokens()
-  // below so the wallet never serves placeholder Kamet addresses.
-  {
-    symbol: 'COLLE',
-    name: 'Colle AI',
-    decimals: 18,
-    standard: 'erc20',
-    chainIds: [ETHEREUM.chainId, BSC.chainId, MAKALU_TESTNET.chainId],
-    addresses: {
-      [ETHEREUM.chainId]: '0x0000000000000000000000000000000000000000',
-      [BSC.chainId]: '0x0000000000000000000000000000000000000000',
-      [MAKALU_TESTNET.chainId]: '0x0000000000000000000000000000000000000001'
-    },
-    externalUrl: 'https://coinmarketcap.com/currencies/colle-ai/'
-  },
-  {
-    symbol: 'AGII',
-    name: 'AGII',
-    decimals: 18,
-    standard: 'erc20',
-    chainIds: [ETHEREUM.chainId, BSC.chainId, MAKALU_TESTNET.chainId],
-    addresses: {
-      [ETHEREUM.chainId]: '0x0000000000000000000000000000000000000002',
-      [BSC.chainId]: '0x0000000000000000000000000000000000000002',
-      [MAKALU_TESTNET.chainId]: '0x0000000000000000000000000000000000000002'
-    },
-    externalUrl: 'https://coinmarketcap.com/currencies/agii/'
-  },
-  {
-    symbol: 'ATUA',
-    name: 'Atua AI',
-    decimals: 18,
-    standard: 'erc20',
-    chainIds: [ETHEREUM.chainId, BSC.chainId, MAKALU_TESTNET.chainId],
-    addresses: {
-      [ETHEREUM.chainId]: '0x0000000000000000000000000000000000000003',
-      [BSC.chainId]: '0x0000000000000000000000000000000000000003',
-      [MAKALU_TESTNET.chainId]: '0x0000000000000000000000000000000000000003'
-    },
-    externalUrl: 'https://coinmarketcap.com/currencies/atua-ai/'
-  },
-  {
-    symbol: 'IMAGEN',
-    name: 'Imagen Network',
-    decimals: 18,
-    standard: 'erc20',
-    chainIds: [ETHEREUM.chainId, BSC.chainId, MAKALU_TESTNET.chainId],
-    addresses: {
-      [ETHEREUM.chainId]: '0x0000000000000000000000000000000000000004',
-      [BSC.chainId]: '0x0000000000000000000000000000000000000004',
-      [MAKALU_TESTNET.chainId]: '0x0000000000000000000000000000000000000004'
-    },
-    externalUrl: 'https://coinmarketcap.com/currencies/imagen-network/'
-  }
-,
+  // Verified LEP100 tokens (real, on-chain-checked contracts) are the source
+  // of truth for both Lithosphere networks. The previous hand-authored COLLE/
+  // AGII/ATUA/IMAGEN samples were dropped: they carried placeholder addresses
+  // (0x000…000N), duplicated the real Makalu entries, and ATUA has no deployed
+  // contract on either chain. COLLE/AGII/IMAGE now come from the sources below.
   ...getMakaluLep100Tokens(),
   ...getKametLep100Tokens()
 ];

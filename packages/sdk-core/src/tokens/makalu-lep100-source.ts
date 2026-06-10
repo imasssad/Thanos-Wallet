@@ -1,11 +1,24 @@
 import type { TokenConfig } from '../types';
 
+/**
+ * Makalu (testnet, EVM chainId 700777) LEP100 token registry.
+ *
+ * Makalu is the primary/default Lithosphere network in the wallet. Every
+ * contract address below is the canonical deployment as published at
+ * https://makalu.litho.ai/tokens and was verified live on 2026-06-10
+ * (explorer /api/tokens + on-chain symbol() over https://rpc.litho.ai).
+ *
+ * These are full, callable addresses (contractAddressStatus: 'verified'),
+ * so the wallet reads balances and submits transfers directly — no env-var
+ * injection required.
+ */
+
 export interface MakaluTokenSeed {
   symbol: string;
   name: string;
   decimals: number;
   totalSupply: string;
-  addressPreview: string;
+  address: string;
   verified: boolean;
 }
 
@@ -27,33 +40,35 @@ export const MAKALU_LEP100_SOURCE: MakaluLep100SourceConfig = {
   syncMode: 'hybrid',
   excludedSymbols: ['LITBTC2'],
   tokens: [
-    { symbol: 'wLITHO', name: 'Wrapped Lithosphere', decimals: 18, totalSupply: '1000000000', addressPreview: '0xEB6cfcC8...2a7Cfe', verified: true },
-    { symbol: 'LAX', name: 'Lithosphere Algo', decimals: 18, totalSupply: '10000000000', addressPreview: '0x9611436e...5Eb3e8', verified: true },
-    { symbol: 'JOT', name: 'Jot Art', decimals: 18, totalSupply: '1000000000', addressPreview: '0x8187b232...AAf2e2', verified: true },
-    { symbol: 'COLLE', name: 'Colle AI', decimals: 18, totalSupply: '5000000000', addressPreview: '0xE7eBf52b...60DF49', verified: true },
-    { symbol: 'IMAGE', name: 'Imagen Network', decimals: 18, totalSupply: '10000000000', addressPreview: '0x7a29252B...15c844', verified: true },
-    { symbol: 'AGII', name: 'AGII', decimals: 18, totalSupply: '1000000000', addressPreview: '0x9984ad7a...6Fe020', verified: true },
-    { symbol: 'BLDR', name: 'Built AI', decimals: 18, totalSupply: '1000000000', addressPreview: '0x07039884...85A26F', verified: true },
-    // Two FurGPT contracts on Makalu — both kept so balances on either
-    // surface in the UI:
-    //   FurGPT (0xDB829be...EA1c5D) — canonical / live address. This is
-    //     the symbol the wallet's send / receive flows use; matches
-    //     services/indexer DEFAULT_MAKALU_TOKENS and apps/web/lib/tokens.ts.
-    //   FGPT   (0xa25c2a49...1d592F) — pre-launch preview deployment.
-    //     Some users still hold balances at this contract from early
-    //     testing, so we surface it under its legacy symbol rather
-    //     than silently dropping it. Esha's "FGPT balance shows 0" was
-    //     caused by us only tracking ONE of these contracts under the
-    //     name FurGPT, while the actual transfer landed at the other.
-    { symbol: 'FurGPT', name: 'FurGPT',          decimals: 18, totalSupply: '1000000000', addressPreview: '0xDB829be...EA1c5D', verified: true },
-    { symbol: 'FGPT',   name: 'FurGPT (legacy)', decimals: 18, totalSupply: '1000000000', addressPreview: '0xa25c2a49...1d592F', verified: true },
-    { symbol: 'MUSA', name: 'Mansa AI', decimals: 18, totalSupply: '1000000000', addressPreview: '0xDEE12eD9...A97EFa', verified: true }
+    // Verified live on 2026-06-10 by Litho infra (kmp/kamet-network-config):
+    //   - The earlier "FurGPT" entry in this file was a Kamet-explorer
+    //     mislabel — there is no FurGPT contract on chain. What we were
+    //     calling FurGPT @0xDB829be... is actually MUSA (Musa AI), and
+    //     the real FGPT is "Finesse GPT" at 0x151ef362. The legacy
+    //     0xa25c2a49 contract is dead — dropped here.
+    //   - wLITHO/LAX/JOT/COLLE/AGII/BLDR addresses were all truncated
+    //     previews of the wrong contracts. Replaced with the canonical
+    //     deployments from makalu.litho.ai/tokens.
+    //   - Added LitBTC (previously missing from the seed list).
+    { symbol: 'wLITHO', name: 'Wrapped LITHO',       decimals: 18, totalSupply: '1000000000', address: '0x599a7E135f1790ae117b4EdDc0422D24Bc766161', verified: true },
+    { symbol: 'LitBTC', name: 'Lithosphere Bitcoin', decimals: 18, totalSupply: '21000000',   address: '0xC4645CA5411D6E27556780AB4cdd0DF7e609df74', verified: true },
+    { symbol: 'LAX',    name: 'LAX Token',           decimals: 18, totalSupply: '10000000000', address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d', verified: true },
+    { symbol: 'JOT',    name: 'JOT Token',           decimals: 18, totalSupply: '1000000000', address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e', verified: true },
+    { symbol: 'COLLE',  name: 'Colle AI',            decimals: 18, totalSupply: '5000000000', address: '0x10D4BB600c96e9243E2f50baFED8b2478F25af61', verified: true },
+    { symbol: 'IMAGE',  name: 'Image AI',            decimals: 18, totalSupply: '10000000000', address: '0xAcD98E323968647936887aD4934e64B01060727e', verified: true },
+    { symbol: 'AGII',   name: 'AGI Inception',       decimals: 18, totalSupply: '1000000000', address: '0x10052B8ccD2160b8F9880C6b4F5DD117fF253B1c', verified: true },
+    { symbol: 'BLDR',   name: 'Builder Finance',     decimals: 18, totalSupply: '1000000000', address: '0x798eD6bFc5bfCFc60938d5098825b354427A0786', verified: true },
+    { symbol: 'FGPT',   name: 'Finesse GPT',         decimals: 18, totalSupply: '1000000000', address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e', verified: true },
+    { symbol: 'MUSA',   name: 'Musa AI',             decimals: 18, totalSupply: '1000000000', address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', verified: true }
   ]
 };
 
-export function getMakaluExplorerAddressPreview(symbol: string): string | undefined {
-  return MAKALU_LEP100_SOURCE.tokens.find((token) => token.symbol.toUpperCase() === symbol.toUpperCase())?.addressPreview;
+export function getMakaluTokenAddress(symbol: string): string | undefined {
+  return MAKALU_LEP100_SOURCE.tokens.find((token) => token.symbol.toUpperCase() === symbol.toUpperCase())?.address;
 }
+
+/** @deprecated addresses are now full + verified — use getMakaluTokenAddress. */
+export const getMakaluExplorerAddressPreview = getMakaluTokenAddress;
 
 export function makeMakaluTokenConfig(seed: MakaluTokenSeed): TokenConfig {
   return {
@@ -62,7 +77,7 @@ export function makeMakaluTokenConfig(seed: MakaluTokenSeed): TokenConfig {
     decimals: seed.decimals,
     standard: 'lep100',
     chainIds: [MAKALU_LEP100_SOURCE.chainId],
-    addresses: {},
+    addresses: { [MAKALU_LEP100_SOURCE.chainId]: seed.address },
     verified: seed.verified,
     lep100: {
       module: 'LEP100',
@@ -71,8 +86,8 @@ export function makeMakaluTokenConfig(seed: MakaluTokenSeed): TokenConfig {
       verifiedSource: 'registry',
       sourceChain: 'makalu',
       syncMode: MAKALU_LEP100_SOURCE.syncMode,
-      explorerAddressPreview: seed.addressPreview,
-      contractAddressStatus: 'preview-only'
+      explorerAddressPreview: seed.address,
+      contractAddressStatus: 'verified'
     }
   };
 }
