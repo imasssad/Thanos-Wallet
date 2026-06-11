@@ -126,6 +126,9 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const [password2, setPassword2] = useState('');
   const [unlockPwd, setUnlockPwd] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
+  const [formErr, setFormErr]     = useState('');
+  /** Two-step destructive confirm for Reset wallet (replaces window.confirm). */
+  const [confirmReset, setConfirmReset] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [copiedSeed, setCopiedSeed] = useState(false);
   /* Seed auto-mask — same defense as the web wallet. 30 s after the
@@ -184,8 +187,11 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const finishImport = async () => {
     if (password !== password2 || password.length < 8 || busy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
-    if (![12, 15, 18, 21, 24].includes(words.length)) { alert('Phrase must be 12/15/18/21/24 words'); return; }
-    if (!isValidMnemonic(words.join(' '))) { alert('Invalid recovery phrase'); return; }
+    // Inline errors — alert() in an MV3 popup opens an OS dialog that
+    // visually detaches from the 360px popup and looks broken.
+    if (![12, 15, 18, 21, 24].includes(words.length)) { setFormErr('Phrase must be 12, 15, 18, 21 or 24 words'); return; }
+    if (!isValidMnemonic(words.join(' '))) { setFormErr('Invalid recovery phrase — check for typos'); return; }
+    setFormErr('');
     setBusy(true);
     try {
       const vault = await createVault(words.join(' '), password);
@@ -210,10 +216,15 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     } finally { setBusy(false); }
   };
   const resetWallet = () => {
-    if (window.confirm('Erase wallet from this browser? You can restore with your recovery phrase.')) {
-      clearVault();
-      setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
+    // Two-step inline confirm — first click arms, second click erases.
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 5_000);
+      return;
     }
+    setConfirmReset(false);
+    clearVault();
+    setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
   };
   const copySeed = async () => {
     const text = seed.join(' ');
@@ -343,8 +354,9 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
           <input className="field" type="password" placeholder="Confirm" value={password2} onChange={e => setPassword2(e.target.value)} style={{ marginTop: 8 }}/>
           {password && password.length < 8 && <div className="onb-err">Min 8 characters</div>}
           {password && password2 && password !== password2 && <div className="onb-err">Passwords don't match</div>}
+          {formErr && <div className="onb-err">{formErr}</div>}
           <div className="row-btns">
-            <button className="btn-outline" onClick={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}>Back</button>
+            <button className="btn-outline" onClick={() => { setFormErr(''); setStep(step === 'create-pwd' ? 'create-confirm' : 'import'); }}>Back</button>
             <button className="btn-primary" disabled={password.length < 8 || password !== password2 || busy} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
               {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create' : 'Import')}
             </button>
@@ -388,8 +400,18 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
             {busy ? 'Unlocking…' : 'Unlock'}
           </button>
           <div className="onb-footer">
-            <p className="onb-footer-text">Forgot password? Wallet can be restored with the recovery phrase.</p>
-            <button className="onb-footer-link" onClick={resetWallet}>Reset wallet</button>
+            <p className="onb-footer-text">
+              {confirmReset
+                ? 'This permanently erases the wallet from this browser. Restore needs your recovery phrase.'
+                : 'Forgot password? Wallet can be restored with the recovery phrase.'}
+            </p>
+            <button
+              className="onb-footer-link"
+              style={confirmReset ? { color: '#f87171', fontWeight: 700 } : undefined}
+              onClick={resetWallet}
+            >
+              {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
+            </button>
           </div>
         </>}
       </div>

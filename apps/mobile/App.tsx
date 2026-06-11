@@ -1,9 +1,16 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  Alert, Animated, AppState, Easing, Image, Linking, Modal, Pressable, RefreshControl, SafeAreaView,
+  Alert, Animated, AppState, Easing, Image, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+
+/** Cross-platform monospace family. 'Menlo' exists only on iOS (Android
+ *  silently falls back to proportional Roboto) and the generic
+ *  'monospace' alias exists only on Android (iOS falls back to San
+ *  Francisco) — so every address/seed rendered with either literal was
+ *  non-monospace on the other platform. Use this constant everywhere. */
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' }) as string;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits } from 'ethers';
 import {
@@ -879,7 +886,7 @@ function SendScreen({ goBack }: { goBack: () => void }) {
         <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>RECIPIENT</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TextInput
-            style={[styles.input, { flex: 1, backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14, fontFamily: 'monospace' }]}
+            style={[styles.input, { flex: 1, backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 14, fontFamily: MONO }]}
             placeholder={CHAIN_META[chain].placeholder}
             placeholderTextColor={C.textMuted}
             value={to}
@@ -2026,7 +2033,7 @@ function MobileAllowancesPanel({ seed }: { seed: string[] }) {
                 {r.symbol}
                 {r.unlimited && <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '800' }}>  · UNLIMITED</Text>}
               </Text>
-              <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontFamily: 'Menlo', fontSize: 10 }}>{r.spender}</Text>
+              <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontFamily: MONO, fontSize: 10 }}>{r.spender}</Text>
               <Text style={{ color: C.textMuted, fontSize: 11 }}>{r.unlimited ? 'Unlimited' : `${r.amount} ${r.symbol}`}</Text>
             </View>
             <Pressable onPress={() => revoke(r)} disabled={busy === k} style={{
@@ -2082,7 +2089,7 @@ function MobileSessionsPanel() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 13 }}>{r.name}</Text>
             <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontSize: 11 }}>{r.url}</Text>
-            <Text style={{ color: C.textMuted, fontSize: 10, fontFamily: 'Menlo' }}>{r.chains}</Text>
+            <Text style={{ color: C.textMuted, fontSize: 10, fontFamily: MONO }}>{r.chains}</Text>
           </View>
           <Pressable onPress={() => disconnect(r.topic)} disabled={busy === r.topic} style={{
             paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6,
@@ -2173,7 +2180,7 @@ function AddressBookModal({ visible, onClose }: { visible: boolean; onClose: () 
                     {c.name}
                     {c.pendingSync && <Text style={{ color: C.textMuted, fontSize: 11 }}>  · not synced</Text>}
                   </Text>
-                  <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontSize: 11, fontFamily: 'Menlo' }}>
+                  <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontSize: 11, fontFamily: MONO }}>
                     {c.evm}
                   </Text>
                 </View>
@@ -2675,7 +2682,7 @@ function OnboardingScreen({
                 onPress={() => pickWord(w)}
                 style={{ paddingHorizontal: 12, paddingVertical: 7, backgroundColor: C.bgElevated, borderColor: C.borderDefault, borderWidth: 1, borderRadius: 999 }}
               >
-                <Text style={{ color: C.textPrimary, fontFamily: 'monospace', fontSize: 12, fontWeight: '600' }}>{w}</Text>
+                <Text style={{ color: C.textPrimary, fontFamily: MONO, fontSize: 12, fontWeight: '600' }}>{w}</Text>
               </Pressable>
             ))}
           </View>
@@ -3269,7 +3276,7 @@ function makeStyles(C: Colors) {
     },
     acctAvatarText: { color: C.textMuted, fontSize: 13, fontWeight: '700' },
     acctName: { color: C.textPrimary, fontSize: 13, fontWeight: '600', letterSpacing: -0.2 },
-    acctAddr: { color: C.textMuted, fontSize: 10, fontFamily: 'monospace', marginTop: 1 },
+    acctAddr: { color: C.textMuted, fontSize: 10, fontFamily: MONO, marginTop: 1 },
 
     themeBtn: {
       width: 32, height: 32, borderRadius: 8,
@@ -3388,7 +3395,7 @@ function makeStyles(C: Colors) {
     rowSub:   { color: C.textMuted, fontSize: 11, marginTop: 2, fontWeight: '500' },
     rowChangeInline: { fontSize: 11, fontWeight: '600' },
     rowAmt:   { color: C.textPrimary, fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
-    rowBal:   { color: C.textMuted, fontSize: 11, marginTop: 2, fontFamily: 'monospace' },
+    rowBal:   { color: C.textMuted, fontSize: 11, marginTop: 2, fontFamily: MONO },
 
     /* Avatar — single solid color, white initial */
     avatar: {
@@ -3504,7 +3511,7 @@ function makeStyles(C: Colors) {
       borderRadius: 12, padding: 14,
     },
     addrTextLarge: {
-      color: C.textPrimary, fontSize: 13, fontFamily: 'monospace',
+      color: C.textPrimary, fontSize: 13, fontFamily: MONO,
       marginTop: 6, letterSpacing: -0.2,
     },
     warningCard: {
@@ -3594,7 +3601,7 @@ function makeStyles(C: Colors) {
       elevation: 1,
     },
     acctHeaderName: { color: C.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: -0.3 },
-    acctHeaderAddr: { color: C.textMuted, fontSize: 11, fontFamily: 'monospace', marginTop: 2 },
+    acctHeaderAddr: { color: C.textMuted, fontSize: 11, fontFamily: MONO, marginTop: 2 },
     copyChip: {
       paddingHorizontal: 12, paddingVertical: 6,
       backgroundColor: C.blueDim,
@@ -3663,7 +3670,7 @@ function makeStyles(C: Colors) {
       borderColor: C.borderSubtle, borderWidth: 1,
       borderRadius: 12, padding: 12,
     },
-    addrText: { flex: 1, color: C.textSecondary, fontSize: 11, fontFamily: 'monospace', lineHeight: 16 },
+    addrText: { flex: 1, color: C.textSecondary, fontSize: 11, fontFamily: MONO, lineHeight: 16 },
     copyBtn:  {
       backgroundColor: C.bgHover, borderRadius: 8,
       paddingVertical: 6, paddingHorizontal: 12,
@@ -3801,7 +3808,7 @@ function makeStyles(C: Colors) {
     copyableText: {
       color: C.textPrimary,
       fontSize: 12,
-      fontFamily: 'monospace',
+      fontFamily: MONO,
       lineHeight: 18,
       letterSpacing: 0.2,
     },

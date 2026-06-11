@@ -216,107 +216,25 @@ function TokenAvatar({ sym, color, className, label, style }: {
   );
 }
 
-/* ──────────────────────── Chart paths ──────────────────────── */
-// Performance chart: Mon→Sun, generally upward
-const PERF_LINE = 'M 22,165 C 48,160 72,156 96,152 C 120,148 145,144 168,138 C 191,132 214,116 238,100 C 262,84 285,76 308,68 C 331,60 358,47 382,40 C 402,34 428,24 452,17 C 468,13 482,9 498,7';
-const PERF_AREA = `${PERF_LINE} L 498,185 L 22,185 Z`;
-
-// Price analytics sparkline: Dec 1–31, volatile purple line matching reference
-const ANALYTICS_LINE = 'M 6,72 L 12,68 L 18,74 L 24,60 L 30,54 L 36,62 L 42,56 L 48,66 L 54,58 L 60,42 L 66,38 L 70,48 L 76,32 L 82,26 L 88,34 L 94,20 L 100,30 L 106,38 L 112,28 L 118,16 L 124,22 L 130,14 L 136,10 L 142,18 L 148,12 L 154,22 L 160,16 L 165,20';
-
-/* ──────────────────────── Chart components ──────────────────────── */
-
-function PerformanceChart() {
-  return (
-    <div>
-      <svg width="100%" viewBox="0 0 520 192" style={{ display: 'block', overflow: 'visible' }}>
-        <defs>
-          <linearGradient id="lineG" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#3b7af7"/>
-            <stop offset="100%" stopColor="#06b6d4"/>
-          </linearGradient>
-          <linearGradient id="areaG" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%"   stopColor="rgba(59,122,247,0.16)"/>
-            <stop offset="100%" stopColor="rgba(59,122,247,0.00)"/>
-          </linearGradient>
-        </defs>
-        {/* Subtle grid */}
-        {[42, 84, 126, 168].map(y => (
-          <line key={y} x1="0" y1={y} x2="520" y2={y} stroke="currentColor" opacity="0.06" strokeWidth="1"/>
-        ))}
-        <path d={PERF_AREA} fill="url(#areaG)"/>
-        <path d={PERF_LINE} fill="none" stroke="url(#lineG)" strokeWidth="2.25" strokeLinejoin="round"/>
-        {/* Callout at Thu ≈ (238, 100) */}
-        <line x1="238" y1="110" x2="238" y2="185" stroke="rgba(59,122,247,0.28)" strokeWidth="1" strokeDasharray="3 3"/>
-        <circle cx="238" cy="100" r="10" fill="rgba(59,122,247,0.15)"/>
-        <circle cx="238" cy="100" r="4.5" fill="#3b7af7" stroke="#fff" strokeWidth="2"/>
-        <g transform="translate(148, 70)">
-          <rect width="122" height="22" rx="6" fill="#3b7af7"/>
-          <text x="61" y="14" textAnchor="middle" fill="#fff" fontSize="10" fontFamily="Geist Mono,monospace" fontWeight="600">$920.00 · Jan 22</text>
-        </g>
-      </svg>
-    </div>
-  );
-}
-
-function PriceSparkline() {
-  const area = `${ANALYTICS_LINE} L 165,82 L 6,82 Z`;
-  return (
-    <svg width="100%" viewBox="0 0 172 90" style={{ display: 'block' }}>
-      <defs>
-        <linearGradient id="sparkG" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="rgba(139,125,247,0.35)"/>
-          <stop offset="60%" stopColor="rgba(139,125,247,0.08)"/>
-          <stop offset="100%" stopColor="rgba(139,125,247,0.0)"/>
-        </linearGradient>
-      </defs>
-      <path d={area} fill="url(#sparkG)"/>
-      <path d={ANALYTICS_LINE} fill="none" stroke="#8b7df7" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
-      {/* Low point dot */}
-      <circle cx="6" cy="72" r="3.5" fill="#8b7df7" stroke="var(--bg-card)" strokeWidth="1.5"/>
-      {/* High point dot */}
-      <circle cx="136" cy="10" r="3.5" fill="#8b7df7" stroke="var(--bg-card)" strokeWidth="1.5"/>
-    </svg>
-  );
-}
-
 /* ──────────────────────── Right panel widgets ──────────────────────── */
 
-function ExchangeWidget() {
-  const [fromAmt, setFromAmt] = useState('1.420');
-
+/* The old ExchangeWidget here showed a fully fake BTC→ETH form ("Balance:
+   5.050 BTC", invented rate, dead Exchange button). Replaced with an
+   honest entry point into the real Swap modal — same visual slot, no
+   fabricated numbers. The fake PerformanceChart / PriceSparkline static
+   SVGs ("$920.00 · Jan 22", "$5,240 / $12,900 · Dec 2025") were removed
+   at the same time; the dashboard's PortfolioChart renders real data. */
+function ExchangeWidget({ onSwap }: { onSwap: () => void }) {
   return (
     <div className="card">
       <div className="exchange-header">
-        <span className="card-title">Exchange</span>
-        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>›</button>
+        <span className="card-title">Swap</span>
       </div>
-
-      {/* From */}
-      <div className="coin-row">
-        <div className="coin-icon" style={{ background: '#f7931a' }}>₿</div>
-        <div className="coin-pick">BTC <ChevDown size={11}/></div>
-        <input
-          className="coin-amount"
-          value={fromAmt}
-          onChange={e => setFromAmt(e.target.value)}
-          type="number"
-        />
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, margin: '6px 0 12px' }}>
+        Swap between LITHO and LEP100 ecosystem tokens. Live quotes come
+        from the Ignite DEX as routes open up.
       </div>
-      <div className="coin-balance">Balance: 5.050 BTC</div>
-
-      <div className="swap-divider">
-        <button className="swap-btn"><ArrowsUD size={13}/></button>
-      </div>
-
-      {/* To */}
-      <div className="coin-row">
-        <div className="coin-icon" style={{ background: '#627eea' }}>Ξ</div>
-        <div className="coin-pick">ETH <ChevDown size={11}/></div>
-        <span className="coin-amount" style={{ display: 'block', userSelect: 'none' }}>23.035</span>
-      </div>
-
-      <button className="btn-exchange">Exchange</button>
+      <button className="btn-exchange" onClick={onSwap}>Open Swap</button>
     </div>
   );
 }
@@ -368,30 +286,21 @@ function AIAssistant() {
   );
 }
 
+/* Honest staking teaser — replaces the fake "Solstice" position card
+   (14.20% yield, 68% progress, an unlock date that had already passed).
+   Same approach the web app took: a clear Coming-soon instead of a mock
+   that reads as a live position. */
 function StakingCard() {
   return (
     <div className="staking-card">
       <div className="staking-brand">
         <div className="staking-brand-icon">S</div>
-        Solstice
+        Staking
       </div>
-      <div className="staking-row">
-        <div className="staking-token-icon">wL</div>
-        <div>
-          <div className="staking-token-name">wLITHO</div>
-          <div className="staking-token-sub">Unlocks: 11 Jan, 2026</div>
-        </div>
-        <div className="staking-yield">
-          <div className="staking-yield-label">Annual yield</div>
-          <div className="staking-yield-val">14.20%</div>
-        </div>
-      </div>
-      <div className="staking-meta">
-        <span>41 days left · 4 months total</span>
-        <span>68%</span>
-      </div>
-      <div className="staking-bar">
-        <div className="staking-bar-fill" style={{ width: '68%' }}/>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 6 }}>
+        LITHO validator delegation and wLITHO pools land here as soon as
+        the Lithosphere staking contracts are live on Makalu. No positions
+        to show yet.
       </div>
     </div>
   );
@@ -578,42 +487,12 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
         </div>
       </div>
 
-      {/* Charts row */}
-      <div className="charts-row">
-        {/* Price analytics */}
-        <div className="card price-analytics-card">
-          <div className="card-header">
-            <span className="card-title">Price analytics</span>
-            <button className="icon-btn-sm"><Expand size={13}/></button>
-          </div>
-          <PriceSparkline/>
-          <div className="analytics-prices">
-            <span className="analytics-price">$5,240.00</span>
-            <span className="analytics-price">$12,900.00</span>
-          </div>
-          <div className="analytics-date">
-            <span>1 Dec, 2025</span>
-            <span>31 Dec, 2025</span>
-          </div>
-        </div>
-
-        {/* Performance chart */}
-        <div className="card perf-chart-card">
-          <div className="card-header">
-            <span className="card-title">Portfolio performance</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button className="chart-selector">This week <ChevDown size={11}/></button>
-              <button className="icon-btn-sm"><Expand size={13}/></button>
-            </div>
-          </div>
-          <PerformanceChart/>
-          <div className="chart-xaxis">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
-              <span key={d}>{d}</span>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* The old "Charts row" here rendered two fully fake cards — a
+          static "Price analytics" sparkline with hardcoded $5,240/$12,900
+          Dec-2025 labels and a static "Portfolio performance" curve with
+          a "$920.00 · Jan 22" callout. Removed: the PortfolioChart above
+          already shows the user's real history, and fake financials in a
+          wallet erode trust faster than an empty slot does. */}
 
       {/* Payment history */}
       <div className="card">
@@ -1657,13 +1536,11 @@ function TransactionsView() {
 }
 
 /* ──────────────────────── Staking view ──────────────────────── */
-const POOLS = [
-  { name: 'Lithosphere Validator', sym: 'LITHO',  apy: '18.40%', minStake: '100 LITHO',  tvl: '$58M',   color: '#8b7df7', locked: false },
-  { name: 'Wrapped LITHO Pool',    sym: 'wLITHO', apy: '14.20%', minStake: '50 wLITHO',  tvl: '$22M',   color: '#a395f8', locked: false },
-  { name: 'FractalGPT Stake',      sym: 'FGPT',   apy: '32.50%', minStake: '1,000 FGPT', tvl: '$8.4M',  color: '#10b981', locked: true  },
-  { name: 'Ethereum 2.0',          sym: 'ETH',    apy: '4.20%',  minStake: '0.01 ETH',   tvl: '$12.4B', color: '#627eea', locked: false },
-];
-
+/* The previous version listed four fake pools with invented APYs
+   (18.40% / 14.20% / 32.50% / 4.20%), invented TVLs and no-op Stake
+   buttons, plus a fake "Solstice" active position. The staking contract
+   is not deployed on Makalu yet — the web app already swapped its copy
+   of this mock for an honest Coming-soon, and desktop now matches. */
 function StakingView() {
   return (
     <div className="page-wrap">
@@ -1672,32 +1549,12 @@ function StakingView() {
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Earn passive yield on your assets</div>
       </div>
 
-      {/* Active position */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Active Position</div>
-        <StakingCard/>
-      </div>
-
-      {/* Available pools */}
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Available Pools</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {POOLS.map(p => (
-            <div key={p.sym} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <TokenAvatar sym={p.sym} color={p.color} className="tx-avatar" label={p.sym.slice(0,2)} style={{ width: 38, height: 38, fontSize: 12, borderRadius: 10, flexShrink: 0 }}/>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{p.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>TVL {p.tvl} · Min {p.minStake}</div>
-              </div>
-              <div style={{ textAlign: 'right', marginRight: 16 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)', letterSpacing: '-0.03em' }}>{p.apy}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>APY</div>
-              </div>
-              <button className="btn-primary" style={{ width: 90, height: 36, fontSize: 12, marginTop: 0 }}>
-                {p.locked ? 'Locked' : 'Stake'}
-              </button>
-            </div>
-          ))}
+      <div className="card" style={{ padding: '36px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Staking is coming soon</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.55 }}>
+          LITHO validator delegation and wLITHO pool staking go live here the
+          moment the Lithosphere staking contracts are deployed on Makalu.
+          Real APYs only — no projections until the chain reports them.
         </div>
       </div>
     </div>
@@ -2199,6 +2056,9 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   const [password2, setPassword2] = useState('');
   const [unlockPwd, setUnlockPwd] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
+  /** Two-step destructive confirm for Reset wallet — replaces the bare
+   *  Chromium confirm() dialog, the most dated element in the app. */
+  const [confirmReset, setConfirmReset] = useState(false);
   const [showPwd, setShowPwd]     = useState(false);
 
   const startCreate = () => {
@@ -2502,13 +2362,27 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
             </button>
 
             <div className="onboard-footer">
-              <p className="footer-text">Can't login? You can erase your current wallet and set up a new one</p>
-              <button className="footer-link" onClick={() => {
-                if (confirm('This will delete your wallet from this device. You can restore it with your recovery phrase. Continue?')) {
+              <p className="footer-text">
+                {confirmReset
+                  ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
+                  : "Can't login? You can erase your current wallet and set up a new one"}
+              </p>
+              <button
+                className="footer-link"
+                style={confirmReset ? { color: 'var(--red, #f87171)', fontWeight: 700 } : undefined}
+                onClick={() => {
+                  if (!confirmReset) {
+                    setConfirmReset(true);
+                    setTimeout(() => setConfirmReset(false), 5_000);
+                    return;
+                  }
+                  setConfirmReset(false);
                   clearVault();
                   setStep('welcome');
-                }
-              }}>Reset wallet</button>
+                }}
+              >
+                {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
+              </button>
             </div>
           </>
         )}
@@ -3043,7 +2917,7 @@ function App() {
 
         {view !== 'settings' && (
           <aside className="right-panel">
-            <ExchangeWidget/>
+            <ExchangeWidget onSwap={() => setModal('swap')}/>
             <PortfolioList/>
             <AIAssistant/>
             <StakingCard/>

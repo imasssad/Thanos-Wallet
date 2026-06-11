@@ -74,6 +74,14 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [unlockErr, setUnlockErr] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [copiedSeed, setCopiedSeed] = useState(false);
+  /** Inline form-validation error — replaces the old browser alert()s,
+   *  which rendered as OS dialogs and looked badly out of place in the
+   *  onboarding flow. Cleared whenever the user edits the inputs. */
+  const [formErr, setFormErr] = useState('');
+  /** Two-step destructive confirm for "Reset wallet" — first click arms
+   *  the button, second click erases. Replaces window.confirm(). */
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [copyErr, setCopyErr] = useState(false);
   /* Seed-phrase masking on the create-show screen — the words are hidden
      30s after the user lands here, requiring a deliberate re-tap to view
      them again. Defends against shoulder-surf + a left-open laptop. */
@@ -141,8 +149,9 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const finishImport = async () => {
     if (password !== password2 || password.length < 8 || busy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
-    if (![12, 15, 18, 21, 24].includes(words.length)) { alert('Phrase must be 12/15/18/21/24 words'); return; }
-    if (!isValidMnemonic(words.join(' '))) { alert('Invalid recovery phrase'); return; }
+    if (![12, 15, 18, 21, 24].includes(words.length)) { setFormErr('Phrase must be 12, 15, 18, 21 or 24 words'); return; }
+    if (!isValidMnemonic(words.join(' '))) { setFormErr('Invalid recovery phrase — check for typos'); return; }
+    setFormErr('');
     setBusy(true);
     try {
       const source: WalletSource = { kind: 'mnemonic', mnemonic: words.join(' ') };
@@ -165,7 +174,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const finishImportPk = async () => {
     if (password !== password2 || password.length < 8 || busy) return;
     const pk = validatePrivateKey(pkInput);
-    if (!pk) { alert('Invalid private key — must be 0x-prefixed 32-byte hex'); return; }
+    if (!pk) { setFormErr('Invalid private key — must be 0x-prefixed 32-byte hex'); return; }
+    setFormErr('');
     setBusy(true);
     try {
       const source: WalletSource = { kind: 'privateKey', privateKey: pk.privateKey };
@@ -208,12 +218,20 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   };
 
   const resetWallet = () => {
-    if (window.confirm('This deletes your wallet from this device. You can restore it with your recovery phrase. Continue?')) {
-      clearVault();
-      setStep('welcome');
-      setUnlockPwd('');
-      setUnlockErr('');
+    // Two-step inline confirm — the first click arms the action and the
+    // copy switches to an explicit warning; only a second click within
+    // 5s erases. Replaces window.confirm(), which rendered an unstyled
+    // OS dialog for the single most destructive action in the app.
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 5_000);
+      return;
     }
+    setConfirmReset(false);
+    clearVault();
+    setStep('welcome');
+    setUnlockPwd('');
+    setUnlockErr('');
   };
   const copySeed = async () => {
     const text = seed.join(' ');
@@ -241,7 +259,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       setCopiedSeed(true);
       setTimeout(() => setCopiedSeed(false), 2200);
     } else {
-      alert('Copy unavailable. Long-press / select the words manually.');
+      setCopyErr(true);
+      setTimeout(() => setCopyErr(false), 4000);
     }
   };
 
@@ -382,7 +401,9 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             )}
           </div>
           <button className="btn-link" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={copySeed} disabled={seedHidden}>
-            {copiedSeed ? <><Check size={14}/> Copied to clipboard</> : <><Copy size={14}/> Copy phrase</>}
+            {copiedSeed ? <><Check size={14}/> Copied to clipboard</>
+              : copyErr ? <>Copy unavailable — select the words manually</>
+              : <><Copy size={14}/> Copy phrase</>}
           </button>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button className="btn-outline" style={{ flex: 1 }} onClick={() => setStep('create-warn')}>Back</button>
@@ -445,17 +466,19 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           <input className="field-input" type="password" placeholder="Confirm password" value={password2} onChange={e => setPassword2(e.target.value)}/>
           {password && password.length < 8 && <div className="onboard-err">Min 8 characters</div>}
           {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
+          {formErr && <div className="onboard-err">{formErr}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button
               className="btn-outline"
               style={{ flex: 1 }}
-              onClick={() =>
+              onClick={() => {
+                setFormErr('');
                 setStep(
                   step === 'create-pwd'      ? 'create-confirm'
                   : step === 'import-pk-pwd' ? 'import-pk'
                   : 'import',
-                )
-              }
+                );
+              }}
             >
               Back
             </button>
@@ -511,8 +534,18 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             {busy ? 'Unlocking…' : 'Unlock'}
           </button>
           <div className="onboard-footer">
-            <p className="footer-text">Can't login? You can erase your current wallet and set up a new one</p>
-            <button className="footer-link" onClick={resetWallet}>Reset wallet</button>
+            <p className="footer-text">
+              {confirmReset
+                ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
+                : "Can't login? You can erase your current wallet and set up a new one"}
+            </p>
+            <button
+              className="footer-link"
+              style={confirmReset ? { color: 'var(--red, #f87171)', fontWeight: 700 } : undefined}
+              onClick={resetWallet}
+            >
+              {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
+            </button>
           </div>
         </>}
       </div>
