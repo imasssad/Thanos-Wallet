@@ -276,7 +276,7 @@ use WalletConnect's `cip-x`/`bip122:*`/`cosmos:*` namespaces.
 |--------|-----------|
 | `eth_requestAccounts` | Opens connect approval. Returns `[address]`. |
 | `eth_accounts` | Returns connected accounts without prompting. |
-| `eth_chainId` | Returns `0xab09f9` (Makalu default) or active chain. |
+| `eth_chainId` | Returns `0xab169` (Makalu default) or active chain. |
 | `wallet_switchEthereumChain` | Switches the active chain. Prompts if untrusted. |
 | `wallet_addEthereumChain` | Adds a chain to the wallet's known list. |
 | `eth_sendTransaction` | Opens tx approval with simulator + risk score. |

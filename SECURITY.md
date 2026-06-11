@@ -45,7 +45,9 @@ intercept at the sink.
   token. Sent in the JSON body of `POST /auth/refresh`. Rotated on every use
   (`services/api/src/routes/auth.ts` line 217+) so a stolen refresh token gets
   invalidated the moment the legitimate client refreshes.
-- **Refresh tokens are hashed in the database** (Argon2id on the server side).
+- **Refresh tokens are hashed in the database** (SHA-256 — appropriate here
+  because refresh tokens are 48 random bytes, not low-entropy passwords;
+  a slow KDF adds nothing against a 384-bit search space).
   A database leak therefore doesn't yield usable refresh tokens.
 
 **Why not httpOnly cookies for refresh?** The wallet has four clients —
@@ -59,7 +61,7 @@ the existing hardening doesn't already provide:
 | ----------------------------- | --------------------------------------------------------- |
 | XSS exfiltrates tokens        | Strict CSP without `unsafe-eval` (`apps/web/next.config.js`) |
 | Token theft yields long access | Refresh rotates every use; access is 15 min               |
-| DB leak yields refresh tokens | Refresh hashed Argon2id server-side                       |
+| DB leak yields refresh tokens | Refresh tokens hashed SHA-256 server-side (high-entropy)  |
 | Brute-force login             | `services/api/src/middleware/rate-limit.ts` (10 / 15 min) |
 | Audit gap                     | `logAuthEvent()` writes every login / refresh / failure   |
 

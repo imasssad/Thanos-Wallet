@@ -233,14 +233,15 @@ export function parseSiweMessage(message: string): {
 
 /* Cryptographically-strong nonce — same envelope SIWE expects. */
 function generateNonce(): string {
-  const bytes = new Uint8Array(16);
-  if (typeof globalThis.crypto !== 'undefined') {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
-    // Fallback for very old environments. Not collision-resistant —
-    // backend should always issue the canonical nonce.
-    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  // No weak-randomness fallback on purpose: a predictable SIWE nonce
+  // enables replayed sign-ins, which is strictly worse than failing.
+  // WebCrypto exists in every runtime this SDK supports (browsers,
+  // Node 18+, workers); anything without it should not be doing auth.
+  if (typeof globalThis.crypto?.getRandomValues !== 'function') {
+    throw new Error('thanos-connect: WebCrypto unavailable — cannot generate a secure SIWE nonce');
   }
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 

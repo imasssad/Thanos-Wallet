@@ -43,7 +43,11 @@ interface PendingRpcRequest {
    to broadcasting the result via runtime.sendMessage. */
 const pendingResolvers = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
 
-const MAKALU_CHAIN_ID_HEX = '0xab09f9'; // 700777
+// 700777 decimal = 0xab169. The previous value here ('0xab09f9' =
+// 11,209,209) was a hex-conversion typo that made every dApp see a
+// chain that doesn't exist — eth_chainId, net_version and
+// wallet_switchEthereumChain were all answering for the wrong chain.
+const MAKALU_CHAIN_ID_HEX = '0xab169'; // 700777
 
 /* ─── WalletConnect offscreen lifecycle ────────────────────────────────
    The relay socket lives in a hidden offscreen document so it survives
@@ -83,7 +87,12 @@ async function getActiveAddress(): Promise<string | null> {
 
 async function getChainIdHex(): Promise<string> {
   const { chain_id_hex } = await browser.storage.local.get('chain_id_hex');
-  return (chain_id_hex as string) || MAKALU_CHAIN_ID_HEX;
+  const stored = chain_id_hex as string | undefined;
+  // Migration: installs prior to the 0xab169 fix persisted the typo'd
+  // chainId ('0xab09f9'). Treat it as unset so they pick up the correct
+  // constant instead of overriding it forever from storage.
+  if (!stored || stored.toLowerCase() === '0xab09f9') return MAKALU_CHAIN_ID_HEX;
+  return stored;
 }
 
 /* ─── RPC dispatch ───────────────────────────────────────────────────── */

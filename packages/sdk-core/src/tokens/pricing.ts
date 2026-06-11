@@ -26,7 +26,10 @@ export const PLACEHOLDER_PRICES: Record<string, number> = {
 /** Symbol → CoinGecko coin id. Add entries as more tokens get listed. */
 export const COINGECKO_IDS: Record<string, string> = {
   LitBTC: 'bitcoin',
-  FurGPT: 'furgpt',     // probably 404s today — falls back to caller default
+  // NOTE: no FGPT mapping on purpose. FGPT = Finesse GPT; the CoinGecko
+  // slug 'furgpt' is a DIFFERENT project (FurGPT pet-AI) — mapping it
+  // would price the wrong asset. FGPT falls back to the caller default
+  // until Finesse GPT gets a real listing.
   COLLE:  'colle-ai',   // probably 404s today — falls back to caller default
   SOL:    'solana',
   BTC:    'bitcoin',

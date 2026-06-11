@@ -32,7 +32,7 @@ const makaluEnvUrls = String(env.NEXT_PUBLIC_LITHO_RPC || '')
 if (makaluEnvUrls.length > 0) setRpcUrls(MAKALU_CHAIN_ID, makaluEnvUrls);
 
 // Same envelope for Kamet — NEXT_PUBLIC_KAMET_RPC overrides the
-// rpc.kamet.litho.ai / rpc-3.litho.ai defaults from sdk-core's
+// rpc-3.litho.ai default from sdk-core's
 // networks.ts. Optional; absence leaves the defaults in place.
 const kametEnvUrls = String(env.NEXT_PUBLIC_KAMET_RPC || '')
   .split(',').map((s) => s.trim()).filter(Boolean);

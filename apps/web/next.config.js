@@ -17,7 +17,10 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:"
+    // CoinGecko serves token logos from BOTH hosts — /coins/markets returns
+    // coin-images.coingecko.com URLs (verified live 2026-06-11).
     + " https://assets.coingecko.com"
+    + " https://coin-images.coingecko.com"
     + " https://raw.githubusercontent.com"
     + " https://dl.dropboxusercontent.com"
     + " https://www.dropbox.com"
@@ -25,9 +28,20 @@ const CSP = [
     + " https://explorer.solana.com",
   "font-src 'self' data:",
   "connect-src 'self'"
-    + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://rpc.kamet.litho.ai"
+    // Lithosphere RPCs. rpc.kamet.litho.ai is dead (TLS-broken, deprecated
+    // by Litho ops) — deliberately absent. api-3 is the Kamet REST host.
+    + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://api-3.litho.ai"
     + " https://bridge.litho.ai"
+    + " https://ignite.litho.ai"
     + " https://api.coingecko.com"
+    // Multi-chain balance/send upstreams the lib/ clients actually call.
+    + " https://mempool.space"
+    + " https://api.mainnet-beta.solana.com"
+    + " https://cosmos-rpc.publicnode.com https://cosmos-rest.publicnode.com"
+    + " https://ethereum.publicnode.com https://eth.merkle.io"
+    + " https://bsc-dataseed.binance.org"
+    + " https://polygon-rpc.com https://api.avax.network"
+    + " https://arb1.arbitrum.io https://mainnet.optimism.io https://mainnet.base.org https://rpc.linea.build"
     + " https://relay.walletconnect.com wss://relay.walletconnect.com wss://relay.walletconnect.org"
     + " https://*.sentry.io"
     + " https://thanos.fi",

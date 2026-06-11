@@ -140,7 +140,9 @@ export const TOKENS: Token[] = [
     address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e',
     decimals: 18,
     color: '#a855f7',
-    icon: '/images/tokens/furgpt.png',
+    icon: '',               // furgpt.png is the FurGPT dApp's dog mascot — wrong
+                            // brand for Finesse GPT. Letter avatar until the
+                            // real FGPT mark ships.
     priceUsd: 0.015,
     balance: '0',
     change24h: 0,
@@ -210,35 +212,12 @@ export const TOKENS: Token[] = [
     balance: '0',
     change24h: 0,
   },
-  // ─── Ignite + Quantt ──────────────────────────────────────────────────
-  // Lithosphere-ecosystem tokens shipped with the client icon pack.
-  // Listed so they render with their branded icons across the wallet.
-  // TODO(client): supply the real LEP100 contract addresses + decimals —
-  // the zero-address placeholder makes Send fail safely until then.
-  {
-    sym: 'IGNITE',
-    name: 'Ignite',
-    chain: 'Makalu',
-    address: '0x0000000000000000000000000000000000000000', // PLACEHOLDER — client to supply
-    decimals: 18,
-    color: '#22c55e',       // green — matches ignite.png
-    icon: '/images/tokens/ignite.png',
-    priceUsd: 0,            // unknown until listed
-    balance: '0',
-    change24h: 0,
-  },
-  {
-    sym: 'QUANTT',
-    name: 'Quantt',
-    chain: 'Makalu',
-    address: '0x0000000000000000000000000000000000000000', // PLACEHOLDER — client to supply
-    decimals: 18,
-    color: '#3b7af7',       // blue — matches quantt.png
-    icon: '/images/tokens/quantt.png',
-    priceUsd: 0,            // unknown until listed
-    balance: '0',
-    change24h: 0,
-  },
+  // NOTE: the old IGNITE + QUANTT rows were removed (2026-06-12). Neither
+  // exists as a Makalu LEP100 contract — they shipped with zero-address
+  // placeholders and rendered as real assets in the UI. Ignite is a dApp
+  // (Discover tile), and the only Quantt-family token on-chain is QTT on
+  // Kamet (0x16EE7127C9E03e29ca5727e23dd7CB03D283cDBe) — add a Kamet row
+  // for it when the wallet grows a Kamet network switch.
 ];
 
 /** Quick lookup by ticker. */

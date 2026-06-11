@@ -222,7 +222,7 @@ function DashboardMockup() {
             { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: '$320,250', chg: '+24%', c: '#f7931a' },
             { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: '$178,150', chg: '-6%',  c: '#627eea' },
             { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#22d3ee' },
-            { sym: 'FGPT',   name: 'FractalGPT',          bal: '80,000', usd: '$1,200',   chg: '+42%', c: '#10b981' },
+            { sym: 'FGPT',   name: 'Finesse GPT',         bal: '80,000', usd: '$1,200',   chg: '+42%', c: '#10b981' },
           ].map(c => (
             <div key={c.sym} className="lp-mock-coin">
               <div className="lp-mock-coin-dot" style={{ background: c.c }} />
@@ -256,7 +256,7 @@ function ChainsSection() {
 
         <div className="lp-chain-grid">
           {[
-            { name: 'LITHOSPHERE', desc: 'Makalu mainnet — LITHO native, FGPT, low-latency staking. The chain Thanos is built around.', stat: '18.40% APY', c: '#3b7af7' },
+            { name: 'LITHOSPHERE', desc: 'Makalu — LITHO native, the full LEP100 token suite, dual litho1/0x addressing. The chain Thanos is built around.', stat: '10 LEP100 tokens', c: '#3b7af7' },
             { name: 'EVM',         desc: 'Ethereum, Polygon, Arbitrum and every wrapped token (wLITHO, USDC, ETH).',                    stat: '40+ networks', c: '#627eea' },
             { name: 'BITCOIN',     desc: 'Native SegWit (bc1q…) addresses derived from your phrase. No custodian.',                    stat: 'Self-custody', c: '#f7931a' },
           ].map(ch => (
@@ -284,16 +284,20 @@ function EcosystemSection() {
           STAKE <span className="lp-accent-grad">LITHO</span>.
         </h2>
         <p className="lp-lede">
-          Validator delegation, wrapped-LITHO pools, and FractalGPT yield —
-          live in the wallet. No second app. No bridge friction.
+          Validator delegation and wrapped-LITHO pools land in the wallet the
+          moment the Lithosphere staking contracts go live. No second app.
+          No bridge friction.
         </p>
 
+        {/* Real, verifiable numbers only — the previous fabricated APY/TVL
+            stats contradicted the in-app Staking view (contract not yet
+            deployed) and were a trust liability on a wallet's homepage. */}
         <div className="lp-stat-grid">
           {[
-            { v: '18.40%', l: 'LITHO validator APY' },
-            { v: '14.20%', l: 'wLITHO pool APY'      },
-            { v: '32.50%', l: 'FGPT stake APY'       },
-            { v: '$58M',   l: 'Lithosphere TVL'      },
+            { v: '6+',   l: 'chains from one phrase'           },
+            { v: '22',   l: 'verified LEP100 tokens tracked'   },
+            { v: '4',    l: 'platforms — web · desktop · mobile · extension' },
+            { v: '100%', l: 'self-custodial — keys never leave your device' },
           ].map(s => (
             <div key={s.l} className="lp-stat">
               <div className="lp-stat-v">{s.v}</div>

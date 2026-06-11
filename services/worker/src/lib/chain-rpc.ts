@@ -21,7 +21,7 @@ const RPC_URLS: Record<number, string[]> = {
   700777: urls(process.env.LITHO_RPC_PRIMARY && `${process.env.LITHO_RPC_PRIMARY},${process.env.LITHO_RPC_FALLBACK ?? 'https://rpc-2.litho.ai'}`,
                'https://rpc.litho.ai,https://rpc-2.litho.ai'),
   900523: urls(process.env.KAMET_RPC_PRIMARY && `${process.env.KAMET_RPC_PRIMARY},${process.env.KAMET_RPC_FALLBACK ?? 'https://rpc-3.litho.ai'}`,
-               'https://rpc.kamet.litho.ai,https://rpc-3.litho.ai'),
+               'https://rpc-3.litho.ai'),
   // Public chains
   1:     ['https://ethereum.publicnode.com', 'https://eth.merkle.io'],
   56:    ['https://bsc-dataseed.binance.org'],

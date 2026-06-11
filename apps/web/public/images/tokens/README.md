@@ -9,7 +9,7 @@ in `apps/web/lib/tokens.ts`.
 | `jot.png`     | JOT    | full pink coin                                 |
 | `lax.png`     | LAX    | full blue coin (the "X" mark)                  |
 | `colle.png`   | COLLE  | dark-navy square, teal circuit glyph           |
-| `furgpt.png`  | FurGPT | transparent — composited on the purple circle  |
+| `furgpt.png`  | FurGPT dApp tile only — NOT the FGPT token (FGPT = Finesse GPT, letter avatar) | transparent — composited on the purple circle  |
 | `ignite.png`  | IGNITE | full green coin                                |
 | `quantt.png`  | QUANTT | full blue coin                                 |
 

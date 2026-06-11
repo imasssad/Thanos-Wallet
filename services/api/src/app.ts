@@ -22,6 +22,13 @@ import { captureException } from './lib/sentry.js';
 export function createApp(): express.Express {
   const app = express();
 
+  /* Behind nginx on the VPS, req.ip is the proxy's address unless we
+     trust exactly one hop — without this, every per-IP rate limit
+     collapses onto a single shared key (one abusive client exhausts the
+     budget for everyone). `1` trusts only the first proxy, so clients
+     can't spoof X-Forwarded-For chains to rotate their identity. */
+  app.set('trust proxy', 1);
+
   /* Request-ID first so every log line + metric + error has a
      correlation id, even ones from middleware that rejects below. */
   app.use(requestId);

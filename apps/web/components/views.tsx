@@ -282,7 +282,7 @@ export function PortfolioView() {
                 fontSize: 10, letterSpacing: 1, padding: '2px 6px',
                 background: 'var(--bg-elevated)', borderRadius: 4,
                 color: 'var(--text-secondary)',
-              }}>OFFLINE · sample data</span>
+              }}>OFFLINE — indexer unreachable</span>
             )}
             <span>
               Updated {updatedAt ? new Date(updatedAt).toLocaleTimeString() : 'just now'}
@@ -352,18 +352,6 @@ export function PortfolioView() {
     </div>
   );
 }
-
-const ALL_TXS = [
-  { sym: 'LITHO',  name: 'Lithosphere',                  date: 'Jan 22, 2026', price: '$0.30',   type: 'Receive', status: 'Completed', amount: '+1,200 LITHO',  pos: true,  color: '#3b7af7' },
-  { sym: 'LitBTC', name: 'Bitcoin (Lithosphere)',        date: 'Jan 20, 2026', price: '$63,200', type: 'Receive', status: 'Completed', amount: '+0.142 LitBTC', pos: true,  color: '#f7931a' },
-  { sym: 'JOT',    name: 'Jot Art',                      date: 'Jan 19, 2026', price: '$0.085', type: 'Receive', status: 'Completed', amount: '+850 JOT',      pos: true,  color: '#ef4444' },
-  { sym: 'LAX',    name: 'Lithosphere Algorithmic',      date: 'Jan 18, 2026', price: '$1.00',   type: 'Swap',    status: 'Completed', amount: '-200 LAX',      pos: false, color: '#06b6d4' },
-  { sym: 'COLLE',  name: 'Colle AI',                     date: 'Jan 17, 2026', price: '$0.020',  type: 'Receive', status: 'Completed', amount: '+5,000 COLLE',  pos: true,  color: '#9ca3af' },
-  { sym: 'FurGPT', name: 'FurGPT',                       date: 'Jan 15, 2026', price: '$0.015',  type: 'Send',    status: 'Pending',   amount: '-2,000 FurGPT', pos: false, color: '#f59e0b' },
-  { sym: 'LITHO',  name: 'Lithosphere',                  date: 'Jan 14, 2026', price: '$0.32',   type: 'Swap',    status: 'Completed', amount: '+420 LITHO',    pos: true,  color: '#3b7af7' },
-  { sym: 'LitBTC', name: 'Bitcoin (Lithosphere)',        date: 'Jan 12, 2026', price: '$61,800', type: 'Send',    status: 'Failed',    amount: '-0.005 LitBTC', pos: false, color: '#f7931a' },
-  { sym: 'JOT',    name: 'Jot Art',                      date: 'Jan 10, 2026', price: '$0.080',  type: 'Receive', status: 'Completed', amount: '+1,200 JOT',    pos: true,  color: '#ef4444' },
-];
 
 function activityToRow(item: IndexerActivityItem) {
   // The indexer's activity rows are normalised but light on display metadata;
@@ -450,7 +438,7 @@ export function TransactionsView() {
                 fontSize: 10, letterSpacing: 1, padding: '2px 6px',
                 background: 'var(--bg-elevated)', borderRadius: 4,
                 color: 'var(--text-secondary)',
-              }}>OFFLINE · sample data</span>
+              }}>OFFLINE — indexer unreachable</span>
             )}
             <div style={{ display: 'flex', gap: 6 }}>
               {(['All','Send','Receive','Swap'] as const).map(f => (

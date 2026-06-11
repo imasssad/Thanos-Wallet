@@ -35,7 +35,10 @@ export async function signAccessToken(payload: Omit<AccessTokenPayload, 'iat' | 
  * Throws JWTExpired or JWTInvalid on failure.
  */
 export async function verifyAccessToken(token: string): Promise<AccessTokenPayload> {
-  const { payload } = await jose.jwtVerify(token, secret);
+  // Pin the algorithm to exactly what signAccessToken issues. Without
+  // the allowlist, jose accepts any HMAC variant the token header
+  // claims — pinning closes off algorithm-confusion tricks outright.
+  const { payload } = await jose.jwtVerify(token, secret, { algorithms: ['HS256'] });
   return payload as unknown as AccessTokenPayload;
 }
 

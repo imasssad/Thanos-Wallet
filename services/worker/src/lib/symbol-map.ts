@@ -21,7 +21,8 @@ export const PLACEHOLDER_PRICES: Record<string, number> = {
 /** Symbol → CoinGecko coin id. Lower-cased everywhere downstream. */
 export const COINGECKO_IDS: Record<string, string> = {
   LitBTC: 'bitcoin',
-  FurGPT: 'furgpt',
+  // No FGPT mapping on purpose — FGPT = Finesse GPT; CoinGecko's 'furgpt'
+  // slug is a different project and would price the wrong asset.
   COLLE:  'colle-ai',
   SOL:    'solana',
   BTC:    'bitcoin',

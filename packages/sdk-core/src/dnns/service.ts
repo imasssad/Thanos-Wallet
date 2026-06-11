@@ -177,12 +177,20 @@ export class DnnsService {
   }
 
   async register(request: DnnsRegistrationRequest): Promise<{ submitted: true; txHash: string }> {
+    // No catch-and-fabricate here: this used to swallow the RPC error
+    // and synthesize a fake txHash from the name+owner, telling the user
+    // a PAID registration succeeded when nothing was submitted on-chain.
+    // Failing loudly is the only honest behaviour — the UI surfaces the
+    // error and the user retries.
     const txHash = await this.lithic.callContract({
       chainId:  request.chainId,
       contract: 'dnns-registry',
       method:   'register',
       args:     [request.name, request.owner, request.years ?? 1],
-    }).catch(() => `0x${request.name}${request.owner}`.slice(0, 66));
-    return { submitted: true, txHash: String(txHash) };
+    });
+    if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      throw new Error(`DNNS register returned an invalid tx hash: ${String(txHash).slice(0, 40)}`);
+    }
+    return { submitted: true, txHash };
   }
 }

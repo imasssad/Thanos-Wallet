@@ -157,8 +157,7 @@ probe litho "makalu primary"   "https://rpc.litho.ai"   POST "$RPC_BODY" 8 200 m
 probe litho "makalu fallback"  "https://rpc-2.litho.ai" POST "$RPC_BODY" 8 200 makalu-rpc
 
 section "Lithosphere — Kamet (chain 900523)"
-probe litho "kamet primary"    "https://rpc.kamet.litho.ai" POST "$RPC_BODY" 8 200 kamet-rpc
-probe litho "kamet fallback"   "https://rpc-3.litho.ai"     POST "$RPC_BODY" 8 200 kamet-rpc
+probe litho "kamet primary"    "https://rpc-3.litho.ai"     POST "$RPC_BODY" 8 200 kamet-rpc
 
 # ─── Lithosphere services ────────────────────────────────────────────
 section "Lithosphere services"

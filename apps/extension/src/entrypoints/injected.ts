@@ -12,7 +12,7 @@
  * Methods supported in this MVP slice:
  *   - eth_requestAccounts      (opens approval popup)
  *   - eth_accounts             (auto-reply from connected list)
- *   - eth_chainId              (Makalu = 0xab09f9 = 700777)
+ *   - eth_chainId              (Makalu = 0xab169 = 700777)
  *   - wallet_switchEthereumChain
  *
  * Signing methods (eth_sendTransaction / personal_sign / etc.) are wired
@@ -57,7 +57,7 @@ export default defineUnlistedScript(() => {
   const provider = {
     isThanos:           true,
     isMetaMask:         false, // explicitly false — we don't impersonate
-    chainId:            '0xab09f9', // 700777 hex (default until we hear otherwise)
+    chainId:            '0xab169', // 700777 hex (default until we hear otherwise)
     networkVersion:     '700777',
     selectedAddress:    null as string | null,
 

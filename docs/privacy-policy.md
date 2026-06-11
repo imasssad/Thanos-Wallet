@@ -87,7 +87,7 @@ Thanos Wallet is non-custodial. This means:
 The wallet interacts with the following external services:
 
 - **Blockchain RPC nodes** (rpc.litho.ai, rpc-2.litho.ai,
-  rpc.kamet.litho.ai, public Ethereum/Solana/Bitcoin nodes): used to
+  rpc-3.litho.ai, public Ethereum/Solana/Bitcoin nodes): used to
   read balances and broadcast transactions. These services receive
   your wallet address and transaction data as part of normal
   blockchain operation.

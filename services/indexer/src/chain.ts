@@ -60,17 +60,6 @@ export interface TokenSpec {
  * of these contracts so the wallet sees real balances / activity without
  * the operator having to set a dozen env vars on every fresh deploy.
  *
- * Source-of-truth addresses (verified on makalu.litho.ai/token/<addr>):
- *   LitBTC : 0xC4645CA5411D6E27556780AB4cdd0DF7e609df74
- *   JOT    : 0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e
- *   LAX    : 0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d
- *   IMAGE  : 0xAcD98E323968647936887aD4934e64B01060727e
- *   FurGPT : 0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D
- *
- * COLLE (0x10D4BB600c96e9243E2f50baFED8b247) is intentionally excluded
- * here — the address the client provided is 32 hex chars, not the
- * canonical 40. Once the full address lands on the explorer, add it.
- *
  * Operator overrides via env vars still win: setting any of
  * MAKALU_LEP100_*_ADDRESS replaces the built-in entry, and setting
  * MAKALU_LEP100_DISABLE_DEFAULTS=1 removes them entirely.
@@ -113,9 +102,13 @@ export function getConfiguredTokens(): TokenSpec[] {
     // Symbol comes back uppercase from env key; canonicalise the well-known
     // ones to match the wallet's TOKENS list ('LITBTC' → 'LitBTC' etc.).
     const symRaw = m[1];
+    // FURGPT is intentionally NOT canonicalised: there is no FurGPT token
+    // on-chain (FGPT = Finesse GPT, and 0xDB829be is MUSA). A leftover
+    // MAKALU_LEP100_FURGPT_ADDRESS env var would resurrect the mislabel,
+    // so it's ignored outright.
+    if (symRaw === 'FURGPT') continue;
     const sym =
       symRaw === 'LITBTC' ? 'LitBTC' :
-      symRaw === 'FURGPT' ? 'FurGPT' :
       symRaw === 'WLITHO' ? 'wLITHO' :
       symRaw;
     map.set(sym, value);

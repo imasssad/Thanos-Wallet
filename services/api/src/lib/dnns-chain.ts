@@ -51,7 +51,7 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const KAMET_RPC_URLS = String(
   (process.env.KAMET_RPC_PRIMARY &&
     `${process.env.KAMET_RPC_PRIMARY},${process.env.KAMET_RPC_FALLBACK ?? 'https://rpc-3.litho.ai'}`) ||
-    'https://rpc.kamet.litho.ai,https://rpc-3.litho.ai',
+    'https://rpc-3.litho.ai',
 )
   .split(',')
   .map(s => s.trim())

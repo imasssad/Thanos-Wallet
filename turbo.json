@@ -3,7 +3,13 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "build/**"]
+      "outputs": ["dist/**", ".next/**", "build/**"],
+      "env": [
+        "NEXT_PUBLIC_*",
+        "SENTRY_AUTH_TOKEN",
+        "VITE_*",
+        "EXPO_PUBLIC_*"
+      ]
     },
     "dev": {
       "cache": false,

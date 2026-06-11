@@ -194,7 +194,7 @@ Switch chains after sign-in:
 const provider = await thanos.getProvider();
 await provider.request({
   method: 'wallet_switchEthereumChain',
-  params: [{ chainId: '0xab09f9' }], // 700777
+  params: [{ chainId: '0xab169' }], // 700777
 });
 ```
 

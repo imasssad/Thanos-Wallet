@@ -165,7 +165,7 @@ export default function PrivacyPolicyPage() {
         <p>The wallet interacts with the following external services:</p>
         <ul>
           <li>
-            <strong>Blockchain RPC nodes</strong> (rpc.litho.ai, rpc-2.litho.ai, rpc.kamet.litho.ai, public
+            <strong>Blockchain RPC nodes</strong> (rpc.litho.ai, rpc-2.litho.ai, rpc-3.litho.ai, public
             Ethereum/Solana/Bitcoin nodes): used to read balances and broadcast transactions. These
             services receive your wallet address and transaction data as part of normal blockchain
             operation.

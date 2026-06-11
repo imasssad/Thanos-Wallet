@@ -67,6 +67,14 @@ jobs:
           NEXT_PUBLIC_SENTRY_DSN:      ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
           SENTRY_DSN:                  ${{ secrets.SENTRY_DSN }}
         run: |
+          # NOTE on indentation: the inner <<ENV heredoc body + terminator
+          # MUST sit at the same indent as this comment (YAML strips the
+          # common block-scalar indent, landing them at column 0 on the
+          # remote shell). bash requires the bare delimiter at column 0 —
+          # an indented "  ENV" never terminates the heredoc, the env file
+          # gets a literal "ENV" line appended, and the next step's
+          # `source` aborts the whole deploy. This exact bug shipped once;
+          # don't re-indent these lines for prettiness.
           ssh -i ~/.ssh/id_staging "$USER@$HOST" bash -s <<EOF
             set -euo pipefail
             cd /var/www/thanos-wallet
@@ -74,18 +82,18 @@ jobs:
             git reset --hard origin/${{ github.event.inputs.branch || github.ref_name }}
 
             # Write the staging env. Values come from CI env over the
-            # ssh stdin; never echo them. Atomic write via a temp file.
+            # ssh stdin; never echo them.
             umask 077
             cat > /var/www/thanos-wallet/.env.staging <<ENV
-            POSTGRES_PASSWORD_STAGING=$POSTGRES_PASSWORD_STAGING
-            REDIS_PASSWORD_STAGING=$REDIS_PASSWORD_STAGING
-            JWT_SECRET_STAGING=$JWT_SECRET_STAGING
-            REFRESH_SECRET_STAGING=$REFRESH_SECRET_STAGING
-            NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-            SENTRY_DSN=$SENTRY_DSN
-            SENTRY_ENVIRONMENT=staging
-            NEXT_PUBLIC_API_URL_STAGING=https://staging.thanos.fi
-            ENV
+          POSTGRES_PASSWORD_STAGING=$POSTGRES_PASSWORD_STAGING
+          REDIS_PASSWORD_STAGING=$REDIS_PASSWORD_STAGING
+          JWT_SECRET_STAGING=$JWT_SECRET_STAGING
+          REFRESH_SECRET_STAGING=$REFRESH_SECRET_STAGING
+          NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+          SENTRY_DSN=$SENTRY_DSN
+          SENTRY_ENVIRONMENT=staging
+          NEXT_PUBLIC_API_URL_STAGING=https://staging.thanos.fi
+          ENV
           EOF
 
       - name: Bring up the staging stack

@@ -101,9 +101,12 @@ describe('DnnsService.reverseResolve', () => {
 
 describe('DnnsService.register', () => {
   it('builds register(name, owner, years) on the dnns-registry contract', async () => {
+    // register() validates the returned hash shape (0x + 64 hex chars) —
+    // anything shorter throws, so the mock must return a real-shaped hash.
+    const FULL_HASH = '0x' + 'deadbeef'.repeat(8);
     let captured: { chainId: number; contract: string; method: string; args: unknown[] } | null = null;
     const lithic = mockLithic({
-      callContract: (req) => { captured = req; return '0xdeadbeef'; },
+      callContract: (req) => { captured = req; return FULL_HASH; },
     });
     const svc = new DnnsService(lithic);
     const r = await svc.register({
@@ -113,7 +116,7 @@ describe('DnnsService.register', () => {
       years:   3,
     });
     expect(r.submitted).toBe(true);
-    expect(r.txHash).toBe('0xdeadbeef');
+    expect(r.txHash).toBe(FULL_HASH);
     expect(captured).toMatchObject({
       chainId: KAMET,
       contract: 'dnns-registry',
@@ -128,7 +131,7 @@ describe('DnnsService.register', () => {
     // callback returns. A property assignment on a typed ref dodges that.
     const ref: { call: { args?: unknown[] } | null } = { call: null };
     const lithic = mockLithic({
-      callContract: (req) => { ref.call = req; return '0xabc'; },
+      callContract: (req) => { ref.call = req; return '0x' + 'ab'.repeat(32); },
     });
     const svc = new DnnsService(lithic);
     await svc.register({ chainId: KAMET, name: 'a.litho', owner: '0x' + 'b'.repeat(40) });

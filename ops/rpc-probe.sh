@@ -69,8 +69,7 @@ probe "rpc.litho.ai (primary)"   "https://rpc.litho.ai"   POST '{"jsonrpc":"2.0"
 probe "rpc-2.litho.ai (fallback)" "https://rpc-2.litho.ai" POST '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
 
 section "Lithosphere — Kamet (chain 900523)"
-probe "rpc.kamet.litho.ai (primary)" "https://rpc.kamet.litho.ai" POST '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
-probe "rpc-3.litho.ai (fallback)"     "https://rpc-3.litho.ai"     POST '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
+probe "rpc-3.litho.ai (primary)"      "https://rpc-3.litho.ai"     POST '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}'
 
 # ─── External chains ──────────────────────────────────────────────────
 section "Bitcoin — mempool.space"
