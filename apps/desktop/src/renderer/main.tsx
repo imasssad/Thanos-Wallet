@@ -157,11 +157,18 @@ const ACCOUNT = { name: 'Thanos Wallet', address: '0x000000000000000000000000000
    Mainstream coins fall through to a CoinGecko CDN logo. Same model as
    the web TokenIcon + mobile/extension resolvers. */
 const BUNDLED_ICONS: Record<string, string> = {
-  litho:  '/images/tokens/litho.jpg',
+  // 2026-06 client icon pack — marks pre-sized for visual parity with
+  // the BTC/ETH logos; render as-is. FGPT/MUSA have their own marks now
+  // (the old `furgpt` key was the FurGPT dApp mascot, not a token icon).
+  litho:  '/images/tokens/litho.png',
   jot:    '/images/tokens/jot.png',
   lax:    '/images/tokens/lax.png',
   colle:  '/images/tokens/colle.png',
-  furgpt: '/images/tokens/furgpt.png',
+  image:  '/images/tokens/image.png',
+  agii:   '/images/tokens/agii.png',
+  fgpt:   '/images/tokens/fgpt.png',
+  musa:   '/images/tokens/musa.png',
+  atua:   '/images/tokens/atua.png',
   ignite: '/images/tokens/ignite.png',
   quantt: '/images/tokens/quantt.png',
   // Mainstream coins — bundled (clean cropped PNGs from CoinGecko, offline-safe).

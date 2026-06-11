@@ -15,17 +15,23 @@
  */
 import type { ImageSourcePropType } from 'react-native';
 
-/* Bundled — the client icon pack (apps/mobile/assets/images/tokens/). */
+/* Bundled — the 2026-06 client icon pack (apps/mobile/assets/images/
+   tokens/). Per the client the marks are pre-sized for visual parity
+   with the BTC/ETH logos — render as-is, no extra scaling. The dead
+   `furgpt`/`mansa` token keys are gone: those names were Kamet-explorer
+   mislabels; the real tokens are FGPT (Finesse GPT) + MUSA (Musa AI). */
 const BUNDLED: Record<string, ImageSourcePropType> = {
-  litho:  require('../assets/images/tokens/litho.jpg'),
+  litho:  require('../assets/images/tokens/litho.png'),
   jot:    require('../assets/images/tokens/jot.png'),
   lax:    require('../assets/images/tokens/lax.png'),
   colle:  require('../assets/images/tokens/colle.png'),
-  furgpt: require('../assets/images/tokens/furgpt.png'),
+  image:  require('../assets/images/tokens/image.png'),
+  agii:   require('../assets/images/tokens/agii.png'),
+  fgpt:   require('../assets/images/tokens/fgpt.png'),
+  musa:   require('../assets/images/tokens/musa.png'),
+  atua:   require('../assets/images/tokens/atua.png'),
   ignite: require('../assets/images/tokens/ignite.png'),
   ignt:   require('../assets/images/tokens/ignite.png'),
-  mansa:  require('../assets/images/tokens/mansa.png'),
-  agii:   require('../assets/images/tokens/agii.png'),
   quantt: require('../assets/images/tokens/quantt.png'),
   // Mainstream coins — bundled now too, so they load offline + render
   // identically across desktop/extension/mobile.

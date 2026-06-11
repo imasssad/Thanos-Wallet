@@ -5,11 +5,12 @@
  * Addresses are on Makalu (chain 700777 — still testnet) and the verified
  * source-of-truth lives at packages/sdk-core/src/tokens/makalu-lep100-source.ts.
  *
- * Icon paths point at `apps/web/public/images/tokens/{file}`. The client
- * icon pack (litho/jot/lax/colle/furgpt/ignite/quantt) is committed there.
+ * Icon paths point at `apps/web/public/images/tokens/{file}`. The 2026-06
+ * client icon pack (litho/jot/lax/colle/image/agii/fgpt/musa/atua) is
+ * committed there — per the client, the marks are pre-sized for visual
+ * parity with the BTC/ETH logos, so render them as-is (no extra scaling).
  * Tokens with `icon: ''` have no bundled asset and resolve their logo at
  * runtime via lib/token-logos.ts (CoinGecko CDN) — BTC, SOL, ATOM, LitBTC.
- * IMAGE has neither yet, so it shows the brand-color circle fallback.
  *
  * `color` is the brand-circle fallback AND the backdrop a transparent
  * icon (e.g. furgpt) is composited onto — so it MUST match the icon's
@@ -62,7 +63,7 @@ export const TOKENS: Token[] = [
     address: null, // native gas coin
     decimals: 18,
     color: '#3b7af7',
-    icon: '/images/tokens/litho.jpg',
+    icon: '/images/tokens/litho.png',  // 2026-06 client icon pack (sized to match BTC etc.)
     priceUsd: 5.00,        // placeholder — see pricing.ts
     balance: '0',
     change24h: 0,
@@ -85,7 +86,7 @@ export const TOKENS: Token[] = [
     chain: 'Makalu',
     address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e',
     decimals: 18,
-    color: '#ec4899',       // pink — matches the jot.png coin background
+    color: '#ef4444',       // red — matches the Jot-red coin Esha pinned (2026-06)
     icon: '/images/tokens/jot.png',
     priceUsd: 0.50,         // placeholder — see pricing.ts
     balance: '0',
@@ -123,7 +124,7 @@ export const TOKENS: Token[] = [
     address: '0xAcD98E323968647936887aD4934e64B01060727e',
     decimals: 18,
     color: '#22d3ee',
-    icon: '',               // no bundled asset yet — brand-circle fallback
+    icon: '/images/tokens/image.png',  // 2026-06 client icon pack
     priceUsd: 0.025,        // placeholder — see pricing.ts
     balance: '0',
     change24h: 0,
@@ -140,9 +141,7 @@ export const TOKENS: Token[] = [
     address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e',
     decimals: 18,
     color: '#a855f7',
-    icon: '',               // furgpt.png is the FurGPT dApp's dog mascot — wrong
-                            // brand for Finesse GPT. Letter avatar until the
-                            // real FGPT mark ships.
+    icon: '/images/tokens/fgpt.png',   // real FGPT mark from the 2026-06 client icon pack
     priceUsd: 0.015,
     balance: '0',
     change24h: 0,
@@ -157,7 +156,7 @@ export const TOKENS: Token[] = [
     address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D',
     decimals: 18,
     color: '#a855f7',
-    icon: '',
+    icon: '/images/tokens/musa.png',   // 2026-06 client icon pack
     priceUsd: 0.01,
     balance: '0',
     change24h: 0,

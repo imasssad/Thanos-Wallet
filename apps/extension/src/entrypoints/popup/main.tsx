@@ -44,6 +44,14 @@ const STORAGE = {
   theme: 'thanos-theme',
 };
 
+/* Dark-first, applied synchronously at module load — BEFORE React mounts
+   — so the popup never flashes white for dark users. Matches the web +
+   desktop apps, which are dark-first; the extension was the odd one out
+   (light unless the user had explicitly stored 'dark', and the theme
+   only landed after the async vault load). Explicit 'light' still wins. */
+document.documentElement.dataset.theme =
+  localStorage.getItem(STORAGE.theme) === 'light' ? 'light' : 'dark';
+
 function generateMnemonic(): string[] {
   return Wallet.createRandom().mnemonic!.phrase.split(' ');
 }
@@ -62,11 +70,16 @@ function deriveEvm(seed: string[], idx = 0): string {
    the extension root). Mainstream coins fall through to a CoinGecko
    CDN logo. Mirrors the web TokenIcon + mobile token-icons resolver. */
 const BUNDLED_ICONS: Record<string, string> = {
-  litho:  '/images/tokens/litho.jpg',
+  // 2026-06 client icon pack — pre-sized for parity with BTC/ETH marks.
+  litho:  '/images/tokens/litho.png',
   jot:    '/images/tokens/jot.png',
   lax:    '/images/tokens/lax.png',
   colle:  '/images/tokens/colle.png',
-  furgpt: '/images/tokens/furgpt.png',
+  image:  '/images/tokens/image.png',
+  agii:   '/images/tokens/agii.png',
+  fgpt:   '/images/tokens/fgpt.png',
+  musa:   '/images/tokens/musa.png',
+  atua:   '/images/tokens/atua.png',
   ignite: '/images/tokens/ignite.png',
   quantt: '/images/tokens/quantt.png',
   atom:   '/images/tokens/atom.png',
@@ -1828,7 +1841,7 @@ function App() {
   const [seed, setSeed] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);  // dark-first — matches web/desktop
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
   const [rpcBusy, setRpcBusy]       = useState(false);
@@ -1953,8 +1966,11 @@ function App() {
           }
         }
       }
+      // Dark-first: only an explicit stored 'light' opts out (the module-
+      // level snippet above already painted the right theme pre-mount —
+      // this just syncs React state for the Settings toggle label).
       const stored = localStorage.getItem(STORAGE.theme);
-      const dark = stored === 'dark';
+      const dark = stored !== 'light';
       setIsDark(dark);
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     })().catch(() => {});

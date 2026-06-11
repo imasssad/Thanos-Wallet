@@ -53,7 +53,7 @@ const COIN_COLORS: Record<string, string> = {
   LITHO: '#8b7df7', WLITHO: '#a395f8', BTC: '#f7931a', LITBTC: '#f7931a',
   ETH: '#627eea', SOL: '#14f195', USDC: '#2775ca', USDT: '#26a17b',
   BNB: '#f3ba2f', JOT: '#3b7af7', IMAGE: '#10b981', LAX: '#a3e635',
-  FGPT: '#10b981', FURGPT: '#10b981', COLLE: '#a3e635', AGII: '#8b7df7',
+  FGPT: '#10b981', COLLE: '#a3e635', AGII: '#8b7df7',
   BLDR: '#f97316', MUSA: '#eab308',
 };
 export function coinColor(sym: string): string {

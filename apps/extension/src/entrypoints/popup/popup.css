@@ -1,28 +1,11 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  --bg-base:        #ffffff;
-  --bg-surface:     #ffffff;
-  --bg-card:        #ffffff;
-  --bg-elevated:    #f4f4f7;
-  --bg-hover:       #ebebf0;
-  --border-subtle:  #ececef;
-  --border-default: #d4d4d8;
-  --border-strong:  #a1a1aa;
-
-  --accent-500:     #8b7df7;
-  --blue:           #3b7af7;
-  --blue-dim:       rgba(59,122,247,0.10);
-  --green:          #16a34a;
-  --green-dim:      rgba(22,163,74,0.10);
-  --red:            #dc2626;
-  --red-dim:        rgba(220,38,38,0.10);
-
-  --text-primary:   #0a0a0f;
-  --text-secondary: #52525b;
-  --text-muted:     #71717a;
-}
-
+/* Dark-first — :root IS the dark palette, so the very first paint
+   (before any JS runs) is already dark, matching web + desktop. Light
+   is the explicit override via [data-theme="light"]. The extension was
+   previously the only light-first client and flashed white on every
+   popup open for dark users. */
+:root,
 [data-theme="dark"] {
   --bg-base:        #080809;
   --bg-surface:     #0e0e12;
@@ -33,15 +16,38 @@
   --border-default: #282834;
   --border-strong:  #383848;
 
+  --accent-500:     #8b7df7;
+  --blue:           #3b7af7;
+  --blue-dim:       rgba(59,122,247,0.12);
   --green:          #10b981;
   --green-dim:      rgba(16,185,129,0.10);
   --red:            #f87171;
   --red-dim:        rgba(248,113,113,0.10);
-  --blue-dim:       rgba(59,122,247,0.12);
 
   --text-primary:   #f0f0f4;
   --text-secondary: #9696aa;
   --text-muted:     #52525b;
+}
+
+[data-theme="light"] {
+  --bg-base:        #ffffff;
+  --bg-surface:     #ffffff;
+  --bg-card:        #ffffff;
+  --bg-elevated:    #f4f4f7;
+  --bg-hover:       #ebebf0;
+  --border-subtle:  #ececef;
+  --border-default: #d4d4d8;
+  --border-strong:  #a1a1aa;
+
+  --blue-dim:       rgba(59,122,247,0.10);
+  --green:          #16a34a;
+  --green-dim:      rgba(22,163,74,0.10);
+  --red:            #dc2626;
+  --red-dim:        rgba(220,38,38,0.10);
+
+  --text-primary:   #0a0a0f;
+  --text-secondary: #52525b;
+  --text-muted:     #71717a;
 }
 
 html, body { width: 360px; height: 600px; overflow: hidden; }

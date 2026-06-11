@@ -180,9 +180,17 @@ body {
   letter-spacing: -0.005em;
   min-height: 100vh;
   overflow-x: hidden;
-  /* No global zoom — fonts and icon sizes are bumped per-declaration so
-     layouts (padding, heights, gaps) stay clean while text reads larger. */
   zoom: 1;
+}
+
+/* Client request (2026-06-12): render the whole UI ~10% larger.
+   CSS zoom (standardized, all evergreen browsers since 2024) scales
+   layout + text + images together — same mechanism the desktop app
+   uses (zoom 1.5). Desktop-class widths only: phones already use the
+   full viewport and 1.1 would cramp modals; the 768px breakpoint
+   matches the existing mobile input-zoom guard below. */
+@media (min-width: 769px) {
+  body { zoom: 1.1; }
 }
 
 /* ── Mobile input zoom guard ─────────────────────────────────────────
