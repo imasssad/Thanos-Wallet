@@ -52,6 +52,15 @@ const STORAGE = {
 document.documentElement.dataset.theme =
   localStorage.getItem(STORAGE.theme) === 'light' ? 'light' : 'dark';
 
+/* Swappable assets — the verified Makalu token set (matches the web
+   SwapModal's canonical TOKENS list). The previous hardcoded dropdowns
+   offered LitETH and USDC, neither of which exists on Makalu, and
+   omitted seven real LEP100s. */
+const SWAP_SYMBOLS = [
+  'LITHO', 'wLITHO', 'LitBTC', 'LAX', 'JOT',
+  'COLLE', 'IMAGE', 'AGII', 'BLDR', 'FGPT', 'MUSA',
+] as const;
+
 function generateMnemonic(): string[] {
   return Wallet.createRandom().mnemonic!.phrase.split(' ');
 }
@@ -1514,7 +1523,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">FROM</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={from} onChange={e => setFrom(e.target.value)}>
-            {['LITHO','wLITHO','FGPT','LitBTC','LitETH','USDC'].map(s => <option key={s}>{s}</option>)}
+            {SWAP_SYMBOLS.map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
         </div>
@@ -1522,7 +1531,7 @@ function SwapModal({ onClose }: { onClose: () => void }) {
         <label className="field-label">TO</label>
         <div style={{ display: 'flex', gap: 6 }}>
           <select className="field" style={{ width: 80 }} value={to} onChange={e => setTo(e.target.value)}>
-            {['LitBTC','LitETH','LITHO','wLITHO','FGPT','USDC'].map(s => <option key={s}>{s}</option>)}
+            {SWAP_SYMBOLS.map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>
         </div>
