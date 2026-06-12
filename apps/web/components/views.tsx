@@ -157,7 +157,13 @@ export function MarketView() {
             </thead>
             <tbody>
               {filtered.map((c, i) => (
-                <tr key={c.sym} onClick={() => setDetailSym(c.sym)} style={{ cursor: 'pointer' }}>
+                <tr
+                  key={c.sym}
+                  onClick={() => setDetailSym(c.sym)}
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailSym(c.sym); } }}
+                  style={{ cursor: 'pointer' }}
+                >
                   <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
                   <td>
                     <div className="tx-cell">
@@ -333,7 +339,13 @@ export function PortfolioView() {
               </thead>
               <tbody>
                 {coins.map(c => (
-                  <tr key={c.sym} onClick={() => setDetailSym(c.sym)} style={{ cursor: 'pointer' }}>
+                  <tr
+                    key={c.sym}
+                    onClick={() => setDetailSym(c.sym)}
+                    tabIndex={0}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailSym(c.sym); } }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <td>
                       <div className="tx-cell">
                         <TokenIcon sym={c.sym} color={c.color} size={36} style={{ borderRadius: 10 }}/>

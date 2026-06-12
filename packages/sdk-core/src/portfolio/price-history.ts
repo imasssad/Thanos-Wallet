@@ -118,11 +118,12 @@ export const PORTFOLIO_HISTORY_POINTS = POINTS;
 
 /* ─── Single-token history (token detail screen) ─────────────────────── */
 
-/** Token-detail chart ranges. 'all' maps to CoinGecko days=max. */
+/** Token-detail chart ranges. 'all' is capped at 365 days — CoinGecko's
+ *  keyless public API rejects `days=max` (401, paid-tier only). */
 export type TokenRange = '1d' | '1w' | '1m' | '3m' | '1y' | 'all';
 
-const tokenRangeDays: Record<TokenRange, number | 'max'> = {
-  '1d': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365, all: 'max',
+const tokenRangeDays: Record<TokenRange, number> = {
+  '1d': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365, all: 365,
 };
 
 export interface TokenHistory {
@@ -133,6 +134,10 @@ export interface TokenHistory {
   /** False for tokens with no CoinGecko feed (Litho ecosystem) — the
    *  caller should render an honest empty/flat state, not a fake curve. */
   hasRealData: boolean;
+  /** True when the symbol HAS a feed but the fetch failed (rate limit /
+   *  network). Callers should show a "try again" state — NOT the
+   *  no-feed copy, which would misdescribe BTC as feedless. */
+  failed?: boolean;
 }
 
 const tokenSeriesCache = new Map<string, { at: number; hist: TokenHistory }>();
@@ -156,10 +161,10 @@ export async function fetchTokenHistory(sym: string, range: TokenRange): Promise
       `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}` +
       `/market_chart?vs_currency=usd&days=${days}`;
     const res = await fetch(url);
-    if (!res.ok) return { prices: [], changePct: 0, hasRealData: false };
+    if (!res.ok) return { prices: [], changePct: 0, hasRealData: false, failed: true };
     const json = await res.json();
     const raw: [number, number][] = json?.prices ?? [];
-    if (raw.length < 2) return { prices: [], changePct: 0, hasRealData: false };
+    if (raw.length < 2) return { prices: [], changePct: 0, hasRealData: false, failed: true };
 
     // Resample [ts, price] pairs to POINTS entries so chart paths stay cheap.
     const prices: Array<[number, number]> = [];
@@ -180,7 +185,7 @@ export async function fetchTokenHistory(sym: string, range: TokenRange): Promise
     tokenSeriesCache.set(key, { at: Date.now(), hist });
     return hist;
   } catch {
-    return { prices: [], changePct: 0, hasRealData: false };
+    return { prices: [], changePct: 0, hasRealData: false, failed: true };
   }
 }
 

@@ -207,6 +207,19 @@ body {
   .app-shell { height: calc(100vh / 1.1); height: calc(100dvh / 1.1); }
 }
 
+/* Token-detail modal — tall scrolling modal. Same vh-under-zoom trap as
+   .app-shell: dvh units render ×1.1 under the desktop zoom, so an
+   uncompensated 92dvh would clip past the real viewport. */
+.token-detail-box {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+@media (min-width: 769px) {
+  .token-detail-box { max-height: calc(92dvh / 1.1); }
+}
+
 /* ── Mobile input zoom guard ─────────────────────────────────────────
    iOS Safari (and every iOS in-app WebView) auto-zooms the whole page
    when a focused <input>/<select>/<textarea> has a computed font-size

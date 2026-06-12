@@ -77,27 +77,71 @@ async function getJson<T>(path: string, timeoutMs = 6_000): Promise<T> {
   }
 }
 
+/* ─── Wire normalisation ────────────────────────────────────────────── */
+
+/* The indexer's actual wire shape drifted from this client's documented
+ * types: services/indexer emits `kind`/`createdAt`/`title` on activity
+ * rows (not `type`/`ts`) and `contractAddress` on assets (not
+ * `tokenAddress`). Consumers coded against THIS file's types — e.g.
+ * views.tsx activityToRow calls `item.type.charAt(0)`, which throws the
+ * moment a real row arrives. Normalise both shapes here, accepting old
+ * and new field names, so every consumer sees the documented contract. */
+
+function normalizeActivity(raw: Record<string, unknown>): IndexerActivityItem {
+  return {
+    id:           String(raw.id ?? raw.txHash ?? `${raw.symbol}-${raw.createdAt ?? ''}`),
+    type:         String(raw.type ?? raw.kind ?? 'transfer'),
+    symbol:       String(raw.symbol ?? ''),
+    amount:       String(raw.amount ?? '0'),
+    counterparty: (raw.counterparty as string | undefined),
+    txHash:       (raw.txHash as string | undefined),
+    blockNumber:  (raw.blockNumber as number | undefined),
+    ts:           (raw.ts as string | undefined) ?? (raw.createdAt as string | undefined),
+    status:       (raw.status as string | undefined),
+  };
+}
+
+function normalizeAsset(raw: Record<string, unknown>): IndexerAsset {
+  return {
+    chainId:      Number(raw.chainId ?? 700777),
+    symbol:       String(raw.symbol ?? ''),
+    name:         String(raw.name ?? raw.symbol ?? ''),
+    decimals:     Number(raw.decimals ?? 18),
+    balance:      String(raw.balance ?? '0'),
+    native:       Boolean(raw.native),
+    tokenAddress: (raw.tokenAddress as string | undefined) ?? (raw.contractAddress as string | undefined),
+  };
+}
+
 /* ─── Public API ────────────────────────────────────────────────────── */
 
 /** Full portfolio (native LITHO + LEP100 balances + recent activity). */
 export async function getPortfolio(walletAddress: string): Promise<IndexerPortfolio> {
-  return getJson<IndexerPortfolio>(`/portfolio/${encodeURIComponent(walletAddress)}`);
+  const raw = await getJson<{ walletAddress: string; updatedAt: string; assets?: unknown[]; activity?: unknown[] }>(
+    `/portfolio/${encodeURIComponent(walletAddress)}`,
+  );
+  return {
+    walletAddress: raw.walletAddress,
+    updatedAt:     raw.updatedAt,
+    assets:        (raw.assets ?? []).map(a => normalizeAsset(a as Record<string, unknown>)),
+    activity:      (raw.activity ?? []).map(a => normalizeActivity(a as Record<string, unknown>)),
+  };
 }
 
 /** LEP100 balances only — useful for the "discover tokens after import" flow. */
 export async function getLep100Balances(walletAddress: string): Promise<IndexerAsset[]> {
-  const data = await getJson<{ items: IndexerAsset[] }>(
+  const data = await getJson<{ items?: unknown[] }>(
     `/lep100/balances/${encodeURIComponent(walletAddress)}`,
   );
-  return data.items ?? [];
+  return (data.items ?? []).map(a => normalizeAsset(a as Record<string, unknown>));
 }
 
 /** Recent on-chain activity (transfers, approvals). */
 export async function getActivity(walletAddress: string): Promise<IndexerActivityItem[]> {
-  const data = await getJson<{ items: IndexerActivityItem[] }>(
+  const data = await getJson<{ items?: unknown[] }>(
     `/lep100/activity/${encodeURIComponent(walletAddress)}`,
   );
-  return data.items ?? [];
+  return (data.items ?? []).map(a => normalizeActivity(a as Record<string, unknown>));
 }
 
 /** Quick liveness probe — useful for showing a "Connected / Offline" badge. */

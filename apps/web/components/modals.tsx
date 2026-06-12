@@ -120,12 +120,15 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   /* When the user changes network, reset `coin` to the right default for
      that chain. Each chain has exactly one sendable asset today
      (Lithosphere is the exception — multiple LEP100 tokens via the
-     existing TokenSelect inside the asset row). Skipped on the first
-     render when an initialCoin was provided — otherwise this effect
-     would immediately clobber the caller's pre-selection. */
-  const skipInitialCoinReset = React.useRef(!!initialCoin);
+     existing TokenSelect inside the asset row). Keyed on the PREVIOUS
+     network value rather than a consumed-once ref so the reset only
+     fires on a real network CHANGE — a skip-once ref gets eaten by
+     React StrictMode's doubled mount effect and clobbers the caller's
+     initialCoin pre-selection in dev. */
+  const prevNetwork = React.useRef(network);
   useEffect(() => {
-    if (skipInitialCoinReset.current) { skipInitialCoinReset.current = false; return; }
+    if (prevNetwork.current === network) return;
+    prevNetwork.current = network;
     if (network === 'makalu')       setCoin('LITHO');
     else if (network === 'kamet')   setCoin('LITHO');
     else if (network === 'bitcoin') setCoin('BTC');

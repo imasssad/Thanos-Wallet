@@ -442,8 +442,10 @@ export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modal, setModal] = useState<ModalKind>(null);
-  /** Token-detail screen — opened by tapping any token row. */
-  const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Token-detail screen — opened by tapping any token row. chainId rides
+   *  along for EVM-native rows (ETH/BNB/…) so the screen labels the right
+   *  network instead of assuming Makalu. */
+  const [detail, setDetail] = useState<{ sym: string; chainId?: number } | null>(null);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices    = usePrices();
@@ -702,7 +704,7 @@ export function Dashboard() {
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
-      {detailSym && <TokenDetailModal sym={detailSym} onClose={() => setDetailSym(null)}/>}
+      {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
 
       <div style={{
         maxWidth: 760, margin: '0 auto',
@@ -932,12 +934,19 @@ export function Dashboard() {
                     })
                   : '';
                 return (
-                <div key={c.sym} onClick={() => setDetailSym(c.sym)} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  padding: '14px 4px',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  cursor: 'pointer',
-                }}>
+                <div
+                  key={c.sym}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetail({ sym: c.sym, chainId: c.chainId })}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail({ sym: c.sym, chainId: c.chainId }); } }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '14px 4px',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                  }}
+                >
                   <TokenIcon sym={c.sym} color={c.color} size={44} chainId={c.chainId} native={c.native}/>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 700 }}>{c.sym}</div>

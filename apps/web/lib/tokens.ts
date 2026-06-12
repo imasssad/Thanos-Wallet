@@ -47,7 +47,7 @@ export type Token = {
 /**
  * Pricing rules (per client spec):
  *   LAX    = hard-coded $1.0001 always
- *   LITHO  = placeholder $5.00 until oracle wired
+ *   LITHO  = placeholder $8.60 (client-set 2026-06-12) until oracle wired
  *   JOT    = placeholder $0.50 until oracle wired
  *   IMAGE  = placeholder $0.025 until oracle wired
  *   LitBTC = fetched live (tracks BTC via CoinGecko)
