@@ -249,7 +249,21 @@ export async function runMakaluSync(mode: 'bootstrap' | 'incremental' | 'backfil
   let from = cursor + 1;
   while (from <= head) {
     const to = Math.min(from + MAX_BLOCKS_PER_BATCH - 1, head);
-    const n = await syncRange(from, to, tokens);
+    // Retry each batch with exponential backoff. A full backfill is
+    // ~2,900 batches against upstream nginx that 502s for a few seconds
+    // now and then (observed live 2026-06-12) — without retries one
+    // blip aborts the whole multi-hour run; the cursor makes re-runs
+    // safe but losing 20 minutes of progress to a 2-second 502 is silly.
+    let n = 0;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try { n = await syncRange(from, to, tokens); lastErr = null; break; }
+      catch (e) {
+        lastErr = e;
+        await new Promise(r => setTimeout(r, 1_000 * 2 ** attempt));
+      }
+    }
+    if (lastErr) throw lastErr;
     processed += n;
     await setCursor(to, n);
     from = to + 1;
