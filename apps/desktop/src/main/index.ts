@@ -37,6 +37,27 @@ const createWindow = () => {
      renderer's @ledgerhq/hw-transport-webhid + @trezor/connect-web can
      enumerate the device. Other vendors stay denied. */
   const sess = win.webContents.session;
+
+  /* CORS shim for the Lithosphere RPC nodes. Their preflight handling is
+     broken upstream: OPTIONS to rpc.litho.ai / rpc-2 is answered by the
+     Tendermint index page with no Access-Control-Allow-Origin, and
+     Electron renderers enforce CORS exactly like a browser — so every
+     ethers JSON-RPC POST (application/json => preflight required) was
+     blocked before it left the app. This is why sends failed while
+     receives (indexer-fed) worked. Scoped to exactly these hosts; the
+     web app solves the same problem with a same-origin Next proxy. */
+  const LITHO_RPC_URLS = ['https://rpc.litho.ai/*', 'https://rpc-2.litho.ai/*', 'https://rpc-3.litho.ai/*'];
+  sess.webRequest.onHeadersReceived({ urls: LITHO_RPC_URLS }, (details, callback) => {
+    const headers: Record<string, string | string[]> = { ...(details.responseHeaders ?? {}) };
+    // Drop any existing variants (case differs per server) before injecting.
+    for (const k of Object.keys(headers)) {
+      if (k.toLowerCase().startsWith('access-control-')) delete headers[k];
+    }
+    headers['Access-Control-Allow-Origin']  = ['*'];
+    headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS'];
+    headers['Access-Control-Allow-Headers'] = ['Content-Type, Accept, Origin'];
+    callback({ responseHeaders: headers });
+  });
   sess.setPermissionRequestHandler((_wc, permission, callback) => {
     const p = String(permission);
     callback(p === 'hid' || p === 'usb');
