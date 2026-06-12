@@ -20,16 +20,15 @@ export const HARD_PRICES: Record<string, number> = {
 export const PLACEHOLDER_PRICES: Record<string, number> = {
   LITHO: 8.6,
   JOT:   0.5,
-  IMAGE: 0.025,
 };
 
 /** Symbol → CoinGecko coin id. Add entries as more tokens get listed. */
 export const COINGECKO_IDS: Record<string, string> = {
   LitBTC: 'bitcoin',
-  // NOTE: no FGPT mapping on purpose. FGPT = Finesse GPT; the CoinGecko
-  // slug 'furgpt' is a DIFFERENT project (FurGPT pet-AI) — mapping it
-  // would price the wrong asset. FGPT falls back to the caller default
-  // until Finesse GPT gets a real listing.
+  // NOTE: no FGPT mapping — FGPT's on-chain name is "FurGPT" but the
+  // CoinGecko id 'furgpt' no longer exists (verified 2026-06-12), so it
+  // falls back to the caller default until a listing lands.
+  IMAGE:  'imagen-ai',  // Imagen Network — id from the Ignite team, verified live 2026-06-12
   COLLE:  'colle-ai',   // probably 404s today — falls back to caller default
   SOL:    'solana',
   BTC:    'bitcoin',

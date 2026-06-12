@@ -40,12 +40,11 @@ export const MAKALU_LEP100_SOURCE: MakaluLep100SourceConfig = {
   syncMode: 'hybrid',
   excludedSymbols: ['LITBTC2'],
   tokens: [
-    // Verified live on 2026-06-10 by Litho infra (kmp/kamet-network-config):
-    //   - The earlier "FurGPT" entry in this file was a Kamet-explorer
-    //     mislabel — there is no FurGPT contract on chain. What we were
-    //     calling FurGPT @0xDB829be... is actually MUSA (Musa AI), and
-    //     the real FGPT is "Finesse GPT" at 0x151ef362. The legacy
-    //     0xa25c2a49 contract is dead — dropped here.
+    // Names + addresses verified directly on-chain via name()/symbol()
+    // eth_calls (2026-06-12). FGPT's own name() returns "FurGPT" and
+    // MUSA's returns "Mansa AI" — both teams' off-chain lists disagreed,
+    // the contracts settle it. The legacy 0xa25c2a49 contract is dead
+    // and referenced by no one — dropped.
     //   - wLITHO/LAX/JOT/COLLE/AGII/BLDR addresses were all truncated
     //     previews of the wrong contracts. Replaced with the canonical
     //     deployments from makalu.litho.ai/tokens.
@@ -58,8 +57,8 @@ export const MAKALU_LEP100_SOURCE: MakaluLep100SourceConfig = {
     { symbol: 'IMAGE',  name: 'Image AI',            decimals: 18, totalSupply: '10000000000', address: '0xAcD98E323968647936887aD4934e64B01060727e', verified: true },
     { symbol: 'AGII',   name: 'AGI Inception',       decimals: 18, totalSupply: '1000000000', address: '0x10052B8ccD2160b8F9880C6b4F5DD117fF253B1c', verified: true },
     { symbol: 'BLDR',   name: 'Builder Finance',     decimals: 18, totalSupply: '1000000000', address: '0x798eD6bFc5bfCFc60938d5098825b354427A0786', verified: true },
-    { symbol: 'FGPT',   name: 'Finesse GPT',         decimals: 18, totalSupply: '1000000000', address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e', verified: true },
-    { symbol: 'MUSA',   name: 'Musa AI',             decimals: 18, totalSupply: '1000000000', address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', verified: true }
+    { symbol: 'FGPT',   name: 'FurGPT',              decimals: 18, totalSupply: '1000000000', address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e', verified: true },
+    { symbol: 'MUSA',   name: 'Mansa AI',            decimals: 18, totalSupply: '1000000000', address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', verified: true }
   ]
 };
 

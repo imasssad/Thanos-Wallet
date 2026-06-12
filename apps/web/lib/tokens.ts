@@ -49,7 +49,7 @@ export type Token = {
  *   LAX    = hard-coded $1.0001 always
  *   LITHO  = placeholder $8.60 (client-set 2026-06-12) until oracle wired
  *   JOT    = placeholder $0.50 until oracle wired
- *   IMAGE  = placeholder $0.025 until oracle wired
+ *   IMAGE  = fetched live (CoinGecko id 'imagen-ai' — confirmed by Ignite team)
  *   LitBTC = fetched live (tracks BTC via CoinGecko)
  *   FGPT   = fetched live (symbol lookup on CoinGecko, falls back to placeholder)
  *   COLLE  = fetched live (symbol lookup on CoinGecko, falls back to placeholder)
@@ -125,18 +125,17 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#22d3ee',
     icon: '/images/tokens/image.png',  // 2026-06 client icon pack
-    priceUsd: 0.025,        // placeholder — see pricing.ts
+    priceUsd: 0.0000115,    // fallback — live via CoinGecko id 'imagen-ai' (pricing.ts)
     balance: '0',
     change24h: 0,
   },
   {
-    // FGPT = Finesse GPT (verified on-chain symbol). The Kamet explorer's
-    // /api/tokens previously mislabelled this as "FurGPT" with the dead
-    // 0xa25c2a49 address — both were wrong. There is no FurGPT contract
-    // on chain; this is the only "GPT" token. Confirmed by Litho infra
-    // team 2026-06-10 (kmp/kamet-network-config).
+    // FGPT — on-chain name() returns "FurGPT" (verified via eth_call
+    // 2026-06-12; the earlier "Finesse GPT" label came from a Litho-side
+    // doc and matches nothing on chain). Same project as the furgpt.org
+    // dApp tile. The dead 0xa25c2a49 contract is referenced by no one.
     sym: 'FGPT',
-    name: 'Finesse GPT',
+    name: 'FurGPT',
     chain: 'Makalu',
     address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e',
     decimals: 18,
@@ -147,11 +146,10 @@ export const TOKENS: Token[] = [
     change24h: 0,
   },
   {
-    // MUSA = Musa AI. Was previously listed as "Mansa AI" at the same
-    // address — the Kamet explorer swaps MUSA/FGPT names. On-chain
-    // symbol() is authoritative.
+    // MUSA — on-chain name() returns "Mansa AI" (verified via eth_call
+    // 2026-06-12). Matches the mansa.world dApp tile.
     sym: 'MUSA',
-    name: 'Musa AI',
+    name: 'Mansa AI',
     chain: 'Makalu',
     address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D',
     decimals: 18,

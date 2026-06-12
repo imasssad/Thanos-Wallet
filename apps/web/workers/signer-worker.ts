@@ -102,9 +102,9 @@ const TOKEN_REGISTRY: Record<string, { address: string | null; decimals: number 
   LAX:    { address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d', decimals: 18 },
   COLLE:  { address: '0x10D4BB600c96e9243E2f50baFED8b2478F25af61', decimals: 18 },
   IMAGE:  { address: '0xAcD98E323968647936887aD4934e64B01060727e', decimals: 18 },
-  // FGPT = Finesse GPT (verified on-chain). The old "FurGPT" entries at
-  // 0xDB829be / 0xa25c2a49 were both wrong: 0xDB829be is MUSA, and
-  // 0xa25c2a49 is dead. See packages/sdk-core/src/tokens/makalu-lep100-source.ts.
+  // FGPT (name(): "FurGPT") lives at 0x151ef362; 0xDB829be is MUSA
+  // ("Mansa AI") and 0xa25c2a49 is dead. Verified on-chain 2026-06-12 —
+  // see packages/sdk-core/src/tokens/makalu-lep100-source.ts.
   FGPT:   { address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e', decimals: 18 },
   MUSA:   { address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D', decimals: 18 },
 };

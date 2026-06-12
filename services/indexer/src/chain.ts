@@ -76,8 +76,8 @@ const DEFAULT_MAKALU_TOKENS: ReadonlyArray<{ symbol: string; address: string }> 
   { symbol: 'IMAGE',  address: '0xAcD98E323968647936887aD4934e64B01060727e' },
   { symbol: 'AGII',   address: '0x10052B8ccD2160b8F9880C6b4F5DD117fF253B1c' },
   { symbol: 'BLDR',   address: '0x798eD6bFc5bfCFc60938d5098825b354427A0786' },
-  // FGPT = Finesse GPT, MUSA = Musa AI. The old "FurGPT" labels at
-  // 0xDB829be (=MUSA) and 0xa25c2a49 (dead) were Kamet-explorer mislabels.
+  // FGPT (on-chain name "FurGPT") = 0x151ef362; MUSA ("Mansa AI") =
+  // 0xDB829be. 0xa25c2a49 is dead. Verified via name()/symbol() 2026-06-12.
   { symbol: 'FGPT',   address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e' },
   { symbol: 'MUSA',   address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D' },
 ];
@@ -102,10 +102,10 @@ export function getConfiguredTokens(): TokenSpec[] {
     // Symbol comes back uppercase from env key; canonicalise the well-known
     // ones to match the wallet's TOKENS list ('LITBTC' → 'LitBTC' etc.).
     const symRaw = m[1];
-    // FURGPT is intentionally NOT canonicalised: there is no FurGPT token
-    // on-chain (FGPT = Finesse GPT, and 0xDB829be is MUSA). A leftover
-    // MAKALU_LEP100_FURGPT_ADDRESS env var would resurrect the mislabel,
-    // so it's ignored outright.
+    // FURGPT is intentionally NOT canonicalised: the token's SYMBOL is
+    // FGPT (its name() is "FurGPT") and a leftover MAKALU_LEP100_FURGPT_
+    // ADDRESS env var historically pointed at the WRONG contract (MUSA's
+    // 0xDB829be), so it's ignored outright — use MAKALU_LEP100_FGPT_ADDRESS.
     if (symRaw === 'FURGPT') continue;
     const sym =
       symRaw === 'LITBTC' ? 'LitBTC' :

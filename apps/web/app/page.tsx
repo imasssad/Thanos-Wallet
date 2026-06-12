@@ -222,7 +222,7 @@ function DashboardMockup() {
             { sym: 'BTC',    name: 'Bitcoin',             bal: '5.050',  usd: '$320,250', chg: '+24%', c: '#f7931a' },
             { sym: 'ETH',    name: 'Ethereum',            bal: '94.30',  usd: '$178,150', chg: '-6%',  c: '#627eea' },
             { sym: 'wLITHO', name: 'Wrapped Lithosphere', bal: '5,000',  usd: '$1,500',   chg: '+18%', c: '#22d3ee' },
-            { sym: 'FGPT',   name: 'Finesse GPT',         bal: '80,000', usd: '$1,200',   chg: '+42%', c: '#10b981' },
+            { sym: 'FGPT',   name: 'FurGPT',              bal: '80,000', usd: '$1,200',   chg: '+42%', c: '#10b981' },
           ].map(c => (
             <div key={c.sym} className="lp-mock-coin">
               <div className="lp-mock-coin-dot" style={{ background: c.c }} />

@@ -16,13 +16,12 @@ export const HARD_PRICES: Record<string, number> = {
 export const PLACEHOLDER_PRICES: Record<string, number> = {
   LITHO: 8.6,
   JOT:   0.5,
-  IMAGE: 0.025,
 };
 
 export const COINGECKO_IDS: Record<string, string> = {
   LitBTC: 'bitcoin',
-  // No FGPT mapping on purpose — FGPT = Finesse GPT; CoinGecko's 'furgpt'
-  // slug is a different project and would price the wrong asset.
+  // No FGPT mapping — the CoinGecko id 'furgpt' no longer exists.
+  IMAGE:  'imagen-ai',
   COLLE:  'colle-ai',
   SOL:    'solana',
   BTC:    'bitcoin',

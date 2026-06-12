@@ -17,9 +17,8 @@ import type { ImageSourcePropType } from 'react-native';
 
 /* Bundled — the 2026-06 client icon pack (apps/mobile/assets/images/
    tokens/). Per the client the marks are pre-sized for visual parity
-   with the BTC/ETH logos — render as-is, no extra scaling. The dead
-   `furgpt`/`mansa` token keys are gone: those names were Kamet-explorer
-   mislabels; the real tokens are FGPT (Finesse GPT) + MUSA (Musa AI). */
+   with the BTC/ETH logos — render as-is, no extra scaling. Keys are the
+   on-chain SYMBOLS: fgpt (name "FurGPT") + musa (name "Mansa AI"). */
 const BUNDLED: Record<string, ImageSourcePropType> = {
   litho:  require('../assets/images/tokens/litho.png'),
   jot:    require('../assets/images/tokens/jot.png'),
