@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, ShieldCheck,
 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
+import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
 import { PortfolioChart } from './PortfolioChart';
@@ -441,6 +442,8 @@ export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modal, setModal] = useState<ModalKind>(null);
+  /** Token-detail screen — opened by tapping any token row. */
+  const [detailSym, setDetailSym] = useState<string | null>(null);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices    = usePrices();
@@ -699,6 +702,7 @@ export function Dashboard() {
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
+      {detailSym && <TokenDetailModal sym={detailSym} onClose={() => setDetailSym(null)}/>}
 
       <div style={{
         maxWidth: 760, margin: '0 auto',
@@ -928,10 +932,11 @@ export function Dashboard() {
                     })
                   : '';
                 return (
-                <div key={c.sym} style={{
+                <div key={c.sym} onClick={() => setDetailSym(c.sym)} style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 4px',
                   borderBottom: '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
                 }}>
                   <TokenIcon sym={c.sym} color={c.color} size={44} chainId={c.chainId} native={c.native}/>
                   <div style={{ flex: 1, minWidth: 0 }}>

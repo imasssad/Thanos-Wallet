@@ -22,6 +22,7 @@ import { loadPendingTxs, type PendingTx } from '../lib/tx-store';
 import { BumpFeeModal } from './BumpFeeModal';
 import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
+import { TokenDetailModal } from './TokenDetailModal';
 
 /* Lithosphere rows shown at the top of the Market view. Prices come
    from usePrices() at runtime; caps and volumes are intentionally
@@ -101,6 +102,8 @@ function useMainstreamMarkets(): MarketRow[] | null {
 export function MarketView() {
   const [search, setSearch] = useState('');
   const prices       = usePrices();
+  /** Token-detail screen — opened by tapping any market row. */
+  const [detailSym, setDetailSym] = useState<string | null>(null);
 
   /* Lithosphere-focused market view — we no longer pull the top
      market-cap-desc page from CoinGecko (TRON / DOGE / HYPE / FIGR_HELOC
@@ -131,6 +134,7 @@ export function MarketView() {
   const filtered = market.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="main-area" style={{ width: '100%' }}>
+      {detailSym && <TokenDetailModal sym={detailSym} onClose={() => setDetailSym(null)}/>}
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Market</h1>
@@ -153,7 +157,7 @@ export function MarketView() {
             </thead>
             <tbody>
               {filtered.map((c, i) => (
-                <tr key={c.sym}>
+                <tr key={c.sym} onClick={() => setDetailSym(c.sym)} style={{ cursor: 'pointer' }}>
                   <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
                   <td>
                     <div className="tx-cell">
@@ -191,6 +195,8 @@ export function PortfolioView() {
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices = usePrices();
+  /** Token-detail screen — opened by tapping any asset row. */
+  const [detailSym, setDetailSym] = useState<string | null>(null);
 
   // Indexer-backed live balances. Null = haven't tried yet; [] = tried,
   // got nothing; non-empty = real data. We never throw out the canonical
@@ -273,6 +279,7 @@ export function PortfolioView() {
   });
   return (
     <div className="main-area" style={{ width: '100%' }}>
+      {detailSym && <TokenDetailModal sym={detailSym} onClose={() => setDetailSym(null)}/>}
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Assets</h1>
@@ -326,7 +333,7 @@ export function PortfolioView() {
               </thead>
               <tbody>
                 {coins.map(c => (
-                  <tr key={c.sym}>
+                  <tr key={c.sym} onClick={() => setDetailSym(c.sym)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div className="tx-cell">
                         <TokenIcon sym={c.sym} color={c.color} size={36} style={{ borderRadius: 10 }}/>

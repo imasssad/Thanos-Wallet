@@ -104,18 +104,28 @@ const SEND_NETWORKS: SendNet[] = [
   ...EVM_CHAINS.map(c => ({ id: `evm:${c.chainId}` as const, label: c.name })),
 ];
 
-export function SendModal({ onClose }: { onClose: () => void }) {
+export function SendModal({ onClose, initialNetwork, initialCoin }: {
+  onClose: () => void;
+  /** Pre-select a network (e.g. opened from a token detail screen). */
+  initialNetwork?: SendNet['id'];
+  /** Pre-select an asset on that network (e.g. 'FGPT'). */
+  initialCoin?: string;
+}) {
   const wallet = useWallet();
-  const [network, setNetwork] = useState<SendNet['id']>('makalu');
-  const [coin, setCoin]       = useState('LITHO');
+  const [network, setNetwork] = useState<SendNet['id']>(initialNetwork ?? 'makalu');
+  const [coin, setCoin]       = useState(initialCoin ?? 'LITHO');
   const [to, setTo]           = useState('');
   const [amount, setAmount]   = useState('');
 
   /* When the user changes network, reset `coin` to the right default for
      that chain. Each chain has exactly one sendable asset today
      (Lithosphere is the exception — multiple LEP100 tokens via the
-     existing TokenSelect inside the asset row). */
+     existing TokenSelect inside the asset row). Skipped on the first
+     render when an initialCoin was provided — otherwise this effect
+     would immediately clobber the caller's pre-selection. */
+  const skipInitialCoinReset = React.useRef(!!initialCoin);
   useEffect(() => {
+    if (skipInitialCoinReset.current) { skipInitialCoinReset.current = false; return; }
     if (network === 'makalu')       setCoin('LITHO');
     else if (network === 'kamet')   setCoin('LITHO');
     else if (network === 'bitcoin') setCoin('BTC');
@@ -1735,10 +1745,14 @@ function translateSwapError(raw?: string | null): string {
   return 'Swap couldn’t complete. Try again in a moment.';
 }
 
-export function SwapModal({ onClose }: { onClose: () => void }) {
+export function SwapModal({ onClose, initialFrom }: {
+  onClose: () => void;
+  /** Pre-select the FROM asset (e.g. opened from a token detail screen). */
+  initialFrom?: string;
+}) {
   const wallet = useWallet();
-  const [from, setFrom] = useState('LITHO');
-  const [to, setTo]     = useState('LitBTC');
+  const [from, setFrom] = useState(initialFrom ?? 'LITHO');
+  const [to, setTo]     = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt, setAmt]   = useState('100');
   /** User-configured slippage tolerance (percent). Lets us derive the
    *  Minimum-received line from the quote and gate execution when the

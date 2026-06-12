@@ -13,7 +13,7 @@ export const HARD_PRICES: Record<string, number> = {
 };
 
 export const PLACEHOLDER_PRICES: Record<string, number> = {
-  LITHO: 5.00,
+  LITHO: 8.60,
   JOT:   0.50,
   IMAGE: 0.025,
 };

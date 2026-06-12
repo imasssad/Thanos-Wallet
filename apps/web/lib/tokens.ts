@@ -64,7 +64,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#3b7af7',
     icon: '/images/tokens/litho.png',  // 2026-06 client icon pack (sized to match BTC etc.)
-    priceUsd: 5.00,        // placeholder — see pricing.ts
+    priceUsd: 8.60,        // placeholder per client (2026-06-12) — see pricing.ts
     balance: '0',
     change24h: 0,
   },

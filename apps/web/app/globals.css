@@ -193,6 +193,20 @@ body {
   body { zoom: 1.1; }
 }
 
+/* App-shell height. Two traps live here:
+   1. vh units inside a zoomed body render LARGER than the real
+      viewport (zoom multiplies the used value), so a 100vh shell under
+      zoom 1.1 overflows the screen by 10% and strands the bottom nav /
+      page tail — divide by the same factor the zoom multiplies by.
+   2. iOS Safari's 100vh ignores the collapsing URL bar; 100dvh tracks
+      the *visible* viewport, which fixes the "Discover page sometimes
+      can't scroll to the bottom" report on phones.
+   Keep the zoom factor and the divisor in lockstep if 1.1 ever changes. */
+.app-shell { height: 100vh; height: 100dvh; }
+@media (min-width: 769px) {
+  .app-shell { height: calc(100vh / 1.1); height: calc(100dvh / 1.1); }
+}
+
 /* ── Mobile input zoom guard ─────────────────────────────────────────
    iOS Safari (and every iOS in-app WebView) auto-zooms the whole page
    when a focused <input>/<select>/<textarea> has a computed font-size

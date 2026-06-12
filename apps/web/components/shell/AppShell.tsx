@@ -105,7 +105,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Wait for client-side check (avoid SSR mismatch)
   if (hasVault === null) {
-    return <div style={{ height: '100vh', background: 'var(--bg-base)' }}/>;
+    return <div className="app-shell" style={{ background: 'var(--bg-base)' }}/>;
   }
 
   if (!unlocked) {
@@ -117,7 +117,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <WalletContext.Provider value={{ evmAddress: derivedEvm, addresses, seed: walletSeed, privateKey: walletPrivateKey }}>
       <WalletConnectHost/>
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Height lives in globals.css (.app-shell): 100dvh — not 100vh —
+          so iOS Safari's collapsing URL bar can't strand content below
+          the fold, and divided by the desktop zoom factor so the zoomed
+          shell still fits the real viewport exactly. This was the
+          "Discover page sometimes can't scroll" bug. */}
+      <div className="app-shell" style={{ display: 'flex', flexDirection: 'column' }}>
         <TopNav
           onLock={lock}
           activeIdx={activeIdx}
