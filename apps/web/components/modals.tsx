@@ -842,9 +842,13 @@ export function SendModal({ onClose }: { onClose: () => void }) {
           .catch(() => setStage('failed'));
       }
     } catch (e) {
+      // SendError / SignerError carry pre-cleaned copy. Anything else is
+      // a raw chain/provider error — run it through the humanizer so dev
+      // shorthand ("no runners?!", ethers coalesce blobs) never reaches
+      // the failure screen verbatim.
       const msg = e instanceof SendError ? e.message
                : e instanceof SignerError ? e.message
-               : (e as Error).message || 'Failed to send';
+               : humanizeChainError((e as Error).message);
       setError(msg);
       setStage('failed');
     }
@@ -1658,6 +1662,43 @@ const iconRowBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   borderRadius: 8,
 };
+
+/** Translate a raw chain / provider error into user-readable copy for the
+ *  SEND failure screen. Covers the shapes ethers v6 + the Lithosphere
+ *  nodes actually produce (verified against rpc.litho.ai 2026-06-12):
+ *  "failed to check sender balance: … insufficient funds", "invalid chain
+ *  id for signer", nonce gaps, and ethers' "could not coalesce error"
+ *  wrappers. Upstream Litho services have also leaked dev shorthand like
+ *  "no runners?!" — anything we can't classify gets a generic line with
+ *  the raw detail kept small underneath rather than AS the headline. */
+function humanizeChainError(raw?: string | null): string {
+  const txt = (raw || '').trim();
+  const low = txt.toLowerCase();
+  if (!low) return 'Transaction couldn’t be sent. Try again in a moment.';
+  if (low.includes('insufficient funds') || (low.includes('insufficient') && low.includes('balance'))) {
+    return 'Insufficient LITHO to cover the amount plus gas.';
+  }
+  if (low.includes('invalid chain id') || low.includes('intended signer')) {
+    return 'Network mismatch while signing — reload the app and retry.';
+  }
+  if (low.includes('nonce')) {
+    return 'A previous transaction is still pending. Wait for it to confirm, then retry.';
+  }
+  if (low.includes('runner') || low.includes('relayer')) {
+    return 'The network’s transaction executors are temporarily unavailable (upstream Lithosphere issue). Try again in a few minutes.';
+  }
+  if (low.includes('timeout') || low.includes('timed out') || low.includes('abort')) {
+    return 'The RPC node timed out. Check your connection and retry.';
+  }
+  if (low.includes('rejected') || low.includes('denied')) {
+    return 'Transaction cancelled.';
+  }
+  // Unknown — keep a short sanitized fragment for support, never the blob.
+  const detail = txt.replace(/\(.*$/, '').slice(0, 80).trim();
+  return detail
+    ? `Transaction couldn’t be sent (${detail}). Try again in a moment.`
+    : 'Transaction couldn’t be sent. Try again in a moment.';
+}
 
 type SwapStage = 'compose' | 'executing' | 'bridging' | 'settling' | 'completed' | 'failed';
 

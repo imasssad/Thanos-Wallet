@@ -231,10 +231,18 @@ export async function runMakaluSync(mode: 'bootstrap' | 'incremental' | 'backfil
 
   const head = await makaluProvider.getBlockNumber();
   let cursor = await getCursor();
-  if (cursor < 0) {
-    // Cold start: only index forward from current head. Backfill mode could
-    // scan from genesis here.
-    cursor = mode === 'backfill' ? 0 : head - 1;
+  if (mode === 'backfill') {
+    // Full re-scan from genesis — ALSO when a cursor already exists.
+    // This is required whenever the watched contract set changes (e.g.
+    // the 2026-06 corrected token addresses): the global cursor has
+    // already advanced past the blocks holding the new contracts'
+    // historical Transfer events, so incremental sync would never see
+    // them and balances would stay empty forever. Event processing is
+    // idempotent (upserts), so re-scanning ranges we've seen is safe.
+    cursor = -1;
+  } else if (cursor < 0) {
+    // Cold start: only index forward from current head.
+    cursor = head - 1;
   }
 
   let processed = 0;
