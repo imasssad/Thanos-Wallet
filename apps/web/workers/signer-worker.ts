@@ -39,12 +39,18 @@ let cachedAddress: string | null = null;
    it here so each getSigner() call derives from the right path. */
 let accountIdx = 0;
 const MAKALU_CHAIN_ID = 700777;
-// Makalu [primary, fallback] — rpc-3 is Kamet's now. FallbackProvider
-// below rotates primary → fallback on a stall.
-const DEFAULT_RPC_URLS = [
-  'https://rpc.litho.ai',
-  'https://rpc-2.litho.ai',
-];
+// Makalu [primary, fallback] — same-origin /rpc/* proxy paths (Next
+// rewrites), NOT the direct litho.ai hosts: the upstream nodes botch
+// CORS preflights (OPTIONS answered by the Tendermint index page with
+// no Access-Control-Allow-Origin), so a direct browser/worker POST is
+// blocked before it's sent — broadcasts silently never left the
+// machine. Workers share the page origin, so self.location.origin
+// resolves the proxy correctly; the direct hosts remain as a fallback
+// for non-browser contexts (tests).
+const WORKER_ORIGIN = (typeof self !== 'undefined' && self.location?.origin) || '';
+const DEFAULT_RPC_URLS = WORKER_ORIGIN.startsWith('http')
+  ? [`${WORKER_ORIGIN}/rpc/makalu`, `${WORKER_ORIGIN}/rpc/makalu-2`]
+  : ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
 
 /* ─── Provider (FallbackProvider in worker scope) ────────────────────── */
 

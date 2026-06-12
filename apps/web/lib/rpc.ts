@@ -24,19 +24,37 @@ export const KAMET_CHAIN_ID  = 900523;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const env = (typeof process !== 'undefined' ? (process as any).env : {}) || {};
 
+// In the BROWSER, default to the same-origin /rpc/* proxy (Next rewrites
+// in next.config.js) instead of the direct litho.ai hosts: the upstream
+// nodes answer CORS preflights with the Tendermint index page and no
+// Access-Control-Allow-Origin, so every direct browser POST is blocked
+// before it's sent — this is what broke sends while receives (indexer,
+// same-origin) kept working. Server-side rendering and env overrides
+// keep using direct URLs.
+const inBrowser = typeof window !== 'undefined';
+const origin = inBrowser ? window.location.origin : '';
+
 // If NEXT_PUBLIC_LITHO_RPC is set (comma-separated), override the shared
 // endpoint list for Makalu. Runs once at module load — before any
 // getMakaluProvider() call, which is when the provider is memoised.
 const makaluEnvUrls = String(env.NEXT_PUBLIC_LITHO_RPC || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-if (makaluEnvUrls.length > 0) setRpcUrls(MAKALU_CHAIN_ID, makaluEnvUrls);
+if (makaluEnvUrls.length > 0) {
+  setRpcUrls(MAKALU_CHAIN_ID, makaluEnvUrls);
+} else if (inBrowser) {
+  setRpcUrls(MAKALU_CHAIN_ID, [`${origin}/rpc/makalu`, `${origin}/rpc/makalu-2`]);
+}
 
 // Same envelope for Kamet — NEXT_PUBLIC_KAMET_RPC overrides the
 // rpc-3.litho.ai default from sdk-core's
 // networks.ts. Optional; absence leaves the defaults in place.
 const kametEnvUrls = String(env.NEXT_PUBLIC_KAMET_RPC || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
-if (kametEnvUrls.length > 0) setRpcUrls(KAMET_CHAIN_ID, kametEnvUrls);
+if (kametEnvUrls.length > 0) {
+  setRpcUrls(KAMET_CHAIN_ID, kametEnvUrls);
+} else if (inBrowser) {
+  setRpcUrls(KAMET_CHAIN_ID, [`${origin}/rpc/kamet`]);
+}
 
 /** Singleton Makalu provider with automatic RPC failover. */
 export function getMakaluProvider() {

@@ -77,6 +77,27 @@ const nextConfig = {
     ];
   },
 
+  /* Same-origin JSON-RPC proxy for the Lithosphere nodes.
+   *
+   * The upstream RPCs mishandle CORS preflights: an OPTIONS request to
+   * rpc.litho.ai / rpc-2 is answered by the Tendermint RPC index page
+   * with NO Access-Control-Allow-Origin header (verified 2026-06-12).
+   * ethers' JSON-RPC POSTs carry content-type: application/json, which
+   * is never a "simple request" — the browser MUST preflight, the
+   * preflight fails, and every browser-side Makalu call dies before it
+   * leaves the machine. This was the real cause of "can't send but can
+   * receive": receives come from the same-origin indexer, sends needed
+   * direct RPC. Server-side proxying makes the calls same-origin so no
+   * preflight ever happens. (The Ignite team independently hit this and
+   * proxies through /v1/rpc/litho for the same reason.) */
+  async rewrites() {
+    return [
+      { source: '/rpc/makalu',   destination: 'https://rpc.litho.ai/' },
+      { source: '/rpc/makalu-2', destination: 'https://rpc-2.litho.ai/' },
+      { source: '/rpc/kamet',    destination: 'https://rpc-3.litho.ai/' },
+    ];
+  },
+
   webpack(config) {
     // tiny-secp256k1 (Bitcoin) ships a .wasm file — enable asyncWebAssembly
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
