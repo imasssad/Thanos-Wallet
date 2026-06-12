@@ -11,6 +11,14 @@ import type {
  * (web / desktop / mobile / extension) consumes — so when the real
  * Ignite REST API spec lands, only `LiveIgniteClient.*` changes.
  *
+ * STATUS per the Ignite team (2026-06-12): their backend exposes
+ * order/market/listing endpoints only — there is NO /api/quote +
+ * /api/execute swap-router pair, and no published swap API spec on
+ * their side. The router contract this client targets is Litho-side
+ * WIP. ignite.litho.ai is a separate Litho-hosted SPA whose /api/*
+ * paths return the app shell (verified live), so the mock default
+ * below remains the correct production posture until a real spec lands.
+ *
  * Currently:
  *   - `MockIgniteClient`     — deterministic canned quotes, no network.
  *                              Used by tests + UI dev when no backend.

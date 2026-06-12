@@ -27,6 +27,11 @@ export const MAKALU_TESTNET: NetworkConfig = {
 // on rpc-3.litho.ai. rpc.kamet.litho.ai is intentionally NOT a fallback:
 // the 2-level host TLS-fails behind Cloudflare and Litho ops has marked it
 // deprecated. Keep this as the canonical RPC list.
+//
+// Explorer: the Ignite team (2026-06-12) says the going-forward Kamet
+// explorer is explorer-3.litho.ai, but that host does NOT resolve yet
+// (DNS NXDOMAIN, verified same day). kamet.litho.ai answers 200 and stays
+// the explorer until explorer-3 actually exists — switch then.
 export const KAMET_MAINNET: NetworkConfig = {
   id: 'lithosphere-kamet',
   chainId: 900523,
