@@ -18,7 +18,20 @@ import { metricsHandler, metricsMiddleware } from './lib/metrics.js';
 const app = express();
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
-app.use(cors());
+
+/* CORS allowlist — previously a wildcard. In production the indexer is
+ * reverse-proxied same-origin at /indexer so browsers never need CORS at
+ * all; the allowlist only matters for dev setups hitting the port
+ * directly. Comma-separated CORS_ORIGINS env (same convention as the
+ * API), defaulting to localhost dev hosts. */
+const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:5173')
+  .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS blocked: ${origin}`));
+  },
+}));
 app.use(express.json());
 
 const now = () => new Date().toISOString();
@@ -70,7 +83,10 @@ app.get('/activity/:walletAddress', async (req, res) => {
 app.get('/lep100/spec', (_req, res) => {
   res.json({
     standard: 'lep100',
-    chainIds: [700777, 900523],
+    // Honesty: only the chains this indexer ACTUALLY syncs. Kamet
+    // (900523) was advertised here for months with zero Kamet sync
+    // behind it — re-add it together with a real Kamet sync loop.
+    chainIds: [700777],
     tables: ['lep100_tokens', 'lep100_balances', 'lep100_allowances', 'lep100_events', 'lep100_sync_jobs'],
     eventNames: ['Transfer', 'Approval'],
     notes: [
@@ -118,6 +134,20 @@ app.get('/lep100/approvals/:walletAddress', (req, res) => {
 /* ─── Manual sync trigger (also fired automatically by the bg loop) ─── */
 
 app.post('/lep100/sync', async (req, res) => {
+  /* Optional bearer guard — the audit flagged this endpoint as
+   * unauthenticated + unthrottled. A backfill rescans ~6M blocks, so an
+   * internet-reachable deployment shouldn't let strangers trigger it.
+   * Set INDEXER_SYNC_TOKEN to require `Authorization: Bearer <token>`;
+   * unset keeps the open behaviour for localhost/dev (production hits
+   * it via the VPS loopback, not the public proxy). */
+  const required = process.env.INDEXER_SYNC_TOKEN;
+  if (required) {
+    const got = (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    if (got !== required) {
+      res.status(401).json({ error: 'invalid or missing sync token' });
+      return;
+    }
+  }
   const mode = (req.body?.mode || 'incremental') as 'bootstrap' | 'incremental' | 'backfill';
   try {
     const result = await runMakaluSync(mode);

@@ -26,8 +26,8 @@ WHAT YOU CAN DO
 • Send and receive on Lithosphere (LITHO + LEP-100 tokens), Bitcoin,
   Ethereum and every major EVM L2, Solana with SPL tokens, and Cosmos
   Hub with memo support.
-• Swap any pair through MultX bridge (cross-chain) or Ignite DEX
-  (same-chain) — the wallet quotes both and picks the better rate.
+• Swap Lithosphere ecosystem tokens via the Ignite DEX, with bridge
+  transfers tracked end-to-end through MultX.
 • Manage your token approvals — see every smart contract that can
   spend your funds and revoke any of them with one tap.
 • Pair with dApps via WalletConnect v2, in-app browser, or QR scan.
@@ -124,7 +124,7 @@ First public release.
   Ethereum + EVM L2s, Solana with SPL tokens, Cosmos Hub.
 • Face ID / Touch ID unlock backed by the Secure Enclave.
 • WalletConnect v2 with persistent relay.
-• MultX bridge + Ignite DEX swap with route optimization.
+• Ignite DEX swaps + MultX bridge-transfer tracking.
 • Hardware-wallet support: Ledger and Trezor over WebUSB / BLE.
 • .litho name resolution and on-chain registration.
 • Cross-device address-book sync (optional).
@@ -146,7 +146,7 @@ exact devices:
 Per-screen content (in this order):
 1. Dashboard with non-zero balances + portfolio chart
 2. Send modal with a typed recipient (.litho name or 0x)
-3. Swap modal mid-quote showing both MultX + Ignite routes
+3. Swap modal mid-quote showing the live Ignite route
 4. Permissions screen showing two example token approvals
 5. WalletConnect approval sheet with a dApp's metadata
 6. Settings → Recovery phrase reveal warning sheet

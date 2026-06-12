@@ -23,9 +23,15 @@ const MAKALU_EIP155 = `eip155:${MAKALU_CHAIN_ID}`;
 /* Every EVM chain the wallet can sign on. Kept in sync with
    apps/web/lib/evm-chains.ts; we keep the IDs inline here so this
    module has no React/Next dependency. */
+// SAFETY: advertise ONLY the chains the signing path actually honours.
+// Every request handler in this client broadcasts via the MAKALU
+// provider regardless of the namespace the dApp asked on - advertising
+// mainnet/Polygon/etc. let a dApp think it was getting an eip155:1 tx
+// while the wallet broadcast on 700777 (chain-mismatch hazard, flagged
+// by the 2026-06 security audit). Re-add ids here ONLY together with
+// per-chain provider routing in the request handler.
 const SUPPORTED_EVM_CHAIN_IDS: number[] = [
   MAKALU_CHAIN_ID,
-  1, 56, 137, 8453, 42161, 59144, 10, 43114,
 ];
 const SUPPORTED_EVM_NAMESPACE_CHAINS = SUPPORTED_EVM_CHAIN_IDS.map(id => `eip155:${id}`);
 

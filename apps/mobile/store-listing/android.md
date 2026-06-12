@@ -21,9 +21,8 @@ WHAT YOU CAN DO
 • Send and receive on Lithosphere (LITHO + LEP-100 tokens), Bitcoin,
   Ethereum and every major EVM L2, Solana with SPL tokens, and Cosmos
   Hub with memo support.
-• Swap any pair through MultX bridge (cross-chain) or Ignite DEX
-  (same-chain) — the wallet quotes both providers and picks the
-  better rate for you.
+• Swap Lithosphere ecosystem tokens via the Ignite DEX, with bridge
+  transfers tracked end-to-end through MultX.
 • Manage your token approvals — see every smart contract authorised
   to spend your funds and revoke any of them with one tap.
 • Pair with dApps via WalletConnect v2, the in-app browser, or QR

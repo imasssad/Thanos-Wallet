@@ -10,7 +10,7 @@ Thanos Wallet — Lithosphere & Multi-Chain
 
 ## Summary (132 chars max)
 
-Non-custodial wallet for Lithosphere, Bitcoin, Ethereum, Solana, Cosmos. WalletConnect, hardware-wallet, MultX bridge built in.
+Non-custodial wallet for Lithosphere, Bitcoin, Ethereum, Solana, Cosmos. WalletConnect, dApp provider, MultX bridge built in.
 
 ## Description (16,000 chars max)
 
@@ -37,10 +37,6 @@ SAFETY
   device unencrypted, never touches a remote server.
 • Pre-send transaction simulation — flags contract recipients,
   insufficient balances, and unusual approval amounts before you sign.
-• Phishing-domain detection — blocks dApps with drainer / scam
-  signatures before connection.
-• Hardware-wallet support — Ledger and Trezor for both signing and
-  receive-address verification.
 • Permission manager — audit and one-click revoke every token
   allowance you've granted, plus every connected dApp.
 • Signing isolation — every cryptographic operation happens in an
@@ -79,7 +75,6 @@ English (United States) — primary. Translations in a follow-up release.
 | Permission | Why we need it |
 |---|---|
 | `storage` | Persist the encrypted vault, address book cache, and active-account index across browser restarts. |
-| `notifications` | Surface incoming-transaction alerts when the popup is closed. |
 | `<all_urls>` (host_permissions) | Inject the EIP-1193 provider on every dApp the user visits. Without this, dApps can't see the wallet. |
 | `offscreen` | Run the WalletConnect relay + the signing helpers in a separate document so they survive popup close and don't share JS state with the UI. |
 

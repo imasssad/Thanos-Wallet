@@ -68,6 +68,14 @@ function createView(): import('electron').WebContentsView {
       contextIsolation: true,
       nodeIntegration:  false,
       sandbox:          true,
+      // ISOLATED session partition — without this the view shares the
+      // DEFAULT session, and the blanket permission-deny below would
+      // overwrite the wallet window's Ledger/Trezor HID allow-handlers
+      // (one handler per session, last writer wins): opening any dApp
+      // silently broke hardware wallets until restart. 'persist:' keeps
+      // dApp logins across app restarts while staying fully separate
+      // from the wallet's session (cookies, storage, permissions).
+      partition: 'persist:dapp-browser',
       // No preload — dApps get no privileged bridge. Wallet connection
       // happens via WalletConnect QR, just like any external browser.
     },
@@ -76,8 +84,8 @@ function createView(): import('electron').WebContentsView {
   const wc = v.webContents;
 
   // Blanket-deny camera / mic / hid / usb / geolocation / clipboard etc.
-  // The wallet itself has separate handlers on the main window; this
-  // session is locked down.
+  // Scoped to the dApp partition only — the wallet window's session
+  // keeps its own hardware-wallet handlers untouched.
   wc.session.setPermissionRequestHandler((_w, _perm, cb) => cb(false));
   wc.session.setDevicePermissionHandler(() => false);
 

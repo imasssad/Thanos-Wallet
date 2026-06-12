@@ -30,7 +30,14 @@ import { WalletKit, type IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
 
 const MAKALU = 700777;
-const SUPPORTED_EVM = [MAKALU, 1, 56, 137, 8453, 42161, 59144, 10, 43114];
+// SAFETY: advertise ONLY the chains the signing path actually honours.
+// Every request handler in this client broadcasts via the MAKALU
+// provider regardless of the namespace the dApp asked on - advertising
+// mainnet/Polygon/etc. let a dApp think it was getting an eip155:1 tx
+// while the wallet broadcast on 700777 (chain-mismatch hazard, flagged
+// by the 2026-06 security audit). Re-add ids here ONLY together with
+// per-chain provider routing in the request handler.
+const SUPPORTED_EVM = [MAKALU];
 const NS_CHAINS = SUPPORTED_EVM.map((c) => `eip155:${c}`);
 const METHODS = [
   'eth_sendTransaction', 'eth_signTransaction', 'eth_sign',

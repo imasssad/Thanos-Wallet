@@ -93,7 +93,7 @@ Each requirement has a status field:
 | # | Requirement | Status | Notes |
 |---|---|---|---|
 | A3.1 | WalletConnect v2 — session lifecycle management | `[x]` | |
-| A3.2 | WalletConnect v2 — multi-chain request handling | `[x]` | |
+| A3.2 | WalletConnect v2 — multi-chain request handling | `[~]` | 2026-06-12 security fix: all 4 clients now ADVERTISE only eip155:700777 — every request handler broadcast via the Makalu provider regardless of the namespace a dApp asked on, so offering 9 chains was a chain-mismatch hazard. Re-expand together with per-chain provider routing. |
 | A3.3 | WalletConnect v2 — secure approval flow | `[x]` | |
 | A3.4 | Transaction approval screen — human-readable decoding | `[x]` | |
 | A3.5 | Transaction approval screen — risk scoring | `[x]` | |
@@ -105,13 +105,13 @@ Each requirement has a status field:
 
 | # | Requirement | Status | Notes |
 |---|---|---|---|
-| A4.1 | Cross-chain routing protocol (MultX) integration | `[!]` | Wallet-side code complete (lib/multx.ts, SwapModal, status polling). Upstream `bridge.litho.ai` currently returns `{"code":12,"message":"Not Implemented"}` on every endpoint — MultX team bug, escalated to Esha/Amir. Flips to `[x]` the moment the bridge backend is up. |
+| A4.1 | Cross-chain routing protocol (MultX) integration | `[x]` | Bridge backend is live (the 501 was an upstream TLS-routing bug, fixed 2026-06-10). All 5 clients repointed to the confirmed API: GET /bridge/status/:txHash, /bridge/signatures/:txHash, /bridge/transactions/:address, /chains, /health — verified against the live service. Quoting/routing is NOT a bridge concern (validator-signature design); it belongs to Ignite (A4.2). |
 | A4.2 | On-chain DEX integration (Ignite-style) | `[~]` | Frontend wired, Litho team backend pending |
 | A4.3 | Unified swap interface | `[x]` | |
 | A4.4 | Route optimization — cost + speed | `[~]` | Basic only |
-| A4.5 | Bridge tracking — Pending status | `[!]` | Polling + UI states implemented, but blocked by A4.1 — no live bridge to report status from. |
-| A4.6 | Bridge tracking — Confirmed status | `[!]` | Same blocker as A4.5. |
-| A4.7 | Bridge tracking — Failed status | `[!]` | Same blocker as A4.5. We DO surface the 501 from the bridge as a user-friendly error (`translateSwapError` in modals.tsx, commit 03d4333), so users see a clear "bridge offline" message rather than raw JSON. |
+| A4.5 | Bridge tracking — Pending status | `[x]` | Live against GET /bridge/status/:txHash (bridge healthy since 2026-06-10). |
+| A4.6 | Bridge tracking — Confirmed status | `[x]` | Live — same endpoint as A4.5. |
+| A4.7 | Bridge tracking — Failed status | `[x]` | Live. Raw upstream errors are humanised before display (translateSwapError for swaps, humanizeChainError for sends). |
 
 ---
 
@@ -442,8 +442,8 @@ Each requirement has a status field:
 | B7.2 | Preloaded COLLE token | 1 | `[x]` | Makalu address `0xE7eBf52b...60DF49` in `makalu-lep100-source.ts`. The multi-chain `registry.ts` row uses placeholder addresses for non-Makalu chains — COLLE isn't deployed on Ethereum/BSC, those are aspirational entries. |
 | B7.3 | Preloaded AGII token | 1 | `[x]` | Makalu address `0x9984ad7a...6Fe020` |
 | B7.4 | Preloaded ATUA token | 1 | `[~]` | Listed in `packages/sdk-core/src/tokens/registry.ts` and surfaces as a dApp tile in Discover with the proper icon, BUT no real contract address is wired anywhere — registry has the all-zeros placeholder `0x…0003`. Treat as a Discover-app entry, not a transferable token. Promotes to `[x]` once Esha / Alex provides the real Makalu contract address. |
-| B7.5 | Preloaded IMAGE / Imagen Network token | 1 | `[x]` | Makalu address `0x7a29252B...15c844`. Note: source-of-truth symbol in `makalu-lep100-source.ts` is **`IMAGE`** (matches what Imagen's own brand uses); the older multi-chain `registry.ts` row mislabels it as `IMAGEN` and points at a placeholder address. UI surfaces it under `IMAGE`. Cleanup of the duplicate registry row is a follow-up. |
-| B7.6 | wLITHO, LAX, JOT, BLDR, FurGPT, FGPT, MUSA tokens | 1 | `[x]` | All Makalu addresses in `makalu-lep100-source.ts` and `services/indexer/src/chain.ts`. FurGPT has TWO live deployments — canonical `0xDB829be...EA1c5D` (symbol `FurGPT`) plus the pre-launch `0xa25c2a49...1d592F` (symbol `FGPT` / `FurGPT (legacy)`) — both tracked so users with balances on either contract see them. Added in commit `da68842`. |
+| B7.5 | Preloaded IMAGE / Imagen Network token | 1 | `[x]` | Verified Makalu address `0xAcD98E32...060727e`; ticker `IMAGE` confirmed by the Ignite team (the duplicate `IMAGEN` registry row was removed with the placeholder purge). LIVE-PRICED since 2026-06-12 via CoinGecko id `imagen-ai` (~$0.0000115 — the old $0.025 placeholder was ~2000x off market). |
+| B7.6 | wLITHO, LAX, JOT, BLDR, FGPT, MUSA tokens | 1 | `[x]` | All verified on-chain via name()/symbol() eth_calls (2026-06-12): FGPT (name "FurGPT") = `0x151ef362...fbD22e`, MUSA (name "Mansa AI") = `0xDB829be...EA1c5D`, wLITHO = `0x599a7E13...766161`, BLDR = `0x798eD6bF...7A0786`. The old `0xa25c2a49` contract is dead and referenced by no team. Kamet counterparts also registered (12 tokens incl. QTT + DOGE). |
 | B7.7 | Real-time valuation | 1 | `[x]` | CoinGecko |
 | B7.8 | PnL tracking | 1 | `[x]` | |
 | B7.9 | Asset allocation analytics | 1 | `[x]` | |
@@ -564,7 +564,6 @@ Each requirement has a status field:
 | Store listing assets | All stores | Esha |
 | Ignite DEX JSON backend | Swap live mode | Litho team |
 | Alex's PR (kamet-network-config) | Kamet chain fixes | Alex / Litho team |
-| bridge.litho.ai 501 error | A4.1 (MultX swap), A4.5/A4.6/A4.7 (bridge status tracking) — all wallet-side complete | MultX team |
 | Real ATUA contract address on Makalu | B7.4 (ATUA token) — currently a Discover-app entry only, no transferable token | Esha / Alex |
 
 ---
