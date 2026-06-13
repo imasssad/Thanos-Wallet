@@ -56,6 +56,27 @@ document.documentElement.dataset.theme =
    SwapModal's canonical TOKENS list). The previous hardcoded dropdowns
    offered LitETH and USDC, neither of which exists on Makalu, and
    omitted seven real LEP100s. */
+
+/** Address with highlighted head + tail — visual-confirmation pattern
+ *  (client request 2026-06-12). Poisoning scams match the start/end of
+ *  an address, so those are exactly the characters to draw the eye to. */
+function HiAddr({ value, head = 8, tail = 6, full = false }: {
+  value: string; head?: number; tail?: number; full?: boolean;
+}) {
+  const v = (value || '').trim();
+  if (!v) return null;
+  if (v.length <= head + tail) return <span style={{ fontFamily: 'Geist Mono, monospace' }}>{v}</span>;
+  const h = v.slice(0, head), t = v.slice(-tail);
+  const mid = full ? v.slice(head, v.length - tail) : '…';
+  return (
+    <span style={{ fontFamily: 'Geist Mono, monospace' }}>
+      <span style={{ color: 'var(--green, #10b981)', fontWeight: 600 }}>{h}</span>
+      <span style={{ opacity: 0.6 }}>{mid}</span>
+      <span style={{ color: 'var(--green, #10b981)', fontWeight: 600 }}>{t}</span>
+    </span>
+  );
+}
+
 const SWAP_SYMBOLS = [
   'LITHO', 'wLITHO', 'LitBTC', 'LAX', 'JOT',
   'COLLE', 'IMAGE', 'AGII', 'BLDR', 'FGPT', 'MUSA',
@@ -764,7 +785,7 @@ function DiscoverScreen() {
             <Globe size={16}/>
           </div>
           <div className="row-mid">
-            <div className="row-name">Explore Web3</div>
+            <div className="row-name">Explore Web4</div>
             <div className="row-sub">Browse the full ecosystem on ecosystem.litho.ai</div>
           </div>
           <ChevronRight size={16} className="row-right"/>
@@ -1290,8 +1311,8 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
             Balance: {chainBalance}
           </div>
         )}
-        <div className="addr-box" style={{ wordBreak: 'break-all', marginTop: 8, fontSize: 10, fontFamily: 'Geist Mono, monospace' }}>
-          {displayed || '—'}
+        <div className="addr-box" style={{ wordBreak: 'break-all', marginTop: 8, fontSize: 10 }}>
+          {displayed ? <HiAddr value={displayed} full/> : '—'}
         </div>
         <button className="btn-primary" onClick={copy} disabled={!displayed}>{copied ? '✓ Copied' : 'Copy address'}</button>
       </div>

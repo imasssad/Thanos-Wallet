@@ -148,6 +148,27 @@ const ChevRight2 = Ic(<polyline points="9 18 15 12 9 6"/>);
 const User      = Ic(<><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></>);
 const Trash     = Ic(<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></>);
 
+
+/** Address with highlighted head + tail — visual-confirmation pattern
+ *  (client request 2026-06-12). Poisoning scams match the start/end of
+ *  an address, so those are exactly the characters to draw the eye to. */
+function HiAddr({ value, head = 8, tail = 6, full = false }: {
+  value: string; head?: number; tail?: number; full?: boolean;
+}) {
+  const v = (value || '').trim();
+  if (!v) return null;
+  if (v.length <= head + tail) return <span style={{ fontFamily: 'Geist Mono, monospace' }}>{v}</span>;
+  const h = v.slice(0, head), t = v.slice(-tail);
+  const mid = full ? v.slice(head, v.length - tail) : '…';
+  return (
+    <span style={{ fontFamily: 'Geist Mono, monospace' }}>
+      <span style={{ color: 'var(--green, #10b981)', fontWeight: 600 }}>{h}</span>
+      <span style={{ opacity: 0.6 }}>{mid}</span>
+      <span style={{ color: 'var(--green, #10b981)', fontWeight: 600 }}>{t}</span>
+    </span>
+  );
+}
+
 /* ──────────────────────── Account ──────────────────────── */
 const ACCOUNT = { name: 'Thanos Wallet', address: '0x0000000000000000000000000000000000000000' };
 
@@ -1100,7 +1121,7 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
             Balance: {chainBalance}
           </div>
         )}
-        <div className="addr-box" style={{ fontSize: 10 }}>{addr ? (addr.length > 50 ? `${addr.slice(0,30)}…${addr.slice(-12)}` : addr) : '—'}</div>
+        <div className="addr-box" style={{ fontSize: 10 }}>{addr ? <HiAddr value={addr} full/> : '—'}</div>
 
         <button className="btn-primary" onClick={copy} style={{ marginTop: 14, width: '100%' }} disabled={!addr}>
           {copied ? '✓ Copied!' : 'Copy Address'}
@@ -2536,7 +2557,7 @@ function DiscoverView() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}><Globe size={22}/></div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Explore Web3</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Explore Web4</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Browse the full Lithosphere ecosystem on ecosystem.litho.ai
           </div>
@@ -2793,7 +2814,7 @@ function App() {
               </div>
               <div className="chip-info">
                 <span className="chip-name">{walletSeed.length > 0 ? `Account ${activeIdx + 1}` : ACCOUNT.name}</span>
-                <span className="chip-addr">{shortAddr}</span>
+                <span className="chip-addr"><HiAddr value={walletAddr || shortAddr} head={8} tail={6}/></span>
               </div>
               <ChevDown size={11} color="var(--text-muted)"/>
             </button>

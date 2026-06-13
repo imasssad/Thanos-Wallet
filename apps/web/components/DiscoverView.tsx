@@ -113,7 +113,7 @@ export function DiscoverView() {
           <Globe size={22}/>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Explore Web3</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Explore Web4</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Browse the full Lithosphere ecosystem on ecosystem.litho.ai
           </div>

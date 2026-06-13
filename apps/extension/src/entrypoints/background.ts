@@ -159,6 +159,20 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
       return null;
     }
 
+    /* EIP-3085. Ecosystem dApps (via @thanos/connect ensureMakaluNetwork)
+       prompt EVERY wallet to add Makalu on sign-in. For this wallet the
+       chain is built in, so adding Makalu succeeds as a friendly no-op
+       instead of the "method not supported" error that made the prompt
+       look broken. Anything else is honestly unsupported. */
+    case 'wallet_addEthereumChain': {
+      const spec = params?.[0] as { chainId?: string } | undefined;
+      if (!spec?.chainId) throw rpcError(-32602, 'Invalid params');
+      if (spec.chainId.toLowerCase() !== MAKALU_CHAIN_ID_HEX) {
+        throw rpcError(4902, 'Only Lithosphere Makalu (700777) can be added in this wallet.');
+      }
+      return null; // already built in — per EIP-3085, null = success
+    }
+
     /* ─ Signing — popup approval + local sign ────────────────────── */
 
     case 'eth_sendTransaction':

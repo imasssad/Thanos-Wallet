@@ -135,6 +135,18 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       }
     }
 
+    /* EIP-3085/3326 — ecosystem dApps (via @thanos/connect) prompt every
+       wallet to add + switch to Makalu on sign-in. The chain is built in,
+       so both succeed as no-ops for Makalu and reject honestly otherwise. */
+    case 'wallet_addEthereumChain':
+    case 'wallet_switchEthereumChain': {
+      const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
+      if (target !== `0x${MAKALU_CHAIN_ID.toString(16)}`) {
+        throw new WcSignerError(4902, 'Only Lithosphere Makalu (700777) is supported.');
+      }
+      return null;
+    }
+
     default:
       throw new WcSignerError(4200, `Method not supported: ${method}`);
   }

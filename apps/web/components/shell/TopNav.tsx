@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '../providers/ThemeProvider';
 import { useWallet } from './AppShell';
+import { Addr } from '../Addr';
 import {
   Search, Bell, ChevronDown, Sun, Moon, User, Copy, Settings as SettingsIcon, Lock, Menu, KeyRound,
 } from 'lucide-react';
@@ -105,7 +106,7 @@ export function TopNav({
             </div>
             <div className="chip-info">
               <span className="chip-name">{showSwitcher ? accountLabel : ACCOUNT_NAME}</span>
-              <span className="chip-addr">{activeShort}</span>
+              <span className="chip-addr"><Addr value={activeAddr} head={8} tail={6}/></span>
             </div>
             <ChevronDown size={13} color="var(--text-muted)"/>
           </button>
@@ -118,7 +119,7 @@ export function TopNav({
                   <div className="menu-avatar"><User size={24}/></div>
                   <div>
                     <div className="menu-name">{showSwitcher ? accountLabel : ACCOUNT_NAME}</div>
-                    <div className="menu-addr" title={activeAddr}>{activeShort}</div>
+                    <div className="menu-addr" title={activeAddr}><Addr value={activeAddr} head={8} tail={6}/></div>
                   </div>
                 </div>
                 <div className="menu-network">
@@ -136,7 +137,7 @@ export function TopNav({
                     <span className="addr-row-tag">LITHO1</span>
                     {addrFmt === 'litho' && <span className="addr-row-active">●</span>}
                   </div>
-                  <div className="addr-row-value" title={litho}>{shortLitho}</div>
+                  <div className="addr-row-value" title={litho}><Addr value={litho} head={8} tail={6}/></div>
                   <button
                     className="addr-row-copy"
                     onClick={e => { e.stopPropagation(); copyAddr('litho'); }}
@@ -150,7 +151,7 @@ export function TopNav({
                     <span className="addr-row-tag">EVM 0x</span>
                     {addrFmt === 'evm' && <span className="addr-row-active">●</span>}
                   </div>
-                  <div className="addr-row-value" title={evm}>{shortEvm}</div>
+                  <div className="addr-row-value" title={evm}><Addr value={evm} head={6} tail={4}/></div>
                   <button
                     className="addr-row-copy"
                     onClick={e => { e.stopPropagation(); copyAddr('evm'); }}

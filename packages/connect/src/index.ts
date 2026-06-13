@@ -345,14 +345,51 @@ export class ThanosConnect {
   }
 
   /**
+   * Prompt the connected wallet to add + switch to Lithosphere Makalu
+   * (EIP-3085 wallet_addEthereumChain, then EIP-3326 switch). Called
+   * automatically by signIn() so every dApp using this SDK lands users
+   * on the right network — generic wallets (MetaMask etc.) get the
+   * add-network sheet; the Thanos wallet itself is already on Makalu
+   * and treats both calls as no-ops. Failures are non-fatal: a user
+   * declining the prompt can still sign in, the dApp just sees a
+   * different chainId and should handle it.
+   */
+  async ensureMakaluNetwork(): Promise<boolean> {
+    const provider = await this.getProvider();
+    const chainIdHex = `0x${LITHOSPHERE_MAKALU_CHAIN_ID.toString(16)}`;
+    try {
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: chainIdHex,
+          chainName: 'Lithosphere Makalu',
+          rpcUrls: ['https://rpc.litho.ai'],
+          blockExplorerUrls: ['https://makalu.litho.ai/'],
+          nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+        }],
+      });
+      // Some wallets add without switching — make the switch explicit.
+      await provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: chainIdHex }],
+      });
+      return true;
+    } catch (err) {
+      this.log('ensureMakaluNetwork declined/unsupported', err);
+      return false;
+    }
+  }
+
+  /**
    * Full sign-in flow.
    *
    *   1. Discover provider
    *   2. eth_requestAccounts (opens approval popup)
-   *   3. Fetch nonce from backend (or generate locally)
-   *   4. Build SIWE message + sign via personal_sign
-   *   5. POST {message, signature, address} to verify endpoint (if set)
-   *   6. Return the session with the backend's response
+   *   3. Prompt to add + switch to Lithosphere Makalu (non-fatal)
+   *   4. Fetch nonce from backend (or generate locally)
+   *   5. Build SIWE message + sign via personal_sign
+   *   6. POST {message, signature, address} to verify endpoint (if set)
+   *   7. Return the session with the backend's response
    */
   async signIn(overrides: { statement?: string; chainId?: number } = {}): Promise<ThanosSession> {
     const provider = await this.getProvider();
@@ -370,6 +407,11 @@ export class ThanosConnect {
     }
     const address = accounts?.[0];
     if (!address) throw new Error('eth_requestAccounts returned no accounts');
+
+    // Land the user on Makalu before signing (client requirement
+    // 2026-06-12: every auth surface prompts the network add). Declines
+    // are tolerated — the SIWE message still records the real chainId.
+    await this.ensureMakaluNetwork();
 
     // Build SIWE message.
     const chainId = overrides.chainId ?? this.cfg.chainId;

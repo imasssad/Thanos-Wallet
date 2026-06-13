@@ -25,6 +25,7 @@ import {
   IgniteUnavailable,
 } from '../lib/ignite';
 import { TokenSelect } from './ui/TokenSelect';
+import { Addr } from './Addr';
 import { TokenIcon } from './TokenIcon';
 import { QrScannerModal } from './QrScannerModal';
 import { searchContacts, findContactByAddress, type Contact } from '../lib/address-book';
@@ -883,7 +884,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           {stage === 'broadcasting' && <>
             <div className="success-icon" style={{ animation: 'lpScrollHint 1.4s ease-in-out infinite' }}>…</div>
             <div className="success-title">Signing &amp; broadcasting</div>
-            <div className="success-sub">Sending {amount} {coin} to {truncateLithoAddress(to.trim(), 10, 6)}</div>
+            <div className="success-sub">Sending {amount} {coin} to <Addr value={to.trim()} head={10} tail={6}/></div>
           </>}
           {stage === 'pending' && <>
             <div className="success-icon">✓</div>
@@ -898,7 +899,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           {stage === 'confirmed' && <>
             <div className="success-icon" style={{ color: 'var(--green)' }}>✓</div>
             <div className="success-title">Confirmed</div>
-            <div className="success-sub">{amount} {coin} sent to {truncateLithoAddress(to.trim(), 10, 6)}</div>
+            <div className="success-sub">{amount} {coin} sent to <Addr value={to.trim()} head={10} tail={6}/></div>
             {txHash && <a href={explorer ?? '#'} target="_blank" rel="noreferrer"
               style={{ fontSize: 11, color: 'var(--blue)', wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', marginTop: 6 }}>
               View on explorer →
@@ -1160,7 +1161,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
             )}
             {recipientValidation.format === 'litho' && canonicalEvm && (
               <span style={{ color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>
-                · {truncateLithoAddress(canonicalEvm, 8, 6)}
+                · <Addr value={canonicalEvm} head={8} tail={6}/>
               </span>
             )}
           </div>
@@ -1178,7 +1179,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
               <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 ✓ Resolved {to.trim()}
                 <span style={{ color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>
-                  → {truncateLithoAddress(dnnsResolved, 8, 6)}
+                  → <Addr value={dnnsResolved} head={8} tail={6}/>
                 </span>
               </div>
             )}
@@ -1519,7 +1520,7 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
                 transition: 'border-color .15s ease',
               }}
             >
-              {displayedAddress}
+              <Addr value={displayedAddress} full head={8} tail={6}/>
             </button>
 
             <button className="btn-primary" style={{ width: '100%' }} onClick={() => copy(active, displayedAddress)}>

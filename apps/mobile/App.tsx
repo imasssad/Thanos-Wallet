@@ -11,6 +11,29 @@ import {
  *  Francisco) — so every address/seed rendered with either literal was
  *  non-monospace on the other platform. Use this constant everywhere. */
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' }) as string;
+
+/** Address with highlighted head + tail — the visual-confirmation pattern
+ *  every major wallet uses (client request 2026-06-12). Address-poisoning
+ *  scams rely on matching the start/end of an address, so those are the
+ *  exact characters to draw the eye to. Renders the full address when
+ *  `full`, otherwise head…tail. Inherits font size from `style`. */
+function HiAddr({ value, head = 8, tail = 6, full = false, style }: {
+  value: string; head?: number; tail?: number; full?: boolean;
+  style?: import('react-native').StyleProp<import('react-native').TextStyle>;
+}) {
+  const v = (value || '').trim();
+  if (!v) return null;
+  if (v.length <= head + tail) return <Text style={[{ fontFamily: MONO }, style]}>{v}</Text>;
+  const h = v.slice(0, head), t = v.slice(-tail);
+  const mid = full ? v.slice(head, v.length - tail) : '…';
+  return (
+    <Text style={[{ fontFamily: MONO }, style]}>
+      <Text style={{ color: '#10b981', fontWeight: '600' }}>{h}</Text>
+      <Text style={{ opacity: 0.6 }}>{mid}</Text>
+      <Text style={{ color: '#10b981', fontWeight: '600' }}>{t}</Text>
+    </Text>
+  );
+}
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits } from 'ethers';
 import {
@@ -1216,9 +1239,7 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
 
         <Pressable onPress={copy} style={styles.addrCard}>
           <Text style={styles.fieldLabel}>YOUR ADDRESS · TAP TO COPY</Text>
-          <Text style={styles.addrTextLarge} numberOfLines={1} ellipsizeMode="middle">
-            {displayed || '—'}
-          </Text>
+          <HiAddr value={displayed || '—'} full style={styles.addrTextLarge}/>
         </Pressable>
 
         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -1645,7 +1666,7 @@ function DiscoverScreen() {
             <Globe size={22} color={C.blue}/>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web3</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web4</Text>
             <Text style={{ fontSize: 12, color: C.textMuted }}>Browse the full ecosystem on ecosystem.litho.ai</Text>
           </View>
         </Pressable>
