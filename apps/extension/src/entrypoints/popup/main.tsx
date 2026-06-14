@@ -52,22 +52,27 @@ const STORAGE = {
 document.documentElement.dataset.theme =
   localStorage.getItem(STORAGE.theme) === 'light' ? 'light' : 'dark';
 
-/* Swappable assets — the verified Makalu token set (matches the web
-   SwapModal's canonical TOKENS list). The previous hardcoded dropdowns
-   offered LitETH and USDC, neither of which exists on Makalu, and
-   omitted seven real LEP100s. */
-
 /** Address with highlighted head + tail — visual-confirmation pattern
  *  (client request 2026-06-12). Poisoning scams match the start/end of
- *  an address, so those are exactly the characters to draw the eye to. */
-function HiAddr({ value, head = 8, tail = 6, full = false }: {
+ *  an address, so those are exactly the characters to draw the eye to.
+ *  `head`/`tail` count ADDRESS-SPECIFIC chars; the constant prefix
+ *  (0x/litho1/cosmos1/bc1) is always shown but never eats the budget. */
+function hiPrefixLen(v: string): number {
+  if (v.startsWith('0x') || v.startsWith('0X')) return 2;
+  if (v.startsWith('litho1'))  return 6;
+  if (v.startsWith('cosmos1')) return 7;
+  if (v.startsWith('bc1'))     return 3;
+  return 0;
+}
+function HiAddr({ value, head = 6, tail = 6, full = false }: {
   value: string; head?: number; tail?: number; full?: boolean;
 }) {
   const v = (value || '').trim();
   if (!v) return null;
-  if (v.length <= head + tail) return <span style={{ fontFamily: 'Geist Mono, monospace' }}>{v}</span>;
-  const h = v.slice(0, head), t = v.slice(-tail);
-  const mid = full ? v.slice(head, v.length - tail) : '…';
+  const headEnd = hiPrefixLen(v) + head;
+  if (v.length <= headEnd + tail) return <span style={{ fontFamily: 'Geist Mono, monospace' }}>{v}</span>;
+  const h = v.slice(0, headEnd), t = v.slice(-tail);
+  const mid = full ? v.slice(headEnd, v.length - tail) : '…';
   return (
     <span style={{ fontFamily: 'Geist Mono, monospace' }}>
       <span style={{ color: 'var(--green, #10b981)', fontWeight: 600 }}>{h}</span>
@@ -77,6 +82,20 @@ function HiAddr({ value, head = 8, tail = 6, full = false }: {
   );
 }
 
+/* Discover dApp tile icons — public/images/dapps/<id>.png. Without this
+   the tiles showed a letter on a colour block and the client-supplied
+   ATUA mark never appeared in the extension. */
+const DAPP_ICONS: Record<string, string> = {
+  agii: '/images/dapps/agii.png', colle: '/images/dapps/colle.png',
+  mansa: '/images/dapps/mansa.png', furgpt: '/images/dapps/furgpt.png',
+  imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png',
+  atua: '/images/dapps/atua.png',
+};
+
+/* Swappable assets — the verified Makalu token set (matches the web
+   SwapModal's canonical TOKENS list). The previous hardcoded dropdowns
+   offered LitETH and USDC, neither of which exists on Makalu, and
+   omitted seven real LEP100s. */
 const SWAP_SYMBOLS = [
   'LITHO', 'wLITHO', 'LitBTC', 'LAX', 'JOT',
   'COLLE', 'IMAGE', 'AGII', 'BLDR', 'FGPT', 'MUSA',
@@ -803,8 +822,13 @@ function DiscoverScreen() {
                 onClick={() => open(a.url)}
                 style={{ width: '100%', cursor: 'pointer', textAlign: 'left', border: 'none', background: 'transparent' }}
               >
-                <div className="row-avatar" style={{ background: a.color, color: '#fff', fontWeight: 700 }}>
-                  {a.name.charAt(0)}
+                <div className="row-avatar" style={{ background: a.color, color: '#fff', fontWeight: 700, position: 'relative', overflow: 'hidden' }}>
+                  <span style={{ position: 'absolute' }}>{a.name.charAt(0)}</span>
+                  {DAPP_ICONS[a.id] && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={DAPP_ICONS[a.id]} alt="" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}/>
+                  )}
                 </div>
                 <div className="row-mid">
                   <div className="row-name">{a.name}</div>

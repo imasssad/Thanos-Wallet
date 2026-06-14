@@ -15,21 +15,32 @@ const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' }) as string;
 /** Address with highlighted head + tail — the visual-confirmation pattern
  *  every major wallet uses (client request 2026-06-12). Address-poisoning
  *  scams rely on matching the start/end of an address, so those are the
- *  exact characters to draw the eye to. Renders the full address when
- *  `full`, otherwise head…tail. Inherits font size from `style`. */
-function HiAddr({ value, head = 8, tail = 6, full = false, style }: {
+ *  exact characters to draw the eye to. `head`/`tail` count ADDRESS-
+ *  SPECIFIC chars; the constant prefix (0x/litho1/cosmos1/bc1) is always
+ *  shown but never eats the budget. Inherits font size from `style`.
+ *  NOTE: the middle uses color (not opacity) — nested-<Text> opacity is
+ *  ignored on Android's old arch, color always applies. */
+function hiPrefixLen(v: string): number {
+  if (v.startsWith('0x') || v.startsWith('0X')) return 2;
+  if (v.startsWith('litho1'))  return 6;
+  if (v.startsWith('cosmos1')) return 7;
+  if (v.startsWith('bc1'))     return 3;
+  return 0;
+}
+function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
   value: string; head?: number; tail?: number; full?: boolean;
   style?: import('react-native').StyleProp<import('react-native').TextStyle>;
 }) {
   const v = (value || '').trim();
   if (!v) return null;
-  if (v.length <= head + tail) return <Text style={[{ fontFamily: MONO }, style]}>{v}</Text>;
-  const h = v.slice(0, head), t = v.slice(-tail);
-  const mid = full ? v.slice(head, v.length - tail) : '…';
+  const headEnd = hiPrefixLen(v) + head;
+  if (v.length <= headEnd + tail) return <Text style={[{ fontFamily: MONO }, style]}>{v}</Text>;
+  const h = v.slice(0, headEnd), t = v.slice(-tail);
+  const mid = full ? v.slice(headEnd, v.length - tail) : '…';
   return (
     <Text style={[{ fontFamily: MONO }, style]}>
       <Text style={{ color: '#10b981', fontWeight: '600' }}>{h}</Text>
-      <Text style={{ opacity: 0.6 }}>{mid}</Text>
+      <Text style={{ color: '#6b7280' }}>{mid}</Text>
       <Text style={{ color: '#10b981', fontWeight: '600' }}>{t}</Text>
     </Text>
   );
@@ -2903,7 +2914,15 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
       else send(rejectJs(req.id, 4902, 'Only Makalu (Lithosphere) is supported in-app'));
       return;
     }
-    if (req.method === 'wallet_addEthereumChain') { send(resolveJs(req.id, null)); return; }
+    if (req.method === 'wallet_addEthereumChain') {
+      // Gate on Makalu, same as switch above — blanket-approving any chain
+      // let a dApp add e.g. BSC, get success, then 4902 on the follow-up
+      // switch (and diverged from the WC handler in lib/wc-signer.ts).
+      const target = (req.params?.[0] as { chainId?: string })?.chainId?.toLowerCase();
+      if (target === `0x${(700777).toString(16)}`) send(resolveJs(req.id, null));
+      else send(rejectJs(req.id, 4001, 'Only Makalu (Lithosphere) can be added in-app'));
+      return;
+    }
     if (APPROVAL_METHODS.has(req.method)) { setPending(req); return; }
     // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
     // read — proxy straight to the Makalu RPC.

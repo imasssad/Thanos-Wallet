@@ -168,7 +168,9 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
       const spec = params?.[0] as { chainId?: string } | undefined;
       if (!spec?.chainId) throw rpcError(-32602, 'Invalid params');
       if (spec.chainId.toLowerCase() !== MAKALU_CHAIN_ID_HEX) {
-        throw rpcError(4902, 'Only Lithosphere Makalu (700777) can be added in this wallet.');
+        // 4001 (declined to add), not 4902 ("add it first" — that's a
+        // switch-only code and would loop a switch().catch(add) flow).
+        throw rpcError(4001, 'Only Lithosphere Makalu (700777) can be added in this wallet.');
       }
       return null; // already built in — per EIP-3085, null = success
     }

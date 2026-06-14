@@ -50,6 +50,9 @@ export function summariseRequest(method: string, params: unknown): string {
       const tx = (params as Array<{ to?: string; value?: string }>)[0] ?? {};
       return `Send transaction to ${tx.to ?? '—'}`;
     }
+    case 'wallet_addEthereumChain':
+    case 'wallet_switchEthereumChain':
+      return 'Use the Lithosphere Makalu network (700777).';
     default:
       return method;
   }
@@ -118,6 +121,23 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         throw new WcSignerError(-32603, msg);
       }
     }
+    /* EIP-3085/3326 — advertised in the offscreen session namespace, so
+       the relay delivers them. The chain is built in: succeed as a no-op
+       for Makalu, reject other chains honestly. Add-refusal uses 4001
+       (user/wallet declined to add) not 4902 (which means "switch needs
+       an add first" and would loop a standard switch().catch(add) flow). */
+    case 'wallet_addEthereumChain':
+    case 'wallet_switchEthereumChain': {
+      const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
+      if (target !== `0x${MAKALU_CHAIN_ID.toString(16)}`) {
+        throw new WcSignerError(
+          method === 'wallet_switchEthereumChain' ? 4902 : 4001,
+          'Only Lithosphere Makalu (700777) is supported.',
+        );
+      }
+      return null;
+    }
+
     default:
       throw new WcSignerError(4200, `Method not supported: ${method}`);
   }

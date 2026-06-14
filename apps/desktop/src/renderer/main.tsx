@@ -151,15 +151,25 @@ const Trash     = Ic(<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2
 
 /** Address with highlighted head + tail — visual-confirmation pattern
  *  (client request 2026-06-12). Poisoning scams match the start/end of
- *  an address, so those are exactly the characters to draw the eye to. */
-function HiAddr({ value, head = 8, tail = 6, full = false }: {
+ *  an address, so those are exactly the characters to draw the eye to.
+ *  `head`/`tail` count ADDRESS-SPECIFIC chars; the constant prefix
+ *  (0x/litho1/cosmos1/bc1) is always shown but never eats the budget. */
+function hiPrefixLen(v: string): number {
+  if (v.startsWith('0x') || v.startsWith('0X')) return 2;
+  if (v.startsWith('litho1'))  return 6;
+  if (v.startsWith('cosmos1')) return 7;
+  if (v.startsWith('bc1'))     return 3;
+  return 0;
+}
+function HiAddr({ value, head = 6, tail = 6, full = false }: {
   value: string; head?: number; tail?: number; full?: boolean;
 }) {
   const v = (value || '').trim();
   if (!v) return null;
-  if (v.length <= head + tail) return <span style={{ fontFamily: 'Geist Mono, monospace' }}>{v}</span>;
-  const h = v.slice(0, head), t = v.slice(-tail);
-  const mid = full ? v.slice(head, v.length - tail) : '…';
+  const headEnd = hiPrefixLen(v) + head;
+  if (v.length <= headEnd + tail) return <span style={{ fontFamily: 'Geist Mono, monospace' }}>{v}</span>;
+  const h = v.slice(0, headEnd), t = v.slice(-tail);
+  const mid = full ? v.slice(headEnd, v.length - tail) : '…';
   return (
     <span style={{ fontFamily: 'Geist Mono, monospace' }}>
       <span style={{ color: 'var(--green, #10b981)', fontWeight: 600 }}>{h}</span>
@@ -2449,6 +2459,35 @@ function useOpenDapp() {
   };
 }
 
+/* Discover dApp tile icons — public/images/dapps/<id>.png, served at app
+   root. Without this the tiles render a letter on a colour block, so the
+   client-supplied ATUA mark (and the rest) never showed on desktop. */
+const DAPP_ICONS: Record<string, string> = {
+  agii: '/images/dapps/agii.png', colle: '/images/dapps/colle.png',
+  mansa: '/images/dapps/mansa.png', furgpt: '/images/dapps/furgpt.png',
+  imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png',
+  atua: '/images/dapps/atua.png',
+};
+
+function DappTileIcon({ app }: { app: EcosystemApp }) {
+  const [failed, setFailed] = useState(false);
+  const src = DAPP_ICONS[app.id];
+  return (
+    <div style={{
+      position: 'relative', width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+      background: app.color, color: '#fff', overflow: 'hidden',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 18, fontWeight: 700,
+    }}>
+      <span style={{ position: 'absolute' }}>{app.name.charAt(0)}</span>
+      {src && !failed && (
+        <img src={src} alt="" width={44} height={44} onError={() => setFailed(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}/>
+      )}
+    </div>
+  );
+}
+
 function DiscoverAppRow({ app }: { app: EcosystemApp }) {
   const open = useOpenDapp();
   return (
@@ -2462,12 +2501,7 @@ function DiscoverAppRow({ app }: { app: EcosystemApp }) {
         textAlign: 'left', color: 'inherit',
       }}
     >
-      <div style={{
-        width: 44, height: 44, borderRadius: 14, flexShrink: 0,
-        background: app.color, color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, fontWeight: 700,
-      }}>{app.name.charAt(0)}</div>
+      <DappTileIcon app={app}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{app.name}</span>
@@ -2832,7 +2866,7 @@ function App() {
                     </div>
                     <div>
                       <div className="menu-name">{walletSeed.length > 0 ? `Account ${activeIdx + 1}` : ACCOUNT.name}</div>
-                      <div className="menu-addr">{shortAddr}</div>
+                      <div className="menu-addr" title={walletAddr}><HiAddr value={walletAddr} head={8} tail={6}/></div>
                     </div>
                   </div>
 

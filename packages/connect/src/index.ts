@@ -59,7 +59,9 @@ export interface ThanosConnectConfig {
    *  (RN, Node SSR, edge runtimes) that need an explicit fetch. */
   fetch?: typeof fetch;
   /** Override the EIP-6963 rdns of the wallet to look for. Defaults to
-   *  `fi.thanos.wallet`; can be relaxed if you want any EIP-6963 wallet. */
+   *  `fi.thanos.wallet`. Must exactly match the target wallet's announced
+   *  rdns; point it at another wallet's rdns (e.g. 'io.metamask') to target
+   *  that wallet — there is no any-wallet discovery mode. */
   walletRdns?: string;
   /** Console-log discovery + flow details. Useful while integrating. */
   debug?: boolean;
@@ -347,12 +349,14 @@ export class ThanosConnect {
   /**
    * Prompt the connected wallet to add + switch to Lithosphere Makalu
    * (EIP-3085 wallet_addEthereumChain, then EIP-3326 switch). Called
-   * automatically by signIn() so every dApp using this SDK lands users
-   * on the right network — generic wallets (MetaMask etc.) get the
-   * add-network sheet; the Thanos wallet itself is already on Makalu
-   * and treats both calls as no-ops. Failures are non-fatal: a user
-   * declining the prompt can still sign in, the dApp just sees a
-   * different chainId and should handle it.
+   * automatically by signIn().
+   *
+   * The prompt reaches whichever wallet matches `walletRdns` (default
+   * 'fi.thanos.wallet'). The Thanos wallet has Makalu built in and
+   * answers both calls as no-ops; to surface the add-network sheet on a
+   * third-party wallet (MetaMask etc.) the dApp must point `walletRdns`
+   * at that wallet's announced rdns. Failures are non-fatal — a user
+   * declining can still sign in.
    */
   async ensureMakaluNetwork(): Promise<boolean> {
     const provider = await this.getProvider();
@@ -410,11 +414,20 @@ export class ThanosConnect {
 
     // Land the user on Makalu before signing (client requirement
     // 2026-06-12: every auth surface prompts the network add). Declines
-    // are tolerated — the SIWE message still records the real chainId.
+    // are tolerated; we then read the wallet's ACTUAL chain so the SIWE
+    // message binds to where the signature was really produced (EIP-4361
+    // Chain ID), not a hopeful default.
     await this.ensureMakaluNetwork();
+    let walletChainId: number | undefined;
+    try {
+      const hex = (await provider.request({ method: 'eth_chainId' })) as string;
+      const n = typeof hex === 'string' ? Number(hex) : NaN;
+      if (Number.isInteger(n) && n > 0) walletChainId = n;
+    } catch { /* wallet can't report — fall back to config default */ }
 
-    // Build SIWE message.
-    const chainId = overrides.chainId ?? this.cfg.chainId;
+    // Build SIWE message. Explicit override wins; otherwise the wallet's
+    // reported chain; config default only if the wallet couldn't report.
+    const chainId = overrides.chainId ?? walletChainId ?? this.cfg.chainId;
     const statement = overrides.statement ?? this.cfg.statement;
     const nonce = await this.fetchNonce(address);
     const domain = typeof window !== 'undefined' ? window.location.host : new URL(this.cfg.appUrl).host;

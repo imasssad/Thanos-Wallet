@@ -325,8 +325,14 @@ export function WalletConnectHost() {
             // dynamic registry today. Spec returns null on success.
             const p = (params[0] as { chainId?: string } | undefined) ?? {};
             const requested = typeof p.chainId === 'string' ? parseInt(p.chainId, 16) : NaN;
-            if (!Number.isFinite(requested) || !SUPPORTED_CHAIN_IDS.has(requested)) {
-              await sendErr(4902, `Chain ${p.chainId} is not supported by this wallet.`);
+            if (!Number.isFinite(requested)) {
+              await sendErr(-32602, 'Invalid chainId');
+              break;
+            }
+            if (!SUPPORTED_CHAIN_IDS.has(requested)) {
+              // 4001 (declined to add), NOT 4902 — 4902 means "switch needs
+              // an add first" and would loop a standard switch().catch(add).
+              await sendErr(4001, `Chain ${p.chainId} is not supported by this wallet.`);
               break;
             }
             setSessionChainId(topic, requested);
