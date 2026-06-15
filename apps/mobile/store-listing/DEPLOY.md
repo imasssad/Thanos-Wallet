@@ -88,6 +88,29 @@ Run workflow) and pick the platform / whether to submit.
 > this repo. First `eas build` generates and stores them; run
 > `eas credentials` to inspect or replace them.
 
+## 2C. Ship a shareable test APK (sideload, no store)
+
+When you just need to hand someone an installable Android build (testing,
+client review) — **not** a Play Store submission — build an **APK** instead
+of the store `.aab`. This is a managed Expo app (no committed `android/`
+project), so the APK is built on **EAS**, same as the store builds:
+
+```bash
+cd apps/mobile
+eas login           # once
+npm run apk         # builds the production-apk profile on EAS
+```
+
+When the build finishes, EAS prints a **download URL** for the `.apk` (also
+visible at expo.dev → project → Builds). Send that link or the downloaded
+`.apk` file. The recipient enables "Install unknown apps" on their phone and
+taps the APK — no Play Store, no Apple account, no signing setup needed.
+
+- `npm run apk` is interactive (lets EAS create the keystore on first run).
+- `npm run apk:ci` is the non-interactive variant for CI.
+- The APK uses the `production-apk` profile (release build, internal
+  distribution) — see `eas.json`.
+
 ---
 
 ## 3. First-submission gotchas
