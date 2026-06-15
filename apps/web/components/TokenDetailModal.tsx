@@ -22,7 +22,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { formatUnits } from 'ethers';
-import { Copy, Check, ExternalLink, ArrowUpRight, ArrowDownLeft, Repeat } from 'lucide-react';
+import { Copy, Check, ExternalLink, ArrowUpRight, ArrowDownLeft, Repeat, ArrowLeft } from 'lucide-react';
 import {
   fetchTokenHistory, fetchTokenMarketDetails,
   type TokenHistory, type TokenMarketDetails, type TokenRange,
@@ -152,6 +152,19 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   const price = quote?.usd ?? null;
   const chg24 = quote?.chg24h ?? null;
 
+  /* Full-screen page UX: Escape closes (= back), and lock body scroll so the
+     workspace behind the opaque screen can't scroll under it. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
   /* Chart */
   const [range, setRange] = useState<TokenRange>('1d');
   const [hist, setHist] = useState<TokenHistory | null>(null);
@@ -254,21 +267,22 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   if (sub === 'receive') return <ReceiveModal onClose={() => setSub(null)}/>;
 
   const body = (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-box token-detail-box"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="modal-header" style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>
-          <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <TokenIcon sym={token.sym} color={token.color} size={28}/>
-            {token.name} ({token.sym})
-          </span>
-          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
-        </div>
+    <div className="token-detail-screen">
+      {/* Full-screen top bar with a back arrow (Trust Wallet / SafePal style) —
+          replaces the old centered popup so the screen has room for all the
+          price/chart/market/activity content. */}
+      <div className="token-detail-topbar">
+        <button className="token-detail-back" onClick={onClose} aria-label="Back">
+          <ArrowLeft size={20}/>
+        </button>
+        <TokenIcon sym={token.sym} color={token.color} size={28}/>
+        <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em' }}>
+          {token.name} ({token.sym})
+        </span>
+      </div>
 
-        <div style={{ padding: '4px 20px 20px' }}>
+      <div className="token-detail-scroll">
+        <div className="token-detail-inner">
           {/* Price hero */}
           <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'Geist Mono, monospace' }}>
             {price != null ? fmtUsd(price) : '—'}

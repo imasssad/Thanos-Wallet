@@ -220,6 +220,47 @@ body {
   .token-detail-box { max-height: calc(92dvh / 1.1); }
 }
 
+/* Token detail — FULL-SCREEN page (Trust Wallet / SafePal style), not a
+   centered popup. Opaque viewport takeover with a back-arrow top bar; the
+   body scrolls and centers within a readable column on wide screens.
+   Portaled to <body>, same as .modal-backdrop, so it covers the real
+   viewport above the zoomed app-shell. */
+.token-detail-screen {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg-base);
+  display: flex; flex-direction: column;
+  animation: tdSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes tdSlideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.token-detail-topbar {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+.token-detail-back {
+  flex-shrink: 0;
+  background: none; border: none; color: var(--text-primary);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px;
+  transition: background 0.12s;
+}
+.token-detail-back:hover { background: var(--bg-elevated); }
+.token-detail-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+.token-detail-inner {
+  max-width: 640px; margin: 0 auto;
+  padding: 10px 18px max(40px, env(safe-area-inset-bottom, 0px));
+}
+
 /* ── Mobile input zoom guard ─────────────────────────────────────────
    iOS Safari (and every iOS in-app WebView) auto-zooms the whole page
    when a focused <input>/<select>/<textarea> has a computed font-size
