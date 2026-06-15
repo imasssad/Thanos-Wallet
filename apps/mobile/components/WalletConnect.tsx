@@ -32,7 +32,7 @@ import {
 import { executeWcRequest, summariseRequest, WcSignerError } from '../lib/wc-signer';
 import { QrScannerModal } from './QrScannerModal';
 import { isWalletConnectUri } from '../lib/qr';
-import { TransactionSimulator, type SimulationReport } from '@thanos/sdk-core';
+import { TransactionSimulator, type SimulationReport } from '../lib/tx-simulator';
 
 /* ─── Dark sheet palette ──────────────────────────────────────────── */
 const P = {

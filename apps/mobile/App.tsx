@@ -714,7 +714,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   // Pre-send simulation — fires when recipient + amount are both valid,
   // mirrors the web Send modal so mobile users get the same
   // "contract recipient" + "insufficient balance" warnings before signing.
-  const [simReport, setSimReport] = useState<import('@thanos/sdk-core').SimulationReport | null>(null);
+  const [simReport, setSimReport] = useState<import('./lib/tx-simulator').SimulationReport | null>(null);
 
   const coin = assets.find((a) => a.sym === selectedSym) ?? assets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
@@ -745,7 +745,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const { TransactionSimulator } = await import('@thanos/sdk-core');
+        const { TransactionSimulator } = await import('./lib/tx-simulator');
         const sim = new TransactionSimulator();
         const r = await sim.simulateSend({
           chainId:     700777,
@@ -1433,7 +1433,11 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
     }
     setBusy(true); setPollMsg('Awaiting execution…');
     try {
-      const mod = await import(provider === 'multx' ? './lib/multx' : './lib/ignite');
+      // Metro requires a STATIC string in import() — keep the conditional
+      // OUTSIDE the call (a ternary argument fails to bundle: "Invalid call").
+      const mod = provider === 'multx'
+        ? await import('./lib/multx')
+        : await import('./lib/ignite');
 
       // Dual-mode dispatch — sign+broadcast locally via the module-
       // isolated signer when the quote includes an `unsignedTx`, else
