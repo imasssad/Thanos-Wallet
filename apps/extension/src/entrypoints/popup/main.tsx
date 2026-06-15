@@ -26,6 +26,8 @@ import {
   groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
   TransactionSimulator, type SimulationReport,
+  fetchTokenHistory, fetchTokenMarketDetails,
+  type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
@@ -531,12 +533,13 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
 }
 
 function HomeScreen({
-  onAction, onLock, onOpenSettings,
+  onAction, onLock, onOpenSettings, onOpenToken,
   activeIdx, accountCount, onSwitch, onAddAccount,
 }: {
   onAction:      (m: 'send'|'receive'|'swap') => void;
   onLock:        () => void;
   onOpenSettings: () => void;
+  onOpenToken:   (sym: string) => void;
   activeIdx:     number;
   accountCount:  number;
   onSwitch:      (idx: number) => void;
@@ -687,7 +690,7 @@ function HomeScreen({
         {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
         {!loading && !offline && coins.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No assets yet</div>}
         {coins.map((a, i) => (
-          <div key={a.sym} className={`row ${i < coins.length - 1 ? 'row-border' : ''}`}>
+          <div key={a.sym} className={`row ${i < coins.length - 1 ? 'row-border' : ''}`} onClick={() => onOpenToken(a.sym)} style={{ cursor: 'pointer' }}>
             <TokenAvatar sym={a.sym} color={a.color}/>
             <div className="row-mid">
               <div className="row-name">{a.name}</div>
@@ -1027,6 +1030,119 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         {children}
       </div>
     </div>
+  );
+}
+
+/* ─── Token detail screen (compact, popup-sized) ─────────────────────── */
+const TD_PROXY: Record<string, string> = { LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form' };
+const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
+  { key: '1d', label: '1D' }, { key: '1w', label: '1W' }, { key: '1m', label: '1M' },
+  { key: '3m', label: '3M' }, { key: '1y', label: '1Y' },
+];
+function tdPath(prices: Array<[number, number]>, w: number, h: number): string | null {
+  if (prices.length < 2) return null;
+  const vals = prices.map(p => p[1]);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min;
+  const dx = w / (prices.length - 1);
+  return vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * dx).toFixed(1)},${(span === 0 ? h / 2 : h - 6 - ((v - min) / span) * (h - 12)).toFixed(1)}`).join(' ');
+}
+function tdCompact(n: number | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
+  return `$${n.toFixed(2)}`;
+}
+
+function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
+  sym: string; onClose: () => void; onSend: () => void; onSwap: () => void;
+}) {
+  const { coins, activity } = usePortfolioCtx();
+  const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
+  const price = coin?.priceUsd ?? 0;
+  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
+  const network = coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' : coin?.sym === 'ATOM' ? 'Cosmos Hub' : 'Lithosphere Makalu';
+  const [range, setRange] = useState<TokenRange>('1d');
+  const [hist, setHist] = useState<TokenHistory | null>(null);
+  const [histLoading, setHistLoading] = useState(true);
+  useEffect(() => {
+    let cancel = false; setHistLoading(true);
+    fetchTokenHistory(sym, range).then(h => { if (!cancel) { setHist(h); setHistLoading(false); } }).catch(() => { if (!cancel) { setHist(null); setHistLoading(false); } });
+    return () => { cancel = true; };
+  }, [sym, range]);
+  const [market, setMarket] = useState<TokenMarketDetails | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    fetchTokenMarketDetails(sym).then(d => { if (!cancel) setMarket(d); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [sym]);
+  const rows = (activity ?? []).filter(t => t.sym.toLowerCase() === sym.toLowerCase()).slice(0, 6);
+  const W = 312, H = 120;
+  const line = hist?.hasRealData ? tdPath(hist.prices, W, H) : null;
+  const up = (hist?.changePct ?? 0) >= 0;
+  const stroke = up ? '#10b981' : '#f87171';
+  const proxy = TD_PROXY[sym];
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
+      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+      <span style={{ fontWeight: 600 }}>{children}</span>
+    </div>
+  );
+  return (
+    <Modal title={`${coin?.name ?? sym} (${sym})`} onClose={onClose}>
+      <div className="modal-body">
+        <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>{price > 0 ? formatUsd(price) : '—'}</div>
+        {proxy && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Price &amp; market data track {proxy}.</div>}
+        <div style={{ margin: '12px 0', minHeight: H }}>
+          {histLoading && <div style={{ height: H, borderRadius: 10, background: 'var(--bg-elevated)' }}/>}
+          {!histLoading && line && (
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: 'block' }}>
+              <path d={`${line} L${W},${H} L0,${H} Z`} fill={stroke} fillOpacity="0.14"/>
+              <path d={line} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round"/>
+            </svg>
+          )}
+          {!histLoading && !line && (
+            <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, background: 'var(--bg-elevated)', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '0 16px', lineHeight: 1.5 }}>
+              {hist?.failed ? 'Chart temporarily unavailable. Try again shortly.' : `No price history for ${sym} yet.`}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+          {TD_RANGES.map(r => (
+            <button key={r.key} onClick={() => setRange(r.key)} style={{
+              flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', border: 'none',
+              background: range === r.key ? 'var(--bg-elevated)' : 'transparent',
+              color: range === r.key ? 'var(--text-primary)' : 'var(--text-muted)',
+            }}>{r.label}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+          <button className="btn-primary" style={{ flex: 1 }} onClick={onSend}>Send</button>
+          {isMakalu && <button className="btn-outline" style={{ flex: 1 }} onClick={onSwap}>Swap</button>}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>Your balance</div>
+        <Row label={coin?.name ?? sym}><span style={{ fontFamily: 'Geist Mono, monospace' }}>{coin?.balanceText ?? '0'} {sym}</span></Row>
+        <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 2px' }}>Token details</div>
+        <Row label="Network">{network}</Row>
+        {coin?.tokenAddress
+          ? <Row label="Contract"><HiAddr value={coin.tokenAddress} head={6} tail={6}/></Row>
+          : <Row label="Contract">{coin?.native ? 'Native' : '—'}</Row>}
+        <Row label="Decimals">{coin?.decimals ?? 18}</Row>
+        <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 2px' }}>Market details</div>
+        {proxy && <div style={{ fontSize: 10, color: 'var(--text-muted)', margin: '2px 0' }}>Figures are for {proxy}.</div>}
+        <Row label="Market cap">{tdCompact(market?.marketCapUsd ?? null)}</Row>
+        <Row label="Volume">{tdCompact(market?.totalVolumeUsd ?? null)}</Row>
+        <Row label="All-time high">{market?.athUsd != null ? formatUsd(market.athUsd) : '—'}</Row>
+        <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 6px' }}>Your activity</div>
+        {rows.length === 0 && <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
+        {rows.map(t => (
+          <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
+            <div><div style={{ fontWeight: 600 }}>{t.label}</div><div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.time}</div></div>
+            <span style={{ fontFamily: 'Geist Mono, monospace', color: t.pos ? '#10b981' : 'var(--text-secondary)' }}>{t.amount}</span>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -1895,6 +2011,8 @@ function App() {
   const [seed, setSeed] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
+  /** Token-detail screen — opened by tapping a token row. */
+  const [detailSym, setDetailSym] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(true);  // dark-first — matches web/desktop
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
@@ -2249,11 +2367,20 @@ function App() {
       {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
       {modal === 'address-book' && <AddressBookModal    onClose={() => setModal(null)}/>}
       {modal === 'permissions'  && <PermissionsModal    onClose={() => setModal(null)}/>}
+      {detailSym && (
+        <TokenDetailModal
+          sym={detailSym}
+          onClose={() => setDetailSym(null)}
+          onSend={() => { setDetailSym(null); setModal('send'); }}
+          onSwap={() => { setDetailSym(null); setModal('swap'); }}
+        />
+      )}
 
       <div className="app">
         <div className="app-body">
           {tab === 'home'     && <HomeScreen
             onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}
+            onOpenToken={setDetailSym}
             activeIdx={activeIdx} accountCount={accountCount}
             onSwitch={switchAccount} onAddAccount={addAccount}
           />}

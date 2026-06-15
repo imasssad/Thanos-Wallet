@@ -93,3 +93,74 @@ export async function fetchPortfolioHistory(
 }
 
 export const PORTFOLIO_HISTORY_POINTS = POINTS;
+
+/* ─── Single-token history + market details (token detail screen) ─────── */
+/* Detached copy of sdk-core portfolio/price-history's token helpers —
+   keep in sync. EAS Cloud can't resolve workspace deps, hence the copy. */
+
+export type TokenRange = '1d' | '1w' | '1m' | '3m' | '1y';
+const tokenRangeDays: Record<TokenRange, number> = { '1d': 1, '1w': 7, '1m': 30, '3m': 90, '1y': 365 };
+
+export interface TokenHistory {
+  prices: Array<[number, number]>;
+  changePct: number;
+  hasRealData: boolean;
+  failed?: boolean;
+}
+const tokenSeriesCache = new Map<string, { at: number; hist: TokenHistory }>();
+
+export async function fetchTokenHistory(sym: string, range: TokenRange): Promise<TokenHistory> {
+  const id = COINGECKO_IDS[sym];
+  if (!id) return { prices: [], changePct: 0, hasRealData: false };
+  const days = tokenRangeDays[range];
+  const key = `tok:${id}:${days}`;
+  const hit = tokenSeriesCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.hist;
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`);
+    if (!res.ok) return { prices: [], changePct: 0, hasRealData: false, failed: true };
+    const json = await res.json();
+    const raw: [number, number][] = json?.prices ?? [];
+    if (raw.length < 2) return { prices: [], changePct: 0, hasRealData: false, failed: true };
+    const prices: Array<[number, number]> = [];
+    for (let i = 0; i < POINTS; i++) {
+      const pos = (i / (POINTS - 1)) * (raw.length - 1);
+      const lo = Math.floor(pos), hi = Math.ceil(pos), frac = pos - lo;
+      prices.push([raw[lo][0] * (1 - frac) + raw[hi][0] * frac, raw[lo][1] * (1 - frac) + raw[hi][1] * frac]);
+    }
+    const first = prices[0][1], last = prices[prices.length - 1][1];
+    const hist: TokenHistory = { prices, changePct: first > 0 ? (last - first) / first : 0, hasRealData: true };
+    tokenSeriesCache.set(key, { at: Date.now(), hist });
+    return hist;
+  } catch {
+    return { prices: [], changePct: 0, hasRealData: false, failed: true };
+  }
+}
+
+export interface TokenMarketDetails {
+  marketCapUsd: number | null; totalVolumeUsd: number | null;
+  circulatingSupply: number | null; athUsd: number | null; atlUsd: number | null;
+}
+const marketDetailsCache = new Map<string, { at: number; d: TokenMarketDetails | null }>();
+
+export async function fetchTokenMarketDetails(sym: string): Promise<TokenMarketDetails | null> {
+  const id = COINGECKO_IDS[sym];
+  if (!id) return null;
+  const hit = marketDetailsCache.get(id);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.d;
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`, { headers: { accept: 'application/json' } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const m = j?.market_data;
+    const num = (v: unknown): number | null => (typeof v === 'number' && isFinite(v) ? v : null);
+    const d: TokenMarketDetails = {
+      marketCapUsd: num(m?.market_cap?.usd), totalVolumeUsd: num(m?.total_volume?.usd),
+      circulatingSupply: num(m?.circulating_supply), athUsd: num(m?.ath?.usd), atlUsd: num(m?.atl?.usd),
+    };
+    marketDetailsCache.set(id, { at: Date.now(), d });
+    return d;
+  } catch {
+    return null;
+  }
+}

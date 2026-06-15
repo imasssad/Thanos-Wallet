@@ -21,6 +21,8 @@ import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
+  fetchTokenHistory, fetchTokenMarketDetails,
+  type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from '@thanos/sdk-core';
 import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
@@ -277,8 +279,14 @@ function ExchangeWidget({ onSwap }: { onSwap: () => void }) {
   );
 }
 
+/* Lets any token row (right-panel list, Assets table, dashboard tokens)
+   open the token-detail modal without prop-drilling. Provided by App. */
+const OpenTokenDetail = React.createContext<((sym: string) => void) | null>(null);
+const useOpenTokenDetail = () => useContext(OpenTokenDetail);
+
 function PortfolioList() {
   const { coins, loading, offline } = usePortfolioCtx();
+  const openDetail = useOpenTokenDetail();
   return (
     <div className="card">
       <div className="card-header">
@@ -292,7 +300,7 @@ function PortfolioList() {
           <div className="portfolio-sym" style={{ padding: 12 }}>No assets yet</div>
         )}
         {coins.map(c => (
-          <div key={c.sym} className="portfolio-row">
+          <div key={c.sym} className="portfolio-row" onClick={() => openDetail?.(c.sym)} style={{ cursor: 'pointer' }}>
             <TokenAvatar sym={c.sym} color={c.color} className="portfolio-icon"/>
             <div>
               <div className="portfolio-name">{c.name}</div>
@@ -590,6 +598,196 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────── Token detail modal ──────────────────────── */
+/* Desktop port of the web token-detail screen — opens when a token row is
+   clicked (Dashboard / Assets). Shares the same sdk-core data helpers, so
+   the chart + market data behave identically to web. */
+
+const TD_PROXY_FEEDS: Record<string, string> = {
+  LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form on Makalu',
+};
+const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
+  { key: '1d', label: '1D' }, { key: '1w', label: '1W' }, { key: '1m', label: '1M' },
+  { key: '3m', label: '3M' }, { key: '1y', label: '1Y' },
+];
+
+function tdPath(prices: Array<[number, number]>, w: number, h: number): { line: string; area: string } | null {
+  if (prices.length < 2) return null;
+  const vals = prices.map(p => p[1]);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min;
+  const dx = w / (prices.length - 1);
+  const pts = vals.map((v, i) => [i * dx, span === 0 ? h / 2 : h - 8 - ((v - min) / span) * (h - 16)] as const);
+  const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  return { line, area: `${line} L${w},${h} L0,${h} Z` };
+}
+function tdFmtCompactUsd(n: number | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
+  return `$${n.toFixed(2)}`;
+}
+function tdFmtQty(n: number | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
+  return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
+  sym: string; onClose: () => void; onSend: () => void; onSwap: () => void;
+}) {
+  const { coins, activity } = usePortfolioCtx();
+  const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
+  const price = coin?.priceUsd ?? 0;
+  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
+  const isLitho = !!coin && (coin.native ? !['BTC', 'SOL', 'ATOM'].includes(coin.sym) : true);
+  const network =
+    coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' :
+    coin?.sym === 'ATOM' ? 'Cosmos Hub' : 'Lithosphere Makalu';
+
+  const [range, setRange] = useState<TokenRange>('1d');
+  const [hist, setHist] = useState<TokenHistory | null>(null);
+  const [histLoading, setHistLoading] = useState(true);
+  useEffect(() => {
+    let cancel = false;
+    setHistLoading(true);
+    fetchTokenHistory(sym, range)
+      .then(h => { if (!cancel) { setHist(h); setHistLoading(false); } })
+      .catch(() => { if (!cancel) { setHist(null); setHistLoading(false); } });
+    return () => { cancel = true; };
+  }, [sym, range]);
+
+  const [market, setMarket] = useState<TokenMarketDetails | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    fetchTokenMarketDetails(sym).then(d => { if (!cancel) setMarket(d); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [sym]);
+
+  const [copied, setCopied] = useState(false);
+  const copyAddr = () => {
+    if (!coin?.tokenAddress) return;
+    void navigator.clipboard.writeText(coin.tokenAddress).then(() => {
+      setCopied(true); setTimeout(() => setCopied(false), 1600);
+    }).catch(() => {});
+  };
+
+  const rows = (activity ?? []).filter(t => t.sym.toLowerCase() === sym.toLowerCase()).slice(0, 8);
+  const W = 520, H = 170;
+  const paths = hist?.hasRealData ? tdPath(hist.prices, W, H) : null;
+  const up = (hist?.changePct ?? 0) >= 0;
+  const stroke = up ? 'var(--green, #10b981)' : 'var(--red, #f87171)';
+  const proxyNote = TD_PROXY_FEEDS[sym];
+  const canSwap = isMakalu || (isLitho && coin?.native);
+
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
+      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+      <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>{children}</span>
+    </div>
+  );
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 560, width: '100%', maxHeight: 'calc(92vh / 1.5)', overflowY: 'auto' }}>
+        <div className="modal-header" style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>
+          <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <TokenAvatar sym={sym} color={coin?.color ?? '#52525b'} className="tx-avatar" label={sym.slice(0, 2)}/>
+            {coin?.name ?? sym} ({sym})
+          </span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{ padding: '4px 20px 20px' }}>
+          <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'Geist Mono, monospace' }}>
+            {price > 0 ? formatUsd(price) : '—'}
+          </div>
+          {proxyNote && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Price &amp; market data track {proxyNote}.</div>}
+
+          <div style={{ margin: '14px 0 6px', minHeight: H }}>
+            {histLoading && <div style={{ height: H, borderRadius: 12, background: 'var(--bg-elevated)' }}/>}
+            {!histLoading && paths && (
+              <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" width="100%" height={H} style={{ display: 'block' }}>
+                <defs><linearGradient id="td-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={stroke} stopOpacity="0.20"/><stop offset="100%" stopColor={stroke} stopOpacity="0"/>
+                </linearGradient></defs>
+                <path d={paths.area} fill="url(#td-fill)"/>
+                <path d={paths.line} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round"/>
+              </svg>
+            )}
+            {!histLoading && !paths && (
+              <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '0 24px', lineHeight: 1.5 }}>
+                {hist?.failed ? 'Chart temporarily unavailable (price service rate-limited). Try again shortly.'
+                  : `No price history for ${sym} yet — Lithosphere ecosystem tokens get live charts when a price feed lands.`}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'space-between', marginBottom: 14 }}>
+            {TD_RANGES.map(r => (
+              <button key={r.key} onClick={() => setRange(r.key)} style={{
+                flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
+                background: range === r.key ? 'var(--bg-elevated)' : 'transparent',
+                color: range === r.key ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}>{r.label}</button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={onSend}>Send</button>
+            {canSwap && <button className="btn-outline" style={{ flex: 1 }} onClick={onSwap}>Swap</button>}
+          </div>
+
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Your balance</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 16px' }}>
+            <TokenAvatar sym={sym} color={coin?.color ?? '#52525b'} className="tx-avatar" label={sym.slice(0, 2)}/>
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 700, fontSize: 14 }}>{coin?.name ?? sym}</div></div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{coin ? formatUsd(coin.usdValue) : '—'}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{coin?.balanceText ?? '0'} {sym}</div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>Token details</div>
+          <Row label="Network">{network}</Row>
+          {coin?.tokenAddress ? (
+            <Row label="Contract address">
+              <button onClick={copyAddr} title={coin.tokenAddress} style={{
+                display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                borderRadius: 999, padding: '4px 10px', color: 'var(--blue)', fontSize: 12,
+              }}>
+                <HiAddr value={coin.tokenAddress} head={8} tail={6}/>{copied ? ' ✓' : ' ⧉'}
+              </button>
+            </Row>
+          ) : <Row label="Contract address">{coin?.native ? 'Native coin' : '—'}</Row>}
+          <Row label="Token decimal">{coin?.decimals ?? 18}</Row>
+
+          <div style={{ fontSize: 15, fontWeight: 800, margin: '18px 0 2px' }}>Market details</div>
+          {proxyNote && <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '2px 0 4px' }}>Figures below are for {proxyNote}.</div>}
+          <Row label="Market cap">{tdFmtCompactUsd(market?.marketCapUsd ?? null)}</Row>
+          <Row label="Total volume">{tdFmtCompactUsd(market?.totalVolumeUsd ?? null)}</Row>
+          <Row label="Circulating supply">{tdFmtQty(market?.circulatingSupply ?? null)}</Row>
+          <Row label="All-time high">{market?.athUsd != null ? formatUsd(market.athUsd) : '—'}</Row>
+          <Row label="All-time low">{market?.atlUsd != null ? formatUsd(market.atlUsd) : '—'}</Row>
+
+          <div style={{ fontSize: 15, fontWeight: 800, margin: '18px 0 6px' }}>Your activity</div>
+          {rows.length === 0 && <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
+          {rows.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
+              <div><div style={{ fontWeight: 600 }}>{t.type}</div><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.date}</div></div>
+              <div style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 12, color: t.pos ? 'var(--green)' : 'var(--text-secondary)' }}>{t.amount}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1412,6 +1610,7 @@ function MarketView() {
 /* ──────────────────────── Portfolio view ──────────────────────── */
 function PortfolioView() {
   const { coins, totalUsd, loading, offline } = usePortfolioCtx();
+  const openDetail = useOpenTokenDetail();
 
   // Donut chart
   let offset = 0;
@@ -1470,7 +1669,7 @@ function PortfolioView() {
             </thead>
             <tbody>
               {coins.map(c => (
-                <tr key={c.sym}>
+                <tr key={c.sym} onClick={() => openDetail?.(c.sym)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div className="tx-cell">
                       <TokenAvatar sym={c.sym} color={c.color} className="tx-avatar" label={c.sym.slice(0,2)}/>
@@ -2668,6 +2867,8 @@ function App() {
   const [view, setView]     = useState<View>('dashboard');
   const [isDark, setIsDark] = useState(false);
   const [modal, setModal]   = useState<Modal>(null);
+  /** Token-detail modal — opened by tapping any token row. */
+  const [detailSym, setDetailSym] = useState<string | null>(null);
   // In-app dApp browser — null when closed. Set by useOpenDapp() via
   // the DappOpenerContext below; closing comes from the overlay itself.
   const [dapp, setDapp]     = useState<{ url: string; name: string } | null>(null);
@@ -2793,6 +2994,7 @@ function App() {
   return (
     <WalletSeedContext.Provider value={walletSeed}>
     <PortfolioContext.Provider value={portfolio}>
+    <OpenTokenDetail.Provider value={setDetailSym}>
     <DappOpenerContext.Provider value={(url, name) => setDapp({ url, name })}>
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
@@ -2960,6 +3162,14 @@ function App() {
       </nav>
 
       {/* Modals */}
+      {detailSym && (
+        <TokenDetailModal
+          sym={detailSym}
+          onClose={() => setDetailSym(null)}
+          onSend={() => { setDetailSym(null); setModal('send'); }}
+          onSwap={() => { setDetailSym(null); setModal('swap'); }}
+        />
+      )}
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} addresses={{ evm: addrs.evm, btc: addrs.btc, sol: addrs.sol }}/>}
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
@@ -2989,6 +3199,7 @@ function App() {
 
     </div>
     </DappOpenerContext.Provider>
+    </OpenTokenDetail.Provider>
     </PortfolioContext.Provider>
     </WalletSeedContext.Provider>
   );

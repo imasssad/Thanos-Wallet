@@ -106,7 +106,11 @@ import {
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
-import { fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range } from './lib/price-history';
+import {
+  fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
+  fetchTokenHistory, fetchTokenMarketDetails,
+  type TokenHistory, type TokenMarketDetails, type TokenRange,
+} from './lib/price-history';
 import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal } from './lib/notifications';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -522,7 +526,7 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
   );
 }
 
-function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
+function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -666,7 +670,7 @@ function HomeScreen({ navigate }: { navigate: (s: Screen) => void }) {
             <Text style={[styles.rowSub, { padding: 16 }]}>No assets yet.</Text>
           )}
           {assets.map((a, i) => (
-            <Pressable key={`${a.sym}-${a.chainId}`} style={[styles.row, i < assets.length - 1 && styles.rowBorder]}>
+            <Pressable key={`${a.sym}-${a.chainId}`} style={[styles.row, i < assets.length - 1 && styles.rowBorder]} onPress={() => onOpenToken(a.sym)}>
               <Avatar symbol={a.sym} color={a.color} />
               <View style={styles.rowMid}>
                 <Text style={styles.rowSymbol}>{a.name}</Text>
@@ -2369,6 +2373,170 @@ function CustomRpcModal({ visible, onClose }: { visible: boolean; onClose: () =>
   );
 }
 
+/* ─────────────────────────── Token detail ─────────────────────────── */
+
+const TD_PROXY_FEEDS: Record<string, string> = { LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form on Makalu' };
+const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
+  { key: '1d', label: '1D' }, { key: '1w', label: '1W' }, { key: '1m', label: '1M' },
+  { key: '3m', label: '3M' }, { key: '1y', label: '1Y' },
+];
+function tdCompact(n: number | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
+  return `$${n.toFixed(2)}`;
+}
+/** Build a standalone SVG document string for SvgXml from price pairs. */
+function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, stroke: string): string | null {
+  if (prices.length < 2) return null;
+  const vals = prices.map(p => p[1]);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min;
+  const dx = w / (prices.length - 1);
+  const pts = vals.map((v, i) => `${(i * dx).toFixed(1)},${(span === 0 ? h / 2 : h - 6 - ((v - min) / span) * (h - 12)).toFixed(1)}`);
+  const line = `M${pts.join(' L')}`;
+  const area = `${line} L${w},${h} L0,${h} Z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`
+    + `<path d="${area}" fill="${stroke}" fill-opacity="0.15"/>`
+    + `<path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/></svg>`;
+}
+
+function TokenDetailScreen({ sym, goBack, onSend, onSwap }: {
+  sym: string; goBack: () => void; onSend: () => void; onSwap: () => void;
+}) {
+  const C = useColors();
+  const addr = useWalletAddr();
+  const seed = useWalletSeed();
+  const { assets } = usePortfolio(addr, seed);
+  const { items } = useActivity(addr);
+  const coin = assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
+  const price = coin?.priceUsd ?? 0;
+  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
+  const network = coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' : coin?.sym === 'ATOM' ? 'Cosmos Hub' : 'Lithosphere Makalu';
+  const [range, setRange] = useState<TokenRange>('1d');
+  const [hist, setHist] = useState<TokenHistory | null>(null);
+  const [histLoading, setHistLoading] = useState(true);
+  useEffect(() => {
+    let cancel = false; setHistLoading(true);
+    fetchTokenHistory(sym, range).then(h => { if (!cancel) { setHist(h); setHistLoading(false); } }).catch(() => { if (!cancel) { setHist(null); setHistLoading(false); } });
+    return () => { cancel = true; };
+  }, [sym, range]);
+  const [market, setMarket] = useState<TokenMarketDetails | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    fetchTokenMarketDetails(sym).then(d => { if (!cancel) setMarket(d); }).catch(() => {});
+    return () => { cancel = true; };
+  }, [sym]);
+  const rows = items.filter(t => t.symbol.toLowerCase() === sym.toLowerCase()).slice(0, 8);
+  const W = 340, H = 150;
+  const up = (hist?.changePct ?? 0) >= 0;
+  const svg = hist?.hasRealData ? tdChartSvg(hist.prices, W, H, up ? C.green : C.red) : null;
+  const [copied, setCopied] = useState(false);
+  const proxy = TD_PROXY_FEEDS[sym];
+
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+      <Text style={{ color: C.textMuted, fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{children}</Text>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+        <Pressable onPress={goBack} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: C.textPrimary, fontSize: 22 }}>‹</Text>
+        </Pressable>
+        <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={26}/>
+        <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 15, marginLeft: 8 }}>{coin?.name ?? sym} ({sym})</Text>
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+        <Text style={{ color: C.textPrimary, fontSize: 30, fontWeight: '800', fontFamily: MONO }}>{price > 0 ? formatUsd(price) : '—'}</Text>
+        {proxy && <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>Price &amp; market data track {proxy}.</Text>}
+
+        <View style={{ marginVertical: 14, minHeight: H }}>
+          {histLoading && <View style={{ height: H, borderRadius: 12, backgroundColor: C.bgElevated }}/>}
+          {!histLoading && svg && <SvgXml xml={svg} width="100%" height={H}/>}
+          {!histLoading && !svg && (
+            <View style={{ height: H, borderRadius: 12, backgroundColor: C.bgElevated, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+              <Text style={{ color: C.textMuted, fontSize: 12, textAlign: 'center', lineHeight: 18 }}>
+                {hist?.failed ? 'Chart temporarily unavailable. Try again shortly.' : `No price history for ${sym} yet.`}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 4, marginBottom: 16 }}>
+          {TD_RANGES.map(r => (
+            <Pressable key={r.key} onPress={() => setRange(r.key)} style={{ flex: 1, paddingVertical: 7, borderRadius: 8, backgroundColor: range === r.key ? C.bgElevated : 'transparent', alignItems: 'center' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: range === r.key ? C.textPrimary : C.textMuted }}>{r.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+          <Pressable onPress={onSend} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Send</Text>
+          </Pressable>
+          {isMakalu && (
+            <Pressable onPress={onSwap} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+              <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Swap</Text>
+            </Pressable>
+          )}
+        </View>
+
+        <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginBottom: 4 }}>Your balance</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, marginBottom: 8 }}>
+          <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={34}/>
+          <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14, marginLeft: 10, flex: 1 }}>{coin?.name ?? sym}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{coin ? formatUsd(coin.usdValue) : '—'}</Text>
+            <Text style={{ color: C.textMuted, fontSize: 11, fontFamily: MONO }}>{coin?.balanceText ?? '0'} {sym}</Text>
+          </View>
+        </View>
+
+        <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 10, marginBottom: 2 }}>Token details</Text>
+        <Row label="Network">{network}</Row>
+        {coin?.tokenAddress ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+            <Text style={{ color: C.textMuted, fontSize: 13 }}>Contract</Text>
+            <Pressable onPress={() => { void Share.share({ message: coin.tokenAddress! }).catch(() => {}); setCopied(true); }}>
+              <HiAddr value={coin.tokenAddress} head={6} tail={6} style={{ fontSize: 12 }}/>
+            </Pressable>
+          </View>
+        ) : <Row label="Contract">{coin?.native ? 'Native coin' : '—'}</Row>}
+        <Row label="Decimals">{coin?.decimals ?? 18}</Row>
+        {copied && <Text style={{ color: C.textMuted, fontSize: 10, marginTop: 4 }}>Address shared.</Text>}
+
+        <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 16, marginBottom: 2 }}>Market details</Text>
+        {proxy && <Text style={{ color: C.textMuted, fontSize: 10, marginVertical: 2 }}>Figures below are for {proxy}.</Text>}
+        <Row label="Market cap">{tdCompact(market?.marketCapUsd ?? null)}</Row>
+        <Row label="Total volume">{tdCompact(market?.totalVolumeUsd ?? null)}</Row>
+        <Row label="All-time high">{market?.athUsd != null ? formatUsd(market.athUsd) : '—'}</Row>
+        <Row label="All-time low">{market?.atlUsd != null ? formatUsd(market.atlUsd) : '—'}</Row>
+
+        <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 16, marginBottom: 6 }}>Your activity</Text>
+        {rows.length === 0 && <Text style={{ color: C.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 14 }}>No {sym} activity yet.</Text>}
+        {rows.map(t => {
+          const d = txDisplay(t.type);
+          return (
+            <View key={t.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+              <View>
+                <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{d.label}</Text>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.ts ? new Date(t.ts).toLocaleDateString() : '—'}</Text>
+              </View>
+              <Text style={{ color: d.positive ? C.green : C.textSecondary, fontFamily: MONO, fontSize: 12 }}>
+                {(() => { try { const n = parseFloat(formatUnits(t.amount, coin?.decimals ?? 18)); return `${d.positive ? '+' : '-'}${n.toLocaleString('en-US', { maximumFractionDigits: 6 })}`; } catch { return t.amount; } })()} {sym}
+              </Text>
+            </View>
+          );
+        })}
+        <View style={{ height: 24 }}/>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 /* ─────────────────────────── Shell ─────────────────────────── */
 
 type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn';
@@ -3008,6 +3176,8 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
+  /** Token-detail overlay — opened by tapping a token row. */
+  const [detailSym, setDetailSym] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
@@ -3240,7 +3410,7 @@ export default function App() {
             {/* Body — animated screen transitions */}
             <View style={styles.body}>
               <AnimatedSwitch keyName={screen} style={{ flex: 1 }}>
-                {screen === 'home'     && <HomeScreen navigate={setScreen}/>}
+                {screen === 'home'     && <HomeScreen navigate={setScreen} onOpenToken={setDetailSym}/>}
                 {screen === 'send'     && <SendScreen goBack={() => setScreen('home')}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
                 {screen === 'swap'     && <SwapScreen goBack={() => setScreen('home')}/>}
@@ -3250,6 +3420,18 @@ export default function App() {
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
             </View>
+
+            {/* Token-detail overlay — full-screen Modal over the tab shell. */}
+            <Modal visible={!!detailSym} animationType="slide" onRequestClose={() => setDetailSym(null)} presentationStyle="fullScreen">
+              {detailSym && (
+                <TokenDetailScreen
+                  sym={detailSym}
+                  goBack={() => setDetailSym(null)}
+                  onSend={() => { setDetailSym(null); setScreen('send'); }}
+                  onSwap={() => { setDetailSym(null); setScreen('swap'); }}
+                />
+              )}
+            </Modal>
 
             {/* Bottom tabs */}
             <View style={styles.tabbar}>
