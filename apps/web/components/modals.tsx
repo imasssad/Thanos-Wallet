@@ -1411,7 +1411,11 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
       type:    'svg',
       margin:  1,
       width:   220,
-      color:   { dark: '#ffffff', light: '#00000000' },
+      // Dark modules on a solid white tile — the universally-scannable QR
+      // format. Works for litho1 (bech32) exactly as for 0x, and stays
+      // visible/scannable in BOTH themes (the old white-on-transparent code
+      // vanished on light surfaces). Matches the mobile/extension/desktop QR.
+      color:   { dark: '#0a0a0f', light: '#ffffff' },
     }).then(svg => { if (!cancelled) setQrSvg(svg); })
       .catch(() => { if (!cancelled) setQrSvg(null); });
     return () => { cancelled = true; };
@@ -1491,13 +1495,14 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
             )}
 
             <div style={{
-              padding: 14, background: 'var(--bg-elevated)',
+              padding: 14, background: '#ffffff',
               border: '1px solid var(--border-default)', borderRadius: 14,
-              color: 'var(--text-primary)',
+              color: '#0a0a0f',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               {qrSvg
                 ? <div dangerouslySetInnerHTML={{ __html: qrSvg }} style={{ lineHeight: 0 }}/>
-                : <div style={{ width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Generating QR…</div>
+                : <div style={{ width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a', fontSize: 12 }}>Generating QR…</div>
               }
             </div>
 
