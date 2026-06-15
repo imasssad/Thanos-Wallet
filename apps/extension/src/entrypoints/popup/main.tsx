@@ -1033,6 +1033,38 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+/* First-run welcome — introduces the Lithosphere Makalu home network the
+   first time a user reaches the unlocked popup. Self-gates on a localStorage
+   flag (written the moment it shows) so it appears at most once. Compact for
+   the popup viewport. Client request (Esha, 2026-06-15). */
+const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v1';
+function MakaluWelcomeModal() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(MAKALU_WELCOME_FLAG) === '1') return;
+      setVisible(true);
+      localStorage.setItem(MAKALU_WELCOME_FLAG, '1');
+    } catch { /* storage disabled — skip */ }
+  }, []);
+  if (!visible) return null;
+  return (
+    <div className="modal-back" onClick={() => setVisible(false)}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: 22 }}>
+        <div style={{ width: 56, height: 56, borderRadius: '50%', margin: '0 auto 14px', background: '#3b7af7', color: '#fff', fontWeight: 800, fontSize: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>L</div>
+        <h2 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 6px' }}>
+          Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM are built in too.
+        </p>
+        <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 16px' }}>
+          Explorer: makalu.litho.ai · RPC: rpc.litho.ai
+        </p>
+        <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={() => setVisible(false)}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Token detail screen (compact, popup-sized) ─────────────────────── */
 const TD_PROXY: Record<string, string> = { LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form' };
 const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
@@ -2376,6 +2408,8 @@ function App() {
   return (
     <WalletSeedContext.Provider value={seed}>
     <PortfolioContext.Provider value={portfolio}>
+      {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
+      <MakaluWelcomeModal/>
       {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); }}
         initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
         initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}

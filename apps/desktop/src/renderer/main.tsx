@@ -603,6 +603,38 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+/* First-run welcome card — introduces the Lithosphere Makalu home network
+   the first time a user reaches the unlocked wallet. Self-gates on a
+   localStorage flag (written the moment it shows) so it appears at most
+   once per install. Client request (Esha, 2026-06-15). */
+const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v1';
+function MakaluWelcomeModal() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(MAKALU_WELCOME_FLAG) === '1') return;
+      setVisible(true);
+      localStorage.setItem(MAKALU_WELCOME_FLAG, '1');
+    } catch { /* storage disabled — skip */ }
+  }, []);
+  if (!visible) return null;
+  return (
+    <div className="modal-backdrop" onClick={() => setVisible(false)}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 28 }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 16px', background: '#3b7af7', color: '#fff', fontWeight: 800, fontSize: 30, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>L</div>
+        <h2 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 6px' }}>
+          Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM networks are built in too.
+        </p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 18px' }}>
+          Explorer: makalu.litho.ai · RPC: rpc.litho.ai
+        </p>
+        <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={() => setVisible(false)}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
 /* ──────────────────────── Token detail modal ──────────────────────── */
 /* Desktop port of the web token-detail screen — opens when a token row is
    clicked (Dashboard / Assets). Shares the same sdk-core data helpers, so
@@ -3015,6 +3047,9 @@ function App() {
     <OpenTokenDetail.Provider value={setDetailSym}>
     <DappOpenerContext.Provider value={(url, name) => setDapp({ url, name })}>
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+
+      {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
+      <MakaluWelcomeModal/>
 
       {/* Auto-update banner — mounts above the topnav so it's seen first
           but never blocks app interaction. Renders null when there's

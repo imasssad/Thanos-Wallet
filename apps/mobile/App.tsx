@@ -3183,6 +3183,44 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   );
 }
 
+/* First-run welcome — introduces the Lithosphere Makalu home network the
+   first time a user reaches the unlocked wallet. Self-gates on an
+   AsyncStorage flag (written the moment it shows) so it appears at most once
+   per install. Client request (Esha, 2026-06-15). */
+const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v1';
+function MakaluWelcomeModal() {
+  const C = useColors();
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(MAKALU_WELCOME_FLAG).then(v => {
+      if (v === '1') return;
+      setVisible(true);
+      AsyncStorage.setItem(MAKALU_WELCOME_FLAG, '1').catch(() => {});
+    }).catch(() => {});
+  }, []);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
+      <Pressable onPress={() => setVisible(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 360, backgroundColor: C.bgCard, borderRadius: 18, padding: 24, alignItems: 'center' }}>
+          <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#3b7af7', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <Text style={{ color: '#fff', fontSize: 28, fontWeight: '800' }}>L</Text>
+          </View>
+          <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Welcome to Thanos</Text>
+          <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 6 }}>
+            Your wallet is on the Lithosphere Makalu network (chain 700777) — the Web4 home chain. The native coin is LITHO; Bitcoin, Solana, Cosmos and EVM are built in too.
+          </Text>
+          <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, textAlign: 'center', marginBottom: 18 }}>
+            Explorer: makalu.litho.ai · RPC: rpc.litho.ai
+          </Text>
+          <Pressable onPress={() => setVisible(false)} style={{ width: '100%', paddingVertical: 13, borderRadius: 12, backgroundColor: '#3b7af7', alignItems: 'center' }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Got it</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
@@ -3362,6 +3400,9 @@ export default function App() {
         <BrowserCtx.Provider value={setBrowserUrl}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
+
+            {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
+            <MakaluWelcomeModal/>
 
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}
