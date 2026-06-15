@@ -13,14 +13,19 @@
  * value and no CoinGecko listing is simply absent — callers merge in
  * their own token-table default for those. Cached 60s in memory.
  */
+// Static, authoritative prices — the ONLY two assets priced without a live
+// feed (client directive 2026-06-15: "only litho market info is static").
+// LITHO is the client-set placeholder until an oracle lands; LAX is a
+// defined algorithmic peg. Every other ecosystem token must come from a
+// live feed (CoinGecko) or render "—" — never a fabricated number.
 export const HARD_PRICES: Record<string, number> = {
-  LAX: 1.0001,
+  LITHO: 8.6,
+  LAX:   1.0001,
 };
 
-export const PLACEHOLDER_PRICES: Record<string, number> = {
-  LITHO: 8.6,
-  JOT:   0.5,
-};
+// No more arbitrary placeholders (JOT/FGPT/MUSA … now resolve to "—" unless
+// a CoinGecko feed prices them). Kept as an (empty) export for back-compat.
+export const PLACEHOLDER_PRICES: Record<string, number> = {};
 
 /** Symbol → CoinGecko coin id. Add entries as more tokens get listed. */
 export const COINGECKO_IDS: Record<string, string> = {

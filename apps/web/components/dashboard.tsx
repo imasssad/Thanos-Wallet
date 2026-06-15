@@ -39,13 +39,17 @@ function projectAsset(a: IndexerAsset, prices: Record<string, number> | null) {
     balNum = parseFloat(formatted) || 0;
     balStr = balNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
   } catch { /* malformed */ }
-  const priceUsd = priceOr(prices, a.symbol, canon?.priceUsd ?? 0);
+  // Known only from a real source (LITHO/LAX static or live CoinGecko) —
+  // no fabricated canon.priceUsd fallback, so a no-feed asset reads "—"
+  // and contributes $0 to the total (client directive 2026-06-15).
+  const priceUsd = prices?.[a.symbol] ?? null;
   return {
     sym:    a.symbol,
     name:   a.name || canon?.name || a.symbol,
     bal:    balStr,
     balNum,
-    usdNum: balNum * priceUsd,
+    usdNum: balNum * (priceUsd ?? 0),
+    priceKnown: priceUsd != null,
     chg:    canon?.change24h ?? 0,
     color:  canon?.color ?? '#52525b',
     /** Chain the asset lives on — drives the TokenIcon chain-badge. */
@@ -557,6 +561,7 @@ export function Dashboard() {
         bal:    balance.toLocaleString('en-US', { maximumFractionDigits: decimals }),
         balNum: balance,
         usdNum: balance * priceOr(prices, sym, tok.priceUsd),
+        priceKnown: true,
         chg:    tok.change24h,
         color:  tok.color,
         chainId: undefined as number | undefined,
@@ -576,6 +581,7 @@ export function Dashboard() {
       bal:    balance.toLocaleString('en-US', { maximumFractionDigits: 6 }),
       balNum: balance,
       usdNum: balance * priceOr(prices, chain.nativeSymbol, 0),
+      priceKnown: true,
       chg:    0,
       color:  chain.color,
       chainId: chain.chainId as number | undefined,
@@ -588,7 +594,8 @@ export function Dashboard() {
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
-      usd: `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+      usd: c.priceKnown ? `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—',
+      priceKnown: c.priceKnown,
       chg: c.chg, color: c.color,
       chainId: c.chainId, native: c.native,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
@@ -927,7 +934,9 @@ export function Dashboard() {
               )}
               {filteredCoins.map(c => {
                 const price = c.balNum > 0 ? c.usdNum / c.balNum : 0;
-                const priceTxt = price > 0
+                const priceTxt = !c.priceKnown
+                  ? '—'
+                  : price > 0
                   ? '$' + price.toLocaleString('en-US', {
                       minimumFractionDigits: price >= 1 ? 2 : 4,
                       maximumFractionDigits: price >= 1 ? 2 : 6,

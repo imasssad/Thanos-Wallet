@@ -147,7 +147,9 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
     : '—';
 
   const quote = quotes?.[token.sym];
-  const price = quote?.usd ?? token.priceUsd;
+  // Price is known only from a real source (LITHO/LAX static or a live
+  // CoinGecko quote). No fabricated token.priceUsd fallback — null → "—".
+  const price = quote?.usd ?? null;
   const chg24 = quote?.chg24h ?? null;
 
   /* Chart */
@@ -192,7 +194,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evmAddress, token.sym, token.address]);
-  const balUsd = bal.state === 'ok' ? bal.qtyNum * price : null;
+  const balUsd = bal.state === 'ok' && price != null ? bal.qtyNum * price : null;
 
   /* Activity filtered to this token. Offline is distinguishable from
      genuinely-empty so an indexer outage never reads as "no activity". */
@@ -269,7 +271,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
         <div style={{ padding: '4px 20px 20px' }}>
           {/* Price hero */}
           <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'Geist Mono, monospace' }}>
-            {fmtUsd(price)}
+            {price != null ? fmtUsd(price) : '—'}
           </div>
           <div style={{ display: 'flex', gap: 10, fontSize: 12, marginTop: 2, alignItems: 'baseline' }}>
             {chg24 === null
@@ -381,8 +383,9 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
               <div style={{ fontWeight: 700, fontSize: 14 }}>
                 {bal.state === 'loading' ? '…'
                  : bal.state === 'offline' ? '—'
-                 : balUsd !== null && balUsd > 0 && balUsd < 0.01 ? '<$0.01'
-                 : fmtUsd(balUsd ?? 0)}
+                 : balUsd == null ? '—'
+                 : balUsd > 0 && balUsd < 0.01 ? '<$0.01'
+                 : fmtUsd(balUsd)}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>
                 {bal.state === 'loading' ? 'loading…'

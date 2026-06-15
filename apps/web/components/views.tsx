@@ -144,17 +144,17 @@ export function MarketView() {
      as a real number. */
   const market: MarketRow[] = React.useMemo(() => {
     const toRow = (
-      sym: string, name: string, color: string,
-      fallbackPrice: number, chainId?: number,
+      sym: string, name: string, color: string, chainId?: number,
     ): MarketRow => {
       const q = quotes?.[sym];
       // A live feed is one CoinGecko actually priced — detectable by a real
-      // 24h figure (Litho placeholders carry a usd but chg24h === null).
+      // 24h figure (LITHO/LAX statics carry a usd but chg24h === null).
       const live = !!q && q.chg24h !== null;
-      const p    = q?.usd ?? fallbackPrice;
+      // Price shows ONLY from a real source (static LITHO/LAX or live quote);
+      // no fabricated TOKENS[].priceUsd — unknown reads "—".
       return {
         sym, name, color, chainId,
-        price: fmtPriceUsd(p),
+        price: q?.usd != null ? fmtPriceUsd(q.usd) : '—',
         chg24: live ? q!.chg24h : null,
         chg7:  live ? q!.chg7d  : null,
         cap:   live ? fmtCompactUsd(q!.marketCap) : '—',
@@ -162,12 +162,12 @@ export function MarketView() {
         icon:  q?.image ?? undefined,
       };
     };
-    const base = TOKENS.map(t => toRow(t.sym, t.name, t.color, t.priceUsd));
+    const base = TOKENS.map(t => toRow(t.sym, t.name, t.color));
     // Display-only mainstream coins — appended once their live quote lands so
     // a row never appears with a fake/placeholder price.
     const extra = MARKET_EXTRA
       .filter(e => { const q = quotes?.[e.sym]; return !!q && q.chg24h !== null; })
-      .map(e => toRow(e.sym, e.name, e.color, 0, e.chainId));
+      .map(e => toRow(e.sym, e.name, e.color, e.chainId));
     return [...base, ...extra];
   }, [quotes]);
   const filtered = market.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
@@ -285,13 +285,16 @@ export function PortfolioView() {
       displayBal = ethers.formatUnits(a.balance || '0', a.decimals ?? 18);
     } catch { /* malformed — leave 0 */ }
     const balNum  = parseFloat(displayBal) || 0;
-    const priceUsd = priceOr(prices, a.symbol, canon?.priceUsd ?? 0);
+    // Price is known ONLY when there's a real source (LITHO/LAX static or a
+    // live CoinGecko quote). No fabricated TOKENS[].priceUsd fallback — an
+    // unknown price renders "—", and the asset contributes $0 to totals.
+    const priceUsd = prices?.[a.symbol] ?? null;
     return {
       sym:   a.symbol,
       name:  a.name || canon?.name || a.symbol,
       bal:   balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }),
       balNum,
-      usd:   Math.round(balNum * priceUsd),
+      usd:   Math.round(balNum * (priceUsd ?? 0)),
       chg:   canon?.change24h ?? 0,
       color: canon?.color ?? '#52525b',
       priceUsd,
@@ -312,7 +315,8 @@ export function PortfolioView() {
     chg:   r.chg,
     color: r.color,
     pct:   Math.max(1, Math.round((r.usd / _total) * 100)),
-    price: `$${r.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}`,
+    priceKnown: r.priceUsd != null,
+    price: r.priceUsd != null ? `$${r.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
   }));
   let offset = 0;
   const r = 70, circ = 2 * Math.PI * r;
@@ -396,9 +400,11 @@ export function PortfolioView() {
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 14 }}>{c.price}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 14 }}>{c.bal} {c.sym}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 15 }}>${c.usd.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 15 }}>{c.priceKnown ? `$${c.usd.toLocaleString()}` : '—'}</td>
                     <td style={{ textAlign: 'right', fontSize: 14 }}>
-                      <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg >= 0 ? '+' : ''}{c.chg}%</span>
+                      {c.priceKnown
+                        ? <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg >= 0 ? '+' : ''}{c.chg}%</span>
+                        : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
                   </tr>
                 ))}

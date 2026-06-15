@@ -11,14 +11,14 @@ import { fetchEcosystemPrices, HARD_PRICES, PLACEHOLDER_PRICES } from '@thanos/s
 
 export { HARD_PRICES, PLACEHOLDER_PRICES };
 
-/** Latest USD prices for every web token. Cached 60s (in sdk-core). */
+/** Latest USD prices — ONLY for symbols with a real source: the static
+ *  pair (LITHO, LAX) plus whatever CoinGecko priced live. Symbols with no
+ *  feed are intentionally ABSENT (not back-filled from TOKENS[].priceUsd),
+ *  so the UI renders "—" instead of a fabricated number (client directive
+ *  2026-06-15: "be careful and accurate … price unknown → show —").
+ *  Cached 60s (in sdk-core). */
 export async function fetchAllPrices(): Promise<Record<string, number>> {
-  const prices = await fetchEcosystemPrices();
-  // Anything the shared fetch didn't cover falls back to TOKENS[].priceUsd.
-  for (const t of TOKENS) {
-    if (prices[t.sym] === undefined) prices[t.sym] = t.priceUsd;
-  }
-  return prices;
+  return fetchEcosystemPrices();
 }
 
 /** Tokens with their priceUsd fields updated from the latest fetch. */
