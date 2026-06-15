@@ -1,0 +1,95 @@
+name: mobile-release
+
+# Build + submit the Expo mobile app to the App Store and Play Store.
+#
+# Triggers:
+#   • push a tag matching mobile-v*  (e.g. mobile-v1.0.0) → build + submit
+#   • manual dispatch with a platform + whether to submit
+#
+# All heavy lifting runs on EAS (Expo's cloud builders), so this job is a
+# thin orchestrator — it doesn't need macOS runners.
+#
+# Required repository secrets:
+#   EXPO_TOKEN                    — Expo access token (expo.dev → Account →
+#                                   Access tokens). Lets eas-cli auth headless.
+#   ASC_API_KEY_BASE64            — base64 of the App Store Connect .p8 key
+#   ASC_APPLE_ID                  — Apple ID email of the publishing account
+#   ASC_APP_ID                    — numeric App Store app id
+#   APPLE_TEAM_ID                 — 10-char Apple team id
+#   ASC_API_KEY_ID                — App Store Connect API key id
+#   ASC_API_KEY_ISSUER_ID         — App Store Connect API issuer id
+#   PLAY_SERVICE_ACCOUNT_BASE64   — base64 of the Play service-account JSON
+#
+# Apple/Google signing CREDENTIALS (the actual cert + keystore) are managed
+# by EAS itself — run `eas credentials` once locally to set them up, or let
+# `eas build` generate + store them on first run.
+
+on:
+  push:
+    tags: ['mobile-v*']
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        type: choice
+        options: [all, ios, android]
+        default: all
+      submit:
+        description: 'Submit to the stores after building'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+jobs:
+  build-submit:
+    name: EAS build + submit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: Install eas-cli
+        run: npm install -g eas-cli
+
+      # apps/mobile is intentionally NOT a pnpm workspace member (EAS Cloud
+      # can't resolve workspace deps) — it has its own package-lock.json.
+      - name: Install deps
+        run: npm ci
+
+      - name: Restore submit credentials from secrets
+        if: ${{ github.event_name == 'push' || inputs.submit }}
+        run: |
+          mkdir -p credentials
+          echo "${{ secrets.ASC_API_KEY_BASE64 }}"          | base64 -d > credentials/asc-api-key.p8
+          echo "${{ secrets.PLAY_SERVICE_ACCOUNT_BASE64 }}" | base64 -d > credentials/play-service-account.json
+
+      - name: Build (and submit) via EAS
+        env:
+          EXPO_TOKEN:            ${{ secrets.EXPO_TOKEN }}
+          ASC_APPLE_ID:          ${{ secrets.ASC_APPLE_ID }}
+          ASC_APP_ID:            ${{ secrets.ASC_APP_ID }}
+          APPLE_TEAM_ID:         ${{ secrets.APPLE_TEAM_ID }}
+          ASC_API_KEY_ID:        ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+        run: |
+          PLATFORM="${{ inputs.platform || 'all' }}"
+          SUBMIT="${{ github.event_name == 'push' && 'true' || inputs.submit }}"
+          if [ "$SUBMIT" = "true" ]; then
+            # --auto-submit chains `eas submit` to each finished build using
+            # the submit.production profile in eas.json.
+            eas build --platform "$PLATFORM" --profile production --non-interactive --auto-submit
+          else
+            eas build --platform "$PLATFORM" --profile production --non-interactive
+          fi

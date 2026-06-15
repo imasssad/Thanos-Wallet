@@ -63,3 +63,17 @@ apps/desktop/release/
 # Local asset working directory — coin icons, animations, mockups.
 # Not part of the shipped source tree; lives in 1Password / Drive.
 Thanos_Wallet_Pack/
+
+# ─── Store-signing secrets (defense-in-depth) ─────────────────────────────
+# The mobile credentials folder has its own .gitignore, but block the
+# secret file types repo-wide too so a stray copy anywhere never lands
+# in a commit.
+apps/mobile/credentials/*
+!apps/mobile/credentials/.gitignore
+!apps/mobile/credentials/README.md
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
+*-service-account*.json
+asc-api-key*.p8
