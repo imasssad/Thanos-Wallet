@@ -77,7 +77,7 @@ const DEFAULT_MAKALU_TOKENS: ReadonlyArray<{ symbol: string; address: string }> 
   { symbol: 'AGII',   address: '0x10052B8ccD2160b8F9880C6b4F5DD117fF253B1c' },
   { symbol: 'BLDR',   address: '0x798eD6bFc5bfCFc60938d5098825b354427A0786' },
   // FGPT (on-chain name "FurGPT") = 0x151ef362; MUSA ("Mansa AI") =
-  // 0xDB829be. 0xa25c2a49 is dead. Verified via name()/symbol() 2026-06-12.
+  // 0xDB829be — NOT FurGPT. Re-verified via name()/symbol() 2026-06-15.
   { symbol: 'FGPT',   address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e' },
   { symbol: 'MUSA',   address: '0xDB829befCF8E582379E2c034FA2589b8D2EA1c5D' },
 ];

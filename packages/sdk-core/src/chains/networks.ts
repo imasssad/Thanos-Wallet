@@ -9,8 +9,7 @@ export const MAKALU_TESTNET: NetworkConfig = {
   name: 'Lithosphere Makalu',
   kind: 'lithic',
   rpcUrls: ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'],
-  // makalu.litho.ai is the canonical explorer host (explorer.litho.ai
-  // does not resolve). Confirmed with Litho team 2026-06-10.
+  // makalu.litho.ai is the canonical Makalu explorer host (Litho-confirmed).
   blockExplorerUrl: 'https://makalu.litho.ai',
   nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
   extras: {
@@ -23,22 +22,21 @@ export const MAKALU_TESTNET: NetworkConfig = {
 };
 
 // Kamet was promoted from testnet to mainnet on 2026-05-18 (chainId / state
-// unchanged). EVM chainId 900523 (0xDBDAB) verified live via eth_chainId
-// on rpc-3.litho.ai. rpc.kamet.litho.ai is intentionally NOT a fallback:
-// the 2-level host TLS-fails behind Cloudflare and Litho ops has marked it
-// deprecated. Keep this as the canonical RPC list.
-//
-// Explorer: the Ignite team (2026-06-12) says the going-forward Kamet
-// explorer is explorer-3.litho.ai, but that host does NOT resolve yet
-// (DNS NXDOMAIN, verified same day). kamet.litho.ai answers 200 and stays
-// the explorer until explorer-3 actually exists — switch then.
+// unchanged). Canonical config confirmed by the Litho team 2026-06-15:
+//   • EVM chainId 900523 (0xDBDAB), Cosmos chainId lithosphere_900523-2
+//   • RPC: rpc-3.litho.ai is the SOLE canonical node. The deprecated 2-level
+//     host is removed entirely — never reference it.
+//   • REST: api-3.litho.ai · Explorer: explorer-3.litho.ai
+// CORS: rpc-3 sends no CORS headers, so browser/extension callers MUST go
+// through the same-origin proxy (/rpc/kamet, see apps/web/next.config.js).
+// Only the server-side indexer/worker may call rpc-3 directly.
 export const KAMET_MAINNET: NetworkConfig = {
   id: 'lithosphere-kamet',
   chainId: 900523,
   name: 'Lithosphere Kamet',
   kind: 'lithic',
   rpcUrls: ['https://rpc-3.litho.ai'],
-  blockExplorerUrl: 'https://kamet.litho.ai',
+  blockExplorerUrl: 'https://explorer-3.litho.ai',
   nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
   extras: {
     restUrl: 'https://api-3.litho.ai',

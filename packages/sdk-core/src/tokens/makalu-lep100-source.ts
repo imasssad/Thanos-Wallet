@@ -41,10 +41,11 @@ export const MAKALU_LEP100_SOURCE: MakaluLep100SourceConfig = {
   excludedSymbols: ['LITBTC2'],
   tokens: [
     // Names + addresses verified directly on-chain via name()/symbol()
-    // eth_calls (2026-06-12). FGPT's own name() returns "FurGPT" and
-    // MUSA's returns "Mansa AI" — both teams' off-chain lists disagreed,
-    // the contracts settle it. The legacy 0xa25c2a49 contract is dead
-    // and referenced by no one — dropped.
+    // eth_calls — re-confirmed live 2026-06-15: 0x151ef362.name()="FurGPT"
+    // (symbol FGPT) and 0xDB829be.name()="Mansa AI" (symbol MUSA). Off-chain
+    // lists (incl. Litho's) that swap these two are wrong; the contracts
+    // settle it. A separate legacy contract returns no name()/symbol() and
+    // is referenced by no one — dropped.
     //   - wLITHO/LAX/JOT/COLLE/AGII/BLDR addresses were all truncated
     //     previews of the wrong contracts. Replaced with the canonical
     //     deployments from makalu.litho.ai/tokens.
@@ -54,7 +55,7 @@ export const MAKALU_LEP100_SOURCE: MakaluLep100SourceConfig = {
     { symbol: 'LAX',    name: 'LAX Token',           decimals: 18, totalSupply: '10000000000', address: '0x1Cde2Ca6c2ab8622003ebe06e382bC07850d4B8d', verified: true },
     { symbol: 'JOT',    name: 'JOT Token',           decimals: 18, totalSupply: '1000000000', address: '0xEF2f35f6d0fb7DC9E87b8ca8252AE2E6ffb2a25e', verified: true },
     { symbol: 'COLLE',  name: 'Colle AI',            decimals: 18, totalSupply: '5000000000', address: '0x10D4BB600c96e9243E2f50baFED8b2478F25af61', verified: true },
-    { symbol: 'IMAGE',  name: 'Image AI',            decimals: 18, totalSupply: '10000000000', address: '0xAcD98E323968647936887aD4934e64B01060727e', verified: true },
+    { symbol: 'IMAGE',  name: 'Imagen Network',      decimals: 18, totalSupply: '10000000000', address: '0xAcD98E323968647936887aD4934e64B01060727e', verified: true },
     { symbol: 'AGII',   name: 'AGI Inception',       decimals: 18, totalSupply: '1000000000', address: '0x10052B8ccD2160b8F9880C6b4F5DD117fF253B1c', verified: true },
     { symbol: 'BLDR',   name: 'Builder Finance',     decimals: 18, totalSupply: '1000000000', address: '0x798eD6bFc5bfCFc60938d5098825b354427A0786', verified: true },
     { symbol: 'FGPT',   name: 'FurGPT',              decimals: 18, totalSupply: '1000000000', address: '0x151ef362eA96853702Cc5e7728107e3961fbD22e', verified: true },

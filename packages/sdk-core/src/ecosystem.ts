@@ -120,7 +120,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     id: 'kamet-explorer',
     name: 'Kamet Explorer',
     description: 'Block explorer + portal for the Kamet sister chain (900523, DNNS).',
-    url: 'https://kamet.litho.ai',
+    url: 'https://explorer-3.litho.ai',
     color: '#6366f1',
     category: 'Explorer',
     section: 'Infrastructure',

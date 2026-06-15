@@ -28,8 +28,10 @@ const CSP = [
     + " https://explorer.solana.com",
   "font-src 'self' data:",
   "connect-src 'self'"
-    // Lithosphere RPCs. rpc.kamet.litho.ai is dead (TLS-broken, deprecated
-    // by Litho ops) — deliberately absent. api-3 is the Kamet REST host.
+    // Lithosphere RPCs. Makalu: rpc.litho.ai / rpc-2. Kamet: rpc-3 (REST
+    // api-3). rpc-3 sends no CORS headers, so browser Kamet traffic goes
+    // through the same-origin proxy (/rpc/kamet, 'self') — rpc-3 is listed
+    // only for the server-side proxy target + any direct server callers.
     + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://api-3.litho.ai"
     + " https://bridge.litho.ai"
     + " https://ignite.litho.ai"

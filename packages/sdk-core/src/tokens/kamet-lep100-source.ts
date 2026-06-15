@@ -34,8 +34,8 @@ export const KAMET_LEP100_SOURCE: KametLep100SourceConfig = {
   chainId: KAMET_MAINNET.chainId,
   rpcUrl: 'https://rpc-3.litho.ai',
   restUrl: 'https://api-3.litho.ai',
-  explorerBaseUrl: 'https://kamet.litho.ai',
-  explorerTokensUrl: 'https://kamet.litho.ai/tokens',
+  explorerBaseUrl: 'https://explorer-3.litho.ai',
+  explorerTokensUrl: 'https://explorer-3.litho.ai/tokens',
   syncMode: 'hybrid',
   tokens: [
     { symbol: 'wLITHO', name: 'Wrapped Lithosphere', decimals: 18, address: '0xC0FC628e3aB128fe387e7ed5e729bD809C017888' },

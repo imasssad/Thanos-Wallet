@@ -50,12 +50,12 @@ describe('BridgeTracker.poll', () => {
     fetchSpy.mockResolvedValueOnce(jsonResp({
       status: 'completed', fromChainId: 700777, toChainId: 1,
       fromToken: 'LITHO', toToken: 'ETH', sourceTxHash: '0xabc',
-      destinationTxHash: '0xdef', explorerUrls: ['https://explorer.litho.ai'],
+      destinationTxHash: '0xdef', explorerUrls: ['https://explorer-3.litho.ai'],
     }));
     const out = await new BridgeTracker('https://bridge.example.test').poll('0xabc');
     expect(out.status).toBe('completed');
     expect(out.destinationTxHash).toBe('0xdef');
-    expect(out.explorerUrls).toEqual(['https://explorer.litho.ai']);
+    expect(out.explorerUrls).toEqual(['https://explorer-3.litho.ai']);
   });
 
   it('maps MultX failed → failed', async () => {

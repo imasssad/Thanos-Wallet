@@ -130,10 +130,10 @@ export const TOKENS: Token[] = [
     change24h: 0,
   },
   {
-    // FGPT — on-chain name() returns "FurGPT" (verified via eth_call
-    // 2026-06-12; the earlier "Finesse GPT" label came from a Litho-side
-    // doc and matches nothing on chain). Same project as the furgpt.org
-    // dApp tile. The dead 0xa25c2a49 contract is referenced by no one.
+    // FGPT — on-chain name() returns "FurGPT", symbol() "FGPT" (re-verified
+    // live via eth_call 2026-06-15). Litho-side lists that map FurGPT to
+    // 0xDB829be are wrong — that contract is on-chain "Mansa AI"/MUSA (see
+    // the MUSA entry below). Same project as the furgpt.org dApp tile.
     sym: 'FGPT',
     name: 'FurGPT',
     chain: 'Makalu',
@@ -221,7 +221,14 @@ export const TOKENS: Token[] = [
 export const TOKEN_BY_SYM: Record<string, Token> =
   Object.fromEntries(TOKENS.map(t => [t.sym, t]));
 
+/** Canonical Lithosphere explorer host per chain (Litho-confirmed
+ *  2026-06-15). Chain-aware so links never go stale post-Kamet-migration —
+ *  do NOT hard-code makalu.litho.ai as the permanent explorer. */
+export function lithoExplorerBase(chain: Token['chain']): string {
+  return chain === 'Kamet' ? 'https://explorer-3.litho.ai' : 'https://makalu.litho.ai';
+}
+
 /** Explorer URL for a token (or 'native' for the chain coin). */
 export function explorerUrl(t: Token): string {
-  return `https://makalu.litho.ai/token/${t.address ?? 'native'}`;
+  return `${lithoExplorerBase(t.chain)}/token/${t.address ?? 'native'}`;
 }
