@@ -1587,13 +1587,19 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .bottom-nav { display: none; }
 
 @media (max-width: 768px) {
+  /* Paint the root with the footer colour so the home-indicator safe area
+     and any overscroll/in-app-browser gap below the tab bar reads as one
+     continuous footer instead of a darker (bg-base) strip. Body keeps
+     bg-base for content; html shows through only at the edges. */
+  html { background: var(--bg-card); }
   .bottom-nav {
     display: flex;
     flex-shrink: 0;
     background: var(--bg-card);
     border-top: 1px solid var(--border-subtle);
-    /* Respect the iOS home-indicator safe area. */
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Respect the iOS home-indicator safe area, with a guaranteed minimum
+       strip so the footer colour always fills the bottom edge. */
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
     box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
     z-index: 50;
   }

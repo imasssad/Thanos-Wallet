@@ -723,7 +723,7 @@ export function Dashboard() {
             borderRadius: 999,
             color: 'var(--green, #10b981)',
             fontSize: 11, fontWeight: 600, letterSpacing: 0.4,
-            marginBottom: 10,
+            marginBottom: 18,
           }}>
             <ShieldCheck size={12} strokeWidth={2.4}/>
             Self-custody
@@ -731,7 +731,7 @@ export function Dashboard() {
           <div style={{
             fontSize: 14, fontWeight: 700, letterSpacing: 1.8,
             color: 'var(--text-muted)',
-            display: 'inline-flex', alignItems: 'center', gap: 8,
+            display: 'flex', alignItems: 'center', gap: 8,
             justifyContent: 'center',
           }}>
             TOTAL BALANCE

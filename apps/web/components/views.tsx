@@ -394,10 +394,10 @@ export function PortfolioView() {
                         </div>
                       </div>
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.price}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.bal} {c.sym}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600, fontSize: 12 }}>${c.usd.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 14 }}>{c.price}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 14 }}>{c.bal} {c.sym}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 15 }}>${c.usd.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right', fontSize: 14 }}>
                       <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg >= 0 ? '+' : ''}{c.chg}%</span>
                     </td>
                   </tr>

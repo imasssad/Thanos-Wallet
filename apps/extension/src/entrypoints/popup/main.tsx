@@ -1051,7 +1051,7 @@ function MakaluWelcomeModal() {
   return (
     <div className="modal-back" onClick={() => setVisible(false)}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: 22 }}>
-        <div style={{ width: 56, height: 56, borderRadius: '50%', margin: '0 auto 14px', background: '#3b7af7', color: '#fff', fontWeight: 800, fontSize: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>L</div>
+        <img src="/icons/icon128.png" alt="Thanos" width={56} height={56} style={{ display: 'block', margin: '0 auto 14px', objectFit: 'contain' }}/>
         <h2 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 6px' }}>
           Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM are built in too.

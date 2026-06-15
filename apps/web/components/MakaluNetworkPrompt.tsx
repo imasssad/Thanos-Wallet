@@ -102,11 +102,9 @@ export function AddNetworkNudge() {
       boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
       display: 'flex', alignItems: 'center', gap: 12,
     }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-        background: '#3b7af7', color: '#fff', fontWeight: 800,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
-      }}>L</div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={36} height={36}
+           style={{ flexShrink: 0, objectFit: 'contain' }}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13 }}>Add Lithosphere Makalu</div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
@@ -155,11 +153,9 @@ export function MakaluWelcomeCard() {
   return (
     <div className="modal-backdrop" onClick={() => setVisible(false)}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 28 }}>
-        <div style={{
-          width: 64, height: 64, borderRadius: '50%', margin: '0 auto 16px',
-          background: '#3b7af7', color: '#fff', fontWeight: 800, fontSize: 30,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>L</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={64} height={64}
+             style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
         <h2 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 6px' }}>
           Your wallet is on the <strong>Lithosphere Makalu</strong> network
