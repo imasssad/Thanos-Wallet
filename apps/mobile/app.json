@@ -59,17 +59,9 @@
         "expo-build-properties",
         {
           "android": {
-            "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true,
-            "enableBundleCompression": true,
-            "extraProguardRules": "-keep class com.facebook.hermes.unicode.** { *; }\n-keep class com.facebook.jni.** { *; }",
-            "buildTypes": {
-              "release": {
-                "minifyEnabled": true,
-                "shrinkResources": true,
-                "proguardFiles": ["proguard-android-optimize.txt", "proguard-rules.pro"]
-              }
-            }
+            "enableProguardInReleaseBuilds": false,
+            "enableShrinkResourcesInReleaseBuilds": false,
+            "enableBundleCompression": true
           }
         }
       ]
