@@ -1062,8 +1062,8 @@ function tdPrice(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
-  sym: string; onClose: () => void; onSend: () => void; onSwap: () => void;
+function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
+  sym: string; onClose: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
 }) {
   const { coins, activity } = usePortfolioCtx();
   const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
@@ -1126,6 +1126,7 @@ function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
         </div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           <button className="btn-primary" style={{ flex: 1 }} onClick={onSend}>Send</button>
+          <button className="btn-outline" style={{ flex: 1 }} onClick={onReceive}>Receive</button>
           {isMakalu && <button className="btn-outline" style={{ flex: 1 }} onClick={onSwap}>Swap</button>}
         </div>
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>Your balance</div>
@@ -2388,6 +2389,7 @@ function App() {
           sym={detailSym}
           onClose={() => setDetailSym(null)}
           onSend={() => { setSeedSym(detailSym); setDetailSym(null); setModal('send'); }}
+          onReceive={() => { setDetailSym(null); setModal('receive'); }}
           onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setModal('swap'); }}
         />
       )}

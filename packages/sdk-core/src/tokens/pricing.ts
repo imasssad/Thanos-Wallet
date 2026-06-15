@@ -58,6 +58,13 @@ export interface PriceQuote {
   chg24h: number | null;
   /** 7d price change. Same null semantics. */
   chg7d: number | null;
+  /** Market cap (USD). `null` for symbols with no CoinGecko feed. */
+  marketCap?: number | null;
+  /** 24h trading volume (USD). Same null semantics. */
+  volume?: number | null;
+  /** Coin logo URL from CoinGecko's CDN (stable, unlike Google image
+   *  thumbnails). `null` for symbols with no CoinGecko feed. */
+  image?: string | null;
 }
 
 let quoteCache: { at: number; quotes: Record<string, PriceQuote> } | null = null;
@@ -142,6 +149,9 @@ export async function fetchPriceQuotes(): Promise<Record<string, PriceQuote>> {
           current_price?: number;
           price_change_percentage_24h?: number;
           price_change_percentage_7d_in_currency?: number;
+          market_cap?: number;
+          total_volume?: number;
+          image?: string;
         }>;
         const byId = new Map(data.map((r) => [r.id, r]));
         for (const [sym, cgId] of toFetch) {
@@ -153,6 +163,9 @@ export async function fetchPriceQuotes(): Promise<Record<string, PriceQuote>> {
                 ? +row.price_change_percentage_24h.toFixed(2) : null,
               chg7d:  typeof row.price_change_percentage_7d_in_currency === 'number'
                 ? +row.price_change_percentage_7d_in_currency.toFixed(2) : null,
+              marketCap: typeof row.market_cap   === 'number' ? row.market_cap   : null,
+              volume:    typeof row.total_volume === 'number' ? row.total_volume : null,
+              image:     typeof row.image === 'string' ? row.image : null,
             };
           }
         }

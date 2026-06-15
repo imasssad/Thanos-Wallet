@@ -12,7 +12,7 @@ import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type Inde
 import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
 import { Select } from './ui/Select';
-import { usePrices, priceOr } from '../lib/usePrices';
+import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
 import {
   loadContacts, addContact, deleteContact,
   syncContactsFromServer, onContactsChanged,
@@ -40,7 +40,22 @@ interface MarketRow {
   vol:   string;
   color: string;
   icon?: string;
+  /** EVM chain id for mainstream rows (ETH/BNB/…) so the detail screen
+   *  labels the network and pre-seeds Send. Undefined for Litho/UTXO rows. */
+  chainId?: number;
 }
+
+/* Mainstream coins shown on the Market page for price discovery only — they
+   are NOT in TOKENS (not holdable rows in the portfolio / send picker), but
+   users expect to see ETH/BNB prices on a market screen. Live data comes
+   from useQuotes() (all are in COINGECKO_IDS); chainId lets the detail screen
+   label the network and pre-seed Send on the matching EVM chain. */
+const MARKET_EXTRA: Array<{ sym: string; name: string; color: string; chainId: number }> = [
+  { sym: 'ETH',  name: 'Ethereum',  color: '#627eea', chainId: 1     },
+  { sym: 'BNB',  name: 'BNB',       color: '#f3ba2f', chainId: 56    },
+  { sym: 'POL',  name: 'Polygon',   color: '#8247e5', chainId: 137   },
+  { sym: 'AVAX', name: 'Avalanche', color: '#e84142', chainId: 43114 },
+];
 
 interface CGMarket {
   id: string; symbol: string; name: string;
@@ -54,6 +69,15 @@ interface CGMarket {
 
 function fmtUsd(n: number, fractionDigits = 4): string {
   return `$${n.toLocaleString('en-US', { maximumFractionDigits: fractionDigits })}`;
+}
+/** Price formatter that keeps precision on sub-dollar assets (IMAGE etc.)
+ *  instead of rounding them to "$0", while showing clean 2-decimal
+ *  figures for mainstream coins (SOL/BTC/ETH). */
+function fmtPriceUsd(n: number): string {
+  if (!isFinite(n)) return '—';
+  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
+  if (n < 1)            return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function fmtCompactUsd(n: number | undefined | null): string {
   if (typeof n !== 'number' || !isFinite(n)) return '—';
@@ -101,40 +125,55 @@ function useMainstreamMarkets(): MarketRow[] | null {
 
 export function MarketView() {
   const [search, setSearch] = useState('');
-  const prices       = usePrices();
-  /** Token-detail screen — opened by tapping any market row. */
-  const [detailSym, setDetailSym] = useState<string | null>(null);
+  const quotes       = useQuotes();
+  /** Token-detail screen — opened by tapping any market row. Carries the
+   *  row's chainId so mainstream EVM coins (ETH/BNB/…) resolve their network. */
+  const [detail, setDetail] = useState<{ sym: string; chainId?: number } | null>(null);
 
   /* Lithosphere-focused market view — we no longer pull the top
      market-cap-desc page from CoinGecko (TRON / DOGE / HYPE / FIGR_HELOC
      etc. are noise to a Lithosphere wallet user). The market screen
-     now lists ONLY the canonical Lithosphere ecosystem tokens plus the
-     mainstream coins the wallet actually transacts on (BTC / SOL).
+     lists the canonical Lithosphere ecosystem tokens plus the mainstream
+     coins the wallet actually transacts on (BTC / SOL / ETH / ATOM …).
 
-     For the litho ecosystem rows the 24h/7d % stays null — we don't
-     have a live tracker for those tokens yet. The table renders "—"
-     instead of a fake "+0.00%" so users don't read a placeholder as
-     a real number. */
-  const lithoRows: MarketRow[] = React.useMemo(() => TOKENS.map(t => {
-    const live = prices?.[t.sym];
-    const p    = typeof live === 'number' ? live : t.priceUsd;
-    return {
-      sym:   t.sym,
-      name:  t.name,
-      price: fmtUsd(p, 4),
-      chg24: null,   // no live 24h tracking for Litho ecosystem yet — render "—"
-      chg7:  null,
-      cap:   '—',
-      vol:   '—',
-      color: t.color,
+     Each row is driven by useQuotes(): mainstream coins that CoinGecko
+     lists get LIVE price + 24h % + 7d % + market cap + 24h volume + a
+     CDN logo. Litho ecosystem tokens with no public feed keep their
+     placeholder price and render "—" for the change/cap/vol columns —
+     we show "—" instead of a fake "+0.00%" so a placeholder never reads
+     as a real number. */
+  const market: MarketRow[] = React.useMemo(() => {
+    const toRow = (
+      sym: string, name: string, color: string,
+      fallbackPrice: number, chainId?: number,
+    ): MarketRow => {
+      const q = quotes?.[sym];
+      // A live feed is one CoinGecko actually priced — detectable by a real
+      // 24h figure (Litho placeholders carry a usd but chg24h === null).
+      const live = !!q && q.chg24h !== null;
+      const p    = q?.usd ?? fallbackPrice;
+      return {
+        sym, name, color, chainId,
+        price: fmtPriceUsd(p),
+        chg24: live ? q!.chg24h : null,
+        chg7:  live ? q!.chg7d  : null,
+        cap:   live ? fmtCompactUsd(q!.marketCap) : '—',
+        vol:   live ? fmtCompactUsd(q!.volume)    : '—',
+        icon:  q?.image ?? undefined,
+      };
     };
-  }), [prices]);
-
-  const market = lithoRows;
+    const base = TOKENS.map(t => toRow(t.sym, t.name, t.color, t.priceUsd));
+    // Display-only mainstream coins — appended once their live quote lands so
+    // a row never appears with a fake/placeholder price.
+    const extra = MARKET_EXTRA
+      .filter(e => { const q = quotes?.[e.sym]; return !!q && q.chg24h !== null; })
+      .map(e => toRow(e.sym, e.name, e.color, 0, e.chainId));
+    return [...base, ...extra];
+  }, [quotes]);
   const filtered = market.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.sym.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="main-area" style={{ width: '100%' }}>
-      {detailSym && <TokenDetailModal sym={detailSym} onClose={() => setDetailSym(null)}/>}
+      {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Market</h1>
@@ -159,15 +198,15 @@ export function MarketView() {
               {filtered.map((c, i) => (
                 <tr
                   key={c.sym}
-                  onClick={() => setDetailSym(c.sym)}
+                  onClick={() => setDetail({ sym: c.sym, chainId: c.chainId })}
                   tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailSym(c.sym); } }}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail({ sym: c.sym, chainId: c.chainId }); } }}
                   style={{ cursor: 'pointer' }}
                 >
                   <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
                   <td>
                     <div className="tx-cell">
-                      <TokenIcon sym={c.sym} color={c.color} size={36} style={{ borderRadius: 10 }}/>
+                      <TokenIcon sym={c.sym} color={c.color} icon={c.icon} size={36} style={{ borderRadius: 10 }}/>
                       <div>
                         <div className="tx-name">{c.name}</div>
                         <div className="tx-sym">{c.sym}</div>

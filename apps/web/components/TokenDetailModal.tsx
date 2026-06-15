@@ -33,7 +33,7 @@ import { useQuotes } from '../lib/usePrices';
 import { getPortfolio, getActivity, type IndexerActivityItem } from '../lib/indexer';
 import { TokenIcon } from './TokenIcon';
 import { useWallet } from './shell/AppShell';
-import { SendModal, SwapModal } from './modals';
+import { SendModal, SwapModal, ReceiveModal } from './modals';
 
 /* Symbols whose CoinGecko feed is a PROXY for another asset — the data is
  * real but belongs to the underlying coin, and the UI must say so. */
@@ -113,7 +113,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 /* ─── Component ────────────────────────────────────────────────────────── */
 
-type SubModal = 'send' | 'swap' | null;
+type SubModal = 'send' | 'swap' | 'receive' | null;
 type BalState = { state: 'loading' } | { state: 'offline' } | { state: 'ok'; qty: string; qtyNum: number };
 
 export function TokenDetailModal({ sym, chainId, onClose }: {
@@ -247,8 +247,9 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   const lastTs = hist?.hasRealData ? hist.prices[hist.prices.length - 1][0] : null;
   const proxyNote = PROXY_FEEDS[token.sym];
 
-  if (sub === 'send') return <SendModal onClose={() => setSub(null)} initialNetwork={sendNetwork} initialCoin={token.sym}/>;
-  if (sub === 'swap') return <SwapModal onClose={() => setSub(null)} initialFrom={token.sym}/>;
+  if (sub === 'send')    return <SendModal onClose={() => setSub(null)} initialNetwork={sendNetwork} initialCoin={token.sym}/>;
+  if (sub === 'swap')    return <SwapModal onClose={() => setSub(null)} initialFrom={token.sym}/>;
+  if (sub === 'receive') return <ReceiveModal onClose={() => setSub(null)}/>;
 
   const body = (
     <div className="modal-backdrop" onClick={onClose}>
@@ -354,6 +355,9 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
                 <ArrowUpRight size={15}/> Send
               </button>
             )}
+            <button type="button" className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setSub('receive')}>
+              <ArrowDownLeft size={15}/> Receive
+            </button>
             {canSwap && (
               <button type="button" className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setSub('swap')}>
                 <Repeat size={15}/> Swap

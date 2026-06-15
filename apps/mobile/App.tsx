@@ -2401,8 +2401,8 @@ function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, strok
     + `<path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
 
-function TokenDetailScreen({ sym, goBack, onSend, onSwap }: {
-  sym: string; goBack: () => void; onSend: () => void; onSwap: () => void;
+function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
+  sym: string; goBack: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
 }) {
   const C = useColors();
   const addr = useWalletAddr();
@@ -2477,6 +2477,9 @@ function TokenDetailScreen({ sym, goBack, onSend, onSwap }: {
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
           <Pressable onPress={onSend} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Send</Text>
+          </Pressable>
+          <Pressable onPress={onReceive} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Receive</Text>
           </Pressable>
           {isMakalu && (
             <Pressable onPress={onSwap} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
@@ -3438,6 +3441,7 @@ export default function App() {
                   sym={detailSym}
                   goBack={() => setDetailSym(null)}
                   onSend={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('send'); }}
+                  onReceive={() => { setDetailSym(null); setScreen('receive'); }}
                   onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('swap'); }}
                 />
               )}
