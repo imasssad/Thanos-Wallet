@@ -707,7 +707,11 @@ export function Dashboard() {
   };
 
   return (
-    <div style={{ width: '100%', overflowY: 'auto', height: '100%' }}>
+    <div style={{
+      width: '100%', overflowY: 'auto', height: '100%', minHeight: 0,
+      // Match .main-area: momentum scroll + contained overscroll on mobile.
+      WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', scrollBehavior: 'smooth',
+    }}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
       {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}

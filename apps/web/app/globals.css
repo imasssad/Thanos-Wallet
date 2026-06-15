@@ -665,6 +665,15 @@ button:focus:not(:focus-visible),
   padding: 18px 22px 26px;
   display: flex; flex-direction: column; gap: 14px;
   min-width: 0;
+  /* min-height:0 lets this flex child shrink below its content height so
+     overflow-y actually scrolls (the classic flexbox "page won't scroll on
+     mobile" trap). -webkit-overflow-scrolling gives iOS WebViews momentum;
+     overscroll-behavior stops scroll-chaining to the in-app browser;
+     scroll-behavior smooths programmatic jumps. */
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
 }
 
 /* ── Balance hero ─────────────────────────────────────────────── */
