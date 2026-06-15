@@ -1,0 +1,61 @@
+name: mobile-apk
+
+# Build a shareable Android APK (sideload / client review) on EAS.
+#
+# Unlike mobile-release.yml (store .aab + submit), this produces an
+# installable .apk via the `production-apk` profile and does NOT submit.
+# Trigger it from the GitHub UI (Actions -> mobile-apk -> Run workflow);
+# the build runs on EAS and the download link appears in the job log and at
+# expo.dev -> project -> Builds.
+#
+# Required repository secret:
+#   EXPO_TOKEN — expo.dev -> Account -> Access tokens (same secret the
+#                store-release workflow uses).
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile (APK)'
+        type: choice
+        options: [production-apk, preview]
+        default: production-apk
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-apk
+  cancel-in-progress: false
+
+jobs:
+  build-apk:
+    name: EAS build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: Install eas-cli
+        run: npm install -g eas-cli
+
+      # apps/mobile is NOT a pnpm workspace member (EAS Cloud can't resolve
+      # workspace deps) — it has its own package-lock.json.
+      - name: Install deps
+        run: npm ci
+
+      - name: Build APK on EAS
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          # --non-interactive: CI can't answer prompts; the keystore must
+          # already exist (generated on the first interactive build, or via
+          # `eas credentials`). The finished build's .apk URL prints here and
+          # is also listed at expo.dev -> Builds.
+          eas build --platform android --profile "${{ inputs.profile }}" --non-interactive
