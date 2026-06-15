@@ -697,16 +697,16 @@ const CHAIN_META: Record<SendChainOption, { label: string; sym: string; decimals
   cosmos:  { label: 'Cosmos Hub',   sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
-function SendScreen({ goBack }: { goBack: () => void }) {
+function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
   const { assets, loading } = usePortfolio(addr);
-  const [chain, setChain] = useState<SendChainOption>('evm');
+  const [chain, setChain] = useState<SendChainOption>(initialChain ?? 'evm');
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
-  const [selectedSym, setSelectedSym] = useState<string | null>(null);
+  const [selectedSym, setSelectedSym] = useState<string | null>(initialSym ?? null);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -1362,11 +1362,11 @@ function DappIcon({ id, name, color, size = 44 }: { id: string; name: string; co
 
 /* Swap — quotes MultX + Ignite in parallel, picks the better route,
    executes + polls bridge/DEX status. Same model as web SwapModal. */
-function SwapScreen({ goBack }: { goBack: () => void }) {
+function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?: string }) {
   const C = useColors();
   const styles = useStyles();
-  const [from, setFrom] = useState('LITHO');
-  const [to,   setTo]   = useState('LitBTC');
+  const [from, setFrom] = useState(initialFrom ?? 'LITHO');
+  const [to,   setTo]   = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt,  setAmt]  = useState('100');
   const [slippagePct, setSlippagePct] = useState<number>(0.5);
   const [, setExpTick] = useState(0);
@@ -2408,7 +2408,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onSwap }: {
   const addr = useWalletAddr();
   const seed = useWalletSeed();
   const { assets } = usePortfolio(addr, seed);
-  const { items } = useActivity(addr);
+  const { items, loading: actLoading, offline: actOffline } = useActivity(addr);
   const coin = assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
@@ -2500,7 +2500,11 @@ function TokenDetailScreen({ sym, goBack, onSend, onSwap }: {
         {coin?.tokenAddress ? (
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
             <Text style={{ color: C.textMuted, fontSize: 13 }}>Contract</Text>
-            <Pressable onPress={() => { void Share.share({ message: coin.tokenAddress! }).catch(() => {}); setCopied(true); }}>
+            <Pressable onPress={() => {
+              Share.share({ message: coin.tokenAddress! })
+                .then(r => { if (r.action === Share.sharedAction) { setCopied(true); setTimeout(() => setCopied(false), 1800); } })
+                .catch(() => {});
+            }}>
               <HiAddr value={coin.tokenAddress} head={6} tail={6} style={{ fontSize: 12 }}/>
             </Pressable>
           </View>
@@ -2516,7 +2520,9 @@ function TokenDetailScreen({ sym, goBack, onSend, onSwap }: {
         <Row label="All-time low">{market?.atlUsd != null ? formatUsd(market.atlUsd) : '—'}</Row>
 
         <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 16, marginBottom: 6 }}>Your activity</Text>
-        {rows.length === 0 && <Text style={{ color: C.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 14 }}>No {sym} activity yet.</Text>}
+        {actLoading && <Text style={{ color: C.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 14 }}>Loading activity…</Text>}
+        {!actLoading && actOffline && <Text style={{ color: C.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 14 }}>Activity unavailable — indexer offline.</Text>}
+        {!actLoading && !actOffline && rows.length === 0 && <Text style={{ color: C.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 14 }}>No {sym} activity yet.</Text>}
         {rows.map(t => {
           const d = txDisplay(t.type);
           return (
@@ -3178,6 +3184,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Asset carried from detail into Send/Swap so they open pre-seeded. */
+  const [seedSym, setSeedSym] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
@@ -3411,9 +3419,11 @@ export default function App() {
             <View style={styles.body}>
               <AnimatedSwitch keyName={screen} style={{ flex: 1 }}>
                 {screen === 'home'     && <HomeScreen navigate={setScreen} onOpenToken={setDetailSym}/>}
-                {screen === 'send'     && <SendScreen goBack={() => setScreen('home')}/>}
+                {screen === 'send'     && <SendScreen goBack={() => { setScreen('home'); setSeedSym(null); }}
+                  initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
+                  initialSym={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
-                {screen === 'swap'     && <SwapScreen goBack={() => setScreen('home')}/>}
+                {screen === 'swap'     && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}
@@ -3427,8 +3437,8 @@ export default function App() {
                 <TokenDetailScreen
                   sym={detailSym}
                   goBack={() => setDetailSym(null)}
-                  onSend={() => { setDetailSym(null); setScreen('send'); }}
-                  onSwap={() => { setDetailSym(null); setScreen('swap'); }}
+                  onSend={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('send'); }}
+                  onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('swap'); }}
                 />
               )}
             </Modal>

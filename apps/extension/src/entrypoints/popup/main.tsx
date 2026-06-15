@@ -1053,6 +1053,14 @@ function tdCompact(n: number | null): string {
   if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
   return `$${n.toFixed(2)}`;
 }
+/* Precision-aware per-unit price — the shared formatUsd floors to 2dp, so
+   sub-cent tokens (IMAGE ~$0.0000115) would show "$0.00". */
+function tdPrice(n: number): string {
+  if (!isFinite(n)) return '—';
+  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
+  if (n < 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
   sym: string; onClose: () => void; onSend: () => void; onSwap: () => void;
@@ -1091,7 +1099,7 @@ function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
   return (
     <Modal title={`${coin?.name ?? sym} (${sym})`} onClose={onClose}>
       <div className="modal-body">
-        <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>{price > 0 ? formatUsd(price) : '—'}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>{price > 0 ? tdPrice(price) : '—'}</div>
         {proxy && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Price &amp; market data track {proxy}.</div>}
         <div style={{ margin: '12px 0', minHeight: H }}>
           {histLoading && <div style={{ height: H, borderRadius: 10, background: 'var(--bg-elevated)' }}/>}
@@ -1132,7 +1140,7 @@ function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
         {proxy && <div style={{ fontSize: 10, color: 'var(--text-muted)', margin: '2px 0' }}>Figures are for {proxy}.</div>}
         <Row label="Market cap">{tdCompact(market?.marketCapUsd ?? null)}</Row>
         <Row label="Volume">{tdCompact(market?.totalVolumeUsd ?? null)}</Row>
-        <Row label="All-time high">{market?.athUsd != null ? formatUsd(market.athUsd) : '—'}</Row>
+        <Row label="All-time high">{market?.athUsd != null ? tdPrice(market.athUsd) : '—'}</Row>
         <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 6px' }}>Your activity</div>
         {rows.length === 0 && <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
         {rows.map(t => (
@@ -1154,11 +1162,15 @@ const EXT_CHAIN_META: Record<ExtSendChain, { label: string; sym: string; decimal
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
-function SendModal({ onClose }: { onClose: () => void }) {
+function SendModal({ onClose, initialChain, initialCoin }: {
+  onClose: () => void;
+  initialChain?: ExtSendChain;
+  initialCoin?: string;
+}) {
   const { coins } = usePortfolioCtx();
   const seed = useWalletSeed();
-  const [chain, setChain] = useState<ExtSendChain>('evm');
-  const [selectedSym, setSelectedSym] = useState('');
+  const [chain, setChain] = useState<ExtSendChain>(initialChain ?? 'evm');
+  const [selectedSym, setSelectedSym] = useState(initialCoin ?? '');
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
   const [memo, setMemo] = useState('');
@@ -1558,10 +1570,10 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SwapModal({ onClose }: { onClose: () => void }) {
+function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?: string }) {
   const seed = useWalletSeed();
-  const [from, setFrom] = useState('LITHO');
-  const [to,   setTo]   = useState('LitBTC');
+  const [from, setFrom] = useState(initialFrom ?? 'LITHO');
+  const [to,   setTo]   = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt,  setAmt]  = useState('100');
   const [slippagePct, setSlippagePct] = useState<number>(0.5);
   const [, setExpTick] = useState(0);
@@ -2013,6 +2025,8 @@ function App() {
   const [modal, setModal] = useState<Modal>(null);
   /** Token-detail screen — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Asset carried from detail into Send/Swap so they open pre-seeded. */
+  const [seedSym, setSeedSym] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(true);  // dark-first — matches web/desktop
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
@@ -2361,9 +2375,11 @@ function App() {
   return (
     <WalletSeedContext.Provider value={seed}>
     <PortfolioContext.Provider value={portfolio}>
-      {modal === 'send'          && <SendModal          onClose={() => setModal(null)}/>}
+      {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); }}
+        initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
+        initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
       {modal === 'receive'       && <ReceiveModal       onClose={() => setModal(null)} address={evmAddr}/>}
-      {modal === 'swap'          && <SwapModal          onClose={() => setModal(null)}/>}
+      {modal === 'swap'          && <SwapModal          onClose={() => { setModal(null); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
       {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
       {modal === 'address-book' && <AddressBookModal    onClose={() => setModal(null)}/>}
       {modal === 'permissions'  && <PermissionsModal    onClose={() => setModal(null)}/>}
@@ -2371,8 +2387,8 @@ function App() {
         <TokenDetailModal
           sym={detailSym}
           onClose={() => setDetailSym(null)}
-          onSend={() => { setDetailSym(null); setModal('send'); }}
-          onSwap={() => { setDetailSym(null); setModal('swap'); }}
+          onSend={() => { setSeedSym(detailSym); setDetailSym(null); setModal('send'); }}
+          onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setModal('swap'); }}
         />
       )}
 

@@ -640,6 +640,15 @@ function tdFmtQty(n: number | null): string {
   if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
   return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
+/* Precision-aware USD price — the dashboard formatUsd floors to 2 dp, so
+   sub-cent ecosystem tokens (e.g. IMAGE ~$0.0000115) would show "$0.00".
+   Used only for the per-unit price hero + ATH/ATL, not dollar totals. */
+function tdFmtUsdPrice(n: number): string {
+  if (!isFinite(n)) return '—';
+  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
+  if (n < 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
   sym: string; onClose: () => void; onSend: () => void; onSwap: () => void;
@@ -708,7 +717,7 @@ function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
 
         <div style={{ padding: '4px 20px 20px' }}>
           <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'Geist Mono, monospace' }}>
-            {price > 0 ? formatUsd(price) : '—'}
+            {price > 0 ? tdFmtUsdPrice(price) : '—'}
           </div>
           {proxyNote && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Price &amp; market data track {proxyNote}.</div>}
 
@@ -776,8 +785,8 @@ function TokenDetailModal({ sym, onClose, onSend, onSwap }: {
           <Row label="Market cap">{tdFmtCompactUsd(market?.marketCapUsd ?? null)}</Row>
           <Row label="Total volume">{tdFmtCompactUsd(market?.totalVolumeUsd ?? null)}</Row>
           <Row label="Circulating supply">{tdFmtQty(market?.circulatingSupply ?? null)}</Row>
-          <Row label="All-time high">{market?.athUsd != null ? formatUsd(market.athUsd) : '—'}</Row>
-          <Row label="All-time low">{market?.atlUsd != null ? formatUsd(market.atlUsd) : '—'}</Row>
+          <Row label="All-time high">{market?.athUsd != null ? tdFmtUsdPrice(market.athUsd) : '—'}</Row>
+          <Row label="All-time low">{market?.atlUsd != null ? tdFmtUsdPrice(market.atlUsd) : '—'}</Row>
 
           <div style={{ fontSize: 15, fontWeight: 800, margin: '18px 0 6px' }}>Your activity</div>
           {rows.length === 0 && <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
@@ -803,11 +812,16 @@ const DESKTOP_CHAIN_META: Record<DesktopSendChain, { label: string; sym: string;
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
-function SendModal({ onClose }: { onClose: () => void }) {
+function SendModal({ onClose, initialChain, initialCoin }: {
+  onClose: () => void;
+  /** Pre-select chain + asset (opened from the token detail screen). */
+  initialChain?: DesktopSendChain;
+  initialCoin?: string;
+}) {
   const { coins } = usePortfolioCtx();
   const seed = useWalletSeed();
-  const [chain, setChain] = useState<DesktopSendChain>('evm');
-  const [selectedSym, setSelectedSym] = useState('');
+  const [chain, setChain] = useState<DesktopSendChain>(initialChain ?? 'evm');
+  const [selectedSym, setSelectedSym] = useState(initialCoin ?? '');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [memo, setMemo] = useState('');
@@ -1343,9 +1357,9 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
 }
 
 /* ──────────────────────── Swap modal ──────────────────────── */
-function SwapModal({ onClose }: { onClose: () => void }) {
-  const [from, setFrom] = useState('LITHO');
-  const [to, setTo]     = useState('LitBTC');
+function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?: string }) {
+  const [from, setFrom] = useState(initialFrom ?? 'LITHO');
+  const [to, setTo]     = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt, setAmt]   = useState('100');
   const [slippagePct, setSlippagePct] = useState<number>(0.5);
   const [, setExpTick] = useState(0);
@@ -2869,6 +2883,9 @@ function App() {
   const [modal, setModal]   = useState<Modal>(null);
   /** Token-detail modal — opened by tapping any token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Asset carried from the detail screen into Send/Swap so they open
+   *  pre-seeded with the token the user was viewing. */
+  const [seedSym, setSeedSym] = useState<string | null>(null);
   // In-app dApp browser — null when closed. Set by useOpenDapp() via
   // the DappOpenerContext below; closing comes from the overlay itself.
   const [dapp, setDapp]     = useState<{ url: string; name: string } | null>(null);
@@ -3166,13 +3183,15 @@ function App() {
         <TokenDetailModal
           sym={detailSym}
           onClose={() => setDetailSym(null)}
-          onSend={() => { setDetailSym(null); setModal('send'); }}
-          onSwap={() => { setDetailSym(null); setModal('swap'); }}
+          onSend={() => { setSeedSym(detailSym); setDetailSym(null); setModal('send'); }}
+          onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setModal('swap'); }}
         />
       )}
-      {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
+      {modal === 'send'    && <SendModal    onClose={() => { setModal(null); setSeedSym(null); }}
+        initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
+        initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} addresses={{ evm: addrs.evm, btc: addrs.btc, sol: addrs.sol }}/>}
-      {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
+      {modal === 'swap'    && <SwapModal    onClose={() => { setModal(null); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
 
       {/* Workspace */}
       <div className="workspace">
