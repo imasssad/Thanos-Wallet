@@ -205,9 +205,13 @@ function AnimatedSwitch({ keyName, children, style }: {
   useEffect(() => {
     opacity.setValue(0);
     translateY.setValue(10);
+    // useNativeDriver:false — a native-driven transform on a parent that
+    // wraps Pressables (the whole onboarding card + the main tab body) can
+    // desync the Android touch target from the visual mid-animation, making
+    // buttons untappable. JS-driven is touch-safe; the 260ms fade is cheap.
     Animated.parallel([
-      Animated.timing(opacity,    { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(opacity,    { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(translateY, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
     ]).start();
   }, [keyName]);
 
@@ -243,13 +247,16 @@ function useBrowser(): (url: string) => void { return useContext(BrowserCtx); }
    indexer + pricing modules are local detached copies (EAS Cloud can't
    resolve workspace packages). Replaced the ASSETS / TXS mocks. */
 
-/** Brand colour per token symbol, for the Avatar circle. */
+/** Brand colour per token symbol, for the Avatar circle. Kept in sync with
+ *  the canonical source-of-truth in apps/web/lib/tokens.ts (LITHO blue, JOT
+ *  red, COLLE teal, FGPT/MUSA purple, etc.) so an avatar's fallback colour
+ *  matches across clients. */
 const ASSET_COLORS: Record<string, string> = {
-  LITHO: '#8b7df7', WLITHO: '#a395f8', BTC: '#f7931a', LITBTC: '#f7931a',
+  LITHO: '#3b7af7', WLITHO: '#3b7af7', BTC: '#f7931a', LITBTC: '#f7931a',
   ETH: '#627eea', SOL: '#14f195', USDC: '#2775ca', USDT: '#26a17b',
-  BNB: '#f3ba2f', JOT: '#3b7af7', IMAGE: '#10b981', LAX: '#a3e635',
-  FGPT: '#10b981', COLLE: '#a3e635', AGII: '#8b7df7',
-  BLDR: '#f97316', MUSA: '#eab308',
+  BNB: '#f3ba2f', JOT: '#ef4444', IMAGE: '#22d3ee', LAX: '#2f6bff',
+  FGPT: '#a855f7', MUSA: '#a855f7', COLLE: '#29b6d8', AGII: '#8b7df7',
+  BLDR: '#f97316',
 };
 function assetColor(sym: string): string {
   return ASSET_COLORS[(sym || '').toUpperCase()] ?? '#8b7df7';
@@ -838,8 +845,8 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
               onPress={() => { setChain(c); setTo(''); setAmt(''); setMemo(''); }}
               style={{
                 flex: 1, paddingVertical: 8, borderRadius: 999,
-                backgroundColor: selected ? C.purple500 : C.bgElevated,
-                borderWidth: 1, borderColor: selected ? C.purple500 : C.borderDefault,
+                backgroundColor: selected ? C.blue : C.bgElevated,
+                borderWidth: 1, borderColor: selected ? C.blue : C.borderDefault,
                 alignItems: 'center',
               }}
             >
@@ -1281,6 +1288,8 @@ function ActivityScreen() {
   const styles = useStyles();
   const addr = useWalletAddr();
   const { items, loading, offline, reload } = useActivity(addr);
+  const [filter, setFilter] = useState<'All' | 'Sent' | 'Received' | 'Swap'>('All');
+  const shown = filter === 'All' ? items : items.filter(t => txDisplay(t.type).label === filter);
 
   return (
     <ScrollView
@@ -1294,13 +1303,16 @@ function ActivityScreen() {
       <Text style={styles.pageTitleLarge}>Activity</Text>
       <Text style={styles.pageSubtitle}>Recent transactions across all your wallets</Text>
 
-      {/* Filter pills */}
+      {/* Filter pills — tap to filter the list by direction. */}
       <View style={styles.filterRow}>
-        {['All', 'Sent', 'Received', 'Swap'].map((f, i) => (
-          <Pressable key={f} style={[styles.filterPill, i === 0 && styles.filterPillActive]}>
-            <Text style={[styles.filterPillText, i === 0 && styles.filterPillTextActive]}>{f}</Text>
-          </Pressable>
-        ))}
+        {(['All', 'Sent', 'Received', 'Swap'] as const).map((f) => {
+          const active = filter === f;
+          return (
+            <Pressable key={f} onPress={() => setFilter(f)} style={[styles.filterPill, active && styles.filterPillActive]}>
+              <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{f}</Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       <Text style={styles.dateHeader}>Recent</Text>
@@ -1313,10 +1325,12 @@ function ActivityScreen() {
             Couldn’t reach the indexer — pull down to retry.
           </Text>
         )}
-        {!loading && !offline && items.length === 0 && (
-          <Text style={[styles.rowSub, { padding: 16 }]}>No transactions yet.</Text>
+        {!loading && !offline && shown.length === 0 && (
+          <Text style={[styles.rowSub, { padding: 16 }]}>
+            {filter === 'All' ? 'No transactions yet.' : `No ${filter.toLowerCase()} transactions.`}
+          </Text>
         )}
-        {items.map((t, i) => {
+        {shown.map((t, i) => {
           const d = txDisplay(t.type);
           const TxIcon = d.label === 'Sent' ? ArrowUpRight
                        : d.label === 'Received' ? ArrowDownLeft
@@ -1533,8 +1547,8 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
                   onPress={() => setSlippagePct(s)}
                   style={{
                     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
-                    borderWidth: 1, borderColor: active ? C.purple500 : C.borderDefault,
-                    backgroundColor: active ? C.purple500 : 'transparent',
+                    borderWidth: 1, borderColor: active ? C.blue : C.borderDefault,
+                    backgroundColor: active ? C.blue : 'transparent',
                   }}
                 >
                   <Text style={{
@@ -3229,7 +3243,9 @@ export default function App() {
   const [detailSym, setDetailSym] = useState<string | null>(null);
   /** Asset carried from detail into Send/Swap so they open pre-seeded. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
-  const [isDark, setIsDark] = useState(false);
+  // Dark-first, matching the web/desktop/extension clients (they're all
+  // dark by default). The Settings toggle still lets users switch to light.
+  const [isDark, setIsDark] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
@@ -3798,7 +3814,7 @@ function makeStyles(C: Colors) {
       borderColor: 'rgba(234,179,8,0.22)', borderWidth: 1,
       borderRadius: 10, padding: 10,
     },
-    warningCardText: { color: '#92590a', fontSize: 11, lineHeight: 16 },
+    warningCardText: { color: C.yellow, fontSize: 11, lineHeight: 16 },
 
     /* Activity */
     filterRow: { flexDirection: 'row', gap: 6, marginVertical: 6 },
@@ -3921,7 +3937,7 @@ function makeStyles(C: Colors) {
 
     btnPrimary: {
       height: 50,
-      backgroundColor: C.purple500,
+      backgroundColor: C.blue,
       borderRadius: 14,
       alignItems: 'center', justifyContent: 'center',
       marginTop: 4,
@@ -3942,7 +3958,7 @@ function makeStyles(C: Colors) {
       alignItems: 'center', justifyContent: 'center',
       borderRadius: 4,
     },
-    qrPlaceholderText: { color: C.purple500, fontSize: 38, fontWeight: '900' },
+    qrPlaceholderText: { color: C.blue, fontSize: 38, fontWeight: '900' },
     addrBox: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
       backgroundColor: C.bgElevated,
@@ -4008,16 +4024,16 @@ function makeStyles(C: Colors) {
       alignItems: 'center', justifyContent: 'center',
       marginBottom: 10,
       position: 'relative',
-      height: 80,
+      height: 96,
     },
     onboardLogoGlow: {
       position: 'absolute',
-      width: 120, height: 120, borderRadius: 60,
+      width: 128, height: 128, borderRadius: 64,
       backgroundColor: C.blue, opacity: 0.12,
-      top: -20,
+      top: -16,
     },
     onboardLogoImage: {
-      width: 76, height: 76,
+      width: 92, height: 92,
     },
     onboardBrand: {
       color: C.textPrimary, fontSize: 13, fontWeight: '700',
