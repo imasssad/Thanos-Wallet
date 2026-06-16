@@ -660,10 +660,13 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
 
       {/* Assets */}
       <View>
-        <View style={styles.assetsHeader}>
+        <Pressable onPress={() => navigate('assets')} style={styles.assetsHeader}>
           <Text style={styles.sectionTitle}>Assets</Text>
-          <Text style={styles.assetsCount}>{assets.length}</Text>
-        </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={styles.assetsCount}>{assets.length}</Text>
+            <ChevronRight size={16} color={C.textMuted}/>
+          </View>
+        </Pressable>
         <View style={styles.card}>
           {loading && (
             <Text style={[styles.rowSub, { padding: 16 }]}>Loading balances…</Text>
@@ -2577,7 +2580,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'assets';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Home',     Icon: Home },
@@ -3356,6 +3359,83 @@ function MarketScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
   );
 }
 
+/* ─────────────────── Assets screen + allocation donut (web parity) ─────── */
+
+/** SVG donut (string for SvgXml) — one arc per asset, sized by % of total. */
+function donutSvg(segs: { color: string; pct: number }[]): string {
+  const r = 64, cx = 80, cy = 80, sw = 22;
+  const circ = 2 * Math.PI * r;
+  let offset = 0;
+  const arcs = segs.map((s) => {
+    const len  = (s.pct / 100) * circ;
+    const draw = Math.max(0, len - 2);
+    const el = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${draw} ${circ - draw}" stroke-dashoffset="${-offset}" stroke-linecap="butt"/>`;
+    offset += len;
+    return el;
+  }).join('');
+  return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(-90 ${cx} ${cy})">${arcs}</g></svg>`;
+}
+
+function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string) => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  const addr = useWalletAddr();
+  const seed = useWalletSeed();
+  const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr, seed);
+
+  const held  = assets.filter(a => a.usdValue > 0);
+  const total = held.reduce((s, a) => s + a.usdValue, 0) || 1;
+  const rows  = held.map(a => ({ ...a, pct: Math.max(1, Math.round((a.usdValue / total) * 100)) }));
+  const svg   = rows.length ? donutSvg(rows.map(r => ({ color: r.color, pct: r.pct }))) : null;
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+        <Pressable onPress={goBack} hitSlop={16} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+          <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+        </Pressable>
+        <Text style={{ color: C.textPrimary, fontWeight: '800', fontSize: 18, marginLeft: 4 }}>Assets</Text>
+      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={C.textSecondary}/>}
+      >
+        {svg && (
+          <View style={{ alignItems: 'center', marginVertical: 12 }}>
+            <View style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center' }}>
+              <SvgXml xml={svg} width={180} height={180}/>
+              <View style={{ position: 'absolute', alignItems: 'center' }}>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>Total</Text>
+                <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800' }}>{formatUsd(totalUsd)}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {!loading && offline && <Text style={{ color: C.textMuted, padding: 16, textAlign: 'center' }}>Couldn’t reach the indexer — pull to retry.</Text>}
+        {!loading && !offline && rows.length === 0 && <Text style={{ color: C.textMuted, padding: 16, textAlign: 'center' }}>No assets yet.</Text>}
+
+        {rows.map((a, i) => (
+          <Pressable
+            key={a.sym + i}
+            onPress={() => onOpenToken(a.sym)}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: a.color, marginRight: 10 }}/>
+            <Avatar symbol={a.sym} color={a.color} size={34}/>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{a.name}</Text>
+              <Text style={{ color: C.textMuted, fontSize: 11 }}>{a.balanceText} {a.sym} · {a.pct}%</Text>
+            </View>
+            <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{formatUsd(a.usdValue)}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 /* First-run welcome — introduces the Lithosphere Makalu home network the
    first time a user reaches the unlocked wallet. Self-gates on an
    AsyncStorage flag (written the moment it shows) so it appears at most once
@@ -3644,6 +3724,7 @@ export default function App() {
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
                 {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
+                {screen === 'assets'   && <AssetsScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
