@@ -1766,7 +1766,23 @@ function SettingsScreen() {
   const [addrBookOpen, setAddrBookOpen] = useState(false);
   const [permsOpen, setPermsOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
-  useEffect(() => { AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0)); }, []);
+  const [currency, setCurrency]         = useState('USD');
+  const [language, setLanguage]         = useState('English');
+  useEffect(() => {
+    AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0));
+    AsyncStorage.getItem(PREF_CURRENCY).then(v => { if (v) setCurrency(v); });
+    AsyncStorage.getItem(PREF_LANGUAGE).then(v => { if (v) setLanguage(v); });
+  }, []);
+
+  // Display preferences — persisted picker, matches web's General section.
+  const pickCurrency = () => Alert.alert('Display currency', 'Prices stream in USD; FX conversion arrives in a later update.', [
+    ...CURRENCY_OPTS.map(c => ({ text: `${c === currency ? '✓ ' : ''}${c}`, onPress: () => { setCurrency(c); AsyncStorage.setItem(PREF_CURRENCY, c).catch(() => {}); } })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
+  const pickLanguage = () => Alert.alert('Interface language', 'Full translations arrive in a later update.', [
+    ...LANGUAGE_OPTS.map(l => ({ text: `${l === language ? '✓ ' : ''}${l}`, onPress: () => { setLanguage(l); AsyncStorage.setItem(PREF_LANGUAGE, l).catch(() => {}); } })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
 
   /* Biometric capability + enabled-state. Refreshes after the user
      toggles it so the row reflects reality. */
@@ -1942,7 +1958,7 @@ function SettingsScreen() {
           resizeMode="contain"
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.acctHeaderName}>Account 1</Text>
+          <Text style={styles.acctHeaderName}>Account {(seed.length > 0 ? getActiveAccountIndex() : 0) + 1}</Text>
           <Text style={styles.acctHeaderAddr} numberOfLines={1} ellipsizeMode="middle">
             {walletAddr || '—'}
           </Text>
@@ -1952,6 +1968,11 @@ function SettingsScreen() {
         </Pressable>
       </View>
 
+      <Section Icon={Globe} title="General" sub="Display, language, and locale" items={[
+        { label: 'Currency', desc: `Display prices in ${currency}`, Icon: TrendingUp, onPress: pickCurrency },
+        { label: 'Language', desc: `Interface language — ${language}`, Icon: Globe, onPress: pickLanguage },
+        { label: 'Theme', desc: isDark ? 'Dark' : 'Light', Icon: isDark ? Moon : Sun, onPress: toggle },
+      ]}/>
       <Section Icon={Shield} title="Security"   sub="Protect access to your wallet" items={SECURITY_OPTS}/>
       <Section Icon={Users}  title="Address book" sub="Saved contacts, cloud-synced when signed in" items={[
         { label: 'Manage contacts', desc: 'Add, view and remove saved addresses', Icon: Users,
@@ -2634,6 +2655,14 @@ function deriveEvmAddress(seed: string[], accountIdx = 0): string {
 /* User preferences (plaintext, non-sensitive). */
 const PREF_AUTOLOCK = 'thanos.autolock_minutes'; // '0' = never
 const PREF_CUSTOM_RPC = 'thanos.custom_rpc';
+const PREF_CURRENCY = 'thanos.display_currency'; // display currency code
+const PREF_LANGUAGE = 'thanos.language';         // interface language
+// Display-currency + language options mirror apps/web's Settings (General).
+// Like the web, these are display preferences — prices stream in USD and the
+// UI is English; the choice is persisted and surfaced, full FX conversion /
+// i18n land with a later slice.
+const CURRENCY_OPTS  = ['USD', 'EUR', 'GBP', 'JPY', 'BTC', 'LAX'];
+const LANGUAGE_OPTS  = ['English', 'Spanish', 'Arabic'];
 const AUTOLOCK_OPTIONS = [
   { label: '1 minute',   minutes: 1 },
   { label: '5 minutes',  minutes: 5 },
