@@ -724,7 +724,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   const addr = useWalletAddr();
   const seed = useWalletSeed();
   const { assets, loading } = usePortfolio(addr);
-  const [chain, setChain] = useState<SendChainOption>(initialChain ?? 'evm');
+  // Private-key wallets are EVM-only (a bare EVM key can't derive BTC/SOL/
+  // Cosmos keys) — pin the chain to 'evm' and hide the chain selector.
+  const pkOnly = isPrivateKeyWallet(seed);
+  const [chain, setChain] = useState<SendChainOption>(pkOnly ? 'evm' : (initialChain ?? 'evm'));
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
   const [selectedSym, setSelectedSym] = useState<string | null>(initialSym ?? null);
@@ -849,7 +852,9 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
       </View>
 
       {/* Chain selector — switching out of EVM hides the LEP-100 asset
-          picker and uses chain-native recipient validation. */}
+          picker and uses chain-native recipient validation. Hidden for
+          private-key wallets, which are Makalu/EVM-only. */}
+      {!pkOnly && (
       <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginBottom: 8 }}>
         {(Object.keys(CHAIN_META) as SendChainOption[]).map(c => {
           const selected = c === chain;
@@ -871,6 +876,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
           );
         })}
       </View>
+      )}
 
       {/* From asset card — only shown for EVM. Other chains have a fixed
           native token (BTC/SOL/ATOM) so no picker is needed. */}
@@ -1885,8 +1891,11 @@ function SettingsScreen() {
       Icon: Clock, onPress: () => setAutoLockOpen(true) },
     { label: 'Change password',   desc: 'Update wallet password',          Icon: Key,
       onPress: () => setChangePwdOpen(true) },
-    { label: 'Recovery phrase',   desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true,
-      onPress: () => setRevealOpen(true) },
+    isPrivateKeyWallet(seed)
+      ? { label: 'Private key',      desc: 'View this account’s private key', Icon: AlertTriangle, danger: true,
+          onPress: () => setRevealOpen(true) }
+      : { label: 'Recovery phrase',  desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true,
+          onPress: () => setRevealOpen(true) },
   ];
   const NETWORK_OPTS: SettingItem[] = [
     {
@@ -1962,7 +1971,7 @@ function SettingsScreen() {
           resizeMode="contain"
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.acctHeaderName}>Account {(seed.length > 0 ? getActiveAccountIndex() : 0) + 1}</Text>
+          <Text style={styles.acctHeaderName}>Account {(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0) + 1}</Text>
           <Text style={styles.acctHeaderAddr} numberOfLines={1} ellipsizeMode="middle">
             {walletAddr || '—'}
           </Text>
@@ -2314,33 +2323,42 @@ function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClo
   const [copied, setCopied] = useState(false);
   useEffect(() => { if (!visible) { setShown(false); setCopied(false); } }, [visible]);
   if (!visible) return null;
+  // Private-key wallets have no recovery phrase — reveal the raw key instead.
+  const isPk = seed.length === 1 && /^0x[0-9a-fA-F]{64}$/.test((seed[0] ?? '').trim());
+  const noun = isPk ? 'private key' : 'recovery phrase';
   return (
-    <SheetShell title="Recovery phrase" onClose={onClose}>
+    <SheetShell title={isPk ? 'Private key' : 'Recovery phrase'} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
         <AlertTriangle size={16} color="#f59e0b"/>
         <Text style={{ flex: 1, fontSize: 12, color: C.textSecondary, lineHeight: 18 }}>
-          Anyone with these words controls your funds. Never share them, and make sure no one is watching your screen.
+          Anyone with your {noun} controls your funds. Never share it, and make sure no one is watching your screen.
         </Text>
       </View>
       {!shown ? (
         <Pressable onPress={() => setShown(true)} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Reveal phrase</Text>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{isPk ? 'Reveal private key' : 'Reveal phrase'}</Text>
         </Pressable>
       ) : (
         <>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {seed.map((w, i) => (
-              <View key={i} style={{ flexDirection: 'row', gap: 6, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10 }}>
-                <Text style={{ color: C.textMuted, fontSize: 12 }}>{i + 1}</Text>
-                <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{w}</Text>
-              </View>
-            ))}
-          </View>
+          {isPk ? (
+            <View style={{ backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12 }}>
+              <Text selectable style={{ color: C.textPrimary, fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{seed[0]}</Text>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {seed.map((w, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 6, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10 }}>
+                  <Text style={{ color: C.textMuted, fontSize: 12 }}>{i + 1}</Text>
+                  <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{w}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           <Pressable
             onPress={() => { Clipboard.setStringAsync(seed.join(' ')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1600); }}
             style={{ paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}
           >
-            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied' : 'Copy phrase'}</Text>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied' : (isPk ? 'Copy private key' : 'Copy phrase')}</Text>
           </Pressable>
         </>
       )}
@@ -2761,8 +2779,18 @@ function isValidMnemonic(phrase: string): boolean {
   catch { return false; }
 }
 
+// A wallet imported by raw private key is carried as a single-element seed
+// `['0x<64 hex>']`. It's EVM-only (a bare EVM key can't derive BTC/SOL/Cosmos
+// addresses) and single-account (no HD derivation), so the UI gates non-EVM
+// chains + "add account" on this.
+const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
+function isPrivateKeyWallet(seed: string[]): boolean {
+  return seed.length === 1 && PRIVATE_KEY_RE.test(seed[0].trim());
+}
+
 function deriveEvmAddress(seed: string[], accountIdx = 0): string {
   try {
+    if (isPrivateKeyWallet(seed)) return new Wallet(seed[0].trim()).address; // PK = single account
     return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${accountIdx}`).address;
   } catch { return '0x0000000000000000000000000000000000000000'; }
 }
@@ -2792,7 +2820,7 @@ const AUTOLOCK_OPTIONS = [
 /* ─────────────────── Onboarding ─────────────────── */
 
 type OnboardStep = 'welcome' | 'create-length' | 'create-warn' | 'create-show' | 'create-confirm'
-                 | 'create-pwd' | 'import' | 'import-pwd' | 'unlock';
+                 | 'create-pwd' | 'import-choose' | 'import' | 'import-pk' | 'import-pwd' | 'unlock';
 
 function OnboardingScreen({
   hasVault,
@@ -2807,8 +2835,11 @@ function OnboardingScreen({
   // that displays sensitive material (the user's mnemonic). Steps that
   // only ask for the password don't need it. Active flag pivots on
   // step, so the lock+unlock paths in `unlock` stay screenshot-able.
-  useScreenProtect(step === 'create-show' || step === 'create-confirm' || step === 'import');
+  useScreenProtect(step === 'create-show' || step === 'create-confirm' || step === 'import' || step === 'import-pk');
   const [importInput, setImportInput] = useState('');
+  const [pkInput, setPkInput] = useState('');
+  // Which import path the password step is finishing (phrase vs raw key).
+  const [importKind, setImportKind] = useState<'phrase' | 'privateKey'>('phrase');
   /* Verify-phrase: only N indices missing; user fills them from a pool */
   const VERIFY_MISSING = 4;
   const [missingIdxs, setMissingIdxs] = useState<number[]>([]);
@@ -2882,6 +2913,28 @@ function OnboardingScreen({
 
   const finishImport = async () => {
     if (password !== password2 || password.length < 8 || busy) return;
+
+    // ── Private-key import ── stored as a single-element seed ['0x…']; the
+    // vault holds the raw key, and deriveEvmAddress / lib/signer detect the
+    // shape. EVM-only, single account.
+    if (importKind === 'privateKey') {
+      const hex = pkInput.trim().toLowerCase().replace(/^0x/, '');
+      if (!/^[0-9a-f]{64}$/.test(hex)) {
+        Alert.alert('Invalid private key', 'Enter a 64-character hex private key (with or without the 0x prefix).');
+        return;
+      }
+      const key = `0x${hex}`;
+      try { new Wallet(key); } catch { Alert.alert('Invalid private key', 'That private key could not be parsed.'); return; }
+      setBusy(true);
+      try {
+        await createVault(key, password);
+        await setSeedBackedUp(true); // no phrase to back up — user holds the key
+        onComplete([key]);
+      } finally { setBusy(false); }
+      return;
+    }
+
+    // ── Recovery-phrase import ──
     const words = importInput.trim().toLowerCase().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) return;
     if (!isValidMnemonic(words.join(' '))) {
@@ -2983,9 +3036,75 @@ function OnboardingScreen({
           <Pressable style={styles.btnPrimary} onPress={() => setStep('create-length')}>
             <Text style={styles.btnPrimaryText}>Create new wallet</Text>
           </Pressable>
-          <Pressable style={styles.btnOutline} onPress={() => setStep('import')}>
+          <Pressable style={styles.btnOutline} onPress={() => setStep('import-choose')}>
             <Text style={styles.btnOutlineText}>Import existing wallet</Text>
           </Pressable>
+        </>}
+
+        {step === 'import-choose' && <>
+          <Text style={styles.onboardTitle}>Import wallet</Text>
+          <Text style={styles.onboardSub}>Restore from a recovery phrase, or import a single account from its private key.</Text>
+          <Pressable
+            onPress={() => { setImportKind('phrase'); setStep('import'); }}
+            style={{ borderRadius: 16, padding: 16, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault, marginTop: 4 }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+                <Key size={18} color={C.blue}/>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>Recovery phrase</Text>
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>12–24 words · full multi-chain wallet</Text>
+              </View>
+              <ChevronRight size={18} color={C.textMuted}/>
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={() => { setImportKind('privateKey'); setStep('import-pk'); }}
+            style={{ borderRadius: 16, padding: 16, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+                <Shield size={18} color={C.blue}/>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>Private key</Text>
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>Single EVM account (Makalu) · no BTC/SOL/Cosmos</Text>
+              </View>
+              <ChevronRight size={18} color={C.textMuted}/>
+            </View>
+          </Pressable>
+          <Pressable style={styles.btnOutline} onPress={() => setStep('welcome')}>
+            <Text style={styles.btnOutlineText}>Back</Text>
+          </Pressable>
+        </>}
+
+        {step === 'import-pk' && <>
+          <Text style={styles.onboardTitle}>Import private key</Text>
+          <Text style={styles.onboardSub}>Paste a 64-character hex private key (with or without the 0x prefix). This imports one EVM account on Makalu.</Text>
+          <TextInput
+            style={[styles.input, { height: 84, textAlignVertical: 'top' }]}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry={false}
+            placeholder="0x…"
+            placeholderTextColor={C.textMuted}
+            value={pkInput}
+            onChangeText={setPkInput}
+          />
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('import-choose')}>
+              <Text style={styles.btnOutlineText}>Back</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.btnPrimary, { flex: 1, marginTop: 0, opacity: /^(0x)?[0-9a-fA-F]{64}$/.test(pkInput.trim()) ? 1 : 0.45 }]}
+              disabled={!/^(0x)?[0-9a-fA-F]{64}$/.test(pkInput.trim())}
+              onPress={() => { setImportKind('privateKey'); setStep('import-pwd'); }}
+            >
+              <Text style={styles.btnPrimaryText}>Continue</Text>
+            </Pressable>
+          </View>
         </>}
 
         {step === 'create-length' && <>
@@ -3172,7 +3291,7 @@ function OnboardingScreen({
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
             <Pressable
               style={[styles.btnOutline, { flex: 1, marginTop: 0 }]}
-              onPress={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}
+              onPress={() => setStep(step === 'create-pwd' ? 'create-confirm' : (importKind === 'privateKey' ? 'import-pk' : 'import'))}
             >
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
@@ -3205,12 +3324,12 @@ function OnboardingScreen({
             {importInput.trim().split(/\s+/).filter(Boolean).length} words
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('welcome')}>
+            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('import-choose')}>
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
             <Pressable
               style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]}
-              onPress={() => setStep('import-pwd')}
+              onPress={() => { setImportKind('phrase'); setStep('import-pwd'); }}
             >
               <Text style={styles.btnPrimaryText}>Continue</Text>
             </Pressable>
@@ -3868,15 +3987,22 @@ export default function App() {
                    the previous tap-to-lock behaviour. */
                 onPress={() => {
                   if (walletSeed.length === 0) return;
+                  // PK wallets are single-account — show one entry regardless of
+                  // any stale persisted count from a previous mnemonic wallet.
+                  const pkWallet = isPrivateKeyWallet(walletSeed);
+                  const shownCount = pkWallet ? 1 : accountCount;
+                  const shownActive = pkWallet ? 0 : activeIdx;
                   Alert.alert(
                     'Account',
-                    `Active: Account ${activeIdx + 1}`,
+                    `Active: Account ${shownActive + 1}`,
                     [
-                      ...Array.from({ length: accountCount }, (_, i) => ({
-                        text: `${i === activeIdx ? '✓ ' : ''}Account ${i + 1}`,
+                      ...Array.from({ length: shownCount }, (_, i) => ({
+                        text: `${i === shownActive ? '✓ ' : ''}Account ${i + 1}`,
                         onPress: () => switchAccount(i),
                       })),
-                      ...(accountCount < MAX_ACCOUNTS ? [{ text: '+ Add account', onPress: addAccount }] : []),
+                      // No "Add account" for private-key wallets — a raw key
+                      // is a single account, not an HD tree.
+                      ...(accountCount < MAX_ACCOUNTS && !isPrivateKeyWallet(walletSeed) ? [{ text: '+ Add account', onPress: addAccount }] : []),
                       { text: 'Cancel', style: 'cancel' as const },
                     ],
                   );
@@ -3892,7 +4018,7 @@ export default function App() {
               >
                 <View style={styles.acctAvatar}><Text style={styles.acctAvatarText}>○</Text></View>
                 <View>
-                  <Text style={styles.acctName}>{walletSeed.length > 0 ? `Account ${activeIdx + 1}` : 'Account 1'}</Text>
+                  <Text style={styles.acctName}>{`Account ${walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx + 1 : 1}`}</Text>
                   <Text style={styles.acctAddr}>{shortAddr}</Text>
                 </View>
               </Pressable>

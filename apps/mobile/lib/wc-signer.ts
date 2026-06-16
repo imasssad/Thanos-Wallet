@@ -228,6 +228,14 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
   const chain = args.chain ?? 'evm';
 
+  // A private-key wallet (single 0x-hex "seed") is EVM-only — a bare EVM key
+  // can't derive BTC/SOL/Cosmos accounts. The Send UI already hides those
+  // chains for PK wallets; this is the belt-and-braces guard.
+  const isPk = args.seed.length === 1 && /^0x[0-9a-fA-F]{64}$/.test(args.seed[0].trim());
+  if (isPk && chain !== 'evm') {
+    throw new WcSignerError(-32000, 'Private-key wallets are EVM-only. Import a recovery phrase to use Bitcoin, Solana or Cosmos.');
+  }
+
   if (chain === 'bitcoin') {
     const { sendBitcoin } = await import('./bitcoin');
     return sendBitcoin({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });

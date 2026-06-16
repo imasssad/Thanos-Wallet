@@ -22,9 +22,15 @@
  * tree dumps.
  */
 import {
-  Contract, HDNodeWallet, JsonRpcProvider, Mnemonic, FallbackProvider,
-  type TransactionRequest, type TypedDataDomain, type TypedDataField,
+  Contract, HDNodeWallet, Wallet, JsonRpcProvider, Mnemonic, FallbackProvider,
+  type BaseWallet, type TransactionRequest, type TypedDataDomain, type TypedDataField,
 } from 'ethers';
+
+// A raw private-key wallet (imported via the onboarding "private key" path)
+// is carried through the same `_seed` string as a single 0x-prefixed key.
+// HD-path derivation doesn't apply — a private key IS one account — so
+// walletFor() returns a flat Wallet and ignores the requested path.
+const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
 let _seed: string | null = null;
 let _provider: JsonRpcProvider | FallbackProvider | null = null;
@@ -64,8 +70,9 @@ export function hasSeed(): boolean {
   return _seed !== null;
 }
 
-function walletFor(hdPath: string): HDNodeWallet {
+function walletFor(hdPath: string): BaseWallet {
   if (!_seed) throw new Error('Wallet is locked');
+  if (PRIVATE_KEY_RE.test(_seed)) return new Wallet(_seed); // PK wallet — single account
   return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(_seed), hdPath);
 }
 
