@@ -2774,7 +2774,15 @@ function OnboardingScreen({
   };
 
   return (
-    <ScrollView style={[styles.scroll, { backgroundColor: C.bgBase }]} contentContainerStyle={styles.onboardWrap}>
+    <ScrollView
+      style={[styles.scroll, { backgroundColor: C.bgBase }]}
+      contentContainerStyle={styles.onboardWrap}
+      // CRITICAL: without this, when the keyboard is open (password / import
+      // steps) the FIRST tap on a button is swallowed to just dismiss the
+      // keyboard — so Back / Create wallet / Import appeared "not clickable."
+      // "handled" lets the button's onPress fire on the first tap.
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.onboardCard}>
         <View style={styles.onboardLogo}>
           <View style={styles.onboardLogoGlow}/>
@@ -2808,7 +2816,7 @@ function OnboardingScreen({
             <Text style={styles.warnItem}>✓  Thanos will never ask for this phrase</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1 }]} onPress={() => setStep('welcome')}>
+            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('welcome')}>
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
             <Pressable style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-show')}>
@@ -2854,7 +2862,7 @@ function OnboardingScreen({
           </Pressable>
 
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1 }]} onPress={() => setStep('create-warn')}>
+            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-warn')}>
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
             <Pressable style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]} onPress={goToVerify}>
@@ -2915,7 +2923,7 @@ function OnboardingScreen({
           </View>
           {orderMismatch && <Text style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>Order doesn't match. Tap slots to undo.</Text>}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1 }]} onPress={() => setStep('create-show')}>
+            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-show')}>
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
             <Pressable
@@ -2955,7 +2963,7 @@ function OnboardingScreen({
           )}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
             <Pressable
-              style={[styles.btnOutline, { flex: 1 }]}
+              style={[styles.btnOutline, { flex: 1, marginTop: 0 }]}
               onPress={() => setStep(step === 'create-pwd' ? 'create-confirm' : 'import')}
             >
               <Text style={styles.btnOutlineText}>Back</Text>
@@ -2989,7 +2997,7 @@ function OnboardingScreen({
             {importInput.trim().split(/\s+/).filter(Boolean).length} words
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1 }]} onPress={() => setStep('welcome')}>
+            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('welcome')}>
               <Text style={styles.btnOutlineText}>Back</Text>
             </Pressable>
             <Pressable
@@ -4116,8 +4124,8 @@ function makeStyles(C: Colors) {
     },
     copyPhraseBtnText: { color: C.blue, fontSize: 13, fontWeight: '700' },
     btnOutline: {
-      height: 48,
-      borderRadius: 12,
+      height: 50,
+      borderRadius: 14,
       borderColor: C.borderDefault, borderWidth: 1,
       backgroundColor: C.bgElevated,
       alignItems: 'center', justifyContent: 'center',
