@@ -102,7 +102,7 @@ import {
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
-  Users, Trash2, TrendingUp,
+  Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -655,6 +655,16 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           </View>
           <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>History</Text>
           <Text style={{ fontSize: 11, color: C.textMuted }}>Recent transactions</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => navigate('nfts')}
+          style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}
+        >
+          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <ImageIcon size={18} color={C.blue}/>
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>NFTs</Text>
+          <Text style={{ fontSize: 11, color: C.textMuted }}>Collectibles</Text>
         </Pressable>
       </View>
 
@@ -2580,7 +2590,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'assets';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'assets' | 'nfts';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Home',     Icon: Home },
@@ -3436,6 +3446,44 @@ function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
   );
 }
 
+/* NFTs — mirrors apps/web's NFTs tab. The on-chain NFT indexer ships with a
+   later backend slice, so for now this is the same honest empty state the web
+   shows (LEP-721 / LEP-1155) plus a deep link to the Lithosphere marketplace. */
+function NFTsScreen({ goBack }: { goBack: () => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+        <Pressable onPress={goBack} hitSlop={16} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+          <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+        </Pressable>
+        <Text style={{ color: C.textPrimary, fontWeight: '800', fontSize: 18, marginLeft: 4 }}>NFTs</Text>
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingTop: 40 }}>
+        <View style={{ alignItems: 'center', gap: 12, padding: 24, borderRadius: 16, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}>
+          <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: C.blueDim, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center', justifyContent: 'center' }}>
+            <ImageIcon size={26} color={C.blue}/>
+          </View>
+          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>No NFTs yet</Text>
+          <Text style={{ color: C.textMuted, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+            NFTs you receive on Lithosphere (LEP-721 / LEP-1155) will appear here.
+            Indexing ships with the next backend slice — until then, browse and mint
+            on the Lithosphere marketplace.
+          </Text>
+          <Pressable
+            onPress={() => Linking.openURL('https://makalu.litho.ai/nfts').catch(() => {})}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: C.blue }}
+          >
+            <BadgeCheck size={14} color="#fff"/>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Browse marketplace</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 /* First-run welcome — introduces the Lithosphere Makalu home network the
    first time a user reaches the unlocked wallet. Self-gates on an
    AsyncStorage flag (written the moment it shows) so it appears at most once
@@ -3725,6 +3773,7 @@ export default function App() {
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
                 {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
                 {screen === 'assets'   && <AssetsScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
+                {screen === 'nfts'     && <NFTsScreen goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
