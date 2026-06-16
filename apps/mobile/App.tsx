@@ -90,7 +90,7 @@ import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
-import { fetchEcosystemPrices } from './lib/pricing';
+import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib/pricing';
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
@@ -102,7 +102,7 @@ import {
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
-  Users, Trash2,
+  Users, Trash2, TrendingUp,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -2566,10 +2566,11 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Home',     Icon: Home },
+  { key: 'market',   label: 'Market',   Icon: TrendingUp },
   { key: 'swap',     label: 'Swap',     Icon: Repeat },
   { key: 'discover', label: 'Discover', Icon: Compass },
   { key: 'activity', label: 'Activity', Icon: Clock },
@@ -3245,6 +3246,105 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   );
 }
 
+/* ─────────────────── Market screen (web parity) ─────────────────── */
+
+/** Coins shown on the Market screen — Litho ecosystem + the mainstream coins
+ *  the wallet transacts on. Mirrors apps/web's market list. */
+const MARKET_LIST: { sym: string; name: string }[] = [
+  { sym: 'LITHO',  name: 'Lithosphere' },
+  { sym: 'LitBTC', name: 'Bitcoin (wrapped)' },
+  { sym: 'JOT',    name: 'Jot Art' },
+  { sym: 'LAX',    name: 'Lithosphere Algorithmic' },
+  { sym: 'COLLE',  name: 'Colle AI' },
+  { sym: 'IMAGE',  name: 'Imagen Network' },
+  { sym: 'FGPT',   name: 'FurGPT' },
+  { sym: 'MUSA',   name: 'Mansa AI' },
+  { sym: 'SOL',    name: 'Solana' },
+  { sym: 'BTC',    name: 'Bitcoin' },
+  { sym: 'ATOM',   name: 'Cosmos Hub' },
+  { sym: 'ETH',    name: 'Ethereum' },
+  { sym: 'BNB',    name: 'BNB' },
+  { sym: 'POL',    name: 'Polygon' },
+  { sym: 'AVAX',   name: 'Avalanche' },
+];
+
+function fmtCompactUsd(n: number | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
+  return `$${n.toFixed(0)}`;
+}
+function fmtMarketPrice(n: number): string {
+  if (!isFinite(n)) return '—';
+  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
+  if (n < 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function MarketScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string) => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  const [quotes, setQuotes] = useState<Record<string, MarketQuote> | null>(null);
+  const [search, setSearch] = useState('');
+
+  const load = () => { fetchMarketQuotes().then(setQuotes).catch(() => {}); };
+  useEffect(() => { load(); const id = setInterval(load, 60_000); return () => clearInterval(id); }, []);
+
+  const q = search.trim().toLowerCase();
+  const rows = MARKET_LIST.filter(t => !q || t.sym.toLowerCase().includes(q) || t.name.toLowerCase().includes(q));
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+        <Pressable onPress={goBack} hitSlop={16} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+          <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+        </Pressable>
+        <Text style={{ color: C.textPrimary, fontWeight: '800', fontSize: 18, marginLeft: 4 }}>Market</Text>
+      </View>
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <TextInput
+          style={styles.input}
+          placeholder="Search coins…"
+          placeholderTextColor={C.textMuted}
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        {rows.map((t, i) => {
+          const mq = quotes?.[t.sym];
+          const known = !!mq && mq.chg24h !== null; // live feed
+          const price = mq?.usd;
+          return (
+            <Pressable
+              key={t.sym}
+              onPress={() => onOpenToken(t.sym)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}
+            >
+              <Text style={{ width: 22, color: C.textMuted, fontSize: 11 }}>{i + 1}</Text>
+              <Avatar symbol={t.sym} color={ASSET_COLORS[t.sym.toUpperCase()] ?? '#52525b'} size={34}/>
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{t.name}</Text>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.sym}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 13, fontFamily: MONO }}>
+                  {typeof price === 'number' ? fmtMarketPrice(price) : '—'}
+                </Text>
+                <Text style={{ fontSize: 11, marginTop: 2, color: !known ? C.textMuted : (mq!.chg24h! >= 0 ? C.green : C.red) }}>
+                  {known ? `${mq!.chg24h! >= 0 ? '+' : ''}${mq!.chg24h}%` : 'cap ' + fmtCompactUsd(null)}
+                  {known ? ` · ${fmtCompactUsd(mq!.marketCap)}` : ''}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 /* First-run welcome — introduces the Lithosphere Makalu home network the
    first time a user reaches the unlocked wallet. Self-gates on an
    AsyncStorage flag (written the moment it shows) so it appears at most once
@@ -3532,6 +3632,7 @@ export default function App() {
                 {screen === 'swap'     && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
+                {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
