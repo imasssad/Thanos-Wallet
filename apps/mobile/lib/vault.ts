@@ -39,10 +39,17 @@ const LEGACY_PWD     = 'thanos.password';
 const LEGACY_UNLOCK  = 'thanos.unlocked';
 const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 
-// Argon2id params — match services/api + apps/web vault.ts.
-const ARGON2_T = 3;            // iterations
-const ARGON2_M = 64 * 1024;    // 64 MiB (m param, in KiB)
-const ARGON2_P = 4;            // parallel lanes
+// Argon2id params — MOBILE-tuned (OWASP mobile baseline). The web/api use
+// 64 MiB / t=3 / p=4, but @noble/hashes' Argon2 is PURE JS and runs under
+// Hermes on a phone, where 64 MiB took minutes / hung wallet creation
+// ("stuck on Encrypting…"). 19 MiB / t=2 / p=1 is the OWASP-recommended
+// mobile floor and finishes in a few seconds. Safe to differ from the other
+// clients: the vault is device-local (never synced), and unlock reads the
+// params back from the vault's own kdf block (see openVault), so a vault
+// always decrypts with the exact params it was created with.
+const ARGON2_T = 2;            // iterations
+const ARGON2_M = 19456;        // 19 MiB (m param, in KiB)
+const ARGON2_P = 1;            // parallel lanes (no real parallelism in JS)
 const KEY_BYTES = 32;          // AES-256
 
 /* ─── On-disk format ────────────────────────────────────────────────────── */
@@ -69,11 +76,15 @@ function randomBytes(n: number): Uint8Array {
   return a;
 }
 
-async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
+async function deriveKey(
+  password: string,
+  salt: Uint8Array,
+  params: { t: number; m: number; p: number } = { t: ARGON2_T, m: ARGON2_M, p: ARGON2_P },
+): Promise<Uint8Array> {
   return argon2idAsync(utf8ToBytes(password), salt, {
-    t:      ARGON2_T,
-    m:      ARGON2_M,
-    p:      ARGON2_P,
+    t:      params.t,
+    m:      params.m,
+    p:      params.p,
     dkLen:  KEY_BYTES,
   });
 }
@@ -116,7 +127,9 @@ export async function openVault(
     const salt = hexToBytes(vault.salt);
     const iv   = hexToBytes(vault.iv);
     const ct   = hexToBytes(vault.ciphertext);
-    const key  = await deriveKey(password, salt);
+    // Use the vault's OWN kdf params so it always decrypts with what it was
+    // created with (vaults predating the mobile param change still unlock).
+    const key  = await deriveKey(password, salt, vault.kdf);
     const pt   = gcm(key, iv).decrypt(ct);
     return { mnemonic: new TextDecoder().decode(pt), key };
   } catch {

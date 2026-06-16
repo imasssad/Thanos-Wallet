@@ -46,7 +46,7 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
   );
 }
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Wallet, HDNodeWallet, Mnemonic, formatUnits } from 'ethers';
+import { Wallet, HDNodeWallet, Mnemonic, formatUnits, randomBytes } from 'ethers';
 import {
   createVault, openVault, openVaultWithKey,
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
@@ -2578,10 +2578,13 @@ const TABS: { key: Screen; label: string; Icon: any }[] = [
 
 /* ─────────────────── Wallet helpers ─────────────────── */
 
-function generateMnemonic(): string[] {
+function generateMnemonic(wordCount: 12 | 24 = 12): string[] {
   try {
-    const w = Wallet.createRandom();
-    return w.mnemonic!.phrase.split(' ');
+    // 16 bytes (128-bit) -> 12 words, 32 bytes (256-bit) -> 24 words. Uses
+    // the platform CSPRNG via react-native-get-random-values (polyfilled at
+    // app boot). Mirrors the web client's generateMnemonic(wordCount).
+    const entropy = randomBytes(wordCount === 24 ? 32 : 16);
+    return Mnemonic.fromEntropy(entropy).phrase.split(' ');
   } catch (e) {
     console.error('generateMnemonic failed:', e);
     Alert.alert('Crypto unavailable', 'Could not generate a secure random seed on this device. ' + String(e));
@@ -2616,7 +2619,7 @@ const AUTOLOCK_OPTIONS = [
 
 /* ─────────────────── Onboarding ─────────────────── */
 
-type OnboardStep = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm'
+type OnboardStep = 'welcome' | 'create-length' | 'create-warn' | 'create-show' | 'create-confirm'
                  | 'create-pwd' | 'import' | 'import-pwd' | 'unlock';
 
 function OnboardingScreen({
@@ -2627,6 +2630,7 @@ function OnboardingScreen({
   const styles = useStyles();
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
+  const [phraseLen, setPhraseLen] = useState<12 | 24>(12);
   // Engage Android FLAG_SECURE + iOS screenshot-detection on every step
   // that displays sensitive material (the user's mnemonic). Steps that
   // only ask for the password don't need it. Active flag pivots on
@@ -2661,7 +2665,9 @@ function OnboardingScreen({
     })();
   }, [hasVault]);
 
-  const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
+  // Length is chosen on the create-length step (parity with web/desktop);
+  // generate the seed for the picked word count, then go to the warning.
+  const pickLength = (n: 12 | 24) => { setPhraseLen(n); setSeed(generateMnemonic(n)); setStep('create-warn'); };
 
   const goToVerify = () => {
     const idxs = Array.from({ length: seed.length }, (_, i) => i)
@@ -2784,6 +2790,10 @@ function OnboardingScreen({
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.onboardCard}>
+        {/* The logo image is a full lockup (mark + "Thanos Wallet" +
+            "AI-POWERED WEB3 EXPERIENCE"), same asset the web login uses.
+            Render it large like the web (no separate brand text — that would
+            duplicate the wordmark in the image). */}
         <View style={styles.onboardLogo}>
           <View style={styles.onboardLogoGlow}/>
           <Image
@@ -2792,14 +2802,13 @@ function OnboardingScreen({
             resizeMode="contain"
           />
         </View>
-        <Text style={styles.onboardBrand}>Thanos Wallet</Text>
 
         <AnimatedSwitch keyName={step} style={{ width: '100%' }}>
 
         {step === 'welcome' && <>
           <Text style={styles.onboardTitle}>Welcome to Thanos</Text>
           <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · EVM.</Text>
-          <Pressable style={styles.btnPrimary} onPress={startCreate}>
+          <Pressable style={styles.btnPrimary} onPress={() => setStep('create-length')}>
             <Text style={styles.btnPrimaryText}>Create new wallet</Text>
           </Pressable>
           <Pressable style={styles.btnOutline} onPress={() => setStep('import')}>
@@ -2807,9 +2816,36 @@ function OnboardingScreen({
           </Pressable>
         </>}
 
+        {step === 'create-length' && <>
+          <Text style={styles.onboardTitle}>Choose phrase length</Text>
+          <Text style={styles.onboardSub}>How many words do you want your recovery phrase to be? Both are secure — 24 words just adds extra entropy.</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, marginBottom: 4 }}>
+            {([12, 24] as const).map((n) => (
+              <Pressable
+                key={n}
+                onPress={() => pickLength(n)}
+                style={{
+                  flex: 1, borderRadius: 16, paddingVertical: 20, paddingHorizontal: 12, alignItems: 'center',
+                  backgroundColor: phraseLen === n ? C.blueDim : C.bgElevated,
+                  borderWidth: 1, borderColor: phraseLen === n ? C.blue : C.borderDefault,
+                }}
+              >
+                <Text style={{ color: C.blue, fontSize: 34, fontWeight: '800' }}>{n}</Text>
+                <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 2 }}>words</Text>
+                <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', marginTop: 6, lineHeight: 15 }}>
+                  {n === 12 ? 'Recommended · 128-bit entropy' : 'Advanced · 256-bit entropy'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable style={styles.btnOutline} onPress={() => setStep('welcome')}>
+            <Text style={styles.btnOutlineText}>Back</Text>
+          </Pressable>
+        </>}
+
         {step === 'create-warn' && <>
           <Text style={styles.onboardTitle}>Save your recovery phrase</Text>
-          <Text style={styles.onboardSub}>12 words below are the only way to restore your wallet. Anyone with these words has full access. Never share them online.</Text>
+          <Text style={styles.onboardSub}>{`These ${phraseLen} words are the only way to restore your wallet. Anyone with them has full access. Never share them online.`}</Text>
           <View style={styles.warnList}>
             <Text style={styles.warnItem}>✓  Write them down on paper</Text>
             <Text style={styles.warnItem}>✓  Keep them somewhere private</Text>
@@ -2827,7 +2863,7 @@ function OnboardingScreen({
 
         {step === 'create-show' && <>
           <Text style={styles.onboardTitle}>Your recovery phrase</Text>
-          <Text style={styles.onboardSub}>Write these 12 words down in order. Long-press any word to select, or tap Copy below.</Text>
+          <Text style={styles.onboardSub}>{`Write these ${phraseLen} words down in order. Long-press any word to select, or tap Copy below.`}</Text>
           <View style={styles.seedGrid}>
             {seed.map((w, i) => (
               <View key={i} style={styles.seedWord}>
@@ -4030,18 +4066,18 @@ function makeStyles(C: Colors) {
     },
     onboardLogo: {
       alignItems: 'center', justifyContent: 'center',
-      marginBottom: 10,
+      marginBottom: 14,
       position: 'relative',
-      height: 96,
+      height: 168,
     },
     onboardLogoGlow: {
+      // Soft blue halo behind the lockup — approximates the web's radial glow.
       position: 'absolute',
-      width: 128, height: 128, borderRadius: 64,
-      backgroundColor: C.blue, opacity: 0.12,
-      top: -16,
+      width: 150, height: 150, borderRadius: 75,
+      backgroundColor: C.blue, opacity: 0.16,
     },
     onboardLogoImage: {
-      width: 92, height: 92,
+      width: 160, height: 160,
     },
     onboardBrand: {
       color: C.textPrimary, fontSize: 13, fontWeight: '700',
