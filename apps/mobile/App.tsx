@@ -2405,6 +2405,13 @@ function tdCompact(n: number | null): string {
   if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
   return `$${n.toFixed(2)}`;
 }
+function tdCompactQty(n: number | null): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '—';
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
+  return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
 /** Build a standalone SVG document string for SvgXml from price pairs. */
 function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, stroke: string): string | null {
   if (prices.length < 2) return null;
@@ -2492,7 +2499,10 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
           ))}
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+          <Pressable onPress={() => Alert.alert('Buy', 'Card on-ramp (Transak) is coming soon. For now, receive into this wallet or get testnet LITHO from the faucet.')} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Buy</Text>
+          </Pressable>
           <Pressable onPress={onSend} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Send</Text>
           </Pressable>
@@ -2537,6 +2547,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
         {proxy && <Text style={{ color: C.textMuted, fontSize: 10, marginVertical: 2 }}>Figures below are for {proxy}.</Text>}
         <Row label="Market cap">{tdCompact(market?.marketCapUsd ?? null)}</Row>
         <Row label="Total volume">{tdCompact(market?.totalVolumeUsd ?? null)}</Row>
+        <Row label="Circulating supply">{tdCompactQty(market?.circulatingSupply ?? null)}</Row>
         <Row label="All-time high">{market?.athUsd != null ? formatUsd(market.athUsd) : '—'}</Row>
         <Row label="All-time low">{market?.atlUsd != null ? formatUsd(market.atlUsd) : '—'}</Row>
 
