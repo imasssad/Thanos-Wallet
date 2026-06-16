@@ -93,6 +93,7 @@ import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/index
 import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib/pricing';
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
+import { apiClient, type AuthUser } from './lib/auth-client';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { SvgXml } from 'react-native-svg';
@@ -1773,6 +1774,7 @@ function SettingsScreen() {
   const [addrBookOpen, setAddrBookOpen] = useState(false);
   const [permsOpen, setPermsOpen] = useState(false);
   const [dnnsOpen, setDnnsOpen] = useState(false);
+  const [acctOpen, setAcctOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
   const [currency, setCurrency]         = useState('USD');
   const [language, setLanguage]         = useState('English');
@@ -1986,6 +1988,10 @@ function SettingsScreen() {
         { label: 'Language', desc: `Interface language — ${language}`, Icon: Globe, onPress: pickLanguage },
         { label: 'Theme', desc: isDark ? 'Dark' : 'Light', Icon: isDark ? Moon : Sun, onPress: toggle },
       ]}/>
+      <Section Icon={Users} title="Account" sub="Optional cloud account for cross-device sync" items={[
+        { label: 'Cloud account', desc: 'Sign in to sync your address book & preferences', Icon: Users,
+          onPress: () => setAcctOpen(true) },
+      ]}/>
       <Section Icon={Shield} title="Security"   sub="Protect access to your wallet" items={SECURITY_OPTS}/>
       <Section Icon={Users}  title="Address book" sub="Saved contacts, cloud-synced when signed in" items={[
         { label: 'Manage contacts', desc: 'Add, view and remove saved addresses', Icon: Users,
@@ -2045,6 +2051,7 @@ function SettingsScreen() {
       <AddressBookModal visible={addrBookOpen} onClose={() => setAddrBookOpen(false)}/>
       <PermissionsModal visible={permsOpen} onClose={() => setPermsOpen(false)} seed={seed}/>
       <DnnsModal visible={dnnsOpen} onClose={() => setDnnsOpen(false)} ownerAddr={walletAddr}/>
+      <AccountModal visible={acctOpen} onClose={() => setAcctOpen(false)}/>
     </ScrollView>
   );
 }
@@ -2556,6 +2563,96 @@ function DnnsModal({ visible, onClose, ownerAddr }: { visible: boolean; onClose:
         <Text style={{ color: '#fff', fontWeight: '700' }}>
           {busy ? 'Submitting…' : avail.status === 'taken' ? 'Not available' : 'Register name'}
         </Text>
+      </Pressable>
+    </SheetShell>
+  );
+}
+
+/* Cloud account — optional sign-in for cross-device sync (address book,
+   preferences). Mirrors apps/web's AccountView: login / create toggle over
+   the same apiClient (login/register/me/logout). The wallet itself stays
+   self-custodial and device-local — this only links an optional sync account. */
+function AccountModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const C = useColors();
+  const [me, setMe]           = useState<AuthUser | null>(null);
+  const [mode, setMode]       = useState<'login' | 'register'>('login');
+  const [email, setEmail]     = useState('');
+  const [password, setPwd]    = useState('');
+  const [busy, setBusy]       = useState(false);
+  const [err, setErr]         = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) { setEmail(''); setPwd(''); setErr(null); return; }
+    (async () => {
+      try {
+        if (await apiClient.isAuthenticated()) setMe(await apiClient.me());
+      } catch { /* stale token — treat as logged out */ }
+    })();
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const submit = async () => {
+    if (busy) return;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
+    if (password.length < 8) { setErr('Password must be at least 8 characters.'); return; }
+    setBusy(true); setErr(null);
+    try {
+      const res = mode === 'login'
+        ? await apiClient.login({ email: email.trim(), password })
+        : await apiClient.register({ email: email.trim(), password });
+      setMe(res.user);
+      setEmail(''); setPwd('');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Sign-in failed.');
+    } finally { setBusy(false); }
+  };
+
+  const logout = async () => {
+    setBusy(true);
+    try { await apiClient.logout(); } finally { setMe(null); setBusy(false); }
+  };
+
+  const inputStyle = { backgroundColor: C.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, paddingVertical: 12, paddingHorizontal: 14, color: C.textPrimary, fontSize: 15 } as const;
+
+  if (me) {
+    return (
+      <SheetShell title="Cloud account" onClose={onClose}>
+        <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, padding: 14, gap: 4 }}>
+          <Text style={{ fontSize: 12, color: C.textMuted }}>Signed in as</Text>
+          <Text style={{ fontSize: 15, color: C.textPrimary, fontWeight: '700' }}>{me.email}</Text>
+        </View>
+        <Text style={{ fontSize: 12, color: C.textMuted, lineHeight: 18 }}>
+          Your address book and preferences sync across devices. The wallet keys never leave this device.
+        </Text>
+        <Pressable onPress={logout} disabled={busy} style={{ paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center', opacity: busy ? 0.5 : 1 }}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{busy ? '…' : 'Sign out'}</Text>
+        </Pressable>
+      </SheetShell>
+    );
+  }
+
+  return (
+    <SheetShell title="Cloud account" onClose={onClose}>
+      <Text style={{ fontSize: 12, color: C.textMuted, lineHeight: 18 }}>
+        Optional — link a cloud account to sync your address book and preferences across devices. Your wallet stays self-custodial.
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {(['login', 'register'] as const).map(m => (
+          <Pressable
+            key={m}
+            onPress={() => { setMode(m); setErr(null); }}
+            style={{ flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: mode === m ? C.blue : C.borderDefault, backgroundColor: mode === m ? C.blueDim : 'transparent' }}
+          >
+            <Text style={{ color: mode === m ? C.blue : C.textSecondary, fontWeight: '700', fontSize: 13 }}>{m === 'login' ? 'Sign in' : 'Create'}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextInput placeholder="email@example.com" placeholderTextColor={C.textMuted} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" style={inputStyle}/>
+      <TextInput placeholder="Password (min 8 characters)" placeholderTextColor={C.textMuted} value={password} onChangeText={setPwd} secureTextEntry style={inputStyle}/>
+      {err && <Text style={{ fontSize: 12, color: C.red }}>{err}</Text>}
+      <Pressable onPress={submit} disabled={busy} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: busy ? 0.5 : 1 }}>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Please wait…' : (mode === 'login' ? 'Sign in' : 'Create account')}</Text>
       </Pressable>
     </SheetShell>
   );
