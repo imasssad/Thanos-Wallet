@@ -1992,6 +1992,14 @@ function SettingsScreen() {
         { label: 'Cloud account', desc: 'Sign in to sync your address book & preferences', Icon: Users,
           onPress: () => setAcctOpen(true) },
       ]}/>
+      <Section Icon={Shield} title="Hardware wallet" sub="Sign with a Ledger or Trezor device" items={[
+        { label: 'Connect a device', desc: 'Ledger / Trezor — available on Thanos desktop & web', Icon: Key,
+          onPress: () => Alert.alert(
+            'Hardware wallet',
+            'Ledger and Trezor signing is available today in the Thanos desktop and web apps (over USB).\n\nOn mobile it needs a Bluetooth-enabled build — it’s on the roadmap as a dedicated release and isn’t in this version.',
+            [{ text: 'OK' }],
+          ) },
+      ]}/>
       <Section Icon={Shield} title="Security"   sub="Protect access to your wallet" items={SECURITY_OPTS}/>
       <Section Icon={Users}  title="Address book" sub="Saved contacts, cloud-synced when signed in" items={[
         { label: 'Manage contacts', desc: 'Add, view and remove saved addresses', Icon: Users,
