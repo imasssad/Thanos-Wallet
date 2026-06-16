@@ -92,6 +92,7 @@ import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib/pricing';
 import { resolveRecipient, evmToLitho } from './lib/address';
+import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { SvgXml } from 'react-native-svg';
@@ -1765,6 +1766,7 @@ function SettingsScreen() {
   const [rpcOpen, setRpcOpen]           = useState(false);
   const [addrBookOpen, setAddrBookOpen] = useState(false);
   const [permsOpen, setPermsOpen] = useState(false);
+  const [dnnsOpen, setDnnsOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
   const [currency, setCurrency]         = useState('USD');
   const [language, setLanguage]         = useState('English');
@@ -1899,6 +1901,8 @@ function SettingsScreen() {
       onPress: onToggleNotif,
     },
     { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
+    { label: 'Lithosphere names', desc: 'Register a .litho name for your wallet', Icon: BadgeCheck,
+      onPress: () => setDnnsOpen(true) },
     { label: 'Custom RPC',        desc: 'Override the Makalu RPC endpoint', Icon: Server,
       onPress: () => setRpcOpen(true) },
     { label: 'Connected dApps',   desc: 'Pair via WalletConnect',          Icon: Zap,
@@ -2031,6 +2035,7 @@ function SettingsScreen() {
       <CustomRpcModal visible={rpcOpen} onClose={() => setRpcOpen(false)}/>
       <AddressBookModal visible={addrBookOpen} onClose={() => setAddrBookOpen(false)}/>
       <PermissionsModal visible={permsOpen} onClose={() => setPermsOpen(false)} seed={seed}/>
+      <DnnsModal visible={dnnsOpen} onClose={() => setDnnsOpen(false)} ownerAddr={walletAddr}/>
     </ScrollView>
   );
 }
@@ -2420,6 +2425,119 @@ function CustomRpcModal({ visible, onClose }: { visible: boolean; onClose: () =>
       <TextInput placeholder="https://your-makalu-rpc" placeholderTextColor={C.textMuted} value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} style={inputStyle}/>
       <Pressable onPress={save} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
         <Text style={{ color: '#fff', fontWeight: '700' }}>Save</Text>
+      </Pressable>
+    </SheetShell>
+  );
+}
+
+/* DNNS — register a human-readable .litho name. Mirrors apps/web's
+   DnnsSection: debounced availability check, years selector, and an
+   on-chain register() submitted via lib/dnns (lithic_callContract). */
+function DnnsModal({ visible, onClose, ownerAddr }: { visible: boolean; onClose: () => void; ownerAddr: string }) {
+  const C = useColors();
+  const [name, setName]       = useState('');
+  const [years, setYears]     = useState(1);
+  const [avail, setAvail]     = useState<Availability | { status: 'idle' | 'checking' }>({ status: 'idle' });
+  const [busy, setBusy]       = useState(false);
+  const [txHash, setTxHash]   = useState<string | null>(null);
+  const [err, setErr]         = useState<string | null>(null);
+  const [reverse, setReverse] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) { setName(''); setYears(1); setAvail({ status: 'idle' }); setBusy(false); setTxHash(null); setErr(null); }
+  }, [visible]);
+
+  // "You currently own X.litho" hint.
+  useEffect(() => {
+    if (!visible || !/^0x[0-9a-fA-F]{40}$/.test(ownerAddr)) { setReverse(null); return; }
+    let cancelled = false;
+    reverseLookupDnns(ownerAddr).then(n => { if (!cancelled) setReverse(n); });
+    return () => { cancelled = true; };
+  }, [visible, ownerAddr]);
+
+  // Debounced availability check.
+  useEffect(() => {
+    const v = name.trim().toLowerCase();
+    setErr(null); setTxHash(null);
+    if (!/^[a-z0-9-]+\.litho$/.test(v)) { setAvail({ status: 'idle' }); return; }
+    setAvail({ status: 'checking' });
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const r = await checkDnnsAvailability(v);
+      if (!cancelled) setAvail(r);
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [name]);
+
+  if (!visible) return null;
+
+  const onRegister = async () => {
+    setErr(null); setTxHash(null);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(ownerAddr)) { setErr('Unlock your wallet first.'); return; }
+    if (avail.status !== 'available') { setErr('Pick an available name first.'); return; }
+    setBusy(true);
+    try {
+      const hash = await registerDnnsName({ name: name.trim().toLowerCase(), owner: ownerAddr, years });
+      setTxHash(hash);
+      setName('');
+    } catch (e) {
+      setErr((e as Error).message || 'Registration failed.');
+    } finally { setBusy(false); }
+  };
+
+  const inputStyle = { backgroundColor: C.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, paddingVertical: 12, paddingHorizontal: 14, color: C.textPrimary, fontSize: 15 } as const;
+  const canRegister = avail.status === 'available' && !busy;
+
+  return (
+    <SheetShell title="Lithosphere names (.litho)" onClose={onClose}>
+      <Text style={{ fontSize: 12, color: C.textMuted }}>Register a human-readable name for your wallet.</Text>
+
+      {reverse && (
+        <View style={{ backgroundColor: C.bgElevated, borderRadius: 10, padding: 10 }}>
+          <Text style={{ fontSize: 12, color: C.textSecondary }}>You currently own <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{reverse}</Text></Text>
+        </View>
+      )}
+
+      <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1, color: C.textMuted }}>NAME</Text>
+      <TextInput
+        placeholder="alice.litho"
+        placeholderTextColor={C.textMuted}
+        value={name}
+        onChangeText={t => setName(t.toLowerCase())}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        style={inputStyle}
+      />
+      {avail.status === 'checking'  && <Text style={{ fontSize: 11, color: C.textMuted }}>Checking availability…</Text>}
+      {avail.status === 'available' && <Text style={{ fontSize: 11, color: C.green }}>✓ Available</Text>}
+      {avail.status === 'taken'     && <Text style={{ fontSize: 11, color: C.yellow }} numberOfLines={1}>Taken — owned by {avail.address.slice(0, 10)}…</Text>}
+      {avail.status === 'error'     && name.trim().length > 0 && <Text style={{ fontSize: 11, color: C.textMuted }}>Couldn’t check — try again.</Text>}
+
+      <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1, color: C.textMuted }}>YEARS</Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {[1, 2, 3, 5].map(y => (
+          <Pressable
+            key={y}
+            onPress={() => setYears(y)}
+            style={{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: years === y ? C.blue : C.borderDefault, backgroundColor: years === y ? C.blueDim : 'transparent' }}
+          >
+            <Text style={{ color: years === y ? C.blue : C.textSecondary, fontWeight: '700', fontSize: 13 }}>{y}y</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {err && <Text style={{ fontSize: 12, color: C.red }}>{err}</Text>}
+      {txHash && <Text style={{ fontSize: 12, color: C.green }} numberOfLines={1}>Registration submitted · {txHash.slice(0, 16)}…</Text>}
+
+      <Pressable
+        onPress={onRegister}
+        disabled={!canRegister}
+        style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: canRegister ? 1 : 0.45 }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700' }}>
+          {busy ? 'Submitting…' : avail.status === 'taken' ? 'Not available' : 'Register name'}
+        </Text>
       </Pressable>
     </SheetShell>
   );
