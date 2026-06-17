@@ -1303,7 +1303,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
  *     gets two rows: the litho1 bech32 form AND the 0x form, since both
  *     are valid recipients on the chain.
  */
-import { Copy as CopyIcon, QrCode as QrCodeIcon, ChevronLeft, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getSolanaAddress } from '../lib/solana';
 import { getBitcoinAddressFromSource } from '../lib/bitcoin';
@@ -1576,7 +1576,7 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
 
   /* ─── List view (default) ──────────────────────────────────────────── */
   return (
-    <Modal title="Receiving address" onClose={onClose}>
+    <Modal title="Select network" onClose={onClose}>
       <div className="modal-body" style={{ padding: '4px 4px 8px' }}>
         <div style={{
           position: 'relative', marginBottom: 8,
@@ -1601,31 +1601,27 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
           maxHeight: 460, overflowY: 'auto',
           display: 'flex', flexDirection: 'column',
         }}>
+          {/* SafePal / Trust pattern: tap a network → drill into its address
+              + QR detail. No inline copy here — copy lives on the detail
+              page, so the list stays a clean "pick where to receive" step. */}
           {filtered.map(n => (
-            <div
+            <button
               key={n.id}
+              type="button"
+              onClick={() => { setActive(n); setView('qr'); }}
+              aria-label={`Receive on ${n.name}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 8px',
+                padding: '12px 8px', width: '100%',
+                background: 'transparent', border: 'none',
                 borderBottom: '1px solid var(--border-subtle)',
+                textAlign: 'left', cursor: 'pointer', color: 'inherit',
               }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               <TokenIcon sym={n.symbol} color={n.color} size={36}/>
-              {/* Whole name+address column is a button that copies the
-                  address. Keeps the dedicated icon button for visual cue
-                  + a11y. The truncated address has userSelect:'text' so
-                  a long-press / drag-select also works on mobile. */}
-              <button
-                type="button"
-                onClick={() => copy(n)}
-                title={copiedId === n.id ? 'Copied!' : 'Click to copy address'}
-                style={{
-                  flex: 1, minWidth: 0,
-                  background: 'transparent', border: 'none', padding: 0,
-                  textAlign: 'left', cursor: 'pointer', color: 'inherit',
-                  display: 'flex', flexDirection: 'column', gap: 2,
-                }}
-              >
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{n.name}</span>
                   {n.badge && (
@@ -1637,40 +1633,15 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
                 <div style={{
-                  fontSize: 11,
-                  color: copiedId === n.id ? 'var(--green)' : 'var(--text-muted)',
+                  fontSize: 11, color: 'var(--text-muted)',
                   fontFamily: 'Geist Mono, monospace',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  userSelect: 'text',
-                  WebkitUserSelect: 'text',
-                  transition: 'color .15s ease',
                 }}>
-                  {copiedId === n.id
-                    ? '✓ Copied'
-                    : n.address.length > 22
-                      ? `${n.address.slice(0, 10)}…${n.address.slice(-8)}`
-                      : n.address}
+                  {n.address.length > 22 ? `${n.address.slice(0, 10)}…${n.address.slice(-8)}` : n.address}
                 </div>
-              </button>
-              <button
-                aria-label={`Copy ${n.name} address`}
-                title={copiedId === n.id ? 'Copied!' : 'Copy address'}
-                onClick={() => copy(n)}
-                style={iconRowBtn}
-              >
-                {copiedId === n.id
-                  ? <span style={{ fontSize: 11, color: 'var(--green)' }}>✓</span>
-                  : <CopyIcon size={16}/>}
-              </button>
-              <button
-                aria-label={`Show QR for ${n.name}`}
-                title="Show QR"
-                onClick={() => { setActive(n); setView('qr'); }}
-                style={iconRowBtn}
-              >
-                <QrCodeIcon size={16}/>
-              </button>
-            </div>
+              </div>
+              <ChevronRight size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
+            </button>
           ))}
           {filtered.length === 0 && (
             <div style={{ padding: '28px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -1702,13 +1673,6 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     </Modal>
   );
 }
-
-const iconRowBtn: React.CSSProperties = {
-  background: 'transparent', border: 'none', cursor: 'pointer',
-  color: 'var(--text-secondary)', padding: 8,
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  borderRadius: 8,
-};
 
 /** Translate a raw chain / provider error into user-readable copy for the
  *  SEND failure screen. Covers the shapes ethers v6 + the Lithosphere
