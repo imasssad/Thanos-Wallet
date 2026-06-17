@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { TOKENS, SWAP_STABLES, swapPriceUsd, swapRateFor } from '../lib/tokens';
+import { usePrices } from '../lib/usePrices';
 import { useWallet } from './shell/AppShell';
 import {
   validateAddressForChain, resolveToEvm, truncateLithoAddress,
@@ -1746,6 +1747,167 @@ function translateSwapError(raw?: string | null): string {
   return 'Swap couldn’t complete. Try again in a moment.';
 }
 
+/* ─── Cross-chain swap ──────────────────────────────────────────────────
+ * Chains the cross-chain/bridge tabs can route between. Each carries a small
+ * token set + a brand colour for the asset glyph. Execution runs through the
+ * MultX bridge (services/api) which is offline today — so this shows a live
+ * indicative rate and an honest "bridge offline" CTA until MultX is up. */
+const CROSS_CHAINS: Array<{ id: string; name: string; color: string; tokens: string[] }> = [
+  { id: 'ethereum',  name: 'Ethereum',    color: '#627eea', tokens: ['ETH', 'USDC', 'USDT', 'DAI'] },
+  { id: 'polygon',   name: 'Polygon',     color: '#8247e5', tokens: ['POL', 'USDC', 'USDT', 'DAI'] },
+  { id: 'bsc',       name: 'BNB Chain',   color: '#f3ba2f', tokens: ['BNB', 'USDC', 'USDT'] },
+  { id: 'avalanche', name: 'Avalanche',   color: '#e84142', tokens: ['AVAX', 'USDC', 'USDT'] },
+  { id: 'makalu',    name: 'Lithosphere', color: '#3b7af7', tokens: ['LITHO', 'LAX', 'LitBTC'] },
+];
+
+function SwapTabs({ mode, setMode }: { mode: string; setMode: (m: 'swap' | 'cross' | 'bridge') => void }) {
+  const tabs: Array<['swap' | 'cross' | 'bridge', string]> = [['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']];
+  return (
+    <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-default)' }}>
+      {tabs.map(([id, label]) => (
+        <button
+          key={id} type="button" onClick={() => setMode(id)}
+          style={{
+            flex: 1, padding: '9px 0', borderRadius: 9, border: 'none', cursor: 'pointer',
+            fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
+            background: mode === id ? 'var(--blue, #3b7af7)' : 'transparent',
+            color: mode === id ? '#fff' : 'var(--text-secondary)',
+            transition: 'background .12s, color .12s',
+          }}
+        >{label}</button>
+      ))}
+    </div>
+  );
+}
+
+function ChainSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  return (
+    <select
+      className="field-select"
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      aria-label="Chain"
+      style={{ width: '100%', cursor: 'pointer' }}
+    >
+      {CROSS_CHAINS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+    </select>
+  );
+}
+
+function CrossChainSwap({ bridge }: { bridge: boolean }) {
+  const wallet = useWallet();
+  // Live USD prices for ETH/POL/BNB/AVAX/stables (CoinGecko via usePrices);
+  // LITHO/LAX/LitBTC fall back to the fixed/static swapPriceUsd.
+  const prices = usePrices();
+  const price = (sym: string) => prices?.[sym] || swapPriceUsd(sym);
+  const [fromId, setFromId] = useState('ethereum');
+  const [toId, setToId]     = useState('polygon');
+  const fromChain = CROSS_CHAINS.find(c => c.id === fromId) ?? CROSS_CHAINS[0];
+  const toChain   = CROSS_CHAINS.find(c => c.id === toId)   ?? CROSS_CHAINS[1];
+  const [fromTok, setFromTok] = useState(fromChain.tokens[0]);
+  const [toTok, setToTok]     = useState(toChain.tokens[0]);
+  const [amt, setAmt]         = useState('1');
+  const [recipientOn, setRecipientOn] = useState(false);
+  const [recipient, setRecipient]     = useState('');
+
+  // Keep the selected token valid when its chain changes.
+  useEffect(() => { if (!fromChain.tokens.includes(fromTok)) setFromTok(fromChain.tokens[0]); /* eslint-disable-next-line */ }, [fromId]);
+  useEffect(() => { if (!toChain.tokens.includes(toTok)) setToTok(toChain.tokens[0]); /* eslint-disable-next-line */ }, [toId]);
+
+  const amtNum  = parseFloat(amt) || 0;
+  const rate    = price(fromTok) / (price(toTok) || 1);
+  const out     = rate * amtNum;
+  const fromUsd = price(fromTok) * amtNum;
+  const toUsd   = price(toTok) * out;
+  const sameRoute = fromId === toId && fromTok === toTok;
+  const recValid  = !recipientOn || /^0x[a-fA-F0-9]{40}$/.test(recipient.trim());
+
+  const swapSides = () => { setFromId(toId); setToId(fromId); setFromTok(toTok); setToTok(fromTok); };
+
+  const usd = (n: number) => `≈ $${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+
+  return (
+    <>
+      {/* FROM */}
+      <label className="field-label">From</label>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: '0 0 138px' }}><ChainSelect value={fromId} onChange={setFromId}/></div>
+        <input className="field-input" type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" style={{ flex: 1 }}/>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <div style={{ flex: '0 0 138px' }}><TokenSelect value={fromTok} onChange={setFromTok} options={fromChain.tokens} ariaLabel="From token"/></div>
+        <div style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)' }}>{usd(fromUsd)}</div>
+      </div>
+
+      <div style={{ textAlign: 'center', margin: '10px 0' }}>
+        <button className="swap-btn" onClick={swapSides} aria-label="Swap direction">⇅</button>
+      </div>
+
+      {/* TO */}
+      <label className="field-label">To</label>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: '0 0 138px' }}><ChainSelect value={toId} onChange={setToId}/></div>
+        <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 18, color: 'var(--text-primary)' }}>
+          {isFinite(out) ? out.toFixed(6) : '—'}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <div style={{ flex: '0 0 138px' }}><TokenSelect value={toTok} onChange={setToTok} options={toChain.tokens} ariaLabel="To token"/></div>
+        <div style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)' }}>{usd(toUsd)}</div>
+      </div>
+
+      <div className="fee-row" style={{ marginTop: 14 }}>
+        <span>Rate</span>
+        <span>1 {fromTok} ≈ {rate.toLocaleString('en-US', { maximumFractionDigits: 6 })} {toTok}</span>
+      </div>
+      <div className="fee-row">
+        <span>Route</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: fromChain.color }}/>{fromChain.name}
+          <span style={{ color: 'var(--text-muted)' }}>→</span>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: toChain.color }}/>{toChain.name}
+        </span>
+      </div>
+
+      {/* Recipient (optional) — mirrors the reference: send the bought asset
+          to a different address than the connected wallet. */}
+      <div className="fee-row" style={{ alignItems: 'center', marginTop: 6 }}>
+        <span>Recipient address <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>· optional</span></span>
+        <button
+          type="button" onClick={() => setRecipientOn(v => !v)} aria-pressed={recipientOn} aria-label="Toggle custom recipient"
+          style={{ width: 42, height: 23, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: recipientOn ? 'var(--blue, #3b7af7)' : 'var(--border-default)', transition: 'background .15s' }}
+        >
+          <span style={{ position: 'absolute', top: 2, left: recipientOn ? 21 : 2, width: 19, height: 19, borderRadius: '50%', background: '#fff', transition: 'left .15s' }}/>
+        </button>
+      </div>
+      {recipientOn && (
+        <input
+          className="field-input"
+          value={recipient}
+          onChange={e => setRecipient(e.target.value)}
+          placeholder={wallet?.addresses?.evm ? `${wallet.addresses.evm.slice(0, 8)}… (your wallet by default)` : '0x… recipient'}
+          spellCheck={false}
+          style={{ marginTop: 6, borderColor: recipient && !recValid ? 'var(--red)' : undefined }}
+        />
+      )}
+
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+        ⚠ Cross-chain routing runs on the MultX bridge, which is currently offline — showing an indicative rate.
+        Execution unlocks automatically when the bridge is live.
+      </div>
+
+      <button
+        className="btn-primary"
+        style={{ marginTop: 14 }}
+        disabled
+        title="Bridge offline — cannot execute yet"
+      >
+        {sameRoute ? 'Pick two different assets' : (bridge ? 'Bridge offline' : 'Cross-chain swap · bridge offline')}
+      </button>
+    </>
+  );
+}
+
 export function SwapModal({ onClose, initialFrom, fullScreen }: {
   onClose: () => void;
   /** Pre-select the FROM asset (e.g. opened from a token detail screen). */
@@ -1757,6 +1919,9 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
   const [from, setFrom] = useState(initialFrom ?? 'LITHO');
   const [to, setTo]     = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt, setAmt]   = useState('100');
+  // Swap mode: same-chain (default), cross-chain, or bridge. The cross/bridge
+  // tabs render the self-contained <CrossChainSwap/>; 'swap' is the body below.
+  const [mode, setMode] = useState<'swap' | 'cross' | 'bridge'>('swap');
   /** User-configured slippage tolerance (percent). Lets us derive the
    *  Minimum-received line from the quote and gate execution when the
    *  quote drifts more than slippage between fetch and tap. */
@@ -2052,6 +2217,8 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
   return (
     <Modal title="Swap" onClose={onClose} fullScreen={fullScreen}>
       <div className="modal-body">
+        <SwapTabs mode={mode} setMode={setMode}/>
+        {mode !== 'swap' ? <CrossChainSwap bridge={mode === 'bridge'}/> : (<>
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: '0 0 130px' }}>
@@ -2157,6 +2324,7 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
             : quote ? `Swap ${from} → ${to}`
             : (bridgeOffline ? 'Bridge offline' : 'Fetching quote…')}
         </button>
+        </>)}
       </div>
     </Modal>
   );
