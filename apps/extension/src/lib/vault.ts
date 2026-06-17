@@ -45,12 +45,17 @@ const STORAGE_KEYS = {
   legacyUnlocked: 'thanos.unlocked',
 } as const;
 
-/* Argon2id params — match services/api/src/routes/auth.ts so the cost is
-   identical to backend password verification. Tune here if mobile/web feel
-   too slow on cold start. */
-const ARGON2_T = 3;          // iterations
-const ARGON2_M_KB = 64 * 1024; // 64 MiB
-const ARGON2_P = 4;          // parallel lanes
+/* Argon2id params — LOCAL device vault (browser extension storage). Lowered
+   from 64 MiB / t=3 / p=4 — which matched the API's *server-side* password
+   hash but made wallet create/unlock take several seconds in the popup /
+   service worker — to the OWASP mobile baseline. hash-wasm's Argon2 at these
+   params is sub-second. Sound here: this is a second layer over the browser's
+   own extension storage. Old vaults still decrypt — openVault derives with
+   each vault's OWN stored kdf params (see below), so changing these only
+   affects NEW vaults. */
+const ARGON2_T = 2;          // iterations
+const ARGON2_M_KB = 19456;   // 19 MiB
+const ARGON2_P = 1;          // parallel lanes
 
 /* ─── Hex helpers (avoids Buffer in browser bundle) ─────────────────────── */
 function bytesToHex(bytes: Uint8Array): string {
@@ -71,13 +76,17 @@ function randomBytes(n: number): Uint8Array {
 }
 
 /* ─── Argon2id derivation ───────────────────────────────────────────────── */
-async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
+async function deriveKey(
+  password: string,
+  salt: Uint8Array,
+  params: { t: number; m: number; p: number } = { t: ARGON2_T, m: ARGON2_M_KB, p: ARGON2_P },
+): Promise<Uint8Array> {
   const hashHex = await argon2id({
     password,
     salt,
-    parallelism: ARGON2_P,
-    iterations:  ARGON2_T,
-    memorySize:  ARGON2_M_KB,
+    parallelism: params.p,
+    iterations:  params.t,
+    memorySize:  params.m,
     hashLength:  32,
     outputType:  'hex',
   });
@@ -130,7 +139,9 @@ export async function openVault(
 ): Promise<{ mnemonic: string; key: Uint8Array } | null> {
   if (vault.v !== 1) throw new Error(`vault: unsupported version ${vault.v}`);
   const salt = hexToBytes(vault.salt);
-  const keyBytes = await deriveKey(password, salt);
+  // Derive with the vault's OWN kdf params so a vault created at the old
+  // 64 MiB cost (or any future cost) still unlocks with exactly its params.
+  const keyBytes = await deriveKey(password, salt, vault.kdf);
   try {
     const aes = await importAesKey(keyBytes);
     const pt = await crypto.subtle.decrypt(
