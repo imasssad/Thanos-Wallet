@@ -28,6 +28,7 @@ import {
   TransactionSimulator, type SimulationReport,
   fetchTokenHistory, fetchTokenMarketDetails,
   type TokenHistory, type TokenMarketDetails, type TokenRange,
+  fetchEcosystemPrices,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
@@ -1678,7 +1679,80 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* Cross-chain swap (extension) — mirrors the web Cross-chain/Bridge tabs. */
+const EXT_CROSS_CHAINS: Array<{ id: string; name: string; tokens: string[] }> = [
+  { id: 'ethereum',  name: 'Ethereum',    tokens: ['ETH', 'USDC', 'USDT', 'DAI'] },
+  { id: 'polygon',   name: 'Polygon',     tokens: ['POL', 'USDC', 'USDT', 'DAI'] },
+  { id: 'bsc',       name: 'BNB Chain',   tokens: ['BNB', 'USDC', 'USDT'] },
+  { id: 'avalanche', name: 'Avalanche',   tokens: ['AVAX', 'USDC', 'USDT'] },
+  { id: 'makalu',    name: 'Lithosphere', tokens: ['LITHO', 'LAX', 'LitBTC'] },
+];
+
+function ExtCrossChainSwap({ bridge }: { bridge: boolean }) {
+  const [fromId, setFromId] = useState('ethereum');
+  const [toId, setToId]     = useState('polygon');
+  const fromChain = EXT_CROSS_CHAINS.find(c => c.id === fromId) ?? EXT_CROSS_CHAINS[0];
+  const toChain   = EXT_CROSS_CHAINS.find(c => c.id === toId)   ?? EXT_CROSS_CHAINS[1];
+  const [fromTok, setFromTok] = useState(fromChain.tokens[0]);
+  const [toTok, setToTok]     = useState(toChain.tokens[0]);
+  const [amt, setAmt]         = useState('1');
+  const [recipientOn, setRecipientOn] = useState(false);
+  const [recipient, setRecipient]     = useState('');
+  const [prices, setPrices]   = useState<Record<string, number>>({});
+
+  useEffect(() => { fetchEcosystemPrices().then(setPrices).catch(() => {}); }, []);
+  useEffect(() => { if (!fromChain.tokens.includes(fromTok)) setFromTok(fromChain.tokens[0]); /* eslint-disable-next-line */ }, [fromId]);
+  useEffect(() => { if (!toChain.tokens.includes(toTok)) setToTok(toChain.tokens[0]); /* eslint-disable-next-line */ }, [toId]);
+
+  const stable = (s: string) => s === 'USDC' || s === 'USDT' || s === 'DAI';
+  const price = (s: string) => prices[s] ?? (stable(s) ? 1 : 0);
+  const amtNum = parseFloat(amt) || 0;
+  const rate = price(fromTok) && price(toTok) ? price(fromTok) / price(toTok) : 0;
+  const outv = rate * amtNum;
+
+  return (
+    <div className="modal-body">
+      <label className="field-label">FROM</label>
+      <select className="field" value={fromId} onChange={e => setFromId(e.target.value)}>
+        {EXT_CROSS_CHAINS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <select className="field" style={{ width: 92 }} value={fromTok} onChange={e => setFromTok(e.target.value)}>
+          {fromChain.tokens.map(t => <option key={t}>{t}</option>)}
+        </select>
+        <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
+      </div>
+      <div style={{ textAlign: 'center', margin: '8px 0' }}>↓</div>
+      <label className="field-label">TO</label>
+      <select className="field" value={toId} onChange={e => setToId(e.target.value)}>
+        {EXT_CROSS_CHAINS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <select className="field" style={{ width: 92 }} value={toTok} onChange={e => setToTok(e.target.value)}>
+          {toChain.tokens.map(t => <option key={t}>{t}</option>)}
+        </select>
+        <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{outv > 0 ? outv.toFixed(6) : '—'}</div>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+        {rate > 0 ? `1 ${fromTok} ≈ ${rate.toFixed(6)} ${toTok}` : 'Fetching rate…'} · {fromChain.name} → {toChain.name}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, fontSize: 12 }}>
+        <span style={{ color: 'var(--text-secondary)' }}>Recipient · optional</span>
+        <button type="button" onClick={() => setRecipientOn(v => !v)} style={{ width: 38, height: 20, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: recipientOn ? 'var(--blue, #3b7af7)' : 'var(--border-default)' }}>
+          <span style={{ position: 'absolute', top: 2, left: recipientOn ? 20 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff' }}/>
+        </button>
+      </div>
+      {recipientOn && <input className="field" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="0x… recipient" spellCheck={false} style={{ marginTop: 6 }}/>}
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+        ⚠ Cross-chain routing runs on the MultX bridge, currently offline — showing an indicative rate. Execution unlocks when the bridge is live.
+      </div>
+      <button className="btn-primary" style={{ marginTop: 10, opacity: 0.6 }} disabled>{bridge ? 'Bridge offline' : 'Cross-chain swap · bridge offline'}</button>
+    </div>
+  );
+}
+
 function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?: string }) {
+  const [mode, setMode] = useState<'swap' | 'cross' | 'bridge'>('swap');
   const seed = useWalletSeed();
   const [from, setFrom] = useState(initialFrom ?? 'LITHO');
   const [to,   setTo]   = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
@@ -1800,6 +1874,16 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
 
   return (
     <Modal title="Swap" onClose={onClose}>
+      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
+        {(['swap', 'cross', 'bridge'] as const).map(m => (
+          <button key={m} onClick={() => setMode(m)} style={{
+            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+            background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
+            color: mode === m ? '#fff' : 'var(--text-secondary)',
+          }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain' : 'Bridge'}</button>
+        ))}
+      </div>
+      {mode !== 'swap' ? <ExtCrossChainSwap bridge={mode === 'bridge'}/> : (
       <div className="modal-body">
         <label className="field-label">FROM</label>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -1865,6 +1949,7 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
           {busy ? 'Swapping…' : quoteExpired ? 'Quote expired' : 'Swap'}
         </button>
       </div>
+      )}
     </Modal>
   );
 }
