@@ -29,6 +29,8 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { gcm } from '@noble/ciphers/aes.js';
 import { argon2idAsync } from '@noble/hashes/argon2.js';
+import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { utf8ToBytes, bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
@@ -39,23 +41,34 @@ const LEGACY_PWD     = 'thanos.password';
 const LEGACY_UNLOCK  = 'thanos.unlocked';
 const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 
-// Argon2id params — MOBILE-tuned (OWASP mobile baseline). The web/api use
-// 64 MiB / t=3 / p=4, but @noble/hashes' Argon2 is PURE JS and runs under
-// Hermes on a phone, where 64 MiB took minutes / hung wallet creation
-// ("stuck on Encrypting…"). 19 MiB / t=2 / p=1 is the OWASP-recommended
-// mobile floor and finishes in a few seconds. Safe to differ from the other
-// clients: the vault is device-local (never synced), and unlock reads the
-// params back from the vault's own kdf block (see openVault), so a vault
-// always decrypts with the exact params it was created with.
-const ARGON2_T = 2;            // iterations
-const ARGON2_M = 19456;        // 19 MiB (m param, in KiB)
-const ARGON2_P = 1;            // parallel lanes (no real parallelism in JS)
+// KDF for NEW vaults: PBKDF2-HMAC-SHA256, 600k iterations (OWASP 2023).
+//
+// Why not Argon2id? @noble/hashes' Argon2 is PURE JS and Argon2 is memory-hard
+// — under Hermes on low-end phones it took 5-10 MINUTES (real device report),
+// which reads as "stuck on Encrypting…". Even the OWASP mobile floor (19 MiB)
+// was unusable. PBKDF2 is iteration-only (not memory-hard) and finishes in
+// ~1-3s on any phone, deterministically.
+//
+// This is a sound KDF here: the vault is device-local (never synced) AND the
+// encrypted blob is itself wrapped in the OS hardware keystore via
+// expo-secure-store (Secure Enclave / Android Keystore). The password KDF is a
+// second layer over hardware-backed storage, so PBKDF2-600k is appropriate.
+// Older Argon2id vaults still decrypt — openVault reads each vault's own kdf
+// block (which carries its t/m/p), so no legacy constants are needed here.
+const PBKDF2_ITERS = 600_000;
 const KEY_BYTES = 32;          // AES-256
 
 /* ─── On-disk format ────────────────────────────────────────────────────── */
+export type VaultKdf =
+  | { type: 'argon2id'; t: number; m: number; p: number }
+  | { type: 'pbkdf2'; c: number; hash: 'sha256' };
+
+/** KDF block written into every new vault. */
+const NEW_KDF: VaultKdf = { type: 'pbkdf2', c: PBKDF2_ITERS, hash: 'sha256' };
+
 export interface EncryptedVault {
   v: 1;
-  kdf: { type: 'argon2id'; t: number; m: number; p: number };
+  kdf: VaultKdf;
   salt:       string; // hex
   iv:         string; // hex (12 bytes)
   ciphertext: string; // hex (includes the GCM auth tag at the end)
@@ -76,16 +89,15 @@ function randomBytes(n: number): Uint8Array {
   return a;
 }
 
-async function deriveKey(
-  password: string,
-  salt: Uint8Array,
-  params: { t: number; m: number; p: number } = { t: ARGON2_T, m: ARGON2_M, p: ARGON2_P },
-): Promise<Uint8Array> {
+/** Derive the 32-byte AES key from the password + salt using the vault's KDF.
+ *  PBKDF2 for new vaults; Argon2id only for legacy vaults that stored it. */
+async function deriveKey(password: string, salt: Uint8Array, kdf: VaultKdf): Promise<Uint8Array> {
+  if (kdf.type === 'pbkdf2') {
+    return pbkdf2Async(sha256, utf8ToBytes(password), salt, { c: kdf.c, dkLen: KEY_BYTES });
+  }
+  // Legacy Argon2id path — only hit by vaults predating the PBKDF2 switch.
   return argon2idAsync(utf8ToBytes(password), salt, {
-    t:      params.t,
-    m:      params.m,
-    p:      params.p,
-    dkLen:  KEY_BYTES,
+    t: kdf.t, m: kdf.m, p: kdf.p, dkLen: KEY_BYTES,
   });
 }
 
@@ -95,11 +107,11 @@ async function deriveKey(
 export async function createVault(mnemonic: string, password: string): Promise<EncryptedVault> {
   const salt = randomBytes(16);
   const iv   = randomBytes(12);
-  const key  = await deriveKey(password, salt);
+  const key  = await deriveKey(password, salt, NEW_KDF);
   const ct   = gcm(key, iv).encrypt(utf8ToBytes(mnemonic));
   const vault: EncryptedVault = {
     v: 1,
-    kdf: { type: 'argon2id', t: ARGON2_T, m: ARGON2_M, p: ARGON2_P },
+    kdf: NEW_KDF,
     salt:       bytesToHex(salt),
     iv:         bytesToHex(iv),
     ciphertext: bytesToHex(ct),

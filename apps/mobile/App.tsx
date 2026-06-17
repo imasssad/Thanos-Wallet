@@ -3259,11 +3259,11 @@ function OnboardingScreen({
             <Text style={styles.warnItem}>✓  Thanos will never ask for this phrase</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('welcome')}>
-              <Text style={styles.btnOutlineText}>Back</Text>
+            <Pressable style={[styles.btnOutline, { flex: 0.8, marginTop: 0 }]} onPress={() => setStep('welcome')}>
+              <Text style={styles.btnOutlineText} numberOfLines={1}>Back</Text>
             </Pressable>
-            <Pressable style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-show')}>
-              <Text style={styles.btnPrimaryText}>I understand</Text>
+            <Pressable style={[styles.btnPrimary, { flex: 1.2, marginTop: 0 }]} onPress={() => setStep('create-show')}>
+              <Text style={styles.btnPrimaryText} numberOfLines={1} adjustsFontSizeToFit>I understand</Text>
             </Pressable>
           </View>
         </>}
@@ -3406,17 +3406,17 @@ function OnboardingScreen({
           )}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
             <Pressable
-              style={[styles.btnOutline, { flex: 1, marginTop: 0 }]}
+              style={[styles.btnOutline, { flex: 0.8, marginTop: 0 }]}
               onPress={() => setStep(step === 'create-pwd' ? 'create-confirm' : (importKind === 'privateKey' ? 'import-pk' : 'import'))}
             >
-              <Text style={styles.btnOutlineText}>Back</Text>
+              <Text style={styles.btnOutlineText} numberOfLines={1}>Back</Text>
             </Pressable>
             <Pressable
-              style={[styles.btnPrimary, { flex: 1, marginTop: 0, opacity: (password.length >= 8 && password === password2 && !busy) ? 1 : 0.45 }]}
+              style={[styles.btnPrimary, { flex: 1.2, marginTop: 0, opacity: (password.length >= 8 && password === password2 && !busy) ? 1 : 0.45 }]}
               disabled={password.length < 8 || password !== password2 || busy}
               onPress={step === 'create-pwd' ? finishCreate : finishImport}
             >
-              <Text style={styles.btnPrimaryText}>
+              <Text style={styles.btnPrimaryText} numberOfLines={1} adjustsFontSizeToFit>
                 {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create wallet' : 'Import wallet')}
               </Text>
             </Pressable>
