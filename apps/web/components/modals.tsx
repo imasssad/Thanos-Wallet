@@ -1333,8 +1333,12 @@ interface ReceiveNetwork {
 
 export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; initialAsset?: string }) {
   const wallet = useWallet();
-  const [view, setView]     = useState<'list' | 'qr'>('list');
+  const [view, setView]     = useState<'list' | 'asset' | 'qr'>('list');
   const [active, setActive] = useState<ReceiveNetwork | null>(null);
+  // The specific asset being received (shown on the QR screen). The address
+  // itself is per-network, but SafePal-style we show the chosen asset's
+  // name + logo + a coin-specific warning.
+  const [activeAsset, setActiveAsset] = useState<{ sym: string; name: string } | null>(null);
   const [search, setSearch] = useState('');
   const [qrSvg, setQrSvg]   = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -1436,13 +1440,31 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
     return out;
   }, [litho, evm, btcAddr, solAddr, atomAddr]);
 
+  // Assets receivable on a given network (the SafePal asset step). The address
+  // is identical for every asset on a chain — the asset just drives the
+  // displayed name/logo and the coin-specific warning.
+  const assetsForNetwork = (net: ReceiveNetwork): Array<{ sym: string; name: string }> => {
+    if (net.id === 'bitcoin') return [{ sym: 'BTC',  name: 'Bitcoin' }];
+    if (net.id === 'solana')  return [{ sym: 'SOL',  name: 'Solana' }];
+    if (net.id === 'cosmos')  return [{ sym: 'ATOM', name: 'Cosmos Hub' }];
+    return TOKENS.filter(t => t.chain === 'Makalu').map(t => ({ sym: t.sym, name: t.name })); // Makalu / Kamet
+  };
+
   // Asset-entry: once the target network's row is available (some addresses
-  // derive async), preselect it and open the QR view. Runs once so the user
-  // can still tap Back to the network list.
+  // derive async), preselect the network + asset and open the QR view. Runs
+  // once so the user can still navigate Back.
   useEffect(() => {
     if (autoSelected.current || !targetNetworkId) return;
     const net = networks.find(n => n.id === targetNetworkId);
-    if (net) { setActive(net); setView('qr'); autoSelected.current = true; }
+    if (net) {
+      const want = (initialAsset ?? '').toUpperCase();
+      const asset = assetsForNetwork(net).find(a => a.sym.toUpperCase() === want);
+      setActive(net);
+      setActiveAsset(asset ?? { sym: initialAsset ?? net.symbol, name: initialAsset ?? net.name });
+      setView('qr');
+      autoSelected.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetNetworkId, networks]);
 
   const filtered = useMemo(() => {
@@ -1488,11 +1510,13 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
   /* ─── QR sub-view ───────────────────────────────────────────────────── */
   if (view === 'qr' && active) {
     const displayedAddress = active.altAddress && showAlt ? active.altAddress : active.address;
+    // Show the ASSET being received (name + logo); the network is the subtitle.
+    const asset = activeAsset ?? { sym: active.symbol, name: active.name };
     return (
       <Modal title="Receive" onClose={onClose}>
         <div className="modal-body" style={{ padding: '4px 4px 8px' }}>
           <button
-            onClick={() => setView('list')}
+            onClick={() => setView('asset')}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               background: 'transparent', border: 'none', cursor: 'pointer',
@@ -1505,14 +1529,10 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '4px 0 8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <TokenIcon sym={active.symbol} color={active.color} size={32}/>
+              <TokenIcon sym={asset.sym} color={active.color} size={36}/>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>{active.name}</div>
-                {active.badge && (
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1, fontWeight: 600 }}>
-                    {active.badge}
-                  </div>
-                )}
+                <div style={{ fontSize: 17, fontWeight: 700 }}>{asset.name} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>({asset.sym})</span></div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>on {active.name}</div>
               </div>
             </div>
 
@@ -1584,14 +1604,59 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
               {copiedId === active.id ? '✓ Copied' : 'Copy address'}
             </button>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5, maxWidth: 320 }}>
-              Only send {
-                active.symbol === 'BTC'  ? 'Bitcoin'      :
-                active.symbol === 'SOL'  ? 'Solana / SPL' :
-                active.symbol === 'ATOM' ? 'Cosmos Hub (ATOM)' :
-                active.name
-              } assets to this address.
-              Sending tokens from another chain will result in lost funds.
+              Only send <strong style={{ color: 'var(--text-secondary)' }}>{asset.sym}</strong> on <strong style={{ color: 'var(--text-secondary)' }}>{active.name}</strong> to this address.
+              Sending another asset or chain will result in lost funds.
             </div>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  /* ─── Asset sub-view — pick which asset to receive on the chosen network ── */
+  if (view === 'asset' && active) {
+    const assets = assetsForNetwork(active);
+    return (
+      <Modal title="Select asset" onClose={onClose}>
+        <div className="modal-body" style={{ padding: '4px 4px 8px' }}>
+          <button
+            onClick={() => setView('list')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600,
+              padding: '6px 4px', marginBottom: 4,
+            }}
+          >
+            <ChevronLeft size={16}/> Back
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 4px 10px' }}>
+            <TokenIcon sym={active.symbol} color={active.color} size={22}/>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Receiving on <strong style={{ color: 'var(--text-secondary)' }}>{active.name}</strong></span>
+          </div>
+          <div style={{ maxHeight: 420, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {assets.map(a => (
+              <button
+                key={a.sym}
+                type="button"
+                onClick={() => { setActiveAsset(a); setView('qr'); }}
+                aria-label={`Receive ${a.sym}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', width: '100%',
+                  background: 'transparent', border: 'none', borderBottom: '1px solid var(--border-subtle)',
+                  textAlign: 'left', cursor: 'pointer', color: 'inherit',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <TokenIcon sym={a.sym} color={active.color} size={34}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{a.sym}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                </div>
+                <ChevronRight size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
+              </button>
+            ))}
           </div>
         </div>
       </Modal>
@@ -1632,7 +1697,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
             <button
               key={n.id}
               type="button"
-              onClick={() => { setActive(n); setView('qr'); }}
+              onClick={() => { setActive(n); setActiveAsset(null); setView('asset'); }}
               aria-label={`Receive on ${n.name}`}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
