@@ -1502,9 +1502,116 @@ function DappIcon({ id, name, color, size = 44 }: { id: string; name: string; co
 
 /* Swap — quotes MultX + Ignite in parallel, picks the better route,
    executes + polls bridge/DEX status. Same model as web SwapModal. */
+/* Cross-chain swap (mobile) — mirrors the web Cross-chain/Bridge tabs. Chain +
+   token are picked via Alert sheets (the RN idiom used elsewhere here). Live
+   indicative rate from CoinGecko; execution is gated on the MultX bridge being
+   online (offline today), so the CTA is honest until then. */
+const MOBILE_CROSS_CHAINS: Array<{ id: string; name: string; sym: string; tokens: string[] }> = [
+  { id: 'ethereum',  name: 'Ethereum',    sym: 'ETH',   tokens: ['ETH', 'USDC', 'USDT', 'DAI'] },
+  { id: 'polygon',   name: 'Polygon',     sym: 'POL',   tokens: ['POL', 'USDC', 'USDT', 'DAI'] },
+  { id: 'bsc',       name: 'BNB Chain',   sym: 'BNB',   tokens: ['BNB', 'USDC', 'USDT'] },
+  { id: 'avalanche', name: 'Avalanche',   sym: 'AVAX',  tokens: ['AVAX', 'USDC', 'USDT'] },
+  { id: 'makalu',    name: 'Lithosphere', sym: 'LITHO', tokens: ['LITHO', 'LAX', 'LitBTC'] },
+];
+
+function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
+  const C = useColors();
+  const styles = useStyles();
+  const walletAddr = useWalletAddr();
+  const [fromId, setFromId] = useState('ethereum');
+  const [toId, setToId]     = useState('polygon');
+  const fromChain = MOBILE_CROSS_CHAINS.find(c => c.id === fromId) ?? MOBILE_CROSS_CHAINS[0];
+  const toChain   = MOBILE_CROSS_CHAINS.find(c => c.id === toId)   ?? MOBILE_CROSS_CHAINS[1];
+  const [fromTok, setFromTok] = useState(fromChain.tokens[0]);
+  const [toTok, setToTok]     = useState(toChain.tokens[0]);
+  const [amt, setAmt]         = useState('1');
+  const [recipientOn, setRecipientOn] = useState(false);
+  const [recipient, setRecipient]     = useState('');
+  const [prices, setPrices]   = useState<Record<string, number>>({});
+
+  useEffect(() => { fetchEcosystemPrices().then(setPrices).catch(() => {}); }, []);
+  useEffect(() => { if (!fromChain.tokens.includes(fromTok)) setFromTok(fromChain.tokens[0]); /* eslint-disable-next-line */ }, [fromId]);
+  useEffect(() => { if (!toChain.tokens.includes(toTok)) setToTok(toChain.tokens[0]); /* eslint-disable-next-line */ }, [toId]);
+
+  const stable = (s: string) => s === 'USDC' || s === 'USDT' || s === 'DAI';
+  const price = (s: string) => prices[s] ?? (stable(s) ? 1 : 0);
+  const amtNum = parseFloat(amt) || 0;
+  const rate = price(fromTok) && price(toTok) ? price(fromTok) / price(toTok) : 0;
+  const outv = rate * amtNum;
+
+  const pickChain = (setter: (id: string) => void) => Alert.alert('Select network', undefined, [
+    ...MOBILE_CROSS_CHAINS.map(c => ({ text: c.name, onPress: () => setter(c.id) })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
+  const pickTok = (tokens: string[], setter: (t: string) => void) => Alert.alert('Select asset', undefined, [
+    ...tokens.map(t => ({ text: t, onPress: () => setter(t) })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
+  const chip = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
+
+  return (
+    <View style={{ paddingHorizontal: 16, gap: 10 }}>
+      <Text style={styles.fieldLabel}>FROM</Text>
+      <Pressable onPress={() => pickChain(setFromId)} style={[styles.input, chip]}>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromChain.name}</Text>
+        <Text style={{ color: C.textMuted }}>▾</Text>
+      </Pressable>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable onPress={() => pickTok(fromChain.tokens, setFromTok)} style={[styles.input, chip, { flex: 0.5 }]}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromTok}</Text>
+          <Text style={{ color: C.textMuted }}>▾</Text>
+        </Pressable>
+        <TextInput style={[styles.input, { flex: 1, color: C.textPrimary }]} value={amt} onChangeText={setAmt} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={C.textMuted}/>
+      </View>
+
+      <Pressable onPress={() => { setFromId(toId); setToId(fromId); setFromTok(toTok); setToTok(fromTok); }} style={{ alignSelf: 'center', padding: 6 }}>
+        <Repeat size={20} color={C.textMuted}/>
+      </Pressable>
+
+      <Text style={styles.fieldLabel}>TO</Text>
+      <Pressable onPress={() => pickChain(setToId)} style={[styles.input, chip]}>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toChain.name}</Text>
+        <Text style={{ color: C.textMuted }}>▾</Text>
+      </Pressable>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable onPress={() => pickTok(toChain.tokens, setToTok)} style={[styles.input, chip, { flex: 0.5 }]}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toTok}</Text>
+          <Text style={{ color: C.textMuted }}>▾</Text>
+        </Pressable>
+        <View style={[styles.input, { flex: 1, justifyContent: 'center' }]}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{outv > 0 ? outv.toFixed(6) : '—'}</Text>
+        </View>
+      </View>
+
+      <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>
+        {rate > 0 ? `1 ${fromTok} ≈ ${rate.toFixed(6)} ${toTok}` : 'Fetching rate…'}  ·  {fromChain.name} → {toChain.name}
+      </Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+        <Text style={{ color: C.textSecondary, fontSize: 12 }}>Recipient address <Text style={{ color: C.textMuted }}>· optional</Text></Text>
+        <Pressable onPress={() => setRecipientOn(v => !v)} style={{ width: 42, height: 24, borderRadius: 999, backgroundColor: recipientOn ? C.blue : C.borderDefault, justifyContent: 'center' }}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', marginLeft: recipientOn ? 20 : 2 }}/>
+        </Pressable>
+      </View>
+      {recipientOn && (
+        <TextInput style={[styles.input, { color: C.textPrimary }]} value={recipient} onChangeText={setRecipient} autoCapitalize="none" autoCorrect={false}
+          placeholder={walletAddr ? `${walletAddr.slice(0, 10)}… (your wallet)` : '0x… recipient'} placeholderTextColor={C.textMuted}/>
+      )}
+
+      <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 }}>
+        ⚠ Cross-chain routing runs on the MultX bridge, which is currently offline — showing an indicative rate. Execution unlocks when the bridge is live.
+      </Text>
+      <Pressable style={[styles.btnPrimary, { opacity: 0.5 }]} disabled>
+        <Text style={styles.btnPrimaryText}>{bridge ? 'Bridge offline' : 'Cross-chain swap · bridge offline'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?: string }) {
   const C = useColors();
   const styles = useStyles();
+  const [mode, setMode] = useState<'swap' | 'cross' | 'bridge'>('swap');
   const [from, setFrom] = useState(initialFrom ?? 'LITHO');
   const [to,   setTo]   = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt,  setAmt]  = useState('100');
@@ -1627,6 +1734,19 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         <View style={{ width: 28 }}/>
       </View>
 
+      {/* Mode tabs — Swap (same-chain) · Cross-chain · Bridge */}
+      <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
+        {([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const).map(([id, label]) => {
+          const sel = mode === id;
+          return (
+            <Pressable key={id} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {mode !== 'swap' ? <MobileCrossChainSwap bridge={mode === 'bridge'}/> : (
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
         <Text style={styles.fieldLabel}>FROM</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1709,6 +1829,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
           <Text style={styles.btnPrimaryText}>{busy ? 'Swapping…' : quoteExpired ? 'Quote expired' : `Swap ${from} → ${to}`}</Text>
         </Pressable>
       </View>
+      )}
     </ScrollView>
   );
 }
