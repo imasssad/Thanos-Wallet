@@ -36,6 +36,7 @@ export const STATIC_LOGOS: Record<string, string> = {
   // (the old MATIC mark, which Polygon still uses everywhere).
   pol:    'https://assets.coingecko.com/coins/images/4713/large/polygon.png',
   avax:   'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png',
+  atom:   'https://assets.coingecko.com/coins/images/1481/large/cosmos_hub.png',
   ada:    'https://assets.coingecko.com/coins/images/975/large/cardano.png',
   dot:    'https://assets.coingecko.com/coins/images/12171/large/polkadot.png',
   link:   'https://assets.coingecko.com/coins/images/877/large/chainlink-new-logo.png',

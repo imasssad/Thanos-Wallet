@@ -957,6 +957,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
                 isLithoSend           ? 'LITHO' :
                 network === 'bitcoin' ? 'BTC' :
                 network === 'solana'  ? 'SOL' :
+                network === 'cosmos'  ? 'ATOM' :
                 (evmChain?.nativeSymbol ?? 'LITHO')
               }
               color={evmChain?.color}
@@ -994,6 +995,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
                     n.id === 'kamet'   ? 'LITHO' :
                     n.id === 'bitcoin' ? 'BTC' :
                     n.id === 'solana'  ? 'SOL' :
+                    n.id === 'cosmos'  ? 'ATOM' :
                     (chain?.nativeSymbol ?? 'LITHO');
                   return (
                     <RadixSelect.Item
