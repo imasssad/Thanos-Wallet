@@ -1331,7 +1331,7 @@ interface ReceiveNetwork {
   altLabel?: string;
 }
 
-export function ReceiveModal({ onClose }: { onClose: () => void }) {
+export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; initialAsset?: string }) {
   const wallet = useWallet();
   const [view, setView]     = useState<'list' | 'qr'>('list');
   const [active, setActive] = useState<ReceiveNetwork | null>(null);
@@ -1339,6 +1339,20 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
   const [qrSvg, setQrSvg]   = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAlt,  setShowAlt]  = useState(false);
+
+  // SafePal flow: from the MAIN Receive button the network isn't preselected
+  // (user picks it). When opened from a specific ASSET (token-detail Receive),
+  // the network is preselected — map the asset to its chain and jump straight
+  // to the address + QR, skipping the network list.
+  const targetNetworkId = useMemo(() => {
+    if (!initialAsset) return null;
+    const s = initialAsset.toUpperCase();
+    if (s === 'BTC')  return 'bitcoin';
+    if (s === 'SOL')  return 'solana';
+    if (s === 'ATOM') return 'cosmos';
+    return 'lithosphere-makalu'; // native LITHO + every LEP100 share the Makalu address
+  }, [initialAsset]);
+  const autoSelected = useRef(false);
 
   const litho = wallet?.addresses?.litho ?? '';
   const evm   = wallet?.addresses?.evm   ?? '';
@@ -1421,6 +1435,15 @@ export function ReceiveModal({ onClose }: { onClose: () => void }) {
     if (atomAddr) out.push({ id: 'cosmos',  name: 'Cosmos Hub', symbol: 'ATOM', color: '#2e3148', address: atomAddr });
     return out;
   }, [litho, evm, btcAddr, solAddr, atomAddr]);
+
+  // Asset-entry: once the target network's row is available (some addresses
+  // derive async), preselect it and open the QR view. Runs once so the user
+  // can still tap Back to the network list.
+  useEffect(() => {
+    if (autoSelected.current || !targetNetworkId) return;
+    const net = networks.find(n => n.id === targetNetworkId);
+    if (net) { setActive(net); setView('qr'); autoSelected.current = true; }
+  }, [targetNetworkId, networks]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

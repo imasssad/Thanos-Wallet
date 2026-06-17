@@ -264,7 +264,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
 
   if (sub === 'send')    return <SendModal onClose={() => setSub(null)} initialNetwork={sendNetwork} initialCoin={token.sym}/>;
   if (sub === 'swap')    return <SwapModal onClose={() => setSub(null)} initialFrom={token.sym}/>;
-  if (sub === 'receive') return <ReceiveModal onClose={() => setSub(null)}/>;
+  if (sub === 'receive') return <ReceiveModal onClose={() => setSub(null)} initialAsset={token.sym}/>;
 
   const body = (
     <div className="token-detail-screen">
