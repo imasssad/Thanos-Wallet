@@ -221,6 +221,51 @@ export const TOKENS: Token[] = [
 export const TOKEN_BY_SYM: Record<string, Token> =
   Object.fromEntries(TOKENS.map(t => [t.sym, t]));
 
+/* ─── Swap-only stablecoins ─────────────────────────────────────────────
+ * USDC / USDT / DAI are quotable swap counter-assets, NOT Makalu LEP100s —
+ * they have no on-chain Makalu address, so they're deliberately kept OUT of
+ * TOKENS (which would make the portfolio indexer query phantom balances).
+ * They appear only in the Swap token pickers, priced ~$1 for display. */
+export const SWAP_STABLES: Array<{ sym: string; name: string; priceUsd: number; color: string }> = [
+  { sym: 'USDC', name: 'USD Coin',     priceUsd: 1.0, color: '#2775ca' },
+  { sym: 'USDT', name: 'Tether USD',   priceUsd: 1.0, color: '#26a17b' },
+  { sym: 'DAI',  name: 'Dai',          priceUsd: 1.0, color: '#f5ac37' },
+];
+
+/** USD price for any swap-eligible symbol (TOKENS first, then stables). */
+export function swapPriceUsd(sym: string): number {
+  return TOKEN_BY_SYM[sym]?.priceUsd
+    ?? SWAP_STABLES.find(s => s.sym === sym)?.priceUsd
+    ?? 1;
+}
+
+/* ─── Fixed swap cross-rates ─────────────────────────────────────────────
+ * LITHO and LAX are fixed-price; the LAX↔stable and stable↔stable rates are
+ * pinned by the Litho team (2026-06-16), not derived from a DEX/oracle:
+ *   1 LAX = 1.0001 USDC · 1 LAX = 1.0003 USDT · 1 LAX = 1.0004 DAI
+ * The stable↔stable legs are derived from those anchors. Keyed "FROM/TO" =
+ * how many TO units one FROM unit buys. swapRateFor() falls back to null so
+ * callers use the live/indicative price-table rate for every other pair. */
+const _LAX = { USDC: 1.0001, USDT: 1.0003, DAI: 1.0004 } as const;
+export const FIXED_SWAP_RATES: Record<string, number> = (() => {
+  const r: Record<string, number> = {};
+  for (const [s, v] of Object.entries(_LAX)) {
+    r[`LAX/${s}`] = v;          // 1 LAX -> v stable
+    r[`${s}/LAX`] = 1 / v;      // reverse
+  }
+  // stable -> stable: (LAX->TO) / (LAX->FROM)
+  const stables = Object.keys(_LAX) as Array<keyof typeof _LAX>;
+  for (const a of stables) for (const b of stables) {
+    if (a !== b) r[`${a}/${b}`] = _LAX[b] / _LAX[a];
+  }
+  return r;
+})();
+
+/** Pinned cross-rate for a pair (TO units per 1 FROM), or null if none. */
+export function swapRateFor(from: string, to: string): number | null {
+  return FIXED_SWAP_RATES[`${from}/${to}`] ?? null;
+}
+
 /** Canonical Lithosphere explorer host per chain (Litho-confirmed
  *  2026-06-15). Chain-aware so links never go stale post-Kamet-migration —
  *  do NOT hard-code makalu.litho.ai as the permanent explorer. */

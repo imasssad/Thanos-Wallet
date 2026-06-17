@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { TOKENS } from '../lib/tokens';
+import { TOKENS, SWAP_STABLES, swapPriceUsd, swapRateFor } from '../lib/tokens';
 import { useWallet } from './shell/AppShell';
 import {
   validateAddressForChain, resolveToEvm, truncateLithoAddress,
@@ -64,6 +64,8 @@ import * as RadixSelect from '@radix-ui/react-select';
 import { QrCode, Check, ChevronDown } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
+/** Swap pickers also offer the stablecoin counter-assets (USDC/USDT/DAI). */
+const SWAP_SYMBOLS = [...TOKEN_SYMBOLS, ...SWAP_STABLES.map(s => s.sym)];
 /** Tokens sendable on Lithosphere Makalu (native LITHO + LEP100). */
 const MAKALU_SYMBOLS = TOKENS.filter(t => t.chain === 'Makalu').map(t => t.sym);
 
@@ -1801,10 +1803,12 @@ export function SwapModal({ onClose, initialFrom }: {
   const executingRef    = useRef(false);
   const submittedQuotes = useRef<Set<string>>(new Set());
 
-  // Fallback indicative rate from the canonical USD prices — used only when
-  // the MultX endpoint isn't reachable, so the UI still has something to show.
-  const priceOf = (sym: string) => TOKENS.find(t => t.sym === sym)?.priceUsd ?? 1;
-  const fallbackRate = priceOf(from) / priceOf(to);
+  // Fallback indicative rate. Pinned stablecoin/LAX cross-rates win when the
+  // pair has one (LAX↔USDC/USDT/DAI and stable↔stable); otherwise it's the
+  // canonical USD price-table ratio. Used when MultX/Ignite aren't reachable.
+  const priceOf = (sym: string) => swapPriceUsd(sym);
+  const fixedRate    = swapRateFor(from, to);
+  const fallbackRate = fixedRate ?? (priceOf(from) / priceOf(to));
   const fallbackOut  = fallbackRate * parseFloat(amt || '0');
 
   /* Debounced quote fetch — route optimisation. Quote MultX and Ignite
@@ -2061,7 +2065,7 @@ export function SwapModal({ onClose, initialFrom }: {
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: '0 0 130px' }}>
-            <TokenSelect value={from} onChange={setFrom} options={TOKEN_SYMBOLS} ariaLabel="Swap from"/>
+            <TokenSelect value={from} onChange={setFrom} options={SWAP_SYMBOLS} ariaLabel="Swap from"/>
           </div>
           <input className="field-input" value={amt} onChange={e => setAmt(e.target.value)} type="number" placeholder="0.00" style={{ flex: 1 }}/>
         </div>
@@ -2071,7 +2075,7 @@ export function SwapModal({ onClose, initialFrom }: {
         <label className="field-label">To</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: '0 0 130px' }}>
-            <TokenSelect value={to} onChange={setTo} options={TOKEN_SYMBOLS} ariaLabel="Swap to"/>
+            <TokenSelect value={to} onChange={setTo} options={SWAP_SYMBOLS} ariaLabel="Swap to"/>
           </div>
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
             {isFinite(displayedOut) ? displayedOut.toFixed(6) : '—'}
