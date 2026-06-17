@@ -476,6 +476,15 @@ function SectionTitle({ children }: { children: string }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
+/* LITHO currency symbol 𝕃 (U+1D543). Rendered in the bundled single-glyph
+   "LithoSym" font (embedded via the expo-font config plugin) since Hermes'
+   default font lacks the math double-struck block. Used as a currency-symbol
+   prefix on LITHO amounts. */
+const LITHO_SYMBOL = '\u{1D543}';
+function LithoSym({ size, color }: { size?: number; color?: string }) {
+  return <Text style={{ fontFamily: 'LithoSym', fontSize: size, color }}>{LITHO_SYMBOL}</Text>;
+}
+
 /* ─────────────────────────── Screens ─────────────────────────── */
 
 /* Portfolio sparkline (RN). Builds an SVG string and renders it via
@@ -700,7 +709,9 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
               </View>
               <View style={styles.rowRight}>
                 <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
-                <Text style={styles.rowBal}>{a.balanceText} {a.sym}</Text>
+                <Text style={styles.rowBal}>
+                  {a.sym === 'LITHO' ? <><LithoSym/> {a.balanceText}</> : `${a.balanceText} ${a.sym}`}
+                </Text>
               </View>
             </Pressable>
           ))}

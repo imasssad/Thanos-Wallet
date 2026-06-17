@@ -50,6 +50,12 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-font",
+        {
+          "fonts": ["./assets/fonts/litho-sym.ttf"]
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing."
