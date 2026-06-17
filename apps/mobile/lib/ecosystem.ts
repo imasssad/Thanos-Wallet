@@ -20,7 +20,7 @@ export interface EcosystemApp {
   section:     string;
 }
 
-export const ECOSYSTEM_SECTIONS = ['AI & Agents', 'DeFi & Yield', 'NFTs', 'Rewards'] as const;
+export const ECOSYSTEM_SECTIONS = ['AI & Agents', 'DeFi & Yield', 'NFTs', 'Infrastructure', 'Rewards'] as const;
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = [
   { id: 'agii',   name: 'AGII',           description: 'AI infrastructure and agents built on Lithosphere.', url: ECOSYSTEM_HUB, color: '#8b7df7', category: 'AI',        section: 'AI & Agents' },
@@ -28,6 +28,8 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   { id: 'furgpt', name: 'FurGPT',         description: 'AI agents and tooling on Lithosphere.',             url: ECOSYSTEM_HUB, color: '#10b981', category: 'AI',        section: 'AI & Agents' },
   { id: 'mansa',  name: 'Mansa AI',       description: 'AI-driven DeFi and liquidity on Lithosphere.',      url: ECOSYSTEM_HUB, color: '#eab308', category: 'AI · DeFi', section: 'DeFi & Yield' },
   { id: 'colle',  name: 'Colle AI',       description: 'Multi-chain, AI-powered NFT creation and trading.', url: ECOSYSTEM_HUB, color: '#a3e635', category: 'NFT · AI',  section: 'NFTs' },
+  { id: 'makalu-explorer', name: 'Makalu Explorer', description: 'Block explorer + portal for the Makalu main chain (700777).',        url: 'https://makalu.litho.ai',    color: '#3b7af7', category: 'Explorer', section: 'Infrastructure' },
+  { id: 'kamet-explorer',  name: 'Kamet Explorer',  description: 'Block explorer + portal for the Kamet sister chain (900523, DNNS).', url: 'https://explorer-3.litho.ai', color: '#6366f1', category: 'Explorer', section: 'Infrastructure' },
   { id: 'litho-deals', name: 'LITHO Deals', description: 'Deals, offers and rewards across the Lithosphere ecosystem.', url: ECOSYSTEM_HUB, color: '#3b7af7', category: 'Rewards', section: 'Rewards' },
 ];
 

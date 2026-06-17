@@ -76,8 +76,10 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   imagen: require('../assets/images/dapps/imagen.png'),
   ignite: require('../assets/images/dapps/ignite.png'),
   atua:   require('../assets/images/dapps/atua.png'),
-  // makalu-explorer, kamet-explorer, litho-deals: pending client
-  // assets — fall through to letter avatar in the Discover screen.
+  // Infrastructure + rewards — client app-icon pack (2026-06-16).
+  'makalu-explorer': require('../assets/images/dapps/makalu-explorer.png'),
+  'kamet-explorer':  require('../assets/images/dapps/kamet-explorer.png'),
+  'litho-deals':     require('../assets/images/dapps/litho-deals.png'),
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */
