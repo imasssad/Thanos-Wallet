@@ -19,7 +19,7 @@
 // defined algorithmic peg. Every other ecosystem token must come from a
 // live feed (CoinGecko) or render "—" — never a fabricated number.
 export const HARD_PRICES: Record<string, number> = {
-  LITHO: 8.6,
+  LITHO: 8.82,
   LAX:   1.0001,
 };
 

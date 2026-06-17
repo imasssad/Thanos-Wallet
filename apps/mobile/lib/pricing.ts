@@ -12,7 +12,7 @@
 // Static, authoritative prices — the only two assets priced without a live
 // feed (matches apps/web: "only litho market info is static"; LAX is a peg).
 export const HARD_PRICES: Record<string, number> = {
-  LITHO: 8.6,
+  LITHO: 8.82,
   LAX:   1.0001,
 };
 

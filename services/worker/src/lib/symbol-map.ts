@@ -9,11 +9,11 @@
  */
 
 export const HARD_PRICES: Record<string, number> = {
-  LAX: 1.0001,
+  LITHO: 8.82,   // fixed per client (2026-06-17, was 8.60) — never fetched
+  LAX:   1.0001,
 };
 
 export const PLACEHOLDER_PRICES: Record<string, number> = {
-  LITHO: 8.60,
   JOT:   0.50,
 };
 

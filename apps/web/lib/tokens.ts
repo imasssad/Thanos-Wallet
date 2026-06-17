@@ -47,7 +47,7 @@ export type Token = {
 /**
  * Pricing rules (per client spec):
  *   LAX    = hard-coded $1.0001 always
- *   LITHO  = placeholder $8.60 (client-set 2026-06-12) until oracle wired
+ *   LITHO  = fixed $8.82 (client-set 2026-06-17) until oracle wired
  *   JOT    = placeholder $0.50 until oracle wired
  *   IMAGE  = fetched live (CoinGecko id 'imagen-ai' — confirmed by Ignite team)
  *   LitBTC = fetched live (tracks BTC via CoinGecko)
@@ -64,7 +64,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     color: '#3b7af7',
     icon: '/images/tokens/litho.png',  // 2026-06 client icon pack (sized to match BTC etc.)
-    priceUsd: 8.60,        // placeholder per client (2026-06-12) — see pricing.ts
+    priceUsd: 8.82,        // fixed per client (2026-06-17, was 8.60) — see pricing.ts
     balance: '0',
     change24h: 0,
   },
