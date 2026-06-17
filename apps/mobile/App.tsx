@@ -1094,6 +1094,31 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   );
 }
 
+/* SafePal receive: pick network -> pick asset -> address + QR. The address is
+   per-network (same for every asset on a chain); the asset drives the QR
+   header (name + logo) and the coin-specific warning. */
+type ReceiveChain = 'lithosphere' | 'bitcoin' | 'solana' | 'cosmos';
+const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string }> = [
+  { id: 'lithosphere', name: 'Lithosphere Makalu', sym: 'LITHO' },
+  { id: 'bitcoin',     name: 'Bitcoin',            sym: 'BTC'   },
+  { id: 'solana',      name: 'Solana',             sym: 'SOL'   },
+  { id: 'cosmos',      name: 'Cosmos Hub',         sym: 'ATOM'  },
+];
+const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>> = {
+  lithosphere: [
+    { sym: 'LITHO',  name: 'Lithosphere' },
+    { sym: 'LAX',    name: 'Lithosphere Algorithmic' },
+    { sym: 'LitBTC', name: 'Bitcoin (wrapped)' },
+    { sym: 'JOT',    name: 'Jot Art' },
+    { sym: 'COLLE',  name: 'Colle AI' },
+    { sym: 'IMAGE',  name: 'Imagen Network' },
+    { sym: 'MUSA',   name: 'Mansa AI' },
+  ],
+  bitcoin: [{ sym: 'BTC',  name: 'Bitcoin' }],
+  solana:  [{ sym: 'SOL',  name: 'Solana' }],
+  cosmos:  [{ sym: 'ATOM', name: 'Cosmos Hub' }],
+};
+
 function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
@@ -1102,8 +1127,12 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const [copied, setCopied]   = useState(false);
   const [qrSvg, setQrSvg]     = useState<string | null>(null);
   const [showAlt, setShowAlt] = useState(false);   // false = litho1, true = 0x
+  /** SafePal step flow: network -> asset -> qr. */
+  const [step, setStep] = useState<'network' | 'asset' | 'qr'>('network');
+  /** The asset being received (drives the QR header + warning). */
+  const [asset, setAsset] = useState<{ sym: string; name: string } | null>(null);
   /** Active chain — switches the displayed address + QR. */
-  const [chain, setChain] = useState<'lithosphere' | 'bitcoin' | 'solana' | 'cosmos'>('lithosphere');
+  const [chain, setChain] = useState<ReceiveChain>('lithosphere');
 
   // Derive the Lithosphere bech32 form from the same 0x keypair — one
   // wallet, two formats. Defaults to showing the chain-native litho1.
@@ -1187,10 +1216,69 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  /* ── Step 1: pick network ── */
+  if (step === 'network') {
+    return (
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.screenHeader}>
+          <Pressable onPress={goBack} hitSlop={16} style={styles.backBtn}>
+            <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+          </Pressable>
+          <Text style={styles.screenTitle}>Select network</Text>
+          <View style={{ width: 36 }}/>
+        </View>
+        <View style={{ paddingHorizontal: 6 }}>
+          {RECEIVE_NETWORKS.map((n, i) => (
+            <Pressable key={n.id} onPress={() => { setChain(n.id); setShowAlt(false); setAsset(null); setStep('asset'); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
+                       borderBottomWidth: i < RECEIVE_NETWORKS.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
+              <Avatar symbol={n.sym} color={ASSET_COLORS[n.sym.toUpperCase()] ?? C.blue} size={36}/>
+              <Text style={{ flex: 1, color: C.textPrimary, fontWeight: '700', fontSize: 15 }}>{n.name}</Text>
+              <ChevronRight size={18} color={C.textMuted}/>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  /* ── Step 2: pick asset on that network ── */
+  if (step === 'asset') {
+    const assets = RECEIVE_ASSETS[chain];
+    const netName = RECEIVE_NETWORKS.find(n => n.id === chain)?.name ?? '';
+    return (
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.screenHeader}>
+          <Pressable onPress={() => setStep('network')} hitSlop={16} style={styles.backBtn}>
+            <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+          </Pressable>
+          <Text style={styles.screenTitle}>Select asset</Text>
+          <View style={{ width: 36 }}/>
+        </View>
+        <Text style={{ color: C.textMuted, fontSize: 12, paddingHorizontal: 8, paddingBottom: 6 }}>Receiving on {netName}</Text>
+        <View style={{ paddingHorizontal: 6 }}>
+          {assets.map((a, i) => (
+            <Pressable key={a.sym} onPress={() => { setAsset(a); setStep('qr'); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
+                       borderBottomWidth: i < assets.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
+              <Avatar symbol={a.sym} color={ASSET_COLORS[a.sym.toUpperCase()] ?? C.blue} size={34}/>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{a.sym}</Text>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>{a.name}</Text>
+              </View>
+              <ChevronRight size={18} color={C.textMuted}/>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  /* ── Step 3: address + QR for the chosen asset ── */
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.screenHeader}>
-        <Pressable onPress={goBack} hitSlop={16} style={styles.backBtn}>
+        <Pressable onPress={() => setStep('asset')} hitSlop={16} style={styles.backBtn}>
           <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
         </Pressable>
         <Text style={styles.screenTitle}>Receive</Text>
@@ -1198,10 +1286,16 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
       </View>
 
       <View style={styles.receiveCard}>
-        {/* Chain selector — switches the displayed address + QR. */}
-        <View style={{ flexDirection: 'row', gap: 4, padding: 3, alignSelf: 'center',
-                       backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault,
-                       borderRadius: 999 }}>
+        {/* Asset header — what you're receiving + the network. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'center' }}>
+          <Avatar symbol={asset?.sym ?? RECEIVE_NETWORKS.find(n => n.id === chain)!.sym} color={ASSET_COLORS[(asset?.sym ?? '').toUpperCase()] ?? C.blue} size={34}/>
+          <View>
+            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>{asset?.name ?? ''} <Text style={{ color: C.textMuted, fontWeight: '600' }}>({asset?.sym ?? ''})</Text></Text>
+            <Text style={{ color: C.textMuted, fontSize: 11, fontWeight: '600' }}>on {RECEIVE_NETWORKS.find(n => n.id === chain)?.name}</Text>
+          </View>
+        </View>
+        {/* (legacy chain pills hidden — network is chosen in step 1) */}
+        <View style={{ display: 'none' }}>
           {([
             { id: 'lithosphere', label: 'Litho' },
             { id: 'bitcoin',     label: 'BTC'   },
@@ -1307,7 +1401,7 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
 
         <View style={styles.warningCard}>
           <Text style={styles.warningCardText}>
-            Only send LITHO and Makalu-network tokens to this address. Sending other assets may result in permanent loss.
+            Only send {asset?.sym ?? 'supported'} on {RECEIVE_NETWORKS.find(n => n.id === chain)?.name} to this address. Sending another asset or chain may result in permanent loss.
           </Text>
         </View>
       </View>
