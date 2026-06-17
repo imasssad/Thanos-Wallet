@@ -2331,9 +2331,17 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* The landing now inherits the site-wide 125% zoom (client request
    2026-06-17). The previous `.lp-root { zoom: 1 }` reset — which kept the
    editorial sizes absolute — was removed so the front-end site scales up
-   25% along with the app. */
+   25% along with the app on desktop (≥769px, via the body zoom above). */
 .lp-root,
 .lp-root * { box-sizing: border-box; }
+
+/* Phones: the app keeps body zoom OFF (it cramps modals), but the landing
+   has no modals, so scale it 25% here too — otherwise thanos.fi/ looks
+   un-enlarged on mobile. Only below 769px, where the body zoom is absent,
+   so the two never compound. */
+@media (max-width: 768px) {
+  .lp-root { zoom: 1.25; }
+}
 
 .lp-root {
   background: var(--bg-base);
