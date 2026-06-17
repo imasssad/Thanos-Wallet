@@ -30,8 +30,10 @@ const WEB_ICONS: Record<string, string> = {
   imagen: '/images/dapps/imagen.png', // sourced from imagen.network's official watermark
   ignite: '/images/dapps/ignite.png', // reuses the token logo
   atua:   '/images/dapps/atua.png',   // sourced from atua.ai brand kit
-  // makalu-explorer, kamet-explorer, litho-deals:
-  // pending client app-icon assets — fall through to letter avatar.
+  // Infrastructure + rewards — client app-icon pack (2026-06-16).
+  'makalu-explorer': '/images/dapps/makalu-explorer.png',
+  'kamet-explorer':  '/images/dapps/kamet-explorer.png',
+  'litho-deals':     '/images/dapps/litho-deals.png', // the double-struck 𝕃 mark
 };
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = BASE_APPS.map(a => ({
