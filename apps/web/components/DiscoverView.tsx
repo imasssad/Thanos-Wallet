@@ -50,7 +50,14 @@ export function DiscoverView() {
   const submit = () => { const u = normalizeUrl(q); if (u) open(u); };
 
   return (
-    <div className="page-wrap" style={{ maxWidth: 720, margin: '0 auto' }}>
+    // The app-shell <main> is overflow:hidden — each view scrolls itself
+    // (same as the dashboard root). Without this the Discover list overflowed
+    // under the bottom nav and couldn't scroll. paddingBottom clears the nav.
+    <div style={{
+      width: '100%', height: '100%', minHeight: 0, overflowY: 'auto',
+      WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', scrollBehavior: 'smooth',
+    }}>
+    <div className="page-wrap" style={{ maxWidth: 720, margin: '0 auto', padding: '20px 16px 96px' }}>
       <div className="page-header" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
         <h1 className="page-title">Discover</h1>
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
@@ -177,6 +184,7 @@ export function DiscoverView() {
           before connecting your wallet or signing a transaction.
         </span>
       </div>
+    </div>
     </div>
   );
 }
