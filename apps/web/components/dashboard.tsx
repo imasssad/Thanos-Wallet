@@ -446,6 +446,9 @@ export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modal, setModal] = useState<ModalKind>(null);
+  // Swap opened from the nav/footer renders full-screen; from the Home
+  // quick-action it stays a pop-up. Tracks which entry point opened it.
+  const [swapFull, setSwapFull] = useState(false);
   /** Token-detail screen — opened by tapping any token row. chainId rides
    *  along for EVM-native rows (ETH/BNB/…) so the screen labels the right
    *  network instead of assuming Makalu. */
@@ -669,7 +672,7 @@ export function Dashboard() {
   useEffect(() => {
     const swap = searchParams.get('swap');
     const t    = searchParams.get('tab');
-    if (swap === '1') { setModal('swap'); router.replace('/app'); }
+    if (swap === '1') { setSwapFull(true); setModal('swap'); router.replace('/app'); }
     else if (t && (['tokens', 'defi', 'nfts', 'activity'] as const).includes(t as never)) {
       setTab(t as 'tokens' | 'defi' | 'nfts' | 'activity');
       router.replace('/app');
@@ -714,7 +717,7 @@ export function Dashboard() {
     }}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
-      {modal === 'swap'    && <SwapModal    onClose={() => setModal(null)}/>}
+      {modal === 'swap'    && <SwapModal    fullScreen={swapFull} onClose={() => { setModal(null); setSwapFull(false); }}/>}
       {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
 
       <div style={{
@@ -822,7 +825,7 @@ export function Dashboard() {
           <ActionBtn
             icon={<Repeat size={30} strokeWidth={2}/>}
             label="Swap"
-            onClick={() => setModal('swap')}
+            onClick={() => { setSwapFull(false); setModal('swap'); }}
           />
           <ActionBtn
             icon={<ArrowUpRight size={30} strokeWidth={2}/>}

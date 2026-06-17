@@ -71,7 +71,31 @@ const MAKALU_SYMBOLS = TOKENS.filter(t => t.chain === 'Makalu').map(t => t.sym);
 
 export type ModalKind = 'send' | 'receive' | 'swap' | null;
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, fullScreen }: { title: string; onClose: () => void; children: React.ReactNode; fullScreen?: boolean }) {
+  // Full-screen variant — used when a flow is opened from the nav/footer
+  // (Swap, etc.) rather than as a quick-action pop-up from Home. Fills the
+  // viewport with a back-arrow header instead of a centred dialog.
+  if (fullScreen) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 90, background: 'var(--bg-base)',
+        display: 'flex', flexDirection: 'column', overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+      }}>
+        <div className="modal-header" style={{
+          position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-base)',
+          borderBottom: '1px solid var(--border-default)', padding: '14px 16px',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <button className="modal-close" onClick={onClose} aria-label="Back" style={{ fontSize: 22, lineHeight: 1 }}>‹</button>
+          <span className="modal-title">{title}</span>
+        </div>
+        <div className="modal-box" style={{ maxWidth: 520, width: '100%', margin: '0 auto', background: 'transparent', boxShadow: 'none', border: 'none' }}>
+          {children}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -1758,10 +1782,12 @@ function translateSwapError(raw?: string | null): string {
   return 'Swap couldn’t complete. Try again in a moment.';
 }
 
-export function SwapModal({ onClose, initialFrom }: {
+export function SwapModal({ onClose, initialFrom, fullScreen }: {
   onClose: () => void;
   /** Pre-select the FROM asset (e.g. opened from a token detail screen). */
   initialFrom?: string;
+  /** Render full-screen (opened from nav/footer) vs. as a pop-up (from Home). */
+  fullScreen?: boolean;
 }) {
   const wallet = useWallet();
   const [from, setFrom] = useState(initialFrom ?? 'LITHO');
@@ -2017,7 +2043,7 @@ export function SwapModal({ onClose, initialFrom }: {
   /* ─── Status panel ─── */
   if (stage !== 'compose') {
     return (
-      <Modal title="Swap" onClose={onClose}>
+      <Modal title="Swap" onClose={onClose} fullScreen={fullScreen}>
         <div className="modal-body" style={{ padding: '8px 0' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '12px 0' }}>
             {stage === 'completed' ? (
@@ -2060,7 +2086,7 @@ export function SwapModal({ onClose, initialFrom }: {
   }
 
   return (
-    <Modal title="Swap" onClose={onClose}>
+    <Modal title="Swap" onClose={onClose} fullScreen={fullScreen}>
       <div className="modal-body">
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
