@@ -35,6 +35,7 @@ export const COINGECKO_IDS: Record<string, string> = {
   // falls back to the caller default until a listing lands.
   IMAGE:  'imagen-ai',  // Imagen Network — id from the Ignite team, verified live 2026-06-12
   COLLE:  'colle-ai',   // probably 404s today — falls back to caller default
+  MUSA:   'mansa-ai',   // Mansa AI ($MUSA) — CoinGecko search-confirmed 2026-06-17
   SOL:    'solana',
   BTC:    'bitcoin',
   ATOM:   'cosmos',
