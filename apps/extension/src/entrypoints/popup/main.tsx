@@ -1346,9 +1346,34 @@ function SendModal({ onClose, initialChain, initialCoin }: {
   );
 }
 
+/* SafePal receive: pick network -> pick asset -> address + QR. */
+type ExtChain = 'evm' | 'btc' | 'sol' | 'atom';
+const EXT_NETWORKS: Array<{ id: ExtChain; name: string; sym: string }> = [
+  { id: 'evm',  name: 'Lithosphere Makalu', sym: 'LITHO' },
+  { id: 'btc',  name: 'Bitcoin',            sym: 'BTC'   },
+  { id: 'sol',  name: 'Solana',             sym: 'SOL'   },
+  { id: 'atom', name: 'Cosmos Hub',         sym: 'ATOM'  },
+];
+const EXT_ASSETS: Record<ExtChain, Array<{ sym: string; name: string }>> = {
+  evm:  [
+    { sym: 'LITHO',  name: 'Lithosphere' },
+    { sym: 'LAX',    name: 'Lithosphere Algorithmic' },
+    { sym: 'LitBTC', name: 'Bitcoin (wrapped)' },
+    { sym: 'JOT',    name: 'Jot Art' },
+    { sym: 'COLLE',  name: 'Colle AI' },
+    { sym: 'IMAGE',  name: 'Imagen Network' },
+    { sym: 'MUSA',   name: 'Mansa AI' },
+  ],
+  btc:  [{ sym: 'BTC',  name: 'Bitcoin' }],
+  sol:  [{ sym: 'SOL',  name: 'Solana' }],
+  atom: [{ sym: 'ATOM', name: 'Cosmos Hub' }],
+};
+
 function ReceiveModal({ onClose, address }: { onClose: () => void; address: string }) {
   const seed = useWalletSeed();
-  const [chain, setChain] = useState<'evm'|'btc'|'sol'|'atom'>('evm');
+  const [chain, setChain] = useState<ExtChain>('evm');
+  const [step, setStep]   = useState<'network' | 'asset' | 'qr'>('network');
+  const [asset, setAsset] = useState<{ sym: string; name: string } | null>(null);
   const [copied, setCopied]   = useState(false);
   const [showAlt, setShowAlt] = useState(false);
   const [btcAddr,  setBtcAddr]  = useState('');
@@ -1437,25 +1462,72 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
     if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1800); }
   };
 
+  const rowBtn = (border: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 6px',
+    background: 'transparent', border: 'none', borderBottom: border ? '1px solid var(--border-subtle)' : 'none',
+    cursor: 'pointer', color: 'inherit',
+  });
+  const dot: React.CSSProperties = {
+    width: 30, height: 30, borderRadius: '50%', background: 'var(--blue, #3b7af7)', color: '#fff',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
+  };
+  const backLink: React.CSSProperties = {
+    background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
+    fontSize: 12, fontWeight: 600, padding: '4px 2px', marginBottom: 4, alignSelf: 'flex-start',
+  };
+
+  /* Step 1: pick network */
+  if (step === 'network') {
+    return (
+      <Modal title="Select network" onClose={onClose}>
+        <div className="modal-body" style={{ padding: '4px 0' }}>
+          {EXT_NETWORKS.map((n, i) => (
+            <button key={n.id} onClick={() => { setChain(n.id); setShowAlt(false); setAsset(null); setStep('asset'); }} style={rowBtn(i < EXT_NETWORKS.length - 1)}>
+              <span style={dot}>{n.sym[0]}</span>
+              <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>{n.name}</span>
+              <span style={{ color: 'var(--text-muted)' }}>›</span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+  /* Step 2: pick asset */
+  if (step === 'asset') {
+    const assets = EXT_ASSETS[chain];
+    const netName = EXT_NETWORKS.find(n => n.id === chain)?.name ?? '';
+    return (
+      <Modal title="Select asset" onClose={onClose}>
+        <div className="modal-body" style={{ padding: '4px 0' }}>
+          <button onClick={() => setStep('network')} style={backLink}>‹ Back</button>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px 6px' }}>Receiving on {netName}</div>
+          {assets.map((a, i) => (
+            <button key={a.sym} onClick={() => { setAsset(a); setStep('qr'); }} style={rowBtn(i < assets.length - 1)}>
+              <span style={dot}>{a.sym[0]}</span>
+              <span style={{ flex: 1, textAlign: 'left' }}>
+                <span style={{ display: 'block', fontWeight: 600 }}>{a.sym}</span>
+                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-muted)' }}>{a.name}</span>
+              </span>
+              <span style={{ color: 'var(--text-muted)' }}>›</span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
+
+  /* Step 3: address + QR for the chosen asset */
   return (
     <Modal title="Receive" onClose={onClose}>
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
-        {/* Chain selector */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 12, width: '100%' }}>
-          {(['evm','btc','sol','atom'] as const).map(c => {
-            const selected = c === chain;
-            return (
-              <button key={c} onClick={() => setChain(c)} style={{
-                flex: 1, padding: '6px 8px', borderRadius: 999, cursor: 'pointer',
-                fontSize: 10, fontWeight: 700,
-                background: selected ? 'var(--blue, #3b7af7)' : 'transparent',
-                color: selected ? '#fff' : 'var(--text-secondary)',
-                border: `1px solid ${selected ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
-              }}>
-                {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : c === 'sol' ? 'SOL' : 'ATOM'}
-              </button>
-            );
-          })}
+        <button onClick={() => setStep('asset')} style={{ ...backLink, marginBottom: 8 }}>‹ Back</button>
+        {/* Asset header — what you're receiving + the network. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={dot}>{(asset?.sym ?? EXT_NETWORKS.find(n => n.id === chain)!.sym)[0]}</span>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{asset?.name} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>({asset?.sym})</span></div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>on {EXT_NETWORKS.find(n => n.id === chain)?.name}</div>
+          </div>
         </div>
 
         {/* Lithosphere dual-format toggle — only on EVM tab. */}
@@ -1500,6 +1572,9 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
           {displayed ? <HiAddr value={displayed} full/> : '—'}
         </div>
         <button className="btn-primary" onClick={copy} disabled={!displayed}>{copied ? '✓ Copied' : 'Copy address'}</button>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+          Only send <strong style={{ color: 'var(--text-secondary)' }}>{asset?.sym ?? 'supported'}</strong> on {EXT_NETWORKS.find(n => n.id === chain)?.name} to this address. Sending another asset or chain may result in lost funds.
+        </div>
       </div>
     </Modal>
   );
