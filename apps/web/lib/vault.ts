@@ -18,13 +18,20 @@
  * Storage size: vault is ~280 bytes encoded.
  */
 
-import { argon2id } from 'hash-wasm';
+// hash-wasm's Argon2 is now lazy-loaded (only to open a LEGACY argon2id
+// vault) — new installs never pull the WASM module. New vaults derive their
+// AES key with native WebCrypto PBKDF2 (see deriveKeyPbkdf2 below).
 
 /* ─── On-disk format ─────────────────────────────────────────────────────── */
+export type VaultKdf =
+  | { type: 'pbkdf2';   c: number; hash: 'sha256' }
+  | { type: 'argon2id'; t: number; m: number; p: number };
+
 export interface EncryptedVault {
   v: 1;
-  /** Argon2id params (so we can change them later without breaking old vaults) */
-  kdf: { type: 'argon2id'; t: number; m: number; p: number };
+  /** KDF that derived the AES key — stored so the vault always opens with the
+   *  exact KDF it was created with. New vaults: pbkdf2. Legacy: argon2id. */
+  kdf: VaultKdf;
   /** All bytes hex-encoded so localStorage can JSON-serialise cleanly. */
   salt:       string;
   iv:         string;
@@ -45,15 +52,14 @@ const STORAGE_KEYS = {
   legacyUnlocked: 'thanos.unlocked',
 } as const;
 
-/* Argon2id params — LOCAL device vault. Lowered from 64 MiB / t=3 / p=4 —
-   which matched the API's server-side password hash but made wallet create/
-   unlock take several seconds — to the OWASP mobile baseline. hash-wasm's
-   Argon2 at these params is sub-second. Sound here: a second layer over
-   browser storage. Old vaults still decrypt — openVault derives with each
-   vault's OWN stored kdf params, so this only affects NEW vaults. */
-const ARGON2_T = 2;          // iterations
-const ARGON2_M_KB = 19456;   // 19 MiB
-const ARGON2_P = 1;          // parallel lanes
+/* New vaults derive the AES key with PBKDF2-HMAC-SHA256 via native WebCrypto
+   (crypto.subtle) — ~50-100ms (native C++), no WASM module to load, and the
+   same KDF family the mobile client uses. 600k iterations = OWASP 2023.
+   Sound here: the vault is device-local AND already wrapped in browser
+   storage, so the password KDF is a second layer. Legacy argon2id vaults
+   still open via the lazy hash-wasm path below. */
+const PBKDF2_ITERS = 600_000;
+const KEY_BITS = 256; // AES-256
 
 /* ─── Hex helpers (avoids Buffer in browser bundle) ─────────────────────── */
 function bytesToHex(bytes: Uint8Array): string {
@@ -74,21 +80,35 @@ function randomBytes(n: number): Uint8Array {
 }
 
 /* ─── Argon2id derivation ───────────────────────────────────────────────── */
-async function deriveKey(
-  password: string,
-  salt: Uint8Array,
-  params: { t: number; m: number; p: number } = { t: ARGON2_T, m: ARGON2_M_KB, p: ARGON2_P },
-): Promise<Uint8Array> {
+/** New vaults: native PBKDF2-HMAC-SHA256 via WebCrypto. */
+async function deriveKeyPbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
+  const base = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password) as BufferSource, 'PBKDF2', false, ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
+    base, KEY_BITS,
+  );
+  return new Uint8Array(bits);
+}
+
+/** Legacy vaults only: Argon2id via hash-wasm, lazy-imported so new installs
+ *  never load the WASM. Uses the vault's own stored params. */
+async function deriveKeyArgon2(password: string, salt: Uint8Array, params: { t: number; m: number; p: number }): Promise<Uint8Array> {
+  const { argon2id } = await import('hash-wasm');
   const hashHex = await argon2id({
-    password,
-    salt,
-    parallelism: params.p,
-    iterations:  params.t,
-    memorySize:  params.m,
-    hashLength:  32,
-    outputType:  'hex',
+    password, salt,
+    parallelism: params.p, iterations: params.t, memorySize: params.m,
+    hashLength: 32, outputType: 'hex',
   });
   return hexToBytes(hashHex);
+}
+
+/** Derive the AES key for a vault's stored KDF block. */
+async function deriveForKdf(password: string, salt: Uint8Array, kdf: VaultKdf): Promise<Uint8Array> {
+  return kdf.type === 'pbkdf2'
+    ? deriveKeyPbkdf2(password, salt, kdf.c)
+    : deriveKeyArgon2(password, salt, kdf);
 }
 
 /* ─── AES-256-GCM encrypt / decrypt ─────────────────────────────────────── */
@@ -108,7 +128,7 @@ async function importAesKey(rawKey: Uint8Array): Promise<CryptoKey> {
 export async function createVault(mnemonic: string, password: string): Promise<EncryptedVault> {
   const salt = randomBytes(16);
   const iv   = randomBytes(12);
-  const keyBytes = await deriveKey(password, salt);
+  const keyBytes = await deriveKeyPbkdf2(password, salt, PBKDF2_ITERS);
   const aes = await importAesKey(keyBytes);
   const ct = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: iv as BufferSource },
@@ -117,7 +137,7 @@ export async function createVault(mnemonic: string, password: string): Promise<E
   );
   return {
     v: 1,
-    kdf: { type: 'argon2id', t: ARGON2_T, m: ARGON2_M_KB, p: ARGON2_P },
+    kdf: { type: 'pbkdf2', c: PBKDF2_ITERS, hash: 'sha256' },
     salt:       bytesToHex(salt),
     iv:         bytesToHex(iv),
     ciphertext: bytesToHex(new Uint8Array(ct)),
@@ -137,9 +157,9 @@ export async function openVault(
 ): Promise<{ mnemonic: string; key: Uint8Array } | null> {
   if (vault.v !== 1) throw new Error(`vault: unsupported version ${vault.v}`);
   const salt = hexToBytes(vault.salt);
-  // Derive with the vault's OWN kdf params so a vault made at the old 64 MiB
-  // cost still unlocks; only NEW vaults use the lighter params above.
-  const keyBytes = await deriveKey(password, salt, vault.kdf);
+  // Derive with the vault's OWN stored KDF (pbkdf2 for new vaults, argon2id
+  // for legacy ones) so every vault unlocks with exactly what it was made with.
+  const keyBytes = await deriveForKdf(password, salt, vault.kdf);
   try {
     const aes = await importAesKey(keyBytes);
     const pt = await crypto.subtle.decrypt(
