@@ -1,5 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap');
 
+/* LITHO currency symbol (𝕃 = U+1D543). Geist and most UI fonts omit the
+   math double-struck block, so we bundle a 1.3 KB single-glyph subset of
+   Noto Sans Math. Render the literal 𝕃 inside a .litho-sym span. */
+@font-face {
+  font-family: 'LithoSym';
+  src: url('/fonts/litho-sym.ttf') format('truetype');
+  font-display: swap;
+  unicode-range: U+1D543;
+}
+.litho-sym { font-family: 'LithoSym', 'Geist', sans-serif; }
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

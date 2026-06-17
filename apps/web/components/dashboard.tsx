@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, ShieldCheck,
 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
+import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
@@ -980,7 +981,12 @@ export function Dashboard() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>{balanceHidden ? '••••' : `${c.bal} ${c.sym}`}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>
+                      {balanceHidden ? '••••'
+                        : c.sym === 'LITHO'
+                          ? <><LithoSym/> {c.bal}</>
+                          : `${c.bal} ${c.sym}`}
+                    </div>
                     <div style={{
                       fontSize: 12, color: 'var(--text-muted)',
                       fontFamily: 'Geist Mono, monospace',
