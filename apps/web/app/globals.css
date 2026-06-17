@@ -194,32 +194,33 @@ body {
   zoom: 1;
 }
 
-/* Client request (2026-06-12): render the whole UI ~10% larger.
-   CSS zoom (standardized, all evergreen browsers since 2024) scales
+/* Client request (2026-06-17): render the whole UI 125% (25% larger) — was
+   1.1. CSS zoom (standardized, all evergreen browsers since 2024) scales
    layout + text + images together — same mechanism the desktop app
-   uses (zoom 1.5). Desktop-class widths only: phones already use the
-   full viewport and 1.1 would cramp modals; the 768px breakpoint
-   matches the existing mobile input-zoom guard below. */
+   uses. Desktop-class widths only: phones already use the full viewport
+   and zoom would cramp modals; the 768px breakpoint matches the existing
+   mobile input-zoom guard below. Applies site-wide, including the landing
+   (the .lp-root reset was removed so the front-end site scales too). */
 @media (min-width: 769px) {
-  body { zoom: 1.1; }
+  body { zoom: 1.25; }
 }
 
 /* App-shell height. Two traps live here:
    1. vh units inside a zoomed body render LARGER than the real
       viewport (zoom multiplies the used value), so a 100vh shell under
-      zoom 1.1 overflows the screen by 10% and strands the bottom nav /
+      zoom 1.25 overflows the screen by 25% and strands the bottom nav /
       page tail — divide by the same factor the zoom multiplies by.
    2. iOS Safari's 100vh ignores the collapsing URL bar; 100dvh tracks
       the *visible* viewport, which fixes the "Discover page sometimes
       can't scroll to the bottom" report on phones.
-   Keep the zoom factor and the divisor in lockstep if 1.1 ever changes. */
+   Keep the zoom factor and the divisor in lockstep if 1.25 ever changes. */
 .app-shell { height: 100vh; height: 100dvh; }
 @media (min-width: 769px) {
-  .app-shell { height: calc(100vh / 1.1); height: calc(100dvh / 1.1); }
+  .app-shell { height: calc(100vh / 1.25); height: calc(100dvh / 1.25); }
 }
 
 /* Token-detail modal — tall scrolling modal. Same vh-under-zoom trap as
-   .app-shell: dvh units render ×1.1 under the desktop zoom, so an
+   .app-shell: dvh units render ×1.25 under the desktop zoom, so an
    uncompensated 92dvh would clip past the real viewport. */
 .token-detail-box {
   width: 100%;
@@ -228,7 +229,7 @@ body {
   overflow-y: auto;
 }
 @media (min-width: 769px) {
-  .token-detail-box { max-height: calc(92dvh / 1.1); }
+  .token-detail-box { max-height: calc(92dvh / 1.25); }
 }
 
 /* Token detail — FULL-SCREEN page (Trust Wallet / SafePal style), not a
@@ -2327,8 +2328,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
    Type IS the design. Left-aligned. ALL CAPS openers. 120px breathing room.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Reset the wallet's body zoom on the landing — editorial sizes are absolute. */
-.lp-root { zoom: 1; }
+/* The landing now inherits the site-wide 125% zoom (client request
+   2026-06-17). The previous `.lp-root { zoom: 1 }` reset — which kept the
+   editorial sizes absolute — was removed so the front-end site scales up
+   25% along with the app. */
 .lp-root,
 .lp-root * { box-sizing: border-box; }
 
