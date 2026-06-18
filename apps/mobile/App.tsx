@@ -4281,12 +4281,64 @@ function MakaluWelcomeModal() {
   );
 }
 
-/* Top-level crash guard. React error boundaries must be class components.
-   Catches any JS render/runtime error in the tree (which would otherwise blank
-   the bundle and surface as Android's "keeps stopping"), reports it to Sentry,
-   and shows a recoverable screen WITH the error text so a persistent crash can
-   be screenshotted and diagnosed instead of being an opaque force-close.
-   Note: this catches JS errors only — a true native crash still hard-closes. */
+/* Shared crash UI — rendered by BOTH the React ErrorBoundary (render errors)
+   and the global error handler (event-handler / async errors). Shows the error
+   text + stack so a crash can be screenshotted and diagnosed rather than being
+   an opaque force-close. */
+function CrashScreen({ error, onReset }: { error: Error; onReset: () => void }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#0a0e17', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+      <StatusBar barStyle="light-content" backgroundColor="#0a0e17"/>
+      <Text style={{ color: '#fff', fontSize: 19, fontWeight: '800', marginBottom: 10 }}>Something went wrong</Text>
+      <Text style={{ color: '#9aa3b2', fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 18 }}>
+        The app hit an unexpected error. Your wallet is safe — it can always be restored from your recovery phrase.
+      </Text>
+      <Text style={{ color: '#6b7280', fontSize: 11, marginBottom: 8 }}>Please screenshot the text below and send it over:</Text>
+      <ScrollView style={{ maxHeight: 220, alignSelf: 'stretch', marginBottom: 22 }}>
+        <Text selectable style={{ color: '#f87171', fontFamily: MONO, fontSize: 11, lineHeight: 16 }}>
+          {String(error?.message || error)}
+          {error?.stack ? '\n\n' + error.stack.split('\n').slice(0, 12).join('\n') : ''}
+        </Text>
+      </ScrollView>
+      <Pressable
+        onPress={onReset}
+        android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
+        style={({ pressed }) => [
+          { backgroundColor: '#3b7af7', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, overflow: 'hidden' },
+          pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+        ]}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/* Global fatal-error capture. A React ErrorBoundary only catches errors thrown
+   during RENDER — NOT errors thrown in event handlers (button taps), timers, or
+   async callbacks (post-unlock fetches, signing). In a release build those reach
+   RN's default handler and HARD-CLOSE the app ("keeps stopping") with no trace.
+   We intercept the global handler, surface the error through the same
+   CrashScreen, and in production swallow the fatal so the app recovers instead
+   of force-closing. (A true native crash — Hermes / a native module — still
+   hard-closes; that's the only class this can't reach.) */
+let _onGlobalError: ((e: Error) => void) | null = null;
+function installGlobalErrorHandler(): void {
+  const EU = (globalThis as any).ErrorUtils;
+  if (!EU?.setGlobalHandler) return;
+  const prev = EU.getGlobalHandler?.();
+  EU.setGlobalHandler((err: any, isFatal?: boolean) => {
+    const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : JSON.stringify(err));
+    try { captureException(e); } catch { /* noop */ }
+    // Only hijack fatal errors (the ones that would force-close). Non-fatal
+    // ones are reported but left to pass through.
+    if (isFatal !== false) { try { _onGlobalError?.(e); } catch { /* noop */ } }
+    // Keep the dev redbox; in production do NOT re-raise — CrashScreen shows.
+    if (__DEV__ && prev) prev(err, isFatal);
+  });
+}
+
+/* Render-error boundary (class component — required by React). */
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null }
@@ -4295,39 +4347,22 @@ class ErrorBoundary extends React.Component<
   static getDerivedStateFromError(error: Error) { return { error }; }
   componentDidCatch(error: Error) { try { captureException(error); } catch { /* noop */ } }
   render() {
-    const { error } = this.state;
-    if (!error) return this.props.children;
-    return (
-      <View style={{ flex: 1, backgroundColor: '#0a0e17', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-        <StatusBar barStyle="light-content" backgroundColor="#0a0e17"/>
-        <Text style={{ color: '#fff', fontSize: 19, fontWeight: '800', marginBottom: 10 }}>Something went wrong</Text>
-        <Text style={{ color: '#9aa3b2', fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 18 }}>
-          The app hit an unexpected error. Your wallet is safe — it can always be restored from your recovery phrase.
-        </Text>
-        <ScrollView style={{ maxHeight: 180, alignSelf: 'stretch', marginBottom: 22 }}>
-          <Text selectable style={{ color: '#f87171', fontFamily: MONO, fontSize: 11, lineHeight: 16 }}>
-            {String(error?.message || error)}
-            {error?.stack ? '\n\n' + error.stack.split('\n').slice(0, 8).join('\n') : ''}
-          </Text>
-        </ScrollView>
-        <Pressable
-          onPress={() => this.setState({ error: null })}
-          android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
-          style={({ pressed }) => [
-            { backgroundColor: '#3b7af7', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, overflow: 'hidden' },
-            pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
-          ]}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Try again</Text>
-        </Pressable>
-      </View>
-    );
+    if (this.state.error) return <CrashScreen error={this.state.error} onReset={() => this.setState({ error: null })}/>;
+    return this.props.children;
   }
 }
 
-// Root export — App wrapped in the crash guard. registerRootComponent(App)
-// in index.js mounts this.
+// Root export — App wrapped in BOTH guards: the ErrorBoundary (render errors)
+// and the global handler (event-handler / async fatal errors).
+// registerRootComponent (index.js) mounts this.
 export default function Root() {
+  const [globalError, setGlobalError] = useState<Error | null>(null);
+  useEffect(() => {
+    installGlobalErrorHandler();
+    _onGlobalError = setGlobalError;
+    return () => { _onGlobalError = null; };
+  }, []);
+  if (globalError) return <CrashScreen error={globalError} onReset={() => setGlobalError(null)}/>;
   return (
     <ErrorBoundary>
       <App/>
