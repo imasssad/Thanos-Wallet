@@ -1154,6 +1154,19 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   /* 16px to prevent iOS Safari focus-auto-zoom (see .field-input). */
   font-size: 16px; font-family: inherit; outline: none; cursor: pointer; width: 100%;
 }
+
+/* Taller, more comfortable form controls inside Settings (client request:
+   the .litho register + account/contact selects felt cramped on mobile).
+   Scoped to .settings-section so Send/Swap modal amount fields stay compact.
+   !important + the extra specificity beat the mobile 10px override further
+   down this file. */
+.settings-section .field-input,
+.settings-section .field-select,
+.settings-section .settings-select {
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
 .fee-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); padding: 6px 0; border-top: 1px solid var(--border-subtle); margin-top: 8px; }
 
 /* ── Primary / outline buttons ────────────────────────────────── */

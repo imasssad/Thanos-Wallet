@@ -1101,7 +1101,7 @@ function DnnsSection({ Section }: {
 
         <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-muted)' }}>NAME</label>
         <input
-          className="field"
+          className="field-input"
           placeholder="alice.litho"
           value={name}
           onChange={e => setName(e.target.value.toLowerCase())}
@@ -1119,7 +1119,7 @@ function DnnsSection({ Section }: {
 
         <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-muted)' }}>YEARS</label>
         <input
-          className="field"
+          className="field-input"
           type="number" min={1} max={10} step={1}
           value={years}
           onChange={e => setYears(e.target.value)}

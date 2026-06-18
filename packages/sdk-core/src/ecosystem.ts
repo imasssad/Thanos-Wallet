@@ -130,7 +130,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     id: 'litho-deals',
     name: 'LITHO Deals',
     description: 'Deals, offers and rewards across the Lithosphere ecosystem.',
-    url: ECOSYSTEM_HUB,
+    url: 'https://deals.litho.ai',
     color: '#3b7af7',
     category: 'Rewards',
     section: 'Rewards',
