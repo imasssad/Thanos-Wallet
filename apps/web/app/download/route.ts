@@ -11,13 +11,12 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build (2026-06-18, commit 40781e5 / build f6492004 —
-// tactile onboarding (ripple + press-scale buttons, spinner busy states,
-// fade-in boot preloader) + top-level crash guard (on-screen error instead of
-// silent force-close); on top of per-device auto-calibrated PBKDF2, dark
+// Latest production-apk build (2026-06-18, commit 43d92b5 / build 6bd2a2f9 —
+// LIVE MultX bridge (Makalu -> Kamet) via @litho/multx-sdk; on top of the
+// tactile onboarding + crash guard, per-device auto-calibrated PBKDF2, dark
 // splash, LITHO $8.82, network->asset->QR receive, cross-chain swap, + all
 // prior parity features).
-const APK_URL = 'https://expo.dev/artifacts/eas/Gdhf9sEqsSoYlrW7CrdEdLzK_nn3ljxX9er8KjS3u-4.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/P35N3o6ECvk7_08SNzZfphqX6yuJVxRJ6cerQRpIjiU.apk';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
