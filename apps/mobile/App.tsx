@@ -91,6 +91,7 @@ import { WalletConnectModal, WalletConnectRequestHost } from './components/Walle
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib/pricing';
+import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './lib/multx-bridge';
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
@@ -1676,6 +1677,94 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   );
 }
 
+/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via @litho/multx-sdk:
+   approve -> lock on Makalu -> validators sign -> relayer releases on Kamet.
+   Funds arrive at the same address on Kamet (no recipient field). */
+function MobileMakaluKametBridge() {
+  const C = useColors();
+  const styles = useStyles();
+  const seed = useWalletSeed();
+  const [tokenSym, setTokenSym] = useState(BRIDGE_TOKENS[0].symbol);
+  const [amt, setAmt]   = useState('');
+  const [step, setStep] = useState<BridgeStep>('idle');
+  const [txHash, setTxHash] = useState('');
+  const [err, setErr]   = useState('');
+
+  const token  = BRIDGE_TOKENS.find(t => t.symbol === tokenSym) ?? BRIDGE_TOKENS[0];
+  const amtNum = parseFloat(amt) || 0;
+  const ready  = seed.length > 0;
+  const busy   = step === 'approving' || step === 'locking' || step === 'signing';
+  const done   = step === 'completed';
+
+  useEffect(() => { if (step === 'completed' || step === 'error') { setStep('idle'); setErr(''); setTxHash(''); } /* eslint-disable-next-line */ }, [tokenSym, amt]);
+
+  const label: Record<BridgeStep, string> = {
+    idle: 'Bridge to Kamet', approving: 'Approving…', locking: 'Locking on Makalu…',
+    signing: 'Validators signing…', completed: 'Bridged ✓', error: 'Try again',
+  };
+
+  const pickTok = () => Alert.alert('Select asset', undefined, [
+    ...BRIDGE_TOKENS.map(t => ({ text: t.symbol, onPress: () => setTokenSym(t.symbol) })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
+
+  async function run() {
+    if (!ready || amtNum <= 0) return;
+    setErr(''); setTxHash(''); setStep('approving');
+    try {
+      const source = isPrivateKeyWallet(seed)
+        ? { privateKey: seed.join(' ') }
+        : { seed, accountIdx: getActiveAccountIndex() };
+      const res = await bridgeMakaluToKamet({
+        source, token, amount: amt,
+        onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
+      });
+      if (res.status !== 'completed') { setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.'); }
+    } catch (e) {
+      setStep('error');
+      setErr(e instanceof MultXError ? e.message : (e instanceof Error ? e.message : 'Bridge failed'));
+    }
+  }
+
+  const chip = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
+
+  return (
+    <View style={{ paddingHorizontal: 16, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ color: C.textSecondary, fontSize: 12 }}>Route</Text>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{BRIDGE_ROUTE.source.name} → {BRIDGE_ROUTE.dest.name}</Text>
+      </View>
+      <Text style={styles.fieldLabel}>ASSET</Text>
+      <Pressable onPress={pickTok} style={[styles.input, chip]}>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{token.symbol}</Text>
+        <Text style={{ color: C.textMuted }}>▾</Text>
+      </Pressable>
+      <Text style={styles.fieldLabel}>AMOUNT</Text>
+      <TextInput style={[styles.input, { color: C.textPrimary }]} value={amt} onChangeText={setAmt} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={C.textMuted}/>
+
+      <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, marginTop: 2 }}>
+        Locks {token.symbol} on Makalu; a relayer releases the same amount to your address on Kamet — hands-off.
+      </Text>
+
+      {txHash ? (
+        <Text style={{ color: C.blue, fontSize: 11 }} onPress={() => Linking.openURL(`https://makalu.litho.ai/tx/${txHash}`)}>
+          Lock tx: {txHash.slice(0, 10)}…{txHash.slice(-6)}
+        </Text>
+      ) : null}
+      {busy && <Text style={{ color: C.blue, fontSize: 12 }}>{label[step]}</Text>}
+      {done && <Text style={{ color: '#10b981', fontSize: 12 }}>✓ Bridged to Kamet</Text>}
+      {err ? <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text> : null}
+
+      <Pressable style={[styles.btnPrimary, { opacity: (ready && amtNum > 0 && !busy) ? 1 : 0.5 }]} disabled={!ready || amtNum <= 0 || busy} onPress={run}>
+        <Text style={styles.btnPrimaryText}>{!ready ? 'Unlock to bridge' : busy ? label[step] : done ? 'Bridge more' : label.idle}</Text>
+      </Pressable>
+      <Text style={{ color: C.textMuted, fontSize: 10, lineHeight: 15 }}>
+        Makalu → Kamet is live. Kamet → Makalu and external chains are coming soon.
+      </Text>
+    </View>
+  );
+}
+
 function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?: string }) {
   const C = useColors();
   const styles = useStyles();
@@ -1814,7 +1903,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         })}
       </View>
 
-      {mode !== 'swap' ? <MobileCrossChainSwap bridge={mode === 'bridge'}/> : (
+      {mode === 'bridge' ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : (
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
         <Text style={styles.fieldLabel}>FROM</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
