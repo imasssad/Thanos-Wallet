@@ -11,10 +11,11 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build (2026-06-18, commit 26002e8 / build fceaee9b —
-// PBKDF2 encryption fix, dark splash, LITHO $8.82, network->asset->QR receive,
-// cross-chain swap, + all prior parity features).
-const APK_URL = 'https://expo.dev/artifacts/eas/0AeeihdgKrU0Hh3I8PuhByjBB53gzLP_Z3ChvqbWZJc.apk';
+// Latest production-apk build (2026-06-18, commit ca75d19 / build ae6f06bb —
+// per-device auto-calibrated PBKDF2 (fixes 2-4min unlock on low-end phones),
+// dark splash, LITHO $8.82, network->asset->QR receive, cross-chain swap,
+// + all prior parity features).
+const APK_URL = 'https://expo.dev/artifacts/eas/oebENE1ETI_CR-jSaLtp45th_avfyGvIm1BsaCcWKvg.apk';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
