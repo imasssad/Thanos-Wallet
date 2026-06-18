@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  ActivityIndicator, Alert, Animated, AppState, Easing, Image, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
+  ActivityIndicator, Alert, Animated, AppState, Easing, Image, InteractionManager, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
@@ -398,50 +398,60 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
           };
         });
 
-        // Cross-chain natives — only attempted when the seed is unlocked.
-        // Each chain's call is best-effort; a single RPC outage doesn't
-        // poison the whole portfolio.
-        const xchain: DisplayAsset[] = [];
-        if (seedKey) {
-          const phrase = seedKey;
-          const tries = await Promise.allSettled([
-            (async () => {
-              const m = await import('./lib/bitcoin');
-              const addr = m.getBitcoinAddress(phrase);
-              const bal = parseFloat(await m.getBitcoinBalance(addr)) || 0;
-              return { sym: 'BTC', name: 'Bitcoin',     chainId: 0, balance: bal, decimals: 8 };
-            })(),
-            (async () => {
-              const m = await import('./lib/solana');
-              const addr = m.getSolanaAddress(phrase);
-              const bal = parseFloat(await m.getSolanaBalance(addr)) || 0;
-              return { sym: 'SOL', name: 'Solana',      chainId: 0, balance: bal, decimals: 9 };
-            })(),
-            (async () => {
-              const m = await import('./lib/cosmos');
-              const addr = await m.getCosmosAddress(phrase);
-              const bal = parseFloat(await m.getCosmosBalance(addr)) || 0;
-              return { sym: 'ATOM', name: 'Cosmos Hub', chainId: 0, balance: bal, decimals: 6 };
-            })(),
-          ]);
-          for (const r of tries) {
-            if (r.status !== 'fulfilled') continue;
-            if (r.value.balance <= 0) continue; // hide zero positions
-            const priceUsd = prices[r.value.sym] ?? 0;
-            xchain.push({
-              sym: r.value.sym, name: r.value.name, chainId: r.value.chainId,
-              balance: r.value.balance, balanceText: formatAmount(r.value.balance),
-              decimals: r.value.decimals, priceUsd, usdValue: r.value.balance * priceUsd,
-              color: assetColor(r.value.sym), native: true,
-            });
-          }
-        }
-
-        const next = [...evmRows, ...xchain];
+        // Render the LITHO/EVM rows immediately so the home is usable the
+        // instant the wallet unlocks.
         if (cancelled) return;
-        setAssets(next);
-        setTotal(next.reduce((s, a) => s + a.usdValue, 0));
+        setAssets(evmRows);
+        setTotal(evmRows.reduce((s, a) => s + a.usdValue, 0));
         setLoading(false);
+
+        // Cross-chain natives (BTC/SOL/ATOM) pull in heavy libraries
+        // (@scure/btc-signer, @solana/web3.js, @cosmjs/stargate). Loading all
+        // three in parallel the instant the wallet unlocks spikes memory + CPU
+        // right after the KDF and can get the app OS-killed on low-end devices
+        // (looks like a crash, but it's the OS reclaiming memory — no JS error).
+        // So we DEFER until the unlock transition has settled
+        // (runAfterInteractions) and load each chain SEQUENTIALLY to cap peak
+        // memory, appending whatever has a balance. Best-effort per chain.
+        if (!seedKey) return;
+        const phrase = seedKey;
+        type XRow = { sym: string; name: string; chainId: number; balance: number; decimals: number };
+        const derivers: Array<() => Promise<XRow>> = [
+          async () => {
+            const m = await import('./lib/bitcoin');
+            const bal = parseFloat(await m.getBitcoinBalance(m.getBitcoinAddress(phrase))) || 0;
+            return { sym: 'BTC', name: 'Bitcoin', chainId: 0, balance: bal, decimals: 8 };
+          },
+          async () => {
+            const m = await import('./lib/solana');
+            const bal = parseFloat(await m.getSolanaBalance(m.getSolanaAddress(phrase))) || 0;
+            return { sym: 'SOL', name: 'Solana', chainId: 0, balance: bal, decimals: 9 };
+          },
+          async () => {
+            const m = await import('./lib/cosmos');
+            const bal = parseFloat(await m.getCosmosBalance(await m.getCosmosAddress(phrase))) || 0;
+            return { sym: 'ATOM', name: 'Cosmos Hub', chainId: 0, balance: bal, decimals: 6 };
+          },
+        ];
+        InteractionManager.runAfterInteractions(() => {
+          void (async () => {
+            for (const derive of derivers) {
+              if (cancelled) return;
+              let r: XRow | null = null;
+              try { r = await derive(); } catch { r = null; }
+              if (cancelled || !r || r.balance <= 0) continue; // skip empty positions
+              const priceUsd = prices[r.sym] ?? 0;
+              const row: DisplayAsset = {
+                sym: r.sym, name: r.name, chainId: r.chainId,
+                balance: r.balance, balanceText: formatAmount(r.balance),
+                decimals: r.decimals, priceUsd, usdValue: r.balance * priceUsd,
+                color: assetColor(r.sym), native: true,
+              };
+              setAssets(prev => [...prev, row]);
+              setTotal(prev => prev + row.usdValue);
+            }
+          })();
+        });
       } catch {
         if (cancelled) return;
         setAssets([]); setTotal(0); setLoading(false); setOffline(true);
