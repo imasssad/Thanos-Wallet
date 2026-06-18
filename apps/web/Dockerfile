@@ -22,6 +22,10 @@ COPY packages/sdk-core/package.json     packages/sdk-core/
 COPY packages/sdk-react/package.json    packages/sdk-react/
 COPY packages/ui/package.json           packages/ui/
 
+# Vendored MultX bridge SDK tarball — web's package.json references it via
+# `file:../../vendor/...`, so it must be present before pnpm install resolves.
+COPY vendor/ vendor/
+
 # --ignore-scripts skips native compile (usb, tiny-secp256k1, etc.) which only
 # matters for browser-side hardware-wallet code, not server-rendered web.
 RUN pnpm install --filter @thanos/web... --frozen-lockfile=false --ignore-scripts

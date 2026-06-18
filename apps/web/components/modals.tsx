@@ -53,6 +53,8 @@ import { getMakaluProvider, getKametProvider, KAMET_CHAIN_ID } from '../lib/rpc'
 import { getEvmProvider } from '../lib/evm-chains';
 import { parseUnits as ethersParseUnits } from 'ethers';
 import { LedgerError } from '../lib/ledger-transport';
+import { getActiveAccountIndex } from '../lib/vault';
+import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from '../lib/multx-bridge';
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { EVM_CHAINS } from '../lib/evm-chains';
@@ -1996,6 +1998,102 @@ function CrossChainSwap({ bridge }: { bridge: boolean }) {
   );
 }
 
+/* ─── MultX bridge — Makalu → Kamet (LIVE) ───────────────────────────────
+ * Real execution via @litho/multx-sdk: approve → lock on Makalu → validators
+ * sign → relayer releases on Kamet (hands-off). Funds land at the SAME address
+ * on Kamet, so there's no recipient field. Restricted to the one funded route
+ * (docs/MULTX-SDK-guide.md §6); Kamet→Makalu + external chains are "soon". */
+function MakaluKametBridge() {
+  const wallet = useWallet();
+  const [tokenSym, setTokenSym] = useState(BRIDGE_TOKENS[0].symbol);
+  const [amt, setAmt]   = useState('');
+  const [step, setStep] = useState<BridgeStep>('idle');
+  const [txHash, setTxHash] = useState('');
+  const [err, setErr]   = useState('');
+
+  const token   = BRIDGE_TOKENS.find(t => t.symbol === tokenSym) ?? BRIDGE_TOKENS[0];
+  const amtNum  = parseFloat(amt) || 0;
+  const ready   = !!(wallet?.seed?.length || wallet?.privateKey);
+  const busy    = step === 'approving' || step === 'locking' || step === 'signing';
+  const done    = step === 'completed';
+  const canRun  = ready && amtNum > 0 && !busy;
+
+  // A fresh amount/token after a finished run resets the status line.
+  useEffect(() => { if (step === 'completed' || step === 'error') { setStep('idle'); setErr(''); setTxHash(''); } /* eslint-disable-next-line */ }, [tokenSym, amt]);
+
+  const stepLabel: Record<BridgeStep, string> = {
+    idle: 'Bridge to Kamet', approving: 'Approving…', locking: 'Locking on Makalu…',
+    signing: 'Validators signing…', completed: 'Bridged ✓', error: 'Try again',
+  };
+
+  async function run() {
+    if (!ready || amtNum <= 0) return;
+    setErr(''); setTxHash(''); setStep('approving');
+    try {
+      const source = wallet!.privateKey
+        ? { privateKey: wallet!.privateKey }
+        : { seed: wallet!.seed, accountIdx: getActiveAccountIndex() };
+      const res = await bridgeMakaluToKamet({
+        source, token, amount: amt,
+        onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
+      });
+      if (res.status !== 'completed') { setStep('error'); setErr('Locked on Makalu — release is still pending. Check bridge history shortly.'); }
+    } catch (e) {
+      setStep('error');
+      setErr(e instanceof MultXError ? e.message : (e instanceof Error ? e.message : 'Bridge failed'));
+    }
+  }
+
+  return (
+    <>
+      {/* Fixed route header */}
+      <div className="fee-row" style={{ borderTop: 'none', marginTop: 0, paddingTop: 0 }}>
+        <span>Route</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, color: 'var(--text-primary)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b7af7' }}/>{BRIDGE_ROUTE.source.name.replace('Lithosphere ', '')}
+          <span style={{ color: 'var(--text-muted)' }}>→</span>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6366f1' }}/>{BRIDGE_ROUTE.dest.name.replace('Lithosphere ', '')}
+        </span>
+      </div>
+
+      <label className="field-label" style={{ marginTop: 12 }}>Asset</label>
+      <TokenSelect value={tokenSym} onChange={setTokenSym} options={BRIDGE_TOKENS.map(t => t.symbol)} ariaLabel="Bridge asset"/>
+
+      <label className="field-label" style={{ marginTop: 12 }}>Amount</label>
+      <input
+        className="field-input" type="number" value={amt} onChange={e => setAmt(e.target.value)}
+        placeholder="0.00" style={{ width: '100%' }}
+      />
+
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
+        Locks <strong style={{ color: 'var(--text-secondary)' }}>{token.symbol}</strong> on Makalu; validators sign and a relayer
+        releases the same amount to <strong style={{ color: 'var(--text-secondary)' }}>your address on Kamet</strong> — hands-off.
+      </div>
+
+      {txHash && (
+        <div className="fee-row" style={{ marginTop: 10 }}>
+          <span>Lock tx</span>
+          <a href={`https://makalu.litho.ai/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+             style={{ color: 'var(--blue, #3b7af7)', fontFamily: 'Geist Mono, monospace', fontSize: 12 }}>
+            {txHash.slice(0, 10)}…{txHash.slice(-6)}
+          </a>
+        </div>
+      )}
+      {busy && <div style={{ fontSize: 12, color: 'var(--blue, #3b7af7)', marginTop: 8 }}>{stepLabel[step]}</div>}
+      {done && <div style={{ fontSize: 12, color: 'var(--green, #10b981)', marginTop: 8 }}>✓ Bridged to Kamet</div>}
+      {err  && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{err}</div>}
+
+      <button className="btn-primary" style={{ marginTop: 14 }} disabled={!canRun} onClick={run}>
+        {!ready ? 'Unlock wallet to bridge' : busy ? stepLabel[step] : done ? 'Bridge more' : stepLabel.idle}
+      </button>
+
+      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+        Makalu → Kamet is live. Kamet → Makalu and external chains (Sepolia / Base / BNB) are coming soon.
+      </div>
+    </>
+  );
+}
+
 export function SwapModal({ onClose, initialFrom, fullScreen }: {
   onClose: () => void;
   /** Pre-select the FROM asset (e.g. opened from a token detail screen). */
@@ -2306,7 +2404,7 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
     <Modal title="Swap" onClose={onClose} fullScreen={fullScreen}>
       <div className="modal-body">
         <SwapTabs mode={mode} setMode={setMode}/>
-        {mode !== 'swap' ? <CrossChainSwap bridge={mode === 'bridge'}/> : (<>
+        {mode === 'bridge' ? <MakaluKametBridge/> : mode === 'cross' ? <CrossChainSwap bridge={false}/> : (<>
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: '0 0 130px' }}>
