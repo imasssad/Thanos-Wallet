@@ -1122,6 +1122,23 @@ button:focus:not(:focus-visible),
 }
 .modal-close:hover { color: var(--text-primary); }
 .modal-body { padding: 20px; display: flex; flex-direction: column; }
+
+/* Popup modal height cap + internal scroll. Tall flows (Swap / Cross-chain /
+   Bridge) grew past the viewport and clipped top+bottom with no scroller. Cap
+   the box to the viewport — same dvh-under-zoom divisor as .app-shell /
+   .token-detail-box — and scroll the body inside while the header stays put.
+   Scoped to .modal-popup so the full-screen Modal variant (own scroll) is
+   untouched. */
+.modal-popup { max-height: 92dvh; display: flex; flex-direction: column; overflow: hidden; }
+@media (min-width: 769px) {
+  .modal-popup { max-height: calc(92dvh / 1.25); }
+}
+.modal-popup .modal-header { flex: 0 0 auto; }
+.modal-scroll {
+  display: flex; flex-direction: column;
+  min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
 .modal-success { padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .success-icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(16,185,129,0.12); border: 2px solid rgba(16,185,129,0.3); display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--green); }
 .success-title { font-size: 18px; font-weight: 700; }

@@ -101,12 +101,12 @@ function Modal({ title, onClose, children, fullScreen }: { title: string; onClos
   }
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()}>
+      <div className="modal-box modal-popup" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <span className="modal-title">{title}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
-        {children}
+        <div className="modal-scroll">{children}</div>
       </div>
     </div>
   );
