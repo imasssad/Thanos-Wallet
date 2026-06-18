@@ -2800,18 +2800,6 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 .lp-dot { color: var(--blue); opacity: 0.6; }
 
-.lp-scroll-hint {
-  position: absolute;
-  bottom: 32px; left: 50%; transform: translateX(-50%);
-  font-size: 10px; font-weight: 600; letter-spacing: 0.4em;
-  color: var(--text-muted);
-  animation: lpScrollHint 2s ease-in-out infinite;
-}
-@keyframes lpScrollHint {
-  0%, 100% { transform: translate(-50%, 0); opacity: 0.6; }
-  50%      { transform: translate(-50%, 6px); opacity: 1; }
-}
-
 /* ────────────────────────── SECTIONS ────────────────────────── */
 .lp-section {
   padding: clamp(56px, 7vw, 100px) 0;

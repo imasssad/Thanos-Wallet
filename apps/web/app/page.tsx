@@ -116,8 +116,6 @@ function Hero() {
           <PhoneMockup />
         </div>
       </div>
-
-      <div className="lp-scroll-hint" aria-hidden>SCROLL</div>
     </header>
   );
 }
