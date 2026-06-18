@@ -41,30 +41,31 @@ const LEGACY_PWD     = 'thanos.password';
 const LEGACY_UNLOCK  = 'thanos.unlocked';
 const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 
-// KDF for NEW vaults: PBKDF2-HMAC-SHA256, 600k iterations (OWASP 2023).
+// KDF for NEW vaults: PBKDF2-HMAC-SHA256 with a per-DEVICE auto-calibrated
+// iteration count.
 //
-// Why not Argon2id? @noble/hashes' Argon2 is PURE JS and Argon2 is memory-hard
-// — under Hermes on low-end phones it took 5-10 MINUTES (real device report),
-// which reads as "stuck on Encrypting…". Even the OWASP mobile floor (19 MiB)
-// was unusable. PBKDF2 is iteration-only (not memory-hard) and finishes in
-// ~1-3s on any phone, deterministically.
-//
-// This is a sound KDF here: the vault is device-local (never synced) AND the
-// encrypted blob is itself wrapped in the OS hardware keystore via
-// expo-secure-store (Secure Enclave / Android Keystore). The password KDF is a
-// second layer over hardware-backed storage, so PBKDF2-600k is appropriate.
-// Older Argon2id vaults still decrypt — openVault reads each vault's own kdf
-// block (which carries its t/m/p), so no legacy constants are needed here.
-const PBKDF2_ITERS = 600_000;
-const KEY_BYTES = 32;          // AES-256
+// React Native (Hermes) has NO native WebCrypto, so the KDF runs in pure JS,
+// and Hermes speed varies ~100x between phones. A FIXED count is therefore
+// either insecure (low) or unusable (high): a fixed 600k took 2-4 MINUTES on a
+// low-end phone (real device report) and got the app killed, yet is sub-second
+// on a fast one. So at wallet creation we benchmark the device and pick a count
+// targeting ~1s, floored at the NIST minimum and capped so fast phones don't
+// over-spin. The chosen count is stored in the vault's kdf block, so unlock
+// reproduces the same key. The vault is also wrapped in the OS hardware keystore
+// (expo-secure-store: Secure Enclave / Android Keystore), so the password KDF is
+// a second layer over hardware-backed storage. (A native-crypto module would
+// derive in ~100ms like web/extension but needs a native rebuild + a new dep;
+// this pure-JS adaptive path is reliable with no new module.) Legacy Argon2id /
+// fixed-600k vaults still decrypt via their own stored kdf block.
+const PBKDF2_TARGET_MS = 1000;     // aim derivation at ~1 second
+const PBKDF2_MIN_ITERS = 10_000;   // NIST SP 800-132 floor (hardware keystore backstops)
+const PBKDF2_MAX_ITERS = 600_000;  // OWASP target ceiling
+const KEY_BYTES = 32;              // AES-256
 
 /* ─── On-disk format ────────────────────────────────────────────────────── */
 export type VaultKdf =
   | { type: 'argon2id'; t: number; m: number; p: number }
   | { type: 'pbkdf2'; c: number; hash: 'sha256' };
-
-/** KDF block written into every new vault. */
-const NEW_KDF: VaultKdf = { type: 'pbkdf2', c: PBKDF2_ITERS, hash: 'sha256' };
 
 export interface EncryptedVault {
   v: 1;
@@ -101,17 +102,32 @@ async function deriveKey(password: string, salt: Uint8Array, kdf: VaultKdf): Pro
   });
 }
 
+/** Benchmark this device and pick a PBKDF2 iteration count targeting
+ *  ~PBKDF2_TARGET_MS, clamped to [MIN, MAX]. Run once at vault creation; the
+ *  count is stored in the vault so unlock reproduces the key. A small probe
+ *  measures throughput, then we extrapolate (PBKDF2 is linear in iterations). */
+async function calibratePbkdf2Iters(): Promise<number> {
+  const PROBE = 3000;
+  const t0 = Date.now();
+  await pbkdf2Async(sha256, utf8ToBytes('thanos-kdf-calibration'), new Uint8Array(16), { c: PROBE, dkLen: KEY_BYTES });
+  const dt = Math.max(1, Date.now() - t0);
+  const target = Math.round((PROBE / dt) * PBKDF2_TARGET_MS);
+  return Math.min(PBKDF2_MAX_ITERS, Math.max(PBKDF2_MIN_ITERS, target));
+}
+
 /* ─── Public API ────────────────────────────────────────────────────────── */
 
 /** Encrypt + write the vault to expo-secure-store. */
 export async function createVault(mnemonic: string, password: string): Promise<EncryptedVault> {
   const salt = randomBytes(16);
   const iv   = randomBytes(12);
-  const key  = await deriveKey(password, salt, NEW_KDF);
+  // Tune the iteration count to THIS device (~1s), then store it in the vault.
+  const kdf: VaultKdf = { type: 'pbkdf2', c: await calibratePbkdf2Iters(), hash: 'sha256' };
+  const key  = await deriveKey(password, salt, kdf);
   const ct   = gcm(key, iv).encrypt(utf8ToBytes(mnemonic));
   const vault: EncryptedVault = {
     v: 1,
-    kdf: NEW_KDF,
+    kdf,
     salt:       bytesToHex(salt),
     iv:         bytesToHex(iv),
     ciphertext: bytesToHex(ct),
