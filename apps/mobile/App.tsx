@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  Alert, Animated, AppState, Easing, Image, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
+  ActivityIndicator, Alert, Animated, AppState, Easing, Image, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
@@ -62,7 +62,7 @@ import {
 } from './lib/biometric';
 import { makeAddressQrSvg, parseScannedAddress } from './lib/qr';
 import { useScreenProtect } from './lib/screen-protect';
-import { initSentry } from './lib/sentry';
+import { initSentry, captureException } from './lib/sentry';
 import {
   loadAccountsFromStorage,
   getActiveAccountIndex, setActiveAccountIndex,
@@ -220,6 +220,74 @@ function AnimatedSwitch({ keyName, children, style }: {
   return (
     <Animated.View style={[{ opacity, transform: [{ translateY }] }, style]}>
       {children}
+    </Animated.View>
+  );
+}
+
+/* Tactile button — a native Material ripple (Android) + a subtle press
+   scale/opacity (both platforms). Done entirely via Pressable's own props so
+   there's NO Animated.View wrapping the touch target (which previously desynced
+   Android touches). Drop-in for <Pressable> on the onboarding CTAs so taps feel
+   like a real button rather than a flat screen. */
+function Btn({ onPress, onLongPress, disabled, style, children, hitSlop, ripple = 'rgba(255,255,255,0.18)' }: {
+  onPress?: () => void;
+  onLongPress?: () => void;
+  disabled?: boolean;
+  style?: any;
+  children: React.ReactNode;
+  hitSlop?: number;
+  ripple?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      disabled={disabled}
+      hitSlop={hitSlop}
+      android_ripple={{ color: ripple, borderless: false }}
+      style={({ pressed }) => [
+        style,
+        { overflow: 'hidden' },
+        pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+/* Spinner + label for the "Encrypting…" / "Unlocking…" busy state — replaces
+   the bare text so the preloader reads as active work, not a frozen button. */
+function BtnBusy({ label, color = '#fff' }: { label: string; color?: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+      <ActivityIndicator size="small" color={color} />
+      <Text style={{ color, fontSize: 15, fontWeight: '700' }}>{label}</Text>
+    </View>
+  );
+}
+
+/* Boot preloader — shown while we check the keystore for an existing vault.
+   Previously this was a blank screen (read as a frozen/dead app on slower
+   devices); now the brand logo + a spinner fade in, so the cold start reads
+   as deliberate loading. Native-driven fade is safe here — no Pressables. */
+function BootSplash({ tint }: { tint: string }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale   = useRef(new Animated.Value(0.96)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.spring(scale,   { toValue: 1, friction: 7, tension: 60, useNativeDriver: true }),
+    ]).start();
+  }, []);
+  return (
+    <Animated.View style={{ opacity, transform: [{ scale }], alignItems: 'center' }}>
+      <Image
+        source={require('./assets/images/Thanos_Logo_Transparent.png')}
+        style={{ width: 168, height: 168, marginBottom: 10 }}
+        resizeMode="contain"
+      />
+      <ActivityIndicator size="small" color={tint} />
     </Animated.View>
   );
 }
@@ -3364,12 +3432,12 @@ function OnboardingScreen({
         {step === 'welcome' && <>
           <Text style={styles.onboardTitle}>Welcome to Thanos</Text>
           <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · EVM.</Text>
-          <Pressable style={styles.btnPrimary} onPress={() => setStep('create-length')}>
+          <Btn style={styles.btnPrimary} onPress={() => setStep('create-length')}>
             <Text style={styles.btnPrimaryText}>Create new wallet</Text>
-          </Pressable>
-          <Pressable style={styles.btnOutline} onPress={() => setStep('import-choose')}>
+          </Btn>
+          <Btn style={styles.btnOutline} onPress={() => setStep('import-choose')} ripple="rgba(59,122,247,0.18)">
             <Text style={styles.btnOutlineText}>Import existing wallet</Text>
-          </Pressable>
+          </Btn>
         </>}
 
         {step === 'import-choose' && <>
@@ -3425,16 +3493,16 @@ function OnboardingScreen({
             onChangeText={setPkInput}
           />
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('import-choose')}>
+            <Btn style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('import-choose')} ripple="rgba(59,122,247,0.18)">
               <Text style={styles.btnOutlineText}>Back</Text>
-            </Pressable>
-            <Pressable
+            </Btn>
+            <Btn
               style={[styles.btnPrimary, { flex: 1, marginTop: 0, opacity: /^(0x)?[0-9a-fA-F]{64}$/.test(pkInput.trim()) ? 1 : 0.45 }]}
               disabled={!/^(0x)?[0-9a-fA-F]{64}$/.test(pkInput.trim())}
               onPress={() => { setImportKind('privateKey'); setStep('import-pwd'); }}
             >
               <Text style={styles.btnPrimaryText}>Continue</Text>
-            </Pressable>
+            </Btn>
           </View>
         </>}
 
@@ -3474,12 +3542,12 @@ function OnboardingScreen({
             <Text style={styles.warnItem}>✓  Thanos will never ask for this phrase</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable style={[styles.btnOutline, { flex: 0.8, marginTop: 0 }]} onPress={() => setStep('welcome')}>
+            <Btn style={[styles.btnOutline, { flex: 0.8, marginTop: 0 }]} onPress={() => setStep('welcome')} ripple="rgba(59,122,247,0.18)">
               <Text style={styles.btnOutlineText} numberOfLines={1}>Back</Text>
-            </Pressable>
-            <Pressable style={[styles.btnPrimary, { flex: 1.2, marginTop: 0 }]} onPress={() => setStep('create-show')}>
+            </Btn>
+            <Btn style={[styles.btnPrimary, { flex: 1.2, marginTop: 0 }]} onPress={() => setStep('create-show')}>
               <Text style={styles.btnPrimaryText} numberOfLines={1} adjustsFontSizeToFit>I understand</Text>
-            </Pressable>
+            </Btn>
           </View>
         </>}
 
@@ -3520,12 +3588,12 @@ function OnboardingScreen({
           </Pressable>
 
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-warn')}>
+            <Btn style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-warn')} ripple="rgba(59,122,247,0.18)">
               <Text style={styles.btnOutlineText}>Back</Text>
-            </Pressable>
-            <Pressable style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]} onPress={goToVerify}>
+            </Btn>
+            <Btn style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]} onPress={goToVerify}>
               <Text style={styles.btnPrimaryText}>I've saved it</Text>
-            </Pressable>
+            </Btn>
           </View>
         </>}
 
@@ -3581,16 +3649,16 @@ function OnboardingScreen({
           </View>
           {orderMismatch && <Text style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>Order doesn't match. Tap slots to undo.</Text>}
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-show')}>
+            <Btn style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('create-show')} ripple="rgba(59,122,247,0.18)">
               <Text style={styles.btnOutlineText}>Back</Text>
-            </Pressable>
-            <Pressable
+            </Btn>
+            <Btn
               style={[styles.btnPrimary, { flex: 1, marginTop: 0, opacity: allConfirmed ? 1 : 0.45 }]}
               disabled={!allConfirmed}
               onPress={() => setStep('create-pwd')}
             >
               <Text style={styles.btnPrimaryText}>Continue</Text>
-            </Pressable>
+            </Btn>
           </View>
         </>}
 
@@ -3620,21 +3688,25 @@ function OnboardingScreen({
             <Text style={styles.onboardErr}>Passwords don't match</Text>
           )}
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable
+            <Btn
               style={[styles.btnOutline, { flex: 0.8, marginTop: 0 }]}
+              disabled={busy}
               onPress={() => setStep(step === 'create-pwd' ? 'create-confirm' : (importKind === 'privateKey' ? 'import-pk' : 'import'))}
+              ripple="rgba(59,122,247,0.18)"
             >
               <Text style={styles.btnOutlineText} numberOfLines={1}>Back</Text>
-            </Pressable>
-            <Pressable
+            </Btn>
+            <Btn
               style={[styles.btnPrimary, { flex: 1.2, marginTop: 0, opacity: (password.length >= 8 && password === password2 && !busy) ? 1 : 0.45 }]}
               disabled={password.length < 8 || password !== password2 || busy}
               onPress={step === 'create-pwd' ? finishCreate : finishImport}
             >
-              <Text style={styles.btnPrimaryText} numberOfLines={1} adjustsFontSizeToFit>
-                {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create wallet' : 'Import wallet')}
-              </Text>
-            </Pressable>
+              {busy
+                ? <BtnBusy label="Encrypting…" />
+                : <Text style={styles.btnPrimaryText} numberOfLines={1} adjustsFontSizeToFit>
+                    {step === 'create-pwd' ? 'Create wallet' : 'Import wallet'}
+                  </Text>}
+            </Btn>
           </View>
         </>}
 
@@ -3655,25 +3727,26 @@ function OnboardingScreen({
             {importInput.trim().split(/\s+/).filter(Boolean).length} words
           </Text>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
-            <Pressable style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('import-choose')}>
+            <Btn style={[styles.btnOutline, { flex: 1, marginTop: 0 }]} onPress={() => setStep('import-choose')} ripple="rgba(59,122,247,0.18)">
               <Text style={styles.btnOutlineText}>Back</Text>
-            </Pressable>
-            <Pressable
+            </Btn>
+            <Btn
               style={[styles.btnPrimary, { flex: 1, marginTop: 0 }]}
               onPress={() => { setImportKind('phrase'); setStep('import-pwd'); }}
             >
               <Text style={styles.btnPrimaryText}>Continue</Text>
-            </Pressable>
+            </Btn>
           </View>
         </>}
 
         {step === 'unlock' && <>
           <Text style={styles.onboardTagline}>Secure and trusted multi-chain crypto wallet</Text>
           {bioAvail.on && (
-            <Pressable
+            <Btn
               style={[styles.btnSecondary, { width: '100%', marginBottom: 12, opacity: busy ? 0.6 : 1 }]}
               disabled={busy}
               onPress={tryBiometricUnlock}
+              ripple="rgba(59,122,247,0.18)"
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 {bioAvail.kind === 'face'
@@ -3683,7 +3756,7 @@ function OnboardingScreen({
                   Unlock with {biometricLabel(bioAvail.kind)}
                 </Text>
               </View>
-            </Pressable>
+            </Btn>
           )}
           <Text style={styles.fieldLabel}>Password</Text>
           <TextInput
@@ -3697,13 +3770,15 @@ function OnboardingScreen({
             autoFocus={!bioAvail.on}
           />
           {unlockErr ? <Text style={styles.onboardErr}>{unlockErr}</Text> : null}
-          <Pressable
+          <Btn
             style={[styles.btnPrimary, { opacity: (unlockPwd && !busy) ? 1 : 0.45 }]}
             disabled={!unlockPwd || busy}
             onPress={tryUnlock}
           >
-            <Text style={styles.btnPrimaryText}>{busy ? 'Unlocking…' : 'Unlock'}</Text>
-          </Pressable>
+            {busy
+              ? <BtnBusy label="Unlocking…" />
+              : <Text style={styles.btnPrimaryText}>Unlock</Text>}
+          </Btn>
           <Pressable onPress={() => Alert.alert(
             'Reset wallet',
             'This deletes your wallet from this device. You can restore with your recovery phrase.',
@@ -4117,7 +4192,61 @@ function MakaluWelcomeModal() {
   );
 }
 
-export default function App() {
+/* Top-level crash guard. React error boundaries must be class components.
+   Catches any JS render/runtime error in the tree (which would otherwise blank
+   the bundle and surface as Android's "keeps stopping"), reports it to Sentry,
+   and shows a recoverable screen WITH the error text so a persistent crash can
+   be screenshotted and diagnosed instead of being an opaque force-close.
+   Note: this catches JS errors only — a true native crash still hard-closes. */
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) { try { captureException(error); } catch { /* noop */ } }
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0a0e17', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+        <StatusBar barStyle="light-content" backgroundColor="#0a0e17"/>
+        <Text style={{ color: '#fff', fontSize: 19, fontWeight: '800', marginBottom: 10 }}>Something went wrong</Text>
+        <Text style={{ color: '#9aa3b2', fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 18 }}>
+          The app hit an unexpected error. Your wallet is safe — it can always be restored from your recovery phrase.
+        </Text>
+        <ScrollView style={{ maxHeight: 180, alignSelf: 'stretch', marginBottom: 22 }}>
+          <Text selectable style={{ color: '#f87171', fontFamily: MONO, fontSize: 11, lineHeight: 16 }}>
+            {String(error?.message || error)}
+            {error?.stack ? '\n\n' + error.stack.split('\n').slice(0, 8).join('\n') : ''}
+          </Text>
+        </ScrollView>
+        <Pressable
+          onPress={() => this.setState({ error: null })}
+          android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
+          style={({ pressed }) => [
+            { backgroundColor: '#3b7af7', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, overflow: 'hidden' },
+            pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+          ]}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+}
+
+// Root export — App wrapped in the crash guard. registerRootComponent(App)
+// in index.js mounts this.
+export default function Root() {
+  return (
+    <ErrorBoundary>
+      <App/>
+    </ErrorBoundary>
+  );
+}
+
+function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
@@ -4251,6 +4380,7 @@ export default function App() {
         <StylesCtx.Provider value={styles}>
           <SafeAreaView style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase}/>
+            <BootSplash tint={colors.blue}/>
           </SafeAreaView>
         </StylesCtx.Provider>
       </ThemeCtx.Provider>
