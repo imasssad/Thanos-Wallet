@@ -11,13 +11,13 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build (2026-06-19, commit 0f498f7 / build 68d30ff6 —
-// crash fix: defer heavy cross-chain libs off the unlock path (no more OOM
-// kill on low-end devices) + global JS error handler (on-screen error instead
-// of silent force-close); on top of the LIVE MultX bridge (Makalu -> Kamet),
-// tactile onboarding, per-device auto-calibrated PBKDF2, LITHO $8.82, + all
+// Latest production-apk build (2026-06-19, commit 7199287 / build 0135b0e2 —
+// crash fix: lazy-load the ESM MultX bridge SDK off the eager/Metro path (kills
+// the "Requiring unknown module undefined" crash at unlock + the tab-open jank);
+// on top of the deferred cross-chain loading, global JS error handler, LIVE
+// MultX bridge (Makalu -> Kamet), tactile onboarding, adaptive PBKDF2, + all
 // prior parity features).
-const APK_URL = 'https://expo.dev/artifacts/eas/WWTaKFWMC32ZKDfuFgDXn28qEWDxDluSNKEkgasL1R4.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/VrFNx7i5cDPMZXP6SRbAdySDjPD4iMu7-uZg73lBRVM.apk';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
