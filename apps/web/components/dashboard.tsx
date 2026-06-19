@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, ShieldCheck,
 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
+import { LaxCardPromo, LaxCardModal } from './LaxCard';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
@@ -719,6 +720,7 @@ export function Dashboard() {
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
       {modal === 'swap'    && <SwapModal    fullScreen={swapFull} onClose={() => { setModal(null); setSwapFull(false); }}/>}
+      {modal === 'laxcard' && <LaxCardModal onClose={() => setModal(null)}/>}
       {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
 
       <div style={{
@@ -998,6 +1000,9 @@ export function Dashboard() {
                 );
               })}
             </div>
+
+            {/* LAX virtual card promo — sits below the assets list. */}
+            <LaxCardPromo onGetStarted={() => setModal('laxcard')}/>
           </div>
         )}
 

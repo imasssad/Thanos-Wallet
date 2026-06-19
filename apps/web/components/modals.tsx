@@ -72,7 +72,7 @@ const SWAP_SYMBOLS = [...TOKEN_SYMBOLS, ...SWAP_STABLES.map(s => s.sym)];
 /** Tokens sendable on Lithosphere Makalu (native LITHO + LEP100). */
 const MAKALU_SYMBOLS = TOKENS.filter(t => t.chain === 'Makalu').map(t => t.sym);
 
-export type ModalKind = 'send' | 'receive' | 'swap' | null;
+export type ModalKind = 'send' | 'receive' | 'swap' | 'laxcard' | null;
 
 function Modal({ title, onClose, children, fullScreen }: { title: string; onClose: () => void; children: React.ReactNode; fullScreen?: boolean }) {
   // Full-screen variant — used when a flow is opened from the nav/footer
