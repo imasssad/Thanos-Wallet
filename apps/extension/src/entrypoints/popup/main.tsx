@@ -1013,7 +1013,7 @@ function SettingsScreen({
         </button>
       </div>
 
-      <div className="x-set-version">Thanos Wallet · v0.8.1</div>
+      <div className="x-set-version">Thanos Wallet · v{browser.runtime.getManifest().version}</div>
     </div>
   );
 }
