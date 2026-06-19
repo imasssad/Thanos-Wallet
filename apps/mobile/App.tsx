@@ -91,7 +91,10 @@ import { WalletConnectModal, WalletConnectRequestHost } from './components/Walle
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib/pricing';
-import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './lib/multx-bridge';
+// Lightweight bridge metadata only (no SDK/ethers) so the Bridge UI renders
+// without pulling the heavy ESM bridge SDK onto the eager load path. The
+// execution fn (bridgeMakaluToKamet) is lazy-imported when a bridge is run.
+import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from './lib/bridge-meta';
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
@@ -1725,14 +1728,17 @@ function MobileMakaluKametBridge() {
       const source = isPrivateKeyWallet(seed)
         ? { privateKey: seed.join(' ') }
         : { seed, accountIdx: getActiveAccountIndex() };
+      // Lazy-load the bridge SDK (heavy ESM + ethers v5) only now, on demand.
+      const { bridgeMakaluToKamet } = await import('./lib/multx-bridge');
       const res = await bridgeMakaluToKamet({
         source, token, amount: amt,
         onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
       });
       if (res.status !== 'completed') { setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.'); }
     } catch (e) {
+      // MultXError extends Error and carries a decoded user-facing .message.
       setStep('error');
-      setErr(e instanceof MultXError ? e.message : (e instanceof Error ? e.message : 'Bridge failed'));
+      setErr(e instanceof Error ? e.message : 'Bridge failed');
     }
   }
 
