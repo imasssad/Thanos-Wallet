@@ -22,7 +22,7 @@ import { resolveToEvm } from './address';
 
 /* ─── Constants ────────────────────────────────────────────────────────── */
 
-import { getMakaluProvider, MAKALU_CHAIN_ID as _CHAIN_ID } from './rpc';
+import { getMakaluProvider, getKametProvider, MAKALU_CHAIN_ID as _CHAIN_ID, KAMET_CHAIN_ID } from './rpc';
 import { getActiveAccountIndex } from './vault';
 
 export const MAKALU_CHAIN_ID = _CHAIN_ID;
@@ -180,6 +180,54 @@ export async function sendEvmToken(walletInput: WalletInput, input: EvmTokenSend
     to,
     value:  amount,
     kind:   'erc20',
+    wait:   async () => {
+      const r = await tx.wait();
+      if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
+      return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
+    },
+  };
+}
+
+/**
+ * Native LITHO transfer on a chosen Lithosphere chain — Makalu (700777) or
+ * Kamet (900523). Makalu keyring sends normally go through the signer worker;
+ * this is the chain-aware main-thread path that makes Kamet sends work (the
+ * worker doesn't thread a chainId yet). Recipient may be 0x or litho1.
+ */
+export async function sendLithoNative(
+  walletInput: WalletInput,
+  input: { chainId: number; recipient: string; amount: string; accountIdx?: number },
+): Promise<SendResult> {
+  const provider = input.chainId === KAMET_CHAIN_ID ? getKametProvider() : getMakaluProvider();
+  const to = resolveToEvm(input.recipient.trim());
+  if (!to) throw new SendError('invalid_address', 'Recipient is not a valid 0x or litho1 address');
+
+  let weiAmount: bigint;
+  try { weiAmount = parseUnits(input.amount, 18); }
+  catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
+  if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
+
+  // Sign from the ACTIVE account (walletFromInput would default to index 0).
+  const wallet = 'privateKey' in walletInput
+    ? new Wallet(walletInput.privateKey, provider)
+    : walletFromSeed(walletInput.seed, provider, input.accountIdx);
+
+  let tx: TransactionResponse;
+  try {
+    tx = await wallet.sendTransaction({ to, value: weiAmount });
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (/insufficient funds/i.test(msg)) throw new SendError('insufficient', 'Insufficient LITHO for amount + gas');
+    if (/user rejected/i.test(msg))      throw new SendError('rejected', 'You cancelled the transaction');
+    throw new SendError('rpc_error', msg || 'Network error while broadcasting');
+  }
+
+  return {
+    hash:   tx.hash,
+    symbol: 'LITHO',
+    to,
+    value:  weiAmount,
+    kind:   'native',
     wait:   async () => {
       const r = await tx.wait();
       if (!r) throw new SendError('rpc_error', 'Receipt unavailable');

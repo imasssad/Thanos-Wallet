@@ -9,7 +9,7 @@ import {
 } from '../lib/address';
 import {
   sendTokens, estimateSendFee, SendError, makeProvider,
-  sendNativeEvm, estimateNativeEvmFee, sendEvmToken,
+  sendNativeEvm, estimateNativeEvmFee, sendEvmToken, sendLithoNative,
 } from '../lib/signer';
 import { signerSend, SignerError } from '../lib/signer-client';
 import {
@@ -130,10 +130,7 @@ type SendNet =
 
 const SEND_NETWORKS: SendNet[] = [
   { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
-  // Kamet is intentionally NOT a selectable send network: vault (seed/PK) sends
-  // on Kamet need the signer-worker chainId refactor (still wired to Makalu), so
-  // a Kamet vault send is hard-blocked below. Until that lands, don't advertise
-  // it in the picker. Kamet remains a Receive target + the MultX bridge dest.
+  { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
   { id: 'bitcoin', label: 'Bitcoin' },
   { id: 'solana',  label: 'Solana' },
   { id: 'cosmos',  label: 'Cosmos Hub' },
@@ -189,7 +186,11 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   // chains have their native coin + the stablecoins we track (USDT/USDC); the
   // single-asset chains (BTC/SOL/ATOM) have just one.
   const sendableCoins = useMemo<string[]>(() => {
-    if (network === 'makalu' || network === 'kamet') return [...MAKALU_SYMBOLS];
+    if (network === 'makalu') return [...MAKALU_SYMBOLS];
+    // Kamet: native LITHO only for now — the wallet has no Kamet LEP100 token
+    // catalog (bridged-token addresses differ from Makalu). Native LITHO send
+    // works via the chain-aware sendLithoNative path.
+    if (network === 'kamet')  return ['LITHO'];
     if (network === 'bitcoin') return ['BTC'];
     if (network === 'solana')  return ['SOL'];
     if (network === 'cosmos')  return ['ATOM'];
@@ -876,15 +877,28 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
       setStage('failed');
       return;
     }
-    /* Kamet keyring sends route through the signer worker, but the
-       worker's handleSend doesn't yet thread the active chainId — every
-       broadcast lands on Makalu. Until that lands (follow-up after the
-       worker chainId refactor), block the path explicitly so a Kamet
-       selection can't silently broadcast on the wrong chain. Hardware-
-       wallet paths above are already chain-aware and untouched. */
+    /* Kamet keyring sends — the signer worker is wired to Makalu, so route
+       native LITHO on Kamet through the chain-aware main-thread sendLithoNative
+       (the seed is already in this context). Signs from the ACTIVE account. */
     if (network === 'kamet') {
-      setError('Sending LITHO on Kamet from an unlocked vault is not yet supported. Use a Ledger or Trezor for Kamet sends, or switch to Makalu.');
-      setStage('failed');
+      try {
+        const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
+        const result = await sendLithoNative(walletInput, {
+          chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount, accountIdx: getActiveAccountIndex(),
+        });
+        setTxHash(result.hash);
+        setStage('pending');
+        result.wait()
+          .then(r => {
+            setStage(r.status === 1 ? 'confirmed' : 'failed');
+            if (r.status !== 1) setError('Transaction reverted on-chain');
+          })
+          .catch(() => setStage('failed'));
+      } catch (e) {
+        const msg = e instanceof SendError ? e.message : (e as Error).message || 'Failed to send on Kamet';
+        setError(msg);
+        setStage('failed');
+      }
       return;
     }
     try {
