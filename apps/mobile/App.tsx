@@ -2248,9 +2248,15 @@ function SettingsScreen() {
       );
       return;
     }
-    const ok = await enableBiometricUnlock(key);
-    if (!ok) {
-      Alert.alert('Could not enable', 'Biometric authentication was cancelled or unavailable.');
+    const res = await enableBiometricUnlock(key);
+    if (!res.ok) {
+      const msg =
+        res.reason === 'not_enrolled'  ? `No ${bioName} is enrolled on this device. Set it up in your device settings, then try again.`
+      : res.reason === 'no_hardware'   ? 'This device has no biometric hardware.'
+      : res.reason === 'lockout'       ? 'Too many attempts. Unlock your device with your PIN or passcode, then try again.'
+      : res.reason === 'storage_failed'? 'Secure storage was unavailable. Make sure your device has a screen lock (PIN, pattern or password) set, then try again.'
+      :                                  'Biometric check was cancelled.';
+      Alert.alert('Could not enable', msg);
     }
     await refreshBio();
   };
@@ -2734,13 +2740,88 @@ function SheetShell({ title, onClose, children }: { title: string; onClose: () =
 
 function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClose: () => void; seed: string[] }) {
   const C = useColors();
-  const [shown, setShown] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [shown, setShown]   = useState(false);
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (!visible) { setShown(false); setCopied(false); } }, [visible]);
+  const [pwd, setPwd]       = useState('');
+  const [err, setErr]       = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [bio, setBio]       = useState<{ kind: BiometricKind; on: boolean }>({ kind: 'none', on: false });
+
+  // Block screenshots / screen-recording the whole time this sheet is open —
+  // it renders the seed phrase or raw private key once unlocked.
+  useScreenProtect(visible);
+
+  useEffect(() => {
+    if (!visible) { setAuthed(false); setShown(false); setCopied(false); setPwd(''); setErr(''); setBusy(false); return; }
+    (async () => {
+      const cap = await getBiometricCapability();
+      const on  = await isBiometricUnlockEnabled();
+      setBio({ kind: cap.kind, on: on && cap.hasHardware && cap.isEnrolled });
+    })();
+  }, [visible]);
+
   if (!visible) return null;
   // Private-key wallets have no recovery phrase — reveal the raw key instead.
   const isPk = seed.length === 1 && /^0x[0-9a-fA-F]{64}$/.test((seed[0] ?? '').trim());
   const noun = isPk ? 'private key' : 'recovery phrase';
+
+  // ── Gate: prove ownership (password or biometric) before anything is shown ──
+  const verifyPassword = async () => {
+    if (busy || !pwd) return;
+    setBusy(true); setErr('');
+    try {
+      const vault = await loadVault();
+      if (!vault) { setErr('No wallet on this device.'); return; }
+      const ok = await openVault(vault, pwd);
+      if (!ok) { setErr('Incorrect password'); setPwd(''); return; }
+      setAuthed(true);
+    } finally { setBusy(false); }
+  };
+  const verifyBiometric = async () => {
+    if (busy) return;
+    setBusy(true); setErr('');
+    try {
+      const key = await readProtectedKey();
+      if (!key) { setErr('Biometric check was cancelled.'); return; }
+      const vault = await loadVault();
+      if (!vault || !(await openVaultWithKey(vault, key))) { setErr('Could not verify — enter your password instead.'); return; }
+      setAuthed(true);
+    } finally { setBusy(false); }
+  };
+
+  if (!authed) {
+    return (
+      <SheetShell title={isPk ? 'Private key' : 'Recovery phrase'} onClose={onClose}>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+          <Shield size={16} color={C.textSecondary}/>
+          <Text style={{ flex: 1, fontSize: 12, color: C.textSecondary, lineHeight: 18 }}>
+            Enter your wallet password to view your {noun}. Make sure no one is watching your screen.
+          </Text>
+        </View>
+        {bio.on && (
+          <Pressable onPress={verifyBiometric} disabled={busy}
+            style={{ paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: busy ? 0.6 : 1 }}>
+            {bio.kind === 'face' ? <ScanFace size={18} color={C.textPrimary}/> : <Fingerprint size={18} color={C.textPrimary}/>}
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Verify with {biometricLabel(bio.kind)}</Text>
+          </Pressable>
+        )}
+        <TextInput
+          secureTextEntry autoFocus={!bio.on}
+          placeholder="Wallet password" placeholderTextColor={C.textMuted}
+          value={pwd} onChangeText={t => { setPwd(t); setErr(''); }}
+          onSubmitEditing={verifyPassword}
+          style={{ backgroundColor: C.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, paddingVertical: 12, paddingHorizontal: 14, color: C.textPrimary, fontSize: 15 }}
+        />
+        {!!err && <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text>}
+        <Pressable onPress={verifyPassword} disabled={busy || !pwd}
+          style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: (busy || !pwd) ? 0.6 : 1 }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Verifying…' : 'Unlock to reveal'}</Text>
+        </Pressable>
+      </SheetShell>
+    );
+  }
+
   return (
     <SheetShell title={isPk ? 'Private key' : 'Recovery phrase'} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>

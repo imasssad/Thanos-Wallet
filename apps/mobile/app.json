@@ -50,6 +50,12 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely."
+        }
+      ],
+      [
         "expo-font",
         {
           "fonts": ["./assets/fonts/litho-sym.ttf"]
