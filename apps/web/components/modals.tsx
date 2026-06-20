@@ -129,7 +129,10 @@ type SendNet =
 
 const SEND_NETWORKS: SendNet[] = [
   { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
-  { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
+  // Kamet is intentionally NOT a selectable send network: vault (seed/PK) sends
+  // on Kamet need the signer-worker chainId refactor (still wired to Makalu), so
+  // a Kamet vault send is hard-blocked below. Until that lands, don't advertise
+  // it in the picker. Kamet remains a Receive target + the MultX bridge dest.
   { id: 'bitcoin', label: 'Bitcoin' },
   { id: 'solana',  label: 'Solana' },
   { id: 'cosmos',  label: 'Cosmos Hub' },
@@ -148,6 +151,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   const [coin, setCoin]       = useState(initialCoin ?? 'LITHO');
   const [to, setTo]           = useState('');
   const [amount, setAmount]   = useState('');
+  // "Send max" — the displayed balance is filled, but the actual send reserves
+  // the network fee (BTC: spend-all minus fee; SOL/Cosmos: subtract a fee
+  // buffer) so "send everything" doesn't get rejected for insufficient funds.
+  const [maxMode, setMaxMode] = useState(false);
 
   /* When the user changes network, reset `coin` to the right default for
      that chain. Each chain has exactly one sendable asset today
@@ -524,6 +531,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           source,
           recipient: to.trim(),
           amount,
+          sendMax: maxMode,
         });
         // Persist so the Transactions view can show this as pending and
         // offer a "Bump fee" affordance until it confirms.
@@ -563,7 +571,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
         const hash = await sendCosmos({
           mnemonic:  wallet.seed.join(' '),
           recipient: to.trim(),
-          amount,
+          // Reserve ~0.005 ATOM for gas when sending max so the fee doesn't push
+          // the total over the balance.
+          amount: maxMode ? String(Math.max(0, parseFloat(amount || '0') - 0.005)) : amount,
         });
         setTxHash(hash);
         setStage('confirmed');
@@ -631,7 +641,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
       if (!selectedToken) return;
       try {
         const sig = selectedToken.address === null
-          ? await sendSol({       mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount })
+          // Native SOL: reserve ~0.00001 SOL for the signature fee on send-max.
+          // (SPL token max is the full token balance — its fee is paid in SOL.)
+          ? await sendSol({       mnemonic: wallet.seed.join(' '), recipient: to.trim(),
+                                   amount: maxMode ? String(Math.max(0, parseFloat(amount || '0') - 0.00001)) : amount })
           : await sendSplToken({  mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount,
                                    mintAddress: selectedToken.address, decimals: selectedToken.decimals });
         setTxHash(sig);
@@ -1069,7 +1082,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
         }}>
           <input
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={e => { setAmount(e.target.value); setMaxMode(false); }}
             type="number"
             placeholder="0"
             inputMode="decimal"
@@ -1112,7 +1125,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           <span>Balance: {balanceFor(coin)} {coin}</span>
           <button
             style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 12, cursor: 'pointer', fontWeight: 700 }}
-            onClick={() => setAmount(balanceFor(coin).replace(/,/g, ''))}
+            onClick={() => { setMaxMode(true); setAmount(balanceFor(coin).replace(/,/g, '')); }}
           >
             MAX
           </button>

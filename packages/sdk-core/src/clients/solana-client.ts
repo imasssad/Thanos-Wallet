@@ -1,4 +1,4 @@
-import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
@@ -40,7 +40,10 @@ export class SolanaClient {
           lamports: Math.round(Number(request.amount) * LAMPORTS_PER_SOL)
         })
       );
-      return connection.sendTransaction(transaction, [signer]);
+      // sendAndConfirmTransaction waits for on-chain confirmation (and throws on
+      // drop/expiry) — so the UI only reports "confirmed" once it really is,
+      // and a dropped tx surfaces as a failure instead of a false success.
+      return sendAndConfirmTransaction(connection, transaction, [signer]);
     }
 
     const mint = new PublicKey(request.mintAddress);
@@ -57,7 +60,7 @@ export class SolanaClient {
     }
 
     transaction.add(createTransferInstruction(fromAta, toAta, signer.publicKey, amount, [], TOKEN_PROGRAM_ID));
-    return connection.sendTransaction(transaction, [signer]);
+    return sendAndConfirmTransaction(connection, transaction, [signer]);
   }
 
   signMessage(mnemonic: string, message: Uint8Array): string {
