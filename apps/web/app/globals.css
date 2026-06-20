@@ -1121,6 +1121,19 @@ button:focus:not(:focus-visible),
   transition: color 0.12s;
 }
 .modal-close:hover { color: var(--text-primary); }
+
+/* Full-screen modal back button — a clear, tappable circular control (the old
+   thin "‹" glyph in muted grey was easy to miss). */
+.modal-back-btn {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 50%; padding: 0;
+  background: var(--bg-card); border: 1px solid var(--border-default);
+  color: var(--text-primary); cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.1s;
+}
+.modal-back-btn:hover  { background: var(--bg-elevated, rgba(255,255,255,0.06)); border-color: var(--blue); }
+.modal-back-btn:active { transform: scale(0.94); }
+
 .modal-body { padding: 20px; display: flex; flex-direction: column; }
 
 /* Popup modal height cap + internal scroll. Tall flows (Swap / Cross-chain /

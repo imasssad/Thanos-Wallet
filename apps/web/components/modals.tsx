@@ -90,7 +90,9 @@ function Modal({ title, onClose, children, fullScreen }: { title: string; onClos
           borderBottom: '1px solid var(--border-default)', padding: '14px 16px',
           display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          <button className="modal-close" onClick={onClose} aria-label="Back" style={{ fontSize: 22, lineHeight: 1 }}>‹</button>
+          <button className="modal-back-btn" onClick={onClose} aria-label="Back">
+            <ChevronLeft size={26} strokeWidth={2.5}/>
+          </button>
           <span className="modal-title">{title}</span>
         </div>
         <div className="modal-box" style={{ maxWidth: 520, width: '100%', margin: '0 auto', background: 'transparent', boxShadow: 'none', border: 'none' }}>
