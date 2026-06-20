@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { ExtensionPrompt } from '../components/ExtensionPrompt';
 
 const IconGithub = (p: { size?: number }) => (
   <svg width={p.size ?? 16} height={p.size ?? 16} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -48,6 +49,7 @@ export default function Landing() {
       <PlatformSection />
       <FinalCta />
       <Footer />
+      <ExtensionPrompt />
     </div>
   );
 }

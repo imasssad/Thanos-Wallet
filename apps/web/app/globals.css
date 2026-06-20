@@ -3503,3 +3503,45 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--text-muted);
   letter-spacing: 0.04em;
 }
+
+/* ── "Get the extension" prompt — fixed desktop banner (see
+   components/ExtensionPrompt.tsx; hidden on mobile + when installed). ── */
+.lp-ext-prompt {
+  position: fixed; z-index: 200;
+  left: 50%; bottom: 20px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px;
+  width: 460px; max-width: calc(100vw - 24px);
+  padding: 12px 14px;
+  background: rgba(16,18,28,0.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.5);
+  animation: lpExtIn 0.4s ease-out;
+}
+@keyframes lpExtIn {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.lp-ext-prompt-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 10px; background: rgba(59,122,247,0.15); color: var(--blue);
+  display: flex; align-items: center; justify-content: center;
+}
+.lp-ext-prompt-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.lp-ext-prompt-text strong { font-size: 13.5px; font-weight: 700; color: #fff; }
+.lp-ext-prompt-text span   { font-size: 12px; color: rgba(255,255,255,0.6); }
+.lp-ext-prompt-cta {
+  flex-shrink: 0;
+  padding: 8px 14px; border-radius: 10px;
+  background: var(--blue); color: #fff;
+  font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap;
+  transition: filter 0.12s;
+}
+.lp-ext-prompt-cta:hover { filter: brightness(1.1); }
+.lp-ext-prompt-close {
+  flex-shrink: 0; background: none; border: none;
+  color: rgba(255,255,255,0.4); cursor: pointer; padding: 4px;
+  display: flex; transition: color 0.12s;
+}
+.lp-ext-prompt-close:hover { color: #fff; }
