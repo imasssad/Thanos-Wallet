@@ -11,13 +11,12 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build (2026-06-19, commit 7199287 / build 0135b0e2 —
-// crash fix: lazy-load the ESM MultX bridge SDK off the eager/Metro path (kills
-// the "Requiring unknown module undefined" crash at unlock + the tab-open jank);
-// on top of the deferred cross-chain loading, global JS error handler, LIVE
-// MultX bridge (Makalu -> Kamet), tactile onboarding, adaptive PBKDF2, + all
-// prior parity features).
-const APK_URL = 'https://expo.dev/artifacts/eas/VrFNx7i5cDPMZXP6SRbAdySDjPD4iMu7-uZg73lBRVM.apk';
+// Latest production-apk build (2026-06-20, commit 25f2ec8 / build f13f416c —
+// HD account discovery: scans funded accounts on unlock so a deposit to a
+// non-active account (or any account on an imported wallet) shows up in the
+// switcher with its address; on top of the lazy-loaded MultX bridge SDK, crash
+// fixes, LIVE MultX bridge, adaptive PBKDF2, + all prior parity features).
+const APK_URL = 'https://expo.dev/artifacts/eas/SvkqvrW86iU2XZLD3uuahIKoIAds3JMX93mqvCYbFKQ.apk';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
