@@ -120,16 +120,16 @@ type SendStage = 'compose' | 'broadcasting' | 'pending' | 'confirmed' | 'failed'
  *  Bitcoin / Solana, then every EVM chain we support. Each carries an
  *  identifier the send branch uses to route. */
 type SendNet =
-  | { id: 'makalu';  label: 'Lithosphere Makalu' }
-  | { id: 'kamet';   label: 'Lithosphere Kamet'  }
+  | { id: 'makalu';  label: string }
+  | { id: 'kamet';   label: string }
   | { id: 'bitcoin'; label: 'Bitcoin' }
   | { id: 'solana';  label: 'Solana' }
   | { id: 'cosmos';  label: 'Cosmos Hub' }
   | { id: `evm:${number}`; label: string };
 
 const SEND_NETWORKS: SendNet[] = [
-  { id: 'makalu',  label: 'Lithosphere Makalu' },
-  { id: 'kamet',   label: 'Lithosphere Kamet'  },
+  { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
+  { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
   { id: 'bitcoin', label: 'Bitcoin' },
   { id: 'solana',  label: 'Solana' },
   { id: 'cosmos',  label: 'Cosmos Hub' },
@@ -907,7 +907,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
        : isBitcoinSend ? bitcoinExplorerUrl(txHash)
        : isCosmosSend  ? cosmosExplorerUrl(txHash)
        : isEvmSend && evmChain ? `${evmChain.explorerUrl}/tx/${txHash}`
-       : `https://makalu.litho.ai/tx/${txHash}`)
+       // Litho: route to the explorer for the chain we actually sent on —
+       // Kamet tx on the Makalu explorer (or vice-versa) just shows "not found",
+       // which is exactly what made deposits look like they never arrived.
+       : `${network === 'kamet' ? 'https://explorer-3.litho.ai' : 'https://makalu.litho.ai'}/tx/${txHash}`)
       : null;
     return (
       <Modal title="Send" onClose={onClose}>
@@ -931,6 +934,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
             <div className="success-icon" style={{ color: 'var(--green)' }}>✓</div>
             <div className="success-title">Confirmed</div>
             <div className="success-sub">{amount} {coin} sent to <Addr value={to.trim()} head={10} tail={6}/></div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              on <strong style={{ color: 'var(--text-secondary)' }}>{SEND_NETWORKS.find(n => n.id === network)?.label ?? network}</strong>
+            </div>
             {txHash && <a href={explorer ?? '#'} target="_blank" rel="noreferrer"
               style={{ fontSize: 11, color: 'var(--blue)', wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', marginTop: 6 }}>
               View on explorer →
@@ -1415,7 +1421,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
       // toggle.
       out.push({
         id:           'lithosphere-makalu',
-        name:         'Lithosphere Makalu',
+        name:         'Lithosphere Makalu · Testnet',
         symbol:       'LITHO',
         color:        '#3b7af7',
         address:      litho || evm,
@@ -1429,7 +1435,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
       // confirm explicitly which chain they expect funds on.
       out.push({
         id:           'lithosphere-kamet',
-        name:         'Lithosphere Kamet',
+        name:         'Lithosphere Kamet · Testnet',
         symbol:       'LITHO',
         color:        '#6366f1',
         address:      litho || evm,

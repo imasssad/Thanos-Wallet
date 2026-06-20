@@ -892,8 +892,8 @@ export function Dashboard() {
                   onChange={v => setNetFilter(v as NetFilter)}
                   options={[
                     { value: 'all',     label: 'All networks' },
-                    { value: 'Makalu',  label: 'Lithosphere Makalu' },
-                    { value: 'Kamet',   label: 'Lithosphere Kamet' },
+                    { value: 'Makalu',  label: 'Lithosphere Makalu · Testnet' },
+                    { value: 'Kamet',   label: 'Lithosphere Kamet · Testnet' },
                     { value: 'EVM',     label: 'Ethereum & EVM' },
                     { value: 'Bitcoin', label: 'Bitcoin' },
                     { value: 'Solana',  label: 'Solana' },
