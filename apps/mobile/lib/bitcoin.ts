@@ -93,6 +93,37 @@ function selectUtxos(utxos: Utxo[], target: number) {
   return { selected, total };
 }
 
+/** Coin selection that accounts for the REAL fee (vbytes × feeRate), recomputed
+ *  as inputs are added — the old fixed +1000-sat buffer underfunded the real fee
+ *  (~4k–14k sats) → false "Insufficient BTC" on funded wallets. Largest-first,
+ *  folds sub-dust change into the fee; `sendMax` spends all minus fee. */
+function selectForSend(utxos: Utxo[], amountSats: number, feeRate: number, sendMax = false): {
+  selected: Utxo[]; total: number; feeSats: number; changeSats: number; recipientSats: number;
+} {
+  const sorted = [...utxos].sort((a, b) => b.value - a.value);
+  if (sendMax) {
+    const selected = sorted;
+    const total = selected.reduce((s, u) => s + u.value, 0);
+    const feeSats = estimateVbytes(selected.length, 1) * feeRate;
+    const recipientSats = total - feeSats;
+    if (recipientSats <= DUST) throw new BitcoinSendError('insufficient', 'Insufficient BTC balance to cover the network fee');
+    return { selected, total, feeSats, changeSats: 0, recipientSats };
+  }
+  const selected: Utxo[] = []; let total = 0;
+  for (const u of sorted) {
+    selected.push(u); total += u.value;
+    const feeSats = estimateVbytes(selected.length, 2) * feeRate;
+    if (total >= amountSats + feeSats) {
+      const changeSats = total - amountSats - feeSats;
+      if (changeSats <= DUST) {
+        return { selected, total, feeSats: total - amountSats, changeSats: 0, recipientSats: amountSats };
+      }
+      return { selected, total, feeSats, changeSats, recipientSats: amountSats };
+    }
+  }
+  throw new BitcoinSendError('insufficient', 'Insufficient BTC balance to cover amount + fees');
+}
+
 export async function estimateBitcoinFee(input: {
   mnemonic: string; amount: string; feeRateSatPerVb?: number;
 }): Promise<{ sats: number; btc: string; feeRate: number } | null> {
@@ -104,38 +135,31 @@ export async function estimateBitcoinFee(input: {
     const feeRate = input.feeRateSatPerVb ?? await getFastestFeeRate();
     const utxos = await fetchUtxos(acc.address);
     if (utxos.length === 0) return null;
-    const { selected, total } = selectUtxos(utxos, amountSats + 1000);
-    if (total < amountSats) return null;
-    const vbytes = estimateVbytes(selected.length, 2);
-    const sats = vbytes * feeRate;
-    return { sats, btc: (sats / 1e8).toFixed(8), feeRate };
+    const sel = selectForSend(utxos, amountSats, feeRate, false);
+    return { sats: sel.feeSats, btc: (sel.feeSats / 1e8).toFixed(8), feeRate };
   } catch { return null; }
 }
 
 export async function sendBitcoin(input: {
-  mnemonic: string; recipient: string; amount: string; feeRateSatPerVb?: number;
+  mnemonic: string; recipient: string; amount: string; feeRateSatPerVb?: number; sendMax?: boolean;
 }): Promise<string> {
   if (!isValidBitcoinAddress(input.recipient)) {
     throw new BitcoinSendError('invalid_address', 'Recipient is not a valid Bitcoin address');
   }
   const v = parseFloat(input.amount);
-  if (!v || v <= 0) throw new BitcoinSendError('invalid_amount', 'Amount must be greater than zero');
-  const amountSats = BigInt(Math.round(v * 1e8));
+  if (!input.sendMax && (!v || v <= 0)) throw new BitcoinSendError('invalid_amount', 'Amount must be greater than zero');
+  const amountSats = Math.round((v || 0) * 1e8);
 
   try {
     const account = accountFromMnemonic(input.mnemonic);
     const feeRate = input.feeRateSatPerVb ?? await getFastestFeeRate();
     const utxos = await fetchUtxos(account.address);
-    const { selected, total } = selectUtxos(utxos, Number(amountSats) + 1000);
-    const vbytes = estimateVbytes(selected.length, 2);
-    const feeSats = BigInt(vbytes * feeRate);
-    const changeSats = BigInt(total) - amountSats - feeSats;
-    if (changeSats < 0n) throw new BitcoinSendError('insufficient', 'Insufficient BTC balance');
+    const sel = selectForSend(utxos, amountSats, feeRate, !!input.sendMax);
 
     const p2wpkh = btc.p2wpkh(account.pubKey, NETWORK);
     const tx = new btc.Transaction({ allowUnknownOutputs: false });
 
-    for (const u of selected) {
+    for (const u of sel.selected) {
       const rawHex = await fetchRawTx(u.txid);
       tx.addInput({
         txid: u.txid,
@@ -145,8 +169,8 @@ export async function sendBitcoin(input: {
         nonWitnessUtxo: hex.decode(rawHex),
       });
     }
-    tx.addOutputAddress(input.recipient.trim(), amountSats, NETWORK);
-    if (changeSats > DUST) tx.addOutputAddress(account.address, changeSats, NETWORK);
+    tx.addOutputAddress(input.recipient.trim(), BigInt(sel.recipientSats), NETWORK);
+    if (sel.changeSats > 0) tx.addOutputAddress(account.address, BigInt(sel.changeSats), NETWORK);
 
     tx.sign(account.privKey);
     tx.finalize();

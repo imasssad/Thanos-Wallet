@@ -1867,7 +1867,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
       if (quote.unsignedTx) {
         const signer = await import('./lib/signer');
         if (signer.hasSeed()) {
-          signedTxHash = await signer.signAndBroadcast("m/44'/60'/0'/0/0", {
+          signedTxHash = await signer.signAndBroadcast(`m/44'/60'/0'/0/${getActiveAccountIndex()}`, {
             to:                   quote.unsignedTx.to,
             value:                quote.unsignedTx.value ? BigInt(quote.unsignedTx.value) : undefined,
             data:                 quote.unsignedTx.data,
@@ -2507,7 +2507,7 @@ function MobileAllowancesPanel({ seed }: { seed: string[] }) {
       const provider = new ethers.JsonRpcProvider('https://rpc.litho.ai');
       const w = ethers.HDNodeWallet.fromMnemonic(
         ethers.Mnemonic.fromPhrase(seed.join(' ')),
-        `m/44'/60'/0'/0/0`,
+        `m/44'/60'/0'/0/${getActiveAccountIndex()}`,
       );
       setRows(await fetchMakaluAllowances({
         walletAddress: w.address, provider,
@@ -2526,7 +2526,7 @@ function MobileAllowancesPanel({ seed }: { seed: string[] }) {
       const provider = new ethers.JsonRpcProvider('https://rpc.litho.ai');
       const w = ethers.HDNodeWallet.fromMnemonic(
         ethers.Mnemonic.fromPhrase(seed.join(' ')),
-        `m/44'/60'/0'/0/0`,
+        `m/44'/60'/0'/0/${getActiveAccountIndex()}`,
       ).connect(provider);
       const tx = await revokeAllowance({ signer: w, tokenAddress: r.tokenAddress, spender: r.spender });
       await tx.wait();

@@ -88,15 +88,35 @@ function estimateVbytes(nInputs: number, nOutputs: number): number {
   return 10 + nInputs * 68 + nOutputs * 31;
 }
 
-function selectUtxos(utxos: Utxo[], target: number): { selected: Utxo[]; total: number } {
-  const selected: Utxo[] = [];
-  let total = 0;
-  for (const u of utxos) {
-    selected.push(u);
-    total += u.value;
-    if (total >= target) break;
+/** Coin selection that accounts for the REAL fee (vbytes × feeRate), recomputed
+ *  as inputs are added — the old fixed +1000-sat buffer underfunded the real fee
+ *  (~4k–14k sats) → false "Insufficient BTC" on funded wallets. Largest-first,
+ *  folds sub-dust change into the fee; `sendMax` spends all minus fee. */
+function selectForSend(utxos: Utxo[], amountSats: number, feeRate: number, sendMax = false): {
+  selected: Utxo[]; total: number; feeSats: number; changeSats: number; recipientSats: number;
+} {
+  const sorted = [...utxos].sort((a, b) => b.value - a.value);
+  if (sendMax) {
+    const selected = sorted;
+    const total = selected.reduce((s, u) => s + u.value, 0);
+    const feeSats = estimateVbytes(selected.length, 1) * feeRate;
+    const recipientSats = total - feeSats;
+    if (recipientSats <= DUST) throw new BitcoinSendError('insufficient', 'Insufficient BTC balance to cover the network fee');
+    return { selected, total, feeSats, changeSats: 0, recipientSats };
   }
-  return { selected, total };
+  const selected: Utxo[] = []; let total = 0;
+  for (const u of sorted) {
+    selected.push(u); total += u.value;
+    const feeSats = estimateVbytes(selected.length, 2) * feeRate;
+    if (total >= amountSats + feeSats) {
+      const changeSats = total - amountSats - feeSats;
+      if (changeSats <= DUST) {
+        return { selected, total, feeSats: total - amountSats, changeSats: 0, recipientSats: amountSats };
+      }
+      return { selected, total, feeSats, changeSats, recipientSats: amountSats };
+    }
+  }
+  throw new BitcoinSendError('insufficient', 'Insufficient BTC balance to cover amount + fees');
 }
 
 async function broadcastPsbt(args: {
@@ -144,11 +164,8 @@ export async function estimateBitcoinFee(input: {
     const feeRate = input.feeRateSatPerVb ?? await getFastestFeeRate();
     const utxos = await fetchUtxos(acc.address);
     if (utxos.length === 0) return null;
-    const { selected, total } = selectUtxos(utxos, amountSats + 1000);
-    if (total < amountSats) return null;
-    const vbytes = estimateVbytes(selected.length, 2);
-    const sats = vbytes * feeRate;
-    return { sats, btc: (sats / 1e8).toFixed(8), feeRate };
+    const sel = selectForSend(utxos, amountSats, feeRate, false);
+    return { sats: sel.feeSats, btc: (sel.feeSats / 1e8).toFixed(8), feeRate };
   } catch { return null; }
 }
 
@@ -157,28 +174,25 @@ export async function sendBitcoin(input: {
   recipient:        string;
   amount:           string;
   feeRateSatPerVb?: number;
+  sendMax?:         boolean;
 }): Promise<string> {
   if (!isValidBitcoinAddress(input.recipient)) {
     throw new BitcoinSendError('invalid_address', 'Recipient is not a valid Bitcoin address');
   }
   const btc = parseFloat(input.amount);
-  if (!btc || btc <= 0) throw new BitcoinSendError('invalid_amount', 'Amount must be greater than zero');
-  const amountSats = Math.round(btc * 1e8);
+  if (!input.sendMax && (!btc || btc <= 0)) throw new BitcoinSendError('invalid_amount', 'Amount must be greater than zero');
+  const amountSats = Math.round((btc || 0) * 1e8);
 
   try {
     const account = accountFromMnemonic(input.mnemonic);
     const feeRate = input.feeRateSatPerVb ?? await getFastestFeeRate();
     const utxos = await fetchUtxos(account.address);
-    const { selected, total } = selectUtxos(utxos, amountSats + 1000);
-    const vbytes = estimateVbytes(selected.length, 2);
-    const feeSats = vbytes * feeRate;
-    const changeSats = total - amountSats - feeSats;
-    if (changeSats < 0) throw new BitcoinSendError('insufficient', 'Insufficient BTC balance for amount + fees');
+    const sel = selectForSend(utxos, amountSats, feeRate, !!input.sendMax);
 
     return await broadcastPsbt({
-      account, utxosToSpend: selected,
-      recipient: input.recipient.trim(), recipientSats: amountSats,
-      changeSats, changeAddress: account.address,
+      account, utxosToSpend: sel.selected,
+      recipient: input.recipient.trim(), recipientSats: sel.recipientSats,
+      changeSats: sel.changeSats, changeAddress: account.address,
     });
   } catch (e) {
     if (e instanceof BitcoinSendError) throw e;

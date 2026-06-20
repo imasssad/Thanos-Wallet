@@ -1472,7 +1472,7 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
       if (quote.unsignedTx) {
         const bridge = window.thanosDesktop?.signer;
         if (bridge && (await bridge.hasSeed())) {
-          signedTxHash = await bridge.sendTx("m/44'/60'/0'/0/0", {
+          signedTxHash = await bridge.sendTx(`m/44'/60'/0'/0/${getActiveAccountIndex()}`, {
             to:                   quote.unsignedTx.to,
             value:                quote.unsignedTx.value,
             data:                 quote.unsignedTx.data,
