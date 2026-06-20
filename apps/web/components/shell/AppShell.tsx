@@ -14,6 +14,7 @@ import {
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount, setAccountCount, MAX_ACCOUNTS,
 } from '../../lib/vault';
+import { discoverFundedAccountCount, deriveAccountAddresses } from '../../lib/account-discovery';
 import { setSignerAccountIndex } from '../../lib/signer-client';
 
 /* Wallet context — exposes the unlocked address (in both formats) AND the
@@ -70,6 +71,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!unlocked || !isMnemonicWallet) return;
     void setSignerAccountIndex(activeIdx).catch(() => { /* worker not ready yet */ });
   }, [activeIdx, unlocked, isMnemonicWallet]);
+
+  // Account discovery — scan HD indices for funded accounts so a deposit made
+  // to a non-active index (or any account on a freshly imported wallet) becomes
+  // reachable in the switcher instead of being invisible. Runs once per unlock;
+  // only ever GROWS accountCount, never hides an account the user already has.
+  useEffect(() => {
+    if (!unlocked || !isMnemonicWallet || walletSeed.length === 0) return;
+    let cancel = false;
+    void discoverFundedAccountCount(walletSeed)
+      .then((n) => {
+        if (cancel) return;
+        if (n > getAccountCount()) { setAccountCount(n); setAccountCountState(n); }
+      })
+      .catch(() => { /* best-effort */ });
+    return () => { cancel = true; };
+  }, [unlocked, isMnemonicWallet, walletSeed]);
+
+  // Per-account EVM addresses for the switcher (so users can identify which
+  // numbered account is which, rather than a bare "Account N").
+  const accountAddresses = useMemo(
+    () => (isMnemonicWallet ? deriveAccountAddresses(walletSeed, accountCount) : []),
+    [isMnemonicWallet, walletSeed, accountCount],
+  );
 
   const switchAccount = (idx: number) => {
     if (idx < 0 || idx >= accountCount) return;
@@ -134,6 +158,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onLock={lock}
           activeIdx={activeIdx}
           accountCount={isMnemonicWallet ? accountCount : 1}
+          accountAddresses={accountAddresses}
           onSwitchAccount={isMnemonicWallet ? switchAccount  : undefined}
           onAddAccount={isMnemonicWallet ? addAccount : undefined}
         />

@@ -29,6 +29,7 @@ export function TopNav({
   onLock,
   activeIdx = 0,
   accountCount = 1,
+  accountAddresses = [],
   onSwitchAccount,
   onAddAccount,
 }: {
@@ -36,6 +37,9 @@ export function TopNav({
   /** Current HD-derivation account (mnemonic wallets only). */
   activeIdx?:       number;
   accountCount?:    number;
+  /** EVM address per account index — shown in the switcher so users can
+   *  identify which numbered account is which. */
+  accountAddresses?: string[];
   /** When set, the menu shows an Account-N switcher + "+ Add account". */
   onSwitchAccount?: (idx: number) => void;
   onAddAccount?:    () => void;
@@ -163,17 +167,28 @@ export function TopNav({
                 {showSwitcher && (
                   <>
                     <div className="menu-divider"/>
-                    {Array.from({ length: accountCount }, (_, i) => (
-                      <button
-                        key={i}
-                        className="menu-item"
-                        onClick={() => { onSwitchAccount?.(i); setAccountMenu(false); }}
-                        style={i === activeIdx ? { fontWeight: 700 } : undefined}
-                      >
-                        <User size={16}/> Account {i + 1}
-                        {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
-                      </button>
-                    ))}
+                    {Array.from({ length: accountCount }, (_, i) => {
+                      const a = accountAddresses[i];
+                      return (
+                        <button
+                          key={i}
+                          className="menu-item"
+                          onClick={() => { onSwitchAccount?.(i); setAccountMenu(false); }}
+                          style={{ alignItems: 'center', ...(i === activeIdx ? { fontWeight: 700 } : {}) }}
+                        >
+                          <User size={16}/>
+                          <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
+                            <span>Account {i + 1}</span>
+                            {a && (
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', fontWeight: 400 }}>
+                                {a.slice(0, 6)}…{a.slice(-4)}
+                              </span>
+                            )}
+                          </span>
+                          {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                        </button>
+                      );
+                    })}
                     {onAddAccount && accountCount < 10 && (
                       <button className="menu-item" onClick={() => { onAddAccount(); setAccountMenu(false); }}>
                         <span style={{ width: 16, textAlign: 'center', fontSize: 18, lineHeight: '16px' }}>+</span>
