@@ -1487,6 +1487,14 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
     if (net.id === 'bitcoin') return [{ sym: 'BTC',  name: 'Bitcoin' }];
     if (net.id === 'solana')  return [{ sym: 'SOL',  name: 'Solana' }];
     if (net.id === 'cosmos')  return [{ sym: 'ATOM', name: 'Cosmos Hub' }];
+    if (net.id.startsWith('evm-')) {
+      // EVM chain → its native gas coin (ETH on Ethereum/L2s, BNB on BSC, POL
+      // on Polygon, AVAX on Avalanche). The same 0x receives ERC-20s too, but
+      // the wallet only tracks native coins on external chains today.
+      const chainId = parseInt(net.id.slice(4), 10);
+      const chain = EVM_CHAINS.find(c => c.chainId === chainId);
+      return chain ? [{ sym: chain.nativeSymbol, name: chain.nativeName }] : [];
+    }
     return TOKENS.filter(t => t.chain === 'Makalu').map(t => ({ sym: t.sym, name: t.name })); // Makalu / Kamet
   };
 
