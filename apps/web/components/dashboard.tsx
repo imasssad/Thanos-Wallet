@@ -655,7 +655,7 @@ export function Dashboard() {
      The dense charts + Exchange widget + Staking from the prior layout
      are folded under the DeFi tab so nothing is lost; Activity wraps
      the Payment history table. */
-  const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity'>('tokens');
+  const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity' | 'cards'>('tokens');
 
   /* Network filter for the Tokens tab. The wallet today has assets on
      four "kinds" of chain: Lithosphere Makalu, EVM-imported tokens,
@@ -675,8 +675,8 @@ export function Dashboard() {
     const swap = searchParams.get('swap');
     const t    = searchParams.get('tab');
     if (swap === '1') { setSwapFull(true); setModal('swap'); router.replace('/app'); }
-    else if (t && (['tokens', 'defi', 'nfts', 'activity'] as const).includes(t as never)) {
-      setTab(t as 'tokens' | 'defi' | 'nfts' | 'activity');
+    else if (t && (['tokens', 'defi', 'nfts', 'activity', 'cards'] as const).includes(t as never)) {
+      setTab(t as 'tokens' | 'defi' | 'nfts' | 'activity' | 'cards');
       router.replace('/app');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -851,12 +851,13 @@ export function Dashboard() {
           borderBottom: '1px solid var(--border-subtle)',
           paddingBottom: 0,
         }}>
-          {(['tokens', 'defi', 'nfts', 'activity'] as const).map(t => {
+          {(['tokens', 'defi', 'nfts', 'activity', 'cards'] as const).map(t => {
             const active = tab === t;
             const label = t === 'tokens' ? 'Tokens'
                         : t === 'defi'   ? 'DeFi'
                         : t === 'nfts'   ? 'NFTs'
-                        : 'Activity';
+                        : t === 'activity' ? 'Activity'
+                        : 'Cards';
             return (
               <button
                 key={t}
@@ -1001,7 +1002,11 @@ export function Dashboard() {
               })}
             </div>
 
-            {/* LAX virtual card promo — sits below the assets list. */}
+          </div>
+        )}
+
+        {tab === 'cards' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <LaxCardPromo onGetStarted={() => setModal('laxcard')}/>
           </div>
         )}

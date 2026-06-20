@@ -111,6 +111,14 @@ export function LaxCardPromo({ onGetStarted }: { onGetStarted: () => void }) {
         </div>
         <Benefits />
       </div>
+      <a
+        href={LAX_APPLY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ alignSelf: 'center', color: 'var(--blue)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
+      >
+        Learn more ›
+      </a>
       <button className="btn-primary" onClick={onGetStarted} style={{ width: '100%' }}>
         Get Started
       </button>
