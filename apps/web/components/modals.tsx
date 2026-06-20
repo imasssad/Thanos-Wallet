@@ -58,6 +58,7 @@ import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, Mult
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { EVM_CHAINS } from '../lib/evm-chains';
+import { EVM_TOKENS, evmTokensForChain } from '../lib/evm-tokens';
 import { classifyRecipient } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
 import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
@@ -1488,12 +1489,12 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
     if (net.id === 'solana')  return [{ sym: 'SOL',  name: 'Solana' }];
     if (net.id === 'cosmos')  return [{ sym: 'ATOM', name: 'Cosmos Hub' }];
     if (net.id.startsWith('evm-')) {
-      // EVM chain → its native gas coin (ETH on Ethereum/L2s, BNB on BSC, POL
-      // on Polygon, AVAX on Avalanche). The same 0x receives ERC-20s too, but
-      // the wallet only tracks native coins on external chains today.
+      // EVM chain → its native gas coin (ETH/BNB/POL/AVAX) + the stablecoins we
+      // track on that chain (USDT/USDC). All go to the same 0x address.
       const chainId = parseInt(net.id.slice(4), 10);
       const chain = EVM_CHAINS.find(c => c.chainId === chainId);
-      return chain ? [{ sym: chain.nativeSymbol, name: chain.nativeName }] : [];
+      const stables = evmTokensForChain(chainId).map(t => ({ sym: t.symbol, name: t.name }));
+      return chain ? [{ sym: chain.nativeSymbol, name: chain.nativeName }, ...stables] : [];
     }
     return TOKENS.filter(t => t.chain === 'Makalu').map(t => ({ sym: t.sym, name: t.name })); // Makalu / Kamet
   };

@@ -134,6 +134,60 @@ export async function sendNativeEvm(walletInput: WalletInput, input: NativeSendI
   };
 }
 
+export interface EvmTokenSendInput {
+  chainId:      number;
+  tokenAddress: string;
+  decimals:     number;
+  symbol:       string;     // for error messages + the SendResult
+  recipient:    string;     // 0x… address
+  amount:       string;     // human-readable, parsed against the token decimals
+}
+
+/** ERC-20 token transfer on any supported EVM chain (USDT/USDC/etc.). The
+ *  chain-aware sibling of sendNativeEvm — sendTokens() is Makalu-only. */
+export async function sendEvmToken(walletInput: WalletInput, input: EvmTokenSendInput): Promise<SendResult> {
+  const chain = getEvmChain(input.chainId);
+  if (!chain) throw new SendError('invalid_chain', `Unsupported chain: ${input.chainId}`);
+
+  const to = input.recipient.trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+    throw new SendError('invalid_address', `${chain.name} requires a 0x EVM address`);
+  }
+
+  let amount: bigint;
+  try { amount = parseUnits(input.amount, input.decimals); }
+  catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
+  if (amount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
+
+  const provider = getEvmProvider(input.chainId);
+  const wallet   = walletFromInput(walletInput, provider);
+
+  let tx: TransactionResponse;
+  try {
+    const contract = new Contract(input.tokenAddress, LEP100_TRANSFER_ABI, wallet);
+    tx = await contract.transfer(to, amount);
+  } catch (err) {
+    const msg = (err as Error).message || '';
+    if (/transfer amount exceeds balance/i.test(msg)) throw new SendError('insufficient', `Insufficient ${input.symbol} balance`);
+    if (/insufficient funds/i.test(msg))              throw new SendError('insufficient', `Insufficient ${chain.nativeSymbol} for gas`);
+    if (/user rejected/i.test(msg))                   throw new SendError('rejected', 'You cancelled the transaction');
+    throw new SendError('rpc_error', msg || 'Network error while broadcasting');
+  }
+
+  return {
+    hash:   tx.hash,
+    symbol: input.symbol,
+    to,
+    value:  amount,
+    kind:   'erc20',
+    wait:   async () => {
+      const r = await tx.wait();
+      if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
+      return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
+    },
+  };
+}
+
 /** Cheap gas estimate for a native send on the given EVM chain. Same
  *  shape FeeEstimate as the Makalu path so the SendModal can render it
  *  with the same UI. */

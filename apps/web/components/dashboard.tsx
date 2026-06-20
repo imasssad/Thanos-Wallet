@@ -22,7 +22,8 @@ import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityIt
 import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
-import { getAllEvmNativeBalances, type EvmChain } from '../lib/evm-chains';
+import { getAllEvmNativeBalances, getEvmChain, type EvmChain } from '../lib/evm-chains';
+import { getAllEvmTokenBalances, type EvmToken } from '../lib/evm-tokens';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -499,6 +500,7 @@ export function Dashboard() {
      Each chain is one parallel RPC call; one slow / dead endpoint doesn't
      block the rest. */
   const [evmChainBalances, setEvmChainBalances] = useState<Array<{ chain: EvmChain; balance: number }>>([]);
+  const [evmTokenBalances, setEvmTokenBalances] = useState<Array<{ token: EvmToken; balance: number }>>([]);
   const walletSeed = wallet?.seed;
   const walletPk   = wallet?.privateKey;
   useEffect(() => {
@@ -538,7 +540,7 @@ export function Dashboard() {
      dashboard can show "ETH on Arbitrum" separately from "ETH on
      mainnet". */
   useEffect(() => {
-    if (!evmAddress) { setEvmChainBalances([]); return; }
+    if (!evmAddress) { setEvmChainBalances([]); setEvmTokenBalances([]); return; }
     let cancel = false;
     (async () => {
       try {
@@ -546,6 +548,16 @@ export function Dashboard() {
         if (!cancel) setEvmChainBalances(rows.filter(r => r.balance > 0));
       } catch {
         if (!cancel) setEvmChainBalances([]);
+      }
+    })();
+    // Stablecoins (USDT/USDC) across the same chains — separate so a slow
+    // token read doesn't hold up the native-balance render.
+    (async () => {
+      try {
+        const toks = await getAllEvmTokenBalances(evmAddress);
+        if (!cancel) setEvmTokenBalances(toks);
+      } catch {
+        if (!cancel) setEvmTokenBalances([]);
       }
     })();
     return () => { cancel = true; };
@@ -593,9 +605,28 @@ export function Dashboard() {
       native:  true,
     }));
 
+    /* Stablecoins (USDT/USDC) per EVM chain — one row each, the chain in the
+       name so USDT-on-Ethereum reads distinct from USDT-on-BSC. Priced ~$1
+       (CoinGecko if available, else $1 fallback). */
+    const evmTokenRows = evmTokenBalances.map(({ token, balance }) => {
+      const chainName = getEvmChain(token.chainId)?.name ?? `Chain ${token.chainId}`;
+      return {
+        sym:    token.symbol,
+        name:   `${token.name} · ${chainName}`,
+        bal:    balance.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+        balNum: balance,
+        usdNum: balance * priceOr(prices, token.symbol, 1),
+        priceKnown: true,
+        chg:    0,
+        color:  token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+        chainId: token.chainId as number | undefined,
+        native:  false,
+      };
+    });
+
     const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
 
-    const combined = [...fromLive, ...evmRows, ...extraRows];
+    const combined = [...fromLive, ...evmRows, ...evmTokenRows, ...extraRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
@@ -605,7 +636,7 @@ export function Dashboard() {
       chainId: c.chainId, native: c.native,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [liveAssets, solBalance, btcBalance, evmChainBalances, prices]);
+  }, [liveAssets, solBalance, btcBalance, evmChainBalances, evmTokenBalances, prices]);
 
   const TXS = useMemo(() => {
     if (!liveActivity || liveActivity.length === 0) return [];
