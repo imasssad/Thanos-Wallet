@@ -3,6 +3,7 @@ initSentry('thanos-indexer');
 
 import cors from 'cors';
 import express from 'express';
+import { resolveToEvm } from './address.js';
 import {
   buildSeedActivity,
   ensureSchema,
@@ -41,7 +42,13 @@ app.get('/health', (_req, res) => res.json({ ok: true, service: 'wallet-indexer'
 /* ─── Portfolio (joins native LITHO + LEP100 balances) ─────────────── */
 
 app.get('/portfolio/:walletAddress', async (req, res) => {
-  const walletAddress = req.params.walletAddress;
+  let walletAddress: string;
+  try {
+    walletAddress = resolveToEvm(req.params.walletAddress);
+  } catch {
+    res.status(400).json({ error: 'invalid address' });
+    return;
+  }
   try {
     const [native, lep100, activity] = await Promise.all([
       getNativeLithoBalance(walletAddress).catch(() => '0'),
@@ -70,9 +77,16 @@ app.get('/portfolio/:walletAddress', async (req, res) => {
 });
 
 app.get('/activity/:walletAddress', async (req, res) => {
+  let walletAddress: string;
   try {
-    const items = await buildSeedActivity(req.params.walletAddress);
-    res.json({ walletAddress: req.params.walletAddress, items });
+    walletAddress = resolveToEvm(req.params.walletAddress);
+  } catch {
+    res.status(400).json({ error: 'invalid address' });
+    return;
+  }
+  try {
+    const items = await buildSeedActivity(walletAddress);
+    res.json({ walletAddress, items });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

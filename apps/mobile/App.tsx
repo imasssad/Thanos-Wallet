@@ -69,6 +69,7 @@ import {
   getAccountCount,       setAccountCount,
   MAX_ACCOUNTS,
 } from './lib/accounts';
+import { discoverFundedAccountCount, deriveAccountAddresses } from './lib/account-discovery';
 import {
   loadContactsFromStorage, loadContacts, addContact, deleteContact,
   syncContactsFromServer, onContactsChanged,
@@ -4417,6 +4418,28 @@ function App() {
     void setContactEncryptionKey(unlocked && walletSeed.length ? walletSeed : null);
     return () => { void setContactEncryptionKey(null); };
   }, [unlocked, walletSeed]);
+
+  // Account discovery — scan HD indices for funded accounts so a deposit to a
+  // non-active index (or any account on an imported wallet) appears in the
+  // switcher instead of being hidden. Mnemonic wallets only; only grows count.
+  useEffect(() => {
+    if (!unlocked || walletSeed.length === 0 || isPrivateKeyWallet(walletSeed)) return;
+    let cancel = false;
+    void discoverFundedAccountCount(walletSeed)
+      .then((n) => {
+        if (cancel) return;
+        if (n > getAccountCount()) { setAccountCount(n); setAccountCountState(n); }
+      })
+      .catch(() => { /* best-effort */ });
+    return () => { cancel = true; };
+  }, [unlocked, walletSeed]);
+
+  // Per-account EVM addresses for the switcher (identify which account is which).
+  const accountAddresses = useMemo(
+    () => (walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? deriveAccountAddresses(walletSeed, accountCount) : []),
+    [walletSeed, accountCount],
+  );
+
   const switchAccount = (idx: number) => {
     if (idx < 0 || idx >= accountCount) return;
     setActiveAccountIndex(idx);
@@ -4597,10 +4620,14 @@ function App() {
                     'Account',
                     `Active: Account ${shownActive + 1}`,
                     [
-                      ...Array.from({ length: shownCount }, (_, i) => ({
-                        text: `${i === shownActive ? '✓ ' : ''}Account ${i + 1}`,
-                        onPress: () => switchAccount(i),
-                      })),
+                      ...Array.from({ length: shownCount }, (_, i) => {
+                        const a = accountAddresses[i];
+                        const tag = a ? `  ${a.slice(0, 6)}…${a.slice(-4)}` : '';
+                        return {
+                          text: `${i === shownActive ? '✓ ' : ''}Account ${i + 1}${tag}`,
+                          onPress: () => switchAccount(i),
+                        };
+                      }),
                       // No "Add account" for private-key wallets — a raw key
                       // is a single account, not an HD tree.
                       ...(accountCount < MAX_ACCOUNTS && !isPrivateKeyWallet(walletSeed) ? [{ text: '+ Add account', onPress: addAccount }] : []),
