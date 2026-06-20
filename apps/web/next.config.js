@@ -42,7 +42,7 @@ const CSP = [
     + " https://cosmos-rpc.publicnode.com https://cosmos-rest.publicnode.com"
     + " https://ethereum.publicnode.com https://eth.merkle.io"
     + " https://bsc-dataseed.binance.org"
-    + " https://polygon-rpc.com https://api.avax.network"
+    + " https://polygon-bor-rpc.publicnode.com https://api.avax.network"
     + " https://arb1.arbitrum.io https://mainnet.optimism.io https://mainnet.base.org https://rpc.linea.build"
     + " https://relay.walletconnect.com wss://relay.walletconnect.com wss://relay.walletconnect.org"
     + " https://*.sentry.io"

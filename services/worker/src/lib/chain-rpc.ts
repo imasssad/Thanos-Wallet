@@ -25,7 +25,7 @@ const RPC_URLS: Record<number, string[]> = {
   // Public chains
   1:     ['https://ethereum.publicnode.com', 'https://eth.merkle.io'],
   56:    ['https://bsc-dataseed.binance.org'],
-  137:   ['https://polygon-rpc.com'],
+  137:   ['https://polygon-bor-rpc.publicnode.com'],
   8453:  ['https://mainnet.base.org'],
   42161: ['https://arb1.arbitrum.io/rpc'],
   59144: ['https://rpc.linea.build'],

@@ -81,7 +81,7 @@ export const EVM_CHAINS: readonly EvmChain[] = [
     chainId:      137,
     name:         'Polygon',
     slug:         'polygon',
-    rpcUrl:       'https://polygon-rpc.com',
+    rpcUrl:       'https://polygon-bor-rpc.publicnode.com',
     nativeSymbol: 'POL',
     nativeName:   'Polygon',
     decimals:     18,
