@@ -9,7 +9,7 @@ import {
 } from '../lib/address';
 import {
   sendTokens, estimateSendFee, SendError, makeProvider,
-  sendNativeEvm, estimateNativeEvmFee,
+  sendNativeEvm, estimateNativeEvmFee, sendEvmToken,
 } from '../lib/signer';
 import { signerSend, SignerError } from '../lib/signer-client';
 import {
@@ -51,7 +51,7 @@ import {
 } from '../lib/trezor-accounts';
 import { getMakaluProvider, getKametProvider, KAMET_CHAIN_ID } from '../lib/rpc';
 import { getEvmProvider } from '../lib/evm-chains';
-import { parseUnits as ethersParseUnits } from 'ethers';
+import { parseUnits as ethersParseUnits, Contract as EthersContract, formatUnits as ethersFormatUnits } from 'ethers';
 import { LedgerError } from '../lib/ledger-transport';
 import { getActiveAccountIndex } from '../lib/vault';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from '../lib/multx-bridge';
@@ -185,6 +185,38 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     network.startsWith('evm:') ? parseInt(network.slice(4), 10) : null;
   const evmChain = evmChainId !== null ? EVM_CHAINS.find(c => c.chainId === evmChainId) ?? null : null;
 
+  // Sendable assets for the selected network. Litho has the LEP100 set; EVM
+  // chains have their native coin + the stablecoins we track (USDT/USDC); the
+  // single-asset chains (BTC/SOL/ATOM) have just one.
+  const sendableCoins = useMemo<string[]>(() => {
+    if (network === 'makalu' || network === 'kamet') return [...MAKALU_SYMBOLS];
+    if (network === 'bitcoin') return ['BTC'];
+    if (network === 'solana')  return ['SOL'];
+    if (network === 'cosmos')  return ['ATOM'];
+    if (evmChain) return [evmChain.nativeSymbol, ...evmTokensForChain(evmChain.chainId).map(t => t.symbol)];
+    return [];
+  }, [network, evmChain]);
+
+  // Live balance of the selected EVM stablecoin (useLiveBalances doesn't track
+  // stablecoins). Read balanceOf on the selected chain so the Send screen shows
+  // the real USDT/USDC balance + MAX works.
+  const [stableBal, setStableBal] = useState<string | null>(null);
+  useEffect(() => {
+    setStableBal(null);
+    const addr = wallet?.addresses?.evm;
+    const tok = evmChainId ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin) : null;
+    if (!tok || !addr) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const c = new EthersContract(tok.address, ['function balanceOf(address) view returns (uint256)'], getEvmProvider(tok.chainId));
+        const raw: bigint = await c.balanceOf(addr);
+        if (!cancel) setStableBal(parseFloat(ethersFormatUnits(raw, tok.decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 }));
+      } catch { /* leave null — balance line falls back */ }
+    })();
+    return () => { cancel = true; };
+  }, [evmChainId, coin, wallet?.addresses?.evm]);
+
   const [stage, setStage]   = useState<SendStage>('compose');
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError]   = useState<string | null>(null);
@@ -224,7 +256,13 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
       ? { kind: 'mnemonic' as const, mnemonic: wallet.seed.join(' ') }
       : null;
   const live = useLiveBalances(wallet?.evmAddress, walletSource);
-  const balanceFor = (sym: string) => live.bySym.get(sym.toLowerCase()) ?? '0';
+  const balanceFor = (sym: string) => {
+    // Selected EVM stablecoin → its per-chain balance (not the cross-chain
+    // bySym aggregate, which useLiveBalances doesn't populate for tokens anyway).
+    const tok = evmChainId ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === sym) : null;
+    if (tok && stableBal !== null) return stableBal;
+    return live.bySym.get(sym.toLowerCase()) ?? '0';
+  };
 
   /* Lookup the token row for the currently selected symbol — drives
      chain-aware branches for validation, fee estimation and broadcast.
@@ -734,10 +772,15 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
         return;
       }
       try {
-        const result = await sendNativeEvm(
-          wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
-          { chainId: evmChainId, recipient: to.trim(), amount },
-        );
+        const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
+        // Stablecoin (USDT/USDC) on this chain → ERC-20 transfer; else native.
+        const stable = EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin);
+        const result = stable
+          ? await sendEvmToken(walletInput, {
+              chainId: evmChainId, tokenAddress: stable.address, decimals: stable.decimals,
+              symbol: stable.symbol, recipient: to.trim(), amount,
+            })
+          : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: to.trim(), amount });
         setTxHash(result.hash);
         setStage('pending');
         result.wait()
@@ -1103,8 +1146,8 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
             Every other chain has exactly one native asset, so we show a
             static chip. */}
         <div style={{ marginBottom: 12 }}>
-          {isLithoSend ? (
-            <TokenSelect value={coin} onChange={setCoin} options={MAKALU_SYMBOLS} ariaLabel="Send asset"/>
+          {sendableCoins.length > 1 ? (
+            <TokenSelect value={coin} onChange={setCoin} options={sendableCoins} ariaLabel="Send asset"/>
           ) : (
             <div className="field-select" style={{
               display: 'flex', alignItems: 'center', gap: 10,
