@@ -69,12 +69,12 @@ export type WalletInput =
   | { seed: string[] }
   | { privateKey: string };
 
-export function walletFromInput(input: WalletInput, provider?: Provider): HDNodeWallet | Wallet {
+export function walletFromInput(input: WalletInput, provider?: Provider, accountIdx?: number): HDNodeWallet | Wallet {
   if ('privateKey' in input) {
     const w = new Wallet(input.privateKey);
     return provider ? (w.connect(provider) as Wallet) : w;
   }
-  return walletFromSeed(input.seed, provider);
+  return walletFromSeed(input.seed, provider, accountIdx);
 }
 
 /* ─── Chain-aware native EVM send ─────────────────────────────────────
@@ -91,6 +91,7 @@ export interface NativeSendInput {
   chainId:   number;
   recipient: string;        // 0x… address; bech32 only valid on Makalu
   amount:    string;        // human-readable, parsed against 18 decimals
+  accountIdx?: number;      // HD account to sign from (default 0)
 }
 
 export async function sendNativeEvm(walletInput: WalletInput, input: NativeSendInput): Promise<SendResult> {
@@ -108,7 +109,7 @@ export async function sendNativeEvm(walletInput: WalletInput, input: NativeSendI
   if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
   const provider = getEvmProvider(input.chainId);
-  const wallet   = walletFromInput(walletInput, provider);
+  const wallet   = walletFromInput(walletInput, provider, input.accountIdx);
 
   let tx: TransactionResponse;
   try {
@@ -141,6 +142,7 @@ export interface EvmTokenSendInput {
   symbol:       string;     // for error messages + the SendResult
   recipient:    string;     // 0x… address
   amount:       string;     // human-readable, parsed against the token decimals
+  accountIdx?:  number;     // HD account to sign from (default 0)
 }
 
 /** ERC-20 token transfer on any supported EVM chain (USDT/USDC/etc.). The
@@ -160,7 +162,7 @@ export async function sendEvmToken(walletInput: WalletInput, input: EvmTokenSend
   if (amount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
   const provider = getEvmProvider(input.chainId);
-  const wallet   = walletFromInput(walletInput, provider);
+  const wallet   = walletFromInput(walletInput, provider, input.accountIdx);
 
   let tx: TransactionResponse;
   try {
@@ -207,10 +209,8 @@ export async function sendLithoNative(
   catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
   if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
-  // Sign from the ACTIVE account (walletFromInput would default to index 0).
-  const wallet = 'privateKey' in walletInput
-    ? new Wallet(walletInput.privateKey, provider)
-    : walletFromSeed(walletInput.seed, provider, input.accountIdx);
+  // Sign from the ACTIVE account.
+  const wallet = walletFromInput(walletInput, provider, input.accountIdx);
 
   let tx: TransactionResponse;
   try {
@@ -277,6 +277,8 @@ export type SendInput = {
   recipient: string;
   /** Human-readable amount, e.g. "1.5" — converted to wei using token decimals. */
   amount:    string;
+  /** HD account to sign from (default 0). */
+  accountIdx?: number;
 };
 
 export type SendResult = {
@@ -327,7 +329,7 @@ export async function sendTokens(walletInput: WalletInput, input: SendInput): Pr
   if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
   const provider = makeProvider();
-  const wallet = walletFromInput(walletInput, provider);
+  const wallet = walletFromInput(walletInput, provider, input.accountIdx);
 
   let tx: TransactionResponse;
   try {

@@ -776,12 +776,13 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
         const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
         // Stablecoin (USDT/USDC) on this chain → ERC-20 transfer; else native.
         const stable = EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin);
+        const acctIdx = getActiveAccountIndex();
         const result = stable
           ? await sendEvmToken(walletInput, {
               chainId: evmChainId, tokenAddress: stable.address, decimals: stable.decimals,
-              symbol: stable.symbol, recipient: to.trim(), amount,
+              symbol: stable.symbol, recipient: to.trim(), amount, accountIdx: acctIdx,
             })
-          : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: to.trim(), amount });
+          : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: to.trim(), amount, accountIdx: acctIdx });
         setTxHash(result.hash);
         setStage('pending');
         result.wait()
@@ -925,7 +926,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           // also rejects non-0x recipients.
           const fallback = await sendTokens(
             wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
-            { symbol: coin, recipient: recipientForWorker, amount },
+            { symbol: coin, recipient: recipientForWorker, amount, accountIdx: getActiveAccountIndex() },
           );
           hash = fallback.hash;
           // Background: legacy path exposes a wait() for confirmation polling.
