@@ -1457,6 +1457,23 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
         altLabel:     'EVM',
       });
     }
+    // EVM chains — all share the wallet's single 0x address, surfaced as
+    // separate rows (MetaMask pattern) so a user withdrawing from an exchange
+    // picks the right network (ETH on Ethereum, BNB on BNB Chain, POL on
+    // Polygon, etc.) for the same 0x address. Receiving on any of these is read
+    // back by the dashboard's getAllEvmNativeBalances.
+    if (evm) {
+      for (const c of EVM_CHAINS) {
+        out.push({
+          id:      `evm-${c.chainId}`,
+          name:    c.name,
+          symbol:  c.nativeSymbol,
+          color:   c.color,
+          address: evm,
+          badge:   'EVM',
+        });
+      }
+    }
     if (btcAddr)  out.push({ id: 'bitcoin', name: 'Bitcoin',    symbol: 'BTC',  color: '#f7931a', address: btcAddr });
     if (solAddr)  out.push({ id: 'solana',  name: 'Solana',     symbol: 'SOL',  color: '#14f195', address: solAddr });
     if (atomAddr) out.push({ id: 'cosmos',  name: 'Cosmos Hub', symbol: 'ATOM', color: '#2e3148', address: atomAddr });
