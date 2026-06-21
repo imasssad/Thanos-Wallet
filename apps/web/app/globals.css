@@ -450,7 +450,7 @@ button:focus:not(:focus-visible),
 .assets-layout { display: flex; gap: 16px; align-items: flex-start; }
 .assets-chart-card { flex: 0 0 260px; }
 .assets-table-card { flex: 1; min-width: 0; overflow-x: auto; }
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .assets-layout { flex-direction: column; }
   .assets-chart-card { flex: 1 1 auto; width: 100%; box-sizing: border-box; }
   .assets-table-card { width: 100%; }
@@ -1687,11 +1687,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .mobile-nav-item.active { background: var(--blue-dim); color: var(--blue); font-weight: 600; }
 
 /* ─── Mobile bottom tab bar ──────────────────────────────────────────
-   Hidden on desktop; shown ≤768px as the primary nav. Rendered as a
-   flex item in AppShell so it occupies layout height (no overlap). */
+   Hidden on desktop; shown ≤1024px (tablets + phones) as the primary nav.
+   Rendered as a flex item in AppShell so it occupies layout height (no
+   overlap). The desktop/mobile *layout* boundary is 1024px; the body-zoom
+   math stays at 769px (see top of file) — they're intentionally separate. */
 .bottom-nav { display: none; }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   /* Paint the root with the footer colour so the home-indicator safe area
      and any overscroll/in-app-browser gap below the tab bar reads as one
      continuous footer instead of a darker (bg-base) strip. Body keeps
@@ -1722,15 +1724,17 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .bottom-nav-item:active { background: var(--bg-elevated); }
 }
 
-/* Tablet — hide secondary nav icons */
-@media (max-width: 900px) {
+/* Tablet — hide the desktop search/bell icons (the hamburger replaces them) */
+@media (max-width: 1024px) {
   .nav-icon-desktop { display: none !important; }
   .topnav { padding: 0 14px; }
   .topnav-logo { padding-right: 8px; margin-right: 6px; }
 }
 
-/* ─── Tablet (≤768) — collapse nav to hamburger, stack right panel ─── */
-@media (max-width: 768px) {
+/* ─── Tablet + phone (≤1024) — collapse nav to hamburger + bottom-nav and
+   stack the right rail below the main column (it crowds content, and sits
+   empty on Home, in the two-column desktop layout at tablet widths). ─── */
+@media (max-width: 1024px) {
   .nav-tabs-desktop { display: none !important; }
   .nav-mobile-toggle { display: flex; }
 
