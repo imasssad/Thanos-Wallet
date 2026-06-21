@@ -11,16 +11,18 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build (2026-06-21, commit 15df468 / build e5a6574c,
-// account imasssadkh). Kills the "Requiring unknown module undefined" crash by
-// removing the ESM MultX bridge SDK from the bundle (bridge reimplemented in
-// ethers v6); reliable biometrics (single prompt + Face ID/fingerprint detect);
-// password-gated secret reveal with screenshot protection; BTC real-fee coin
-// selection + send-max; account-aware swap/allowances — on top of all prior
-// parity (HD account discovery, LIVE MultX bridge, adaptive PBKDF2).
-// NOTE: signed with a NEW keystore (imasssadkh) — testers must uninstall any
-// prior Thanos build before installing this one (Android signature mismatch).
-const APK_URL = 'https://expo.dev/artifacts/eas/Juhl2JXdkn2ax4sV4FSZmTZoMzmmDCDBcd6nE04JcaE.apk';
+// Latest production-apk build — VERSION "thanos-v1.04" (2026-06-21, commit
+// 3a37182 / build 62345250, account imasssadkh). Shows its version in
+// Settings (bottom) so testers can confirm the installed build at a glance.
+// Includes: the crash fix (ESM MultX bridge SDK removed from the bundle, bridge
+// reimplemented in ethers v6); reliable biometrics (single prompt + Face
+// ID/fingerprint detect); password-gated secret reveal with screenshot
+// protection; BTC real-fee coin selection + send-max; account-aware
+// swap/allowances; + all prior parity (HD account discovery, LIVE MultX bridge).
+// NOTE: signed with the imasssadkh keystore — testers must uninstall any prior
+// Thanos build before installing (Android signature mismatch); the Settings
+// version tag (thanos-v1.04) then confirms the new build took.
+const APK_URL = 'https://expo.dev/artifacts/eas/OjNNRiCXJn0LWW_hSUz1mfakL6tVJ7ddAebVzUGm6qQ.apk';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
