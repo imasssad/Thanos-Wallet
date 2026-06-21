@@ -1691,9 +1691,9 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   );
 }
 
-/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via @litho/multx-sdk:
-   approve -> lock on Makalu -> validators sign -> relayer releases on Kamet.
-   Funds arrive at the same address on Kamet (no recipient field). */
+/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via lib/multx-bridge
+   (ethers v6, no ESM SDK): approve -> lock on Makalu -> validators sign ->
+   relayer releases on Kamet. Funds arrive at the same address (no recipient). */
 function MobileMakaluKametBridge() {
   const C = useColors();
   const styles = useStyles();
