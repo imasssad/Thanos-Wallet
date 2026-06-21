@@ -189,7 +189,13 @@ body {
   color: var(--text-primary);
   line-height: 1.5;
   letter-spacing: -0.005em;
+  /* dvh tracks the *visible* viewport (mobile URL-bar safe). Compensated for
+     the desktop body-zoom below — an un-divided 100vh renders 1.25x under
+     zoom (= 125vh), making the body taller than the screen and adding a
+     SECOND outer scrollbar on top of the app-shell's own .main-area scroll.
+     Keep this min-height in lockstep with .app-shell's height. */
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
   zoom: 1;
 }
@@ -202,7 +208,10 @@ body {
    mobile input-zoom guard below. Applies site-wide, including the landing
    (the .lp-root reset was removed so the front-end site scales too). */
 @media (min-width: 769px) {
-  body { zoom: 1.25; }
+  /* Divide the body min-height by the same factor the zoom multiplies by, so
+     the body is exactly one screen tall (not 125vh) — kills the phantom outer
+     scrollbar. Mirrors the .app-shell height compensation just below. */
+  body { zoom: 1.25; min-height: calc(100vh / 1.25); min-height: calc(100dvh / 1.25); }
 }
 
 /* App-shell height. Two traps live here:
