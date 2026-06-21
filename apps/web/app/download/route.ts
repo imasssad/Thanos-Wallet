@@ -11,12 +11,16 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build (2026-06-20, commit 25f2ec8 / build f13f416c —
-// HD account discovery: scans funded accounts on unlock so a deposit to a
-// non-active account (or any account on an imported wallet) shows up in the
-// switcher with its address; on top of the lazy-loaded MultX bridge SDK, crash
-// fixes, LIVE MultX bridge, adaptive PBKDF2, + all prior parity features).
-const APK_URL = 'https://expo.dev/artifacts/eas/SvkqvrW86iU2XZLD3uuahIKoIAds3JMX93mqvCYbFKQ.apk';
+// Latest production-apk build (2026-06-21, commit 15df468 / build e5a6574c,
+// account imasssadkh). Kills the "Requiring unknown module undefined" crash by
+// removing the ESM MultX bridge SDK from the bundle (bridge reimplemented in
+// ethers v6); reliable biometrics (single prompt + Face ID/fingerprint detect);
+// password-gated secret reveal with screenshot protection; BTC real-fee coin
+// selection + send-max; account-aware swap/allowances — on top of all prior
+// parity (HD account discovery, LIVE MultX bridge, adaptive PBKDF2).
+// NOTE: signed with a NEW keystore (imasssadkh) — testers must uninstall any
+// prior Thanos build before installing this one (Android signature mismatch).
+const APK_URL = 'https://expo.dev/artifacts/eas/Juhl2JXdkn2ax4sV4FSZmTZoMzmmDCDBcd6nE04JcaE.apk';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.

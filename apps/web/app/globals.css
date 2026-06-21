@@ -1270,6 +1270,15 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .onboard-card {
   width: 100%; max-width: 380px;
+  /* Never taller than the viewport (wrap has 24px padding top+bottom). Tall
+     steps — 24-word seed display, verify grid, import textarea — scroll INSIDE
+     the card instead of clipping past the un-scrollable .onboard-wrap (which is
+     overflow:hidden to clip the blur orbs), which used to strand the
+     Create/Continue button off-screen on short/landscape phones. */
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: #ffffff;
   border: 1px solid #ececef;
   border-radius: 22px;
@@ -1279,6 +1288,11 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
     0 12px 32px rgba(15,15,20,0.06);
   position: relative; z-index: 1;
   animation: onboardFade 0.4s ease-out;
+}
+/* Desktop body-zoom (1.25) magnifies dvh, so divide to keep the card inside
+   the real viewport — same trap/divisor as .app-shell and the modals. */
+@media (min-width: 769px) {
+  .onboard-card { max-height: calc((100dvh - 48px) / 1.25); }
 }
 [data-theme="dark"] .onboard-card {
   background: linear-gradient(180deg, rgba(28,28,34,0.92), rgba(18,18,22,0.92));
@@ -1666,7 +1680,9 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .mobile-nav-drawer {
   position: fixed;
-  top: 60px; left: 0; right: 0;
+  /* Sits flush under the topnav, whose height is 56px ≤1024 (52px ≤480 — see
+     phone block). The drawer only ever shows ≤1024, so 56px is the base. */
+  top: 56px; left: 0; right: 0;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
   padding: 8px;
@@ -1791,6 +1807,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .logo-word { font-size: 15px; margin-left: 6px; }
   .icon-btn-nav { width: 30px; height: 30px; }
   .nav-mobile-toggle { width: 38px; height: 38px; }
+  .mobile-nav-drawer { top: 52px; }
 
   /* Workspace */
   .main-area { padding: 12px 12px 18px !important; gap: 10px !important; }
@@ -1813,10 +1830,11 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .card-title { font-size: 14px !important; }
   .card-header { margin-bottom: 8px !important; }
 
-  /* Quick action buttons: equal-width grid that fills the row */
+  /* Quick action buttons: 4 (Buy/Swap/Send/Receive) in one even row — a
+     3-col grid orphaned Receive onto a second row. */
   .balance-hero > div:last-child {
     display: grid !important;
-    grid-template-columns: repeat(3, 1fr) !important;
+    grid-template-columns: repeat(4, 1fr) !important;
     gap: 6px !important;
     width: 100%;
   }
