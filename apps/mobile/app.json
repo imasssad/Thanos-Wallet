@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "1.0.0",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
     "userInterfaceStyle": "dark",
@@ -22,7 +22,9 @@
         "NSLocalNetworkUsageDescription": "Thanos Wallet connects to local nodes when you configure a custom RPC endpoint.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "associatedDomains": ["applinks:thanos.fi"]
+      "associatedDomains": [
+        "applinks:thanos.fi"
+      ]
     },
     "android": {
       "package": "ai.thanos.wallet",
@@ -41,8 +43,18 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["DEFAULT", "BROWSABLE"],
-          "data": [{ "scheme": "thanoswallet" }, { "scheme": "wc" }]
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "thanoswallet"
+            },
+            {
+              "scheme": "wc"
+            }
+          ]
         }
       ]
     },
@@ -58,7 +70,9 @@
       [
         "expo-font",
         {
-          "fonts": ["./assets/fonts/litho-sym.ttf"]
+          "fonts": [
+            "./assets/fonts/litho-sym.ttf"
+          ]
         }
       ],
       [
@@ -80,9 +94,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "edaba20e-25dd-41e5-85ae-76872c092d1e"
+        "projectId": "5d3250c5-54f1-4bd2-8b98-d2d5a55ee4ea"
       }
     },
-    "owner": "imasssad"
+    "owner": "imasssadkh"
   }
 }

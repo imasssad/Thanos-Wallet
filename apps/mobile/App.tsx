@@ -120,6 +120,12 @@ import {
 } from './lib/price-history';
 import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal } from './lib/notifications';
 
+/* ╔══════════════════════════════════════════════════════════════════╗
+   ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
+   ║  so testers can confirm at a glance which build is installed.      ║
+   ╚══════════════════════════════════════════════════════════════════╝ */
+const APP_VERSION = 'thanos-v1.04';
+
 /* ─────────────────────────── Theme ─────────────────────────── */
 
 // Canonical Thanos palette — same hex values as web/desktop/extension
@@ -2444,7 +2450,7 @@ function SettingsScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.versionText}>Thanos Wallet · v0.8.1 · Makalu</Text>
+      <Text style={styles.versionText}>Thanos Wallet · {APP_VERSION} · Makalu</Text>
 
       {/* WalletConnect pairing + connected-dApp management. */}
       <WalletConnectModal
