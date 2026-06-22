@@ -4546,6 +4546,18 @@ function installGlobalErrorHandler(): void {
   EU.setGlobalHandler((err: any, isFatal?: boolean) => {
     const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : JSON.stringify(err));
     try { captureException(e); } catch { /* noop */ }
+    // A failed LAZY module load must NOT brick the wallet. The cross-chain
+    // balance readers (BTC/SOL/Cosmos/EVM) are loaded on-demand and entirely
+    // optional — the core wallet (LITHO balance, send, receive) works without
+    // them. A bundler hiccup loading one ("Requiring unknown module
+    // 'undefined'") used to escape its try/catch via an internal async require
+    // and hit this handler, showing the full-screen CrashScreen on a loop.
+    // Swallow that class so the app stays on Home; the feature just degrades.
+    const blob = `${e.message}\n${e.stack ?? ''}`;
+    if (/Requiring unknown module|unknownModuleError|loadModuleImplementation|guardedLoadModule/i.test(blob)) {
+      if (__DEV__ && prev) prev(err, isFatal);
+      return; // non-fatal — do NOT show CrashScreen
+    }
     // Only hijack fatal errors (the ones that would force-close). Non-fatal
     // ones are reported but left to pass through.
     if (isFatal !== false) { try { _onGlobalError?.(e); } catch { /* noop */ } }

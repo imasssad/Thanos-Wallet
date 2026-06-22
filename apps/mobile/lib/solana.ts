@@ -44,8 +44,12 @@ function keypairFromMnemonic(mnemonic: string): Keypair {
  *  hardened-only paths like Solana's m/44'/501'/0'/0'. */
 function ed25519HD(masterSeed: Uint8Array, path: string): Uint8Array {
   // HMAC-SHA512("ed25519 seed", masterSeed) -> {IL: privKey, IR: chainCode}
-  const hmacSha512 = require('@noble/hashes/hmac').hmac;
-  const { sha512 } = require('@noble/hashes/sha2');
+  // NOTE: the `.js` extension is REQUIRED — @noble/hashes v2's package
+  // `exports` map only defines `./hmac.js` / `./sha2.js`, so the bare
+  // subpaths resolve to `undefined` under Metro's package-exports resolution
+  // → `Requiring unknown module "undefined"` crash when this lazy-loads.
+  const hmacSha512 = require('@noble/hashes/hmac.js').hmac;
+  const { sha512 } = require('@noble/hashes/sha2.js');
   const utf8 = (s: string) => new TextEncoder().encode(s);
   let I = hmacSha512(sha512, utf8('ed25519 seed'), masterSeed);
   let key = I.slice(0, 32);
