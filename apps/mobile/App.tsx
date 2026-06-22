@@ -124,7 +124,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.05';
+const APP_VERSION = 'thanos-v1.06';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -5407,19 +5407,21 @@ function makeStyles(C: Colors) {
       padding: 28,
     },
     onboardLogo: {
+      // Compact so the login / create-password / welcome cards fit the screen
+      // without scrolling — the ScrollView then centers the (shorter) card.
       alignItems: 'center', justifyContent: 'center',
-      marginBottom: 14,
+      marginBottom: 8,
       position: 'relative',
-      height: 168,
+      height: 104,
     },
     onboardLogoGlow: {
       // Soft blue halo behind the lockup — approximates the web's radial glow.
       position: 'absolute',
-      width: 150, height: 150, borderRadius: 75,
+      width: 104, height: 104, borderRadius: 52,
       backgroundColor: C.blue, opacity: 0.16,
     },
     onboardLogoImage: {
-      width: 160, height: 160,
+      width: 108, height: 108,
     },
     onboardBrand: {
       color: C.textPrimary, fontSize: 13, fontWeight: '700',
@@ -5438,7 +5440,7 @@ function makeStyles(C: Colors) {
     onboardTagline: {
       color: C.textPrimary, fontSize: 16, fontWeight: '700',
       letterSpacing: -0.3, textAlign: 'center',
-      marginBottom: 24,
+      marginBottom: 18,
     },
     onboardErr: {
       color: C.red, fontSize: 12, fontWeight: '600',
