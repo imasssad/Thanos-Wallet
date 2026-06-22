@@ -555,6 +555,7 @@ function Footer() {
             surface by App Store + Google Play submission reviewers,
             and the basic-decency move for any wallet. */}
         <nav className="lp-footer-nav" aria-label="Legal and transparency">
+          <a href="/docs">Developers</a>
           <a href="/privacy">Privacy</a>
           <a href="/.well-known/security.txt">Security</a>
           <a href="https://github.com/imasssad/Thanos-Wallet/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a>
