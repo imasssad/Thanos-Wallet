@@ -124,7 +124,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.04';
+const APP_VERSION = 'thanos-v1.05';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -460,6 +460,44 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
               setAssets(prev => [...prev, row]);
               setTotal(prev => prev + row.usdValue);
             }
+
+            // External EVM (Ethereum / BNB / Polygon / Base / Arbitrum /
+            // Optimism / Linea / Avalanche) — native coins + USDT/USDC at the
+            // SAME 0x address. Light (ethers + fetch, no heavy crypto lib) so
+            // it's safe to read here without the per-chain memory caution.
+            if (cancelled) return;
+            try {
+              const m = await import('./lib/evm-external');
+              const [natives, tokens] = await Promise.all([
+                m.getAllExtEvmNativeBalances(address),
+                m.getAllExtEvmTokenBalances(address),
+              ]);
+              if (cancelled) return;
+              const extRows: DisplayAsset[] = [
+                ...natives.map(({ chain, balance }) => ({
+                  sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
+                  balance, balanceText: formatAmount(balance), decimals: 18,
+                  priceUsd: prices[chain.nativeSymbol] ?? 0,
+                  usdValue: balance * (prices[chain.nativeSymbol] ?? 0),
+                  color: chain.color, native: true,
+                })),
+                ...tokens.map(({ token, balance }) => {
+                  const price = prices[token.symbol] ?? 1; // stablecoins ≈ $1
+                  return {
+                    sym: token.symbol,
+                    name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
+                    chainId: token.chainId, balance, balanceText: formatAmount(balance),
+                    decimals: token.decimals, priceUsd: price, usdValue: balance * price,
+                    color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+                    tokenAddress: token.address, native: false,
+                  };
+                }),
+              ];
+              if (!cancelled && extRows.length) {
+                setAssets(prev => [...prev, ...extRows]);
+                setTotal(prev => prev + extRows.reduce((s, r) => s + r.usdValue, 0));
+              }
+            } catch { /* best-effort */ }
           })();
         });
       } catch {
@@ -819,6 +857,16 @@ const CHAIN_META: Record<SendChainOption, { label: string; sym: string; decimals
   cosmos:  { label: 'Cosmos Hub',   sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
+/** Unique key per holding — a bare symbol is ambiguous now that ETH exists on
+ *  5 chains (Ethereum/Base/Arbitrum/Linea/Optimism) and USDT/USDC on many.
+ *  Key = sym@chainId[:tokenAddress]. */
+const assetKeyOf = (a: { sym: string; chainId: number; tokenAddress?: string }): string =>
+  `${a.sym}@${a.chainId}${a.tokenAddress ? ':' + a.tokenAddress : ''}`;
+
+/** chainIds of the external EVM chains (mirror lib/evm-external EXT_EVM_CHAINS).
+ *  Used to route sends + skip the Makalu-only pre-send simulation. */
+const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
+
 function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string }) {
   const C = useColors();
   const styles = useStyles();
@@ -831,7 +879,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   const [chain, setChain] = useState<SendChainOption>(pkOnly ? 'evm' : (initialChain ?? 'evm'));
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
-  const [selectedSym, setSelectedSym] = useState<string | null>(initialSym ?? null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -841,7 +889,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   // "contract recipient" + "insufficient balance" warnings before signing.
   const [simReport, setSimReport] = useState<import('./lib/tx-simulator').SimulationReport | null>(null);
 
-  const coin = assets.find((a) => a.sym === selectedSym) ?? assets[0] ?? null;
+  const coin =
+    (selectedKey ? assets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
+    ?? (initialSym ? assets.find((a) => a.sym === initialSym) : undefined)
+    ?? assets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
   const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
@@ -863,7 +914,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   /* Debounced pre-send simulation. Only EVM/Lithic chains for now —
      Bitcoin + Solana have their own checks elsewhere. */
   useEffect(() => {
-    if (chain !== 'evm' || !coin || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    // Skip for external EVM — the simulator is hardcoded to Makalu (700777),
+    // so it'd mis-check a chain it isn't on and could throw a false 'critical'.
+    if (chain !== 'evm' || !coin || EXT_EVM_CHAIN_IDS.includes(coin.chainId)
+        || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
     const toAddr = to;
     const fromAddr = addr;
     const amount = amt;
@@ -897,6 +951,38 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
     setSending(true);
     try {
       const meta = CHAIN_META[chain];
+
+      // External EVM (Ethereum/BNB/Polygon/Base/Arbitrum/Optimism/Linea/
+      // Avalanche): the holding's chainId matches an external chain → route
+      // through THAT chain's RPC, not Makalu. Litho assets (chainId 700777)
+      // and non-EVM chains fall through to the existing sendAsset path.
+      if (chain === 'evm' && coin) {
+        const extm = await import('./lib/evm-external');
+        const extChain = extm.getExtEvmChain(coin.chainId);
+        if (extChain) {
+          const hash = await extm.sendExtEvm({
+            seed,
+            accountIdx:   getActiveAccountIndex(),
+            chainId:      coin.chainId,
+            recipient:    to.trim(),
+            amount:       amt,
+            decimals:     coin.decimals,
+            tokenAddress: coin.native ? undefined : coin.tokenAddress,
+          });
+          setSending(false);
+          setAmt(''); setTo(''); setMemo('');
+          isNotificationsEnabled().then(on => {
+            if (on) notifyLocal('Transaction sent', `${amt} ${coin.sym} broadcast on ${extChain.name}.`);
+          });
+          Alert.alert(
+            'Transaction sent ✓',
+            `${amt} ${coin.sym} broadcast on ${extChain.name}.\n\nTx hash:\n${hash}`,
+            [{ text: 'Done', onPress: goBack }],
+          );
+          return;
+        }
+      }
+
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
       const hash = await sendAsset({
         seed,
@@ -1119,7 +1205,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
               <Pressable
                 key={`${a.sym}-${a.chainId}`}
                 style={[styles.row, i < assets.length - 1 && styles.rowBorder]}
-                onPress={() => { setSelectedSym(a.sym); setAmt(''); setPickerOpen(false); }}
+                onPress={() => { setSelectedKey(assetKeyOf(a)); setAmt(''); setPickerOpen(false); }}
               >
                 <Avatar symbol={a.sym} color={a.color} size={36}/>
                 <View style={styles.rowMid}>
@@ -1186,12 +1272,24 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
 /* SafePal receive: pick network -> pick asset -> address + QR. The address is
    per-network (same for every asset on a chain); the asset drives the QR
    header (name + logo) and the coin-specific warning. */
-type ReceiveChain = 'lithosphere' | 'bitcoin' | 'solana' | 'cosmos';
+type ReceiveChain =
+  | 'lithosphere' | 'bitcoin' | 'solana' | 'cosmos'
+  | 'ethereum' | 'bsc' | 'polygon' | 'base' | 'arbitrum' | 'linea' | 'optimism' | 'avalanche';
 const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string }> = [
   { id: 'lithosphere', name: 'Lithosphere Makalu', sym: 'LITHO' },
   { id: 'bitcoin',     name: 'Bitcoin',            sym: 'BTC'   },
   { id: 'solana',      name: 'Solana',             sym: 'SOL'   },
   { id: 'cosmos',      name: 'Cosmos Hub',         sym: 'ATOM'  },
+  // External EVM — all share the wallet's single 0x address. Listed
+  // separately so a user withdrawing from an exchange picks the right network.
+  { id: 'ethereum',    name: 'Ethereum',           sym: 'ETH'   },
+  { id: 'bsc',         name: 'BNB Chain',          sym: 'BNB'   },
+  { id: 'polygon',     name: 'Polygon',            sym: 'POL'   },
+  { id: 'base',        name: 'Base',               sym: 'ETH'   },
+  { id: 'arbitrum',    name: 'Arbitrum',           sym: 'ETH'   },
+  { id: 'optimism',    name: 'Optimism',           sym: 'ETH'   },
+  { id: 'linea',       name: 'Linea',              sym: 'ETH'   },
+  { id: 'avalanche',   name: 'Avalanche',          sym: 'AVAX'  },
 ];
 const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>> = {
   lithosphere: [
@@ -1206,6 +1304,15 @@ const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>>
   bitcoin: [{ sym: 'BTC',  name: 'Bitcoin' }],
   solana:  [{ sym: 'SOL',  name: 'Solana' }],
   cosmos:  [{ sym: 'ATOM', name: 'Cosmos Hub' }],
+  // Native coin + the stablecoins we track on each chain (verified catalog).
+  ethereum:  [{ sym: 'ETH',  name: 'Ethereum' },     { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  bsc:       [{ sym: 'BNB',  name: 'BNB' },           { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  polygon:   [{ sym: 'POL',  name: 'Polygon' },       { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  base:      [{ sym: 'ETH',  name: 'Ether (Base)' },  { sym: 'USDC', name: 'USD Coin' }],
+  arbitrum:  [{ sym: 'ETH',  name: 'Ether (Arbitrum)' }, { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  linea:     [{ sym: 'ETH',  name: 'Ether (Linea)' }],
+  optimism:  [{ sym: 'ETH',  name: 'Ether (Optimism)' }, { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  avalanche: [{ sym: 'AVAX', name: 'Avalanche' },     { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
 };
 
 function ReceiveScreen({ goBack }: { goBack: () => void }) {
@@ -1258,6 +1365,9 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   useEffect(() => {
     setChainBalance('');
     if (chain === 'lithosphere') return;
+    // External EVM chains are surfaced on Home; the Receive sheet just shows the
+    // 0x address + QR. (Skip here so we don't mis-route to the cosmos reader.)
+    if (chain !== 'bitcoin' && chain !== 'solana' && chain !== 'cosmos') return;
     const addr = chain === 'bitcoin' ? btcAddr : chain === 'solana' ? solAddr : atomAddr;
     if (!addr) return;
     let cancelled = false;
@@ -1285,7 +1395,8 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
     chain === 'bitcoin' ? btcAddr
     : chain === 'solana'  ? solAddr
     : chain === 'cosmos'  ? atomAddr
-    : (lithoAddr && !showAlt ? lithoAddr : walletAddr);
+    : chain === 'lithosphere' ? (lithoAddr && !showAlt ? lithoAddr : walletAddr)
+    : walletAddr;  // external EVM (Ethereum/BNB/Polygon/…) → the 0x address
 
   /* Generate a real QR for the currently-displayed address. Re-renders
      when the format toggle flips so the QR encodes the right form. */
@@ -1413,7 +1524,8 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
             {chain === 'lithosphere' ? 'Lithosphere · Makalu'
              : chain === 'bitcoin'   ? 'Bitcoin · mainnet'
              : chain === 'solana'    ? 'Solana · mainnet-beta'
-             : 'Cosmos Hub · cosmoshub-4'}
+             : chain === 'cosmos'    ? 'Cosmos Hub · cosmoshub-4'
+             : `${RECEIVE_NETWORKS.find(n => n.id === chain)?.name ?? 'EVM'} · EVM mainnet`}
           </Text>
         </View>
 

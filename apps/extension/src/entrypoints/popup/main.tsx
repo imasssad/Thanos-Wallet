@@ -1197,6 +1197,16 @@ const EXT_CHAIN_META: Record<ExtSendChain, { label: string; sym: string; decimal
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
+/** chainIds + names of the external EVM chains (mirror lib/evm-external). */
+const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
+const EXT_EVM_CHAIN_NAME: Record<number, string> = {
+  1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon', 8453: 'Base',
+  42161: 'Arbitrum', 59144: 'Linea', 10: 'Optimism', 43114: 'Avalanche',
+};
+/** Unique key per holding — a bare symbol is ambiguous (ETH on 5 chains, etc.). */
+const coinKey = (c: { sym: string; chainId?: number; tokenAddress?: string }): string =>
+  `${c.sym}@${c.chainId ?? 'litho'}${c.tokenAddress ? ':' + c.tokenAddress : ''}`;
+
 function SendModal({ onClose, initialChain, initialCoin }: {
   onClose: () => void;
   initialChain?: ExtSendChain;
@@ -1205,7 +1215,7 @@ function SendModal({ onClose, initialChain, initialCoin }: {
   const { coins } = usePortfolioCtx();
   const seed = useWalletSeed();
   const [chain, setChain] = useState<ExtSendChain>(initialChain ?? 'evm');
-  const [selectedSym, setSelectedSym] = useState(initialCoin ?? '');
+  const [selectedKey, setSelectedKey] = useState('');
   const [to, setTo] = useState('');
   const [amt, setAmt] = useState('');
   const [memo, setMemo] = useState('');
@@ -1213,7 +1223,10 @@ function SendModal({ onClose, initialChain, initialCoin }: {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
+  const coin =
+    (selectedKey ? coins.find(c => coinKey(c) === selectedKey) : undefined)
+    ?? (initialCoin ? coins.find(c => c.sym === initialCoin) : undefined)
+    ?? coins[0] ?? null;
   const amtNum = parseFloat(amt || '0');
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
   const recipientOk = (() => {
@@ -1241,6 +1254,26 @@ function SendModal({ onClose, initialChain, initialCoin }: {
     setError(null);
     try {
       const meta = EXT_CHAIN_META[chain];
+
+      // External EVM (Ethereum/BNB/Polygon/…): route through that chain's RPC
+      // directly from the popup (host_permissions cover the RPCs), NOT the
+      // Makalu-only offscreen path. Litho assets fall through to sendAsset.
+      if (chain === 'evm' && coin?.chainId && EXT_EVM_CHAIN_IDS.includes(coin.chainId)) {
+        const m = await import('../../lib/evm-external');
+        const hash = await m.sendExtEvm({
+          seed,
+          accountIdx:   getActiveAccountIndex(),
+          chainId:      coin.chainId,
+          recipient:    to.trim(),
+          amount:       amt,
+          decimals:     coin.decimals,
+          tokenAddress: coin.native ? undefined : coin.tokenAddress,
+        });
+        setTxHash(hash);
+        setSending(false);
+        return;
+      }
+
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
       const hash = await sendAsset({
         seed,
@@ -1265,7 +1298,7 @@ function SendModal({ onClose, initialChain, initialCoin }: {
         <div style={{ fontSize: 28 }}>✓</div>
         <div style={{ fontWeight: 700 }}>Transaction sent</div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-          {amt} {chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? 'Makalu' : EXT_CHAIN_META[chain].label}
+          {amt} {chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? (coin?.chainId && EXT_EVM_CHAIN_NAME[coin.chainId] ? EXT_EVM_CHAIN_NAME[coin.chainId] : 'Makalu') : EXT_CHAIN_META[chain].label}
         </div>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', margin: '8px 0' }}>{txHash}</div>
         <button className="btn-primary" onClick={onClose}>Done</button>
@@ -1302,9 +1335,9 @@ function SendModal({ onClose, initialChain, initialCoin }: {
         {chain === 'evm' ? (
           <>
             <label className="field-label">ASSET</label>
-            <select className="field" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
+            <select className="field" value={coin ? coinKey(coin) : ''} onChange={e => setSelectedKey(e.target.value)}>
               {coins.length === 0 && <option value="">No assets available</option>}
-              {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
+              {coins.map(c => <option key={coinKey(c)} value={coinKey(c)}>{c.sym} — {c.name}</option>)}
             </select>
           </>
         ) : (
@@ -1349,12 +1382,23 @@ function SendModal({ onClose, initialChain, initialCoin }: {
 }
 
 /* SafePal receive: pick network -> pick asset -> address + QR. */
-type ExtChain = 'evm' | 'btc' | 'sol' | 'atom';
+type ExtChain =
+  | 'evm' | 'btc' | 'sol' | 'atom'
+  | 'ethereum' | 'bsc' | 'polygon' | 'base' | 'arbitrum' | 'linea' | 'optimism' | 'avalanche';
 const EXT_NETWORKS: Array<{ id: ExtChain; name: string; sym: string }> = [
   { id: 'evm',  name: 'Lithosphere Makalu', sym: 'LITHO' },
   { id: 'btc',  name: 'Bitcoin',            sym: 'BTC'   },
   { id: 'sol',  name: 'Solana',             sym: 'SOL'   },
   { id: 'atom', name: 'Cosmos Hub',         sym: 'ATOM'  },
+  // External EVM — all share the wallet's single 0x address.
+  { id: 'ethereum',  name: 'Ethereum',  sym: 'ETH'  },
+  { id: 'bsc',       name: 'BNB Chain', sym: 'BNB'  },
+  { id: 'polygon',   name: 'Polygon',   sym: 'POL'  },
+  { id: 'base',      name: 'Base',      sym: 'ETH'  },
+  { id: 'arbitrum',  name: 'Arbitrum',  sym: 'ETH'  },
+  { id: 'optimism',  name: 'Optimism',  sym: 'ETH'  },
+  { id: 'linea',     name: 'Linea',     sym: 'ETH'  },
+  { id: 'avalanche', name: 'Avalanche', sym: 'AVAX' },
 ];
 const EXT_ASSETS: Record<ExtChain, Array<{ sym: string; name: string }>> = {
   evm:  [
@@ -1369,6 +1413,14 @@ const EXT_ASSETS: Record<ExtChain, Array<{ sym: string; name: string }>> = {
   btc:  [{ sym: 'BTC',  name: 'Bitcoin' }],
   sol:  [{ sym: 'SOL',  name: 'Solana' }],
   atom: [{ sym: 'ATOM', name: 'Cosmos Hub' }],
+  ethereum:  [{ sym: 'ETH',  name: 'Ethereum' },     { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  bsc:       [{ sym: 'BNB',  name: 'BNB' },           { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  polygon:   [{ sym: 'POL',  name: 'Polygon' },       { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  base:      [{ sym: 'ETH',  name: 'Ether (Base)' },  { sym: 'USDC', name: 'USD Coin' }],
+  arbitrum:  [{ sym: 'ETH',  name: 'Ether (Arbitrum)' }, { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  linea:     [{ sym: 'ETH',  name: 'Ether (Linea)' }],
+  optimism:  [{ sym: 'ETH',  name: 'Ether (Optimism)' }, { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
+  avalanche: [{ sym: 'AVAX', name: 'Avalanche' },     { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
 };
 
 function ReceiveModal({ onClose, address }: { onClose: () => void; address: string }) {
@@ -1412,6 +1464,9 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
   useEffect(() => {
     setChainBalance('');
     if (chain === 'evm') return;
+    // External EVM chains are shown on the dashboard; the Receive sheet just
+    // shows the 0x address + QR (don't mis-route to the cosmos reader).
+    if (chain !== 'btc' && chain !== 'sol' && chain !== 'atom') return;
     const addr = chain === 'btc' ? btcAddr : chain === 'sol' ? solAddr : atomAddr;
     if (!addr) return;
     let cancelled = false;
@@ -1439,7 +1494,8 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
     chain === 'evm'  ? (lithoAddr && !showAlt ? lithoAddr : address)
     : chain === 'btc'  ? btcAddr
     : chain === 'sol'  ? solAddr
-    : atomAddr;
+    : chain === 'atom' ? atomAddr
+    : address;  // external EVM (Ethereum/BNB/Polygon/…) → the 0x address
 
   // Real QR — drawn lazily for whatever address is in view.
   useEffect(() => {

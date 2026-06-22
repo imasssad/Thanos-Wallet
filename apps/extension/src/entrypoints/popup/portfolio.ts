@@ -82,6 +82,8 @@ export interface DisplayCoin {
   balance: number; balanceText: string; decimals: number;
   priceUsd: number; usdValue: number; color: string;
   tokenAddress?: string; native: boolean;
+  /** EVM chainId for external-EVM holdings (1/56/137/…); absent for Litho/BTC/SOL/ATOM. */
+  chainId?: number;
 }
 
 export interface DisplayTx {
@@ -183,8 +185,41 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         }
 
+        // External EVM (Ethereum/BNB/Polygon/Base/Arbitrum/Optimism/Linea/
+        // Avalanche) — native coins + USDT/USDC at the SAME 0x address. The
+        // extension's host_permissions (*/*) cover these RPCs, so the popup
+        // reads them directly. Read-only; best-effort per chain.
+        const evmExt: DisplayCoin[] = [];
+        try {
+          const m = await import('../../lib/evm-external');
+          const [natives, tokens] = await Promise.all([
+            m.getAllExtEvmNativeBalances(address),
+            m.getAllExtEvmTokenBalances(address),
+          ]);
+          if (cancelled) return;
+          for (const { chain, balance } of natives) {
+            const priceUsd = prices[chain.nativeSymbol] ?? 0;
+            evmExt.push({
+              sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
+              balance, balanceText: formatAmount(balance), decimals: 18,
+              priceUsd, usdValue: balance * priceUsd, color: chain.color, native: true,
+            });
+          }
+          for (const { token, balance } of tokens) {
+            const priceUsd = prices[token.symbol] ?? 1; // stablecoins ≈ $1
+            evmExt.push({
+              sym: token.symbol, name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
+              chainId: token.chainId, balance, balanceText: formatAmount(balance),
+              decimals: token.decimals, priceUsd, usdValue: balance * priceUsd,
+              color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+              tokenAddress: token.address, native: false,
+            });
+          }
+        } catch { /* best-effort */ }
+
         const totalUsd = priced.reduce((s, x) => s + x.usdValue, 0)
-                       + xchain.reduce((s, x) => s + x.usdValue, 0);
+                       + xchain.reduce((s, x) => s + x.usdValue, 0)
+                       + evmExt.reduce((s, x) => s + x.usdValue, 0);
         const coins: DisplayCoin[] = [
           ...priced.map(({ a, bal, priceUsd, usdValue }) => ({
             sym: a.symbol, name: a.name,
@@ -194,6 +229,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             tokenAddress: a.tokenAddress, native: !!a.native,
           })),
           ...xchain,
+          ...evmExt,
         ];
 
         const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {

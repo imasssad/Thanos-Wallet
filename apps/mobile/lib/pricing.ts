@@ -33,6 +33,8 @@ export const COINGECKO_IDS: Record<string, string> = {
   POL:    'matic-network',
   MATIC:  'matic-network',
   AVAX:   'avalanche-2',
+  USDT:   'tether',
+  USDC:   'usd-coin',
 };
 
 const CACHE_TTL_MS = 60_000;
