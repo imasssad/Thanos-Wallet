@@ -24,6 +24,12 @@ import { Puzzle, X, Smartphone, Download } from 'lucide-react';
 const DISMISS_EXT = 'thanos_ext_prompt_dismissed';
 const DISMISS_APK = 'thanos_apk_prompt_dismissed';
 
+// The browser extension isn't published to any store yet, so the desktop
+// "Get the extension" prompt would link to a dead store search. Keep it OFF
+// until the listings go live — then flip this to true (and swap STORE_URL for
+// the real listing URLs).
+const EXTENSION_PUBLISHED = false;
+
 const STORE_URL: Record<'chrome' | 'firefox', string> = {
   chrome:  'https://chromewebstore.google.com/search/Thanos%20Wallet',
   firefox: 'https://addons.mozilla.org/firefox/search/?q=Thanos%20Wallet',
@@ -86,6 +92,7 @@ export function ExtensionPrompt() {
     const p = detectPlatform();
     setPlatform(p);
     if (p === 'ios') return; // nothing to offer iOS yet
+    if (p === 'desktop' && !EXTENSION_PUBLISHED) return; // extension not in stores yet
 
     const key = p === 'android' ? DISMISS_APK : DISMISS_EXT;
     let dismissed = false;
