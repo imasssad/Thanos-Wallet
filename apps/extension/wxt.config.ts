@@ -40,7 +40,10 @@ export default defineConfig({
     // closes — MV3 service workers terminate after ~30s idle, which
     // kills any persistent WebSocket. Chrome-only API; gracefully
     // ignored by Firefox/Safari (which keep the popup kit fallback).
-    permissions: ['storage', 'activeTab', 'tabs', 'offscreen'],
+    // No 'tabs' permission: tabs.create() needs none, tabs.query({}) returns the
+    // ids we use without it, and tabs.sendMessage works via host_permissions.
+    // (Chrome Web Store rejected 0.2.0 for requesting 'tabs' unnecessarily.)
+    permissions: ['storage', 'activeTab', 'offscreen'],
     host_permissions: ['https://*/*', 'http://*/*'],
     // injected.js must be loadable from page context for the MAIN-world
     // window.thanos provider injection.

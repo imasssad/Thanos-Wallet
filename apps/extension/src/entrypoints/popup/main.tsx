@@ -2460,25 +2460,31 @@ function App() {
 
   useEffect(() => {
     (async () => {
-      // Legacy plaintext migration (one-shot).
-      if (hasLegacyPlaintext()) {
-        const mig = await migrateLegacyPlaintext();
-        if (mig.ok && mig.key) cacheSessionKey(mig.key);
-      }
-      const vault = loadVault();
-      setHasVault(!!vault);
-      if (vault) {
-        const key = getSessionKey();
-        if (key) {
-          const mnemonic = await openVaultWithKey(vault, key);
-          if (mnemonic) {
-            setSeed(mnemonic.split(' '));
-            setUnlocked(true);
-          } else {
-            clearSessionKey();
-          }
+      // Legacy plaintext migration (one-shot) — best-effort. It must NEVER
+      // block the popup from resolving its gate: a throw/hang here used to
+      // leave hasVault=null → a permanently blank popup ("no data loading").
+      try {
+        if (hasLegacyPlaintext()) {
+          const mig = await migrateLegacyPlaintext();
+          if (mig.ok && mig.key) cacheSessionKey(mig.key);
         }
+      } catch { /* ignore — fall through to render onboarding/unlock */ }
+
+      let vault: ReturnType<typeof loadVault> = null;
+      try { vault = loadVault(); } catch { vault = null; }
+      setHasVault(!!vault);   // ALWAYS resolves the gate (onboarding or wallet)
+
+      if (vault) {
+        try {
+          const key = getSessionKey();
+          if (key) {
+            const mnemonic = await openVaultWithKey(vault, key);
+            if (mnemonic) { setSeed(mnemonic.split(' ')); setUnlocked(true); }
+            else clearSessionKey();
+          }
+        } catch { /* session unlock is best-effort; the unlock screen still works */ }
       }
+
       // Dark-first: only an explicit stored 'light' opts out (the module-
       // level snippet above already painted the right theme pre-mount —
       // this just syncs React state for the Settings toggle label).
@@ -2486,7 +2492,7 @@ function App() {
       const dark = stored !== 'light';
       setIsDark(dark);
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    })().catch(() => {});
+    })().catch(() => setHasVault((v) => (v === null ? false : v)));
   }, []);
 
   const toggleTheme = () => {
@@ -2753,4 +2759,37 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App/>);
+/* Popup-wide crash guard. Without this, ANY render error unmounts the whole
+ * tree → a blank popup, which reads as "no data is loading" (the Chrome Web
+ * Store rejection reason for 0.2.0). Now a render error shows a reload card
+ * instead of a blank screen. */
+class PopupErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: unknown) {
+    // eslint-disable-next-line no-console
+    console.error('[Thanos popup] render error:', error);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, minHeight: 360, display: 'flex', flexDirection: 'column',
+          gap: 12, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ fontSize: 26 }}>⚠️</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Something went wrong</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            The wallet hit an unexpected error. Your funds are safe — reload to continue.
+          </div>
+          <button className="btn-primary" style={{ marginTop: 4 }} onClick={() => { try { location.reload(); } catch {} }}>
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+createRoot(document.getElementById('root')!).render(
+  <PopupErrorBoundary><App/></PopupErrorBoundary>,
+);
