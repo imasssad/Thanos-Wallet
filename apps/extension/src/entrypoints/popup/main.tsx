@@ -2790,6 +2790,52 @@ class PopupErrorBoundary extends React.Component<{ children: React.ReactNode }, 
   }
 }
 
-createRoot(document.getElementById('root')!).render(
-  <PopupErrorBoundary><App/></PopupErrorBoundary>,
-);
+/* ── Layered crash guards — the popup must NEVER show a blank screen ──────
+ * The React <PopupErrorBoundary> only catches errors AFTER React mounts. These
+ * cover the cases it can't: a bundle/module-load error, a mount failure, or a
+ * hang before first paint. Combined with the dark #root fallback in
+ * index.html, the worst case is a "reload" card on a dark background — never
+ * a blank/white popup (the Chrome Web Store rejection symptom). */
+let __thanosMounted = false;
+function showFatalCard(): void {
+  if (__thanosMounted) return;            // React owns #root — let the ErrorBoundary handle it
+  const root = document.getElementById('root');
+  if (!root) return;
+  root.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;'
+    + 'width:360px;height:600px;background:#080809;color:#e6e6ea;text-align:center;padding:24px;box-sizing:border-box;'
+    + "font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;\">"
+    + '<div style="font-size:26px;">⚠️</div>'
+    + '<div style="font-weight:700;font-size:15px;">Something went wrong</div>'
+    + '<div style="color:#9a9aa5;line-height:1.5;">The wallet hit an unexpected error. Your funds are safe — reload to continue.</div>'
+    + '<button id="thanos-reload" style="margin-top:6px;padding:9px 18px;border:none;border-radius:10px;'
+    + 'background:#3b7af7;color:#fff;font-weight:700;cursor:pointer;">Reload</button>'
+    + '</div>';
+  document.getElementById('thanos-reload')?.addEventListener('click', () => { try { location.reload(); } catch { /* noop */ } });
+}
+// Uncaught JS errors (bubble phase only catches real errors, not resource
+// loads) → reload card if the app never came up.
+window.addEventListener('error', (ev) => {
+  // eslint-disable-next-line no-console
+  console.error('[Thanos popup] uncaught error:', ev.error ?? ev.message);
+  showFatalCard();
+});
+// Unhandled rejections are logged but NOT surfaced as fatal — many are benign
+// (aborted fetches, optional chains). A true hang is caught by the watchdog.
+window.addEventListener('unhandledrejection', (ev) => {
+  // eslint-disable-next-line no-console
+  console.error('[Thanos popup] unhandled rejection:', ev.reason);
+});
+// Watchdog: if React still hasn't taken over #root after 8s, show the card.
+setTimeout(() => { if (!__thanosMounted) showFatalCard(); }, 8_000);
+
+try {
+  const el = document.getElementById('root');
+  if (!el) throw new Error('#root element missing');
+  createRoot(el).render(<PopupErrorBoundary><App/></PopupErrorBoundary>);
+  __thanosMounted = true;
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.error('[Thanos popup] failed to mount:', err);
+  showFatalCard();
+}
