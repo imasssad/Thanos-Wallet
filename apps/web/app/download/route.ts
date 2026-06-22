@@ -23,6 +23,9 @@
 // Thanos build before installing (Android signature mismatch); the Settings
 // version tag (thanos-v1.04) then confirms the new build took.
 const APK_URL = 'https://expo.dev/artifacts/eas/OjNNRiCXJn0LWW_hSUz1mfakL6tVJ7ddAebVzUGm6qQ.apk';
+// The downloaded file is named after this so testers can tell the version at a
+// glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
+const APK_VERSION = 'thanos-v1.04';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
@@ -39,7 +42,7 @@ export async function GET() {
 
   const headers = new Headers({
     'Content-Type': 'application/vnd.android.package-archive',
-    'Content-Disposition': 'attachment; filename="thanos.apk"',
+    'Content-Disposition': `attachment; filename="${APK_VERSION}.apk"`,
     // Let Cloudflare edge-cache the binary so we don't re-proxy every hit;
     // purge the /download cache (or wait 1h) after shipping a new build.
     'Cache-Control': 'public, max-age=3600',

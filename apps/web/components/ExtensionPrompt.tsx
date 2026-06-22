@@ -121,7 +121,7 @@ export function ExtensionPrompt() {
           <strong>Get the Thanos Wallet app</strong>
           <span>Install the Android app for the full wallet on your phone.</span>
         </div>
-        <a className="lp-ext-prompt-cta" href="/download" download="thanos.apk">
+        <a className="lp-ext-prompt-cta" href="/download" download>
           <Download size={15} style={{ marginRight: 6, verticalAlign: '-2px' }} />Download
         </a>
         <button className="lp-ext-prompt-close" onClick={dismiss} aria-label="Dismiss">
