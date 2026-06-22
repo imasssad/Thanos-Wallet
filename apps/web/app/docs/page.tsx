@@ -79,12 +79,20 @@ export default function DocsPage() {
 
         {/* Install */}
         <h2 style={h2}>Install</h2>
-        <Code>{`npm install thanos-connect
-# or:  pnpm add thanos-connect   /   yarn add thanos-connect`}</Code>
+        <p style={p}>Install straight from the hosted package — works today, no npm account needed:</p>
+        <Code>{`npm install https://thanos.fi/sdk/thanos-connect-0.1.0.tgz`}</Code>
+        <p style={p}>Or download the package file and install it locally:</p>
+        <Code>{`npm install ./thanos-connect-0.1.0.tgz   # after downloading`}</Code>
+        <p style={{ ...p, margin: '0 0 14px' }}>
+          <a href="/sdk/thanos-connect-0.1.0.tgz" download style={{ ...link, fontWeight: 600 }}>
+            ↓ Download thanos-connect-0.1.0.tgz
+          </a>
+          <span style={{ color: '#64748b' }}> · 27 KB · MIT</span>
+        </p>
         <div style={callout}>
           Zero runtime dependencies. Tree-shakeable. Works with any framework (React component shipped
-          at <span style={kbd}>thanos-connect/react</span>). <strong>Note:</strong> the npm listing is being
-          published — until it’s live, ask the Thanos team for the package file or repo access.
+          at <span style={kbd}>thanos-connect/react</span>). <strong>Coming soon:</strong> once the npm
+          listing is published, <span style={kbd}>npm install thanos-connect</span> will work directly.
         </div>
 
         {/* Why */}
