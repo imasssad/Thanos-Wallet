@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
-import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from '../../lib/multx-bridge';
+import { bridgeMakaluToKamet } from '../../lib/multx-bridge';
+import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from '../../lib/bridge-meta';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
@@ -1808,7 +1809,7 @@ function ExtCrossChainSwap({ bridge }: { bridge: boolean }) {
   );
 }
 
-/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via @litho/multx-sdk:
+/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via lib/multx-bridge (ethers v6, no ESM SDK):
    approve -> lock on Makalu -> validators sign -> relayer releases on Kamet.
    Funds land at the same address on Kamet (no recipient field). */
 function ExtMakaluKametBridge({ seed }: { seed: string[] }) {
@@ -1842,7 +1843,7 @@ function ExtMakaluKametBridge({ seed }: { seed: string[] }) {
       if (res.status !== 'completed') { setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.'); }
     } catch (e) {
       setStep('error');
-      setErr(e instanceof MultXError ? e.message : (e instanceof Error ? e.message : 'Bridge failed'));
+      setErr(e instanceof Error ? e.message : 'Bridge failed');
     }
   }
 
