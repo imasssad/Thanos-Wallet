@@ -56,6 +56,31 @@ const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collap
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid #1f2937', color: '#94a3b8', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid #161b22', color: '#cbd5e1', verticalAlign: 'top' };
 
+/* ── Header ── */
+const headerBar: React.CSSProperties = {
+  position: 'sticky', top: 0, zIndex: 10,
+  background: 'rgba(11,13,17,0.85)', backdropFilter: 'blur(10px)',
+  borderBottom: '1px solid #1a1f2b',
+};
+const headerInner: React.CSSProperties = {
+  maxWidth: 980, margin: '0 auto', padding: '12px 24px',
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+};
+const brand: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', color: '#fff' };
+const brandWord: React.CSSProperties = { fontWeight: 800, letterSpacing: '0.04em', fontSize: 15 };
+const brandTag: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#7dd3fc', background: 'rgba(125,211,252,0.10)', border: '1px solid rgba(125,211,252,0.25)', borderRadius: 6, padding: '1px 7px' };
+const headerNav: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' };
+const navLink: React.CSSProperties = { color: '#cbd5e1', textDecoration: 'none', fontSize: 13.5, fontWeight: 600 };
+
+/* ── Footer ── */
+const footerBar: React.CSSProperties = { borderTop: '1px solid #1a1f2b', background: '#090b0e', marginTop: 40 };
+const footerInner: React.CSSProperties = {
+  maxWidth: 980, margin: '0 auto', padding: '28px 24px 40px',
+  display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+};
+const footNav: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 18 };
+const footLink: React.CSSProperties = { color: '#94a3b8', textDecoration: 'none', fontSize: 13 };
+
 function Code({ children }: { children: string }) {
   return <pre style={code}><code>{children}</code></pre>;
 }
@@ -63,10 +88,24 @@ function Code({ children }: { children: string }) {
 export default function DocsPage() {
   return (
     <div style={page}>
-      <div style={wrap}>
-        <Link href="/" style={{ ...link, fontSize: 13, fontWeight: 600 }}>← thanos.fi</Link>
+      {/* ── Header ── */}
+      <header style={headerBar}>
+        <div style={headerInner}>
+          <Link href="/" style={brand}>
+            <img src="/images/Thanos_Logo.png" alt="" width={26} height={26} style={{ objectFit: 'contain' }}/>
+            <span style={brandWord}>THANOS</span>
+            <span style={brandTag}>Docs</span>
+          </Link>
+          <nav style={headerNav}>
+            <a href="/app" style={navLink}>Open App</a>
+            <a href="https://thanos.fi" style={navLink}>Website</a>
+            <a href="/sdk/thanos-connect-0.1.0.tgz" download style={{ ...navLink, color: '#7dd3fc' }}>Download SDK</a>
+          </nav>
+        </div>
+      </header>
 
-        <div style={{ marginTop: 18 }}>
+      <div style={wrap}>
+        <div>
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', color: '#7dd3fc', textTransform: 'uppercase' }}>
             Developer Docs
           </span>
@@ -295,6 +334,25 @@ await provider.request({
           <a href="mailto:support@thanos.fi" style={link}>support@thanos.fi</a>.
         </p>
       </div>
+
+      {/* ── Footer ── */}
+      <footer style={footerBar}>
+        <div style={footerInner}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <img src="/images/Thanos_Logo.png" alt="" width={20} height={20} style={{ objectFit: 'contain' }}/>
+            <span style={{ fontWeight: 700, fontSize: 13.5, color: '#e2e8f0' }}>Thanos Wallet</span>
+          </div>
+          <nav style={footNav}>
+            <Link href="/" style={footLink}>Home</Link>
+            <a href="/app" style={footLink}>App</a>
+            <Link href="/privacy" style={footLink}>Privacy</Link>
+            <a href="/download" style={footLink}>Download APK</a>
+            <a href="https://github.com/imasssad/Thanos-Wallet" target="_blank" rel="noreferrer" style={footLink}>GitHub</a>
+            <a href="mailto:support@thanos.fi" style={footLink}>Support</a>
+          </nav>
+          <div style={{ fontSize: 12, color: '#64748b' }}>© 2026 Thanos Wallet · MIT</div>
+        </div>
+      </footer>
     </div>
   );
 }
