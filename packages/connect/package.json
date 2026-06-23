@@ -73,7 +73,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/imasssad/Thanos-Wallet.git",
+    "url": "git+https://github.com/imasssad/Thanos-Wallet.git",
     "directory": "packages/connect"
   },
   "publishConfig": {
