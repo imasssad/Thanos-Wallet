@@ -57,6 +57,16 @@ export function QrScannerModal({ open, onClose, onResult }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(true);
 
+  // Latest callbacks in refs so the camera effect can depend on `open` ALONE.
+  // If it also depended on onResult/onClose (fresh closures the parent makes
+  // each render), every parent re-render would tear the scanner down and
+  // restart it — and an interrupted QrScanner.start() rejects on Safari with
+  // "The operation was aborted."
+  const onResultRef = useRef(onResult);
+  const onCloseRef = useRef(onClose);
+  onResultRef.current = onResult;
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -73,20 +83,40 @@ export function QrScannerModal({ open, onClose, onResult }: Props) {
         const scanner = new QrScanner(
           videoRef.current,
           (result: { data: string }) => {
-            const value = extractAddress(result.data);
-            onResult(value);
             scanner.stop();
-            onClose();
+            onResultRef.current(extractAddress(result.data));
+            onCloseRef.current();
           },
           {
+            returnDetailedScanResult: true,
+            preferredCamera: 'environment',
             highlightScanRegion: true,
             highlightCodeOutline: true,
-            preferredCamera: 'environment',
+            maxScansPerSecond: 10,
+            // Scan the largest CENTRED SQUARE of the frame, not qr-scanner's
+            // default 2/3 sub-square. A QR held close enough to fill the camera
+            // (e.g. another phone's receive screen) overflows that small region
+            // and never decodes — exactly the "camera works but it never reads
+            // the code / times out" symptom. A full-width square keeps the
+            // region square (no distortion) so dense codes still decode.
+            calculateScanRegion: (v: HTMLVideoElement) => {
+              const w = v.videoWidth || 640;
+              const h = v.videoHeight || 480;
+              const size = Math.min(w, h);
+              return {
+                x: Math.round((w - size) / 2),
+                y: Math.round((h - size) / 2),
+                width: size,
+                height: size,
+                downScaledWidth: 500,
+                downScaledHeight: 500,
+              };
+            },
           },
         );
         scannerRef.current = scanner;
         await scanner.start();
-        if (cancelled) scanner.stop();
+        if (cancelled) { scanner.stop(); return; }
         setStarting(false);
       } catch (err) {
         if (cancelled) return;
@@ -95,6 +125,8 @@ export function QrScannerModal({ open, onClose, onResult }: Props) {
           setError('Camera permission denied. Enable it in your browser settings and try again.');
         } else if (/NotFound|no camera/i.test(msg)) {
           setError('No camera detected on this device.');
+        } else if (/abort/i.test(msg)) {
+          setError('Camera was interrupted — close and reopen the scanner to retry.');
         } else {
           setError(msg);
         }
@@ -108,7 +140,10 @@ export function QrScannerModal({ open, onClose, onResult }: Props) {
       scannerRef.current?.destroy();
       scannerRef.current = null;
     };
-  }, [open, onClose, onResult]);
+    // onResult/onClose read via refs (above), so the scanner starts once per
+    // open and isn't restarted mid-flight (which is what aborted it).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
 
