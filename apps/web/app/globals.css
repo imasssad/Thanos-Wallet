@@ -1323,8 +1323,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
      overflow:hidden to clip the blur orbs), which used to strand the
      Create/Continue button off-screen on short/landscape phones. */
   max-height: calc(100dvh - 16px);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  /* The card NEVER scrolls — short steps fit and stay static (no scroll, no
+     bounce). The only genuinely tall content (the seed-word grid) scrolls
+     inside itself, so the card's buttons always stay on-screen. */
+  overflow-y: hidden;
   overscroll-behavior: none;
   background: #ffffff;
   border: 1px solid #ececef;
@@ -1644,6 +1646,12 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 12px; padding: 14px;
   margin-bottom: 14px;
+  /* The card no longer scrolls, so the 24-word grid takes its own internal
+     scroll on short phones — the Back/Continue buttons below stay visible. */
+  max-height: 38vh;
+  max-height: 38dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .seed-word {
   font-family: 'Geist Mono', monospace; font-size: 14px;
