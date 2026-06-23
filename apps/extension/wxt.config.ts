@@ -35,7 +35,11 @@ export default defineConfig({
   }),
   manifest: {
     name: 'Thanos Wallet',
-    description: 'Lithosphere-first wallet with Bitcoin, Solana, MultX, Ignite DEX, and hardware wallet support.',
+    // Describes ONLY what ships. No "hardware wallet support" — there is no
+    // Ledger/Trezor/HID integration in the codebase, and Chrome Web Store
+    // rejects listings whose described functionality isn't present (the same
+    // "functionality not working" category that bounced an earlier build).
+    description: 'Lithosphere-first wallet with Bitcoin, Solana, MultX bridge, Ignite DEX, and an EIP-1193 dApp provider.',
     // 'offscreen' hosts the WalletConnect relay socket across popup
     // closes — MV3 service workers terminate after ~30s idle, which
     // kills any persistent WebSocket. Chrome-only API; gracefully

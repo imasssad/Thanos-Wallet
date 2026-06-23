@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=360, initial-scale=1" />
     <title>Thanos Wallet</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- No remote web fonts. The popup renders in the local system UI stack
+         (see popup.css `font-family`). MV3 review flags any remote resource,
+         and a wallet popup has no reason to hit Google's CDN on every open. -->
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>

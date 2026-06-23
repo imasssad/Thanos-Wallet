@@ -141,18 +141,20 @@ const BUNDLED_ICONS: Record<string, string> = {
   trx:    '/images/tokens/trx.png',
   hype:   '/images/tokens/hype.png',
   sol:    '/images/tokens/sol.png',  // official solana.com/branding logomark
-};
-const REMOTE_ICONS: Record<string, string> = {
-  btc:    'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-  litbtc: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-  usdc:   'https://assets.coingecko.com/coins/images/6319/large/usdc.png',
-  usdt:   'https://assets.coingecko.com/coins/images/325/large/Tether.png',
-  bnb:    'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png',
-  xrp:    'https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png',
+  // Bundled locally — these were fetched from assets.coingecko.com at runtime,
+  // a remote image request on every popup open that MV3 review flags (and that
+  // the privacy policy didn't disclose). Now zero external image loads: the
+  // CoinGecko logomarks are downsized into the token pack at /images/tokens/.
+  btc:    '/images/tokens/btc.png',
+  litbtc: '/images/tokens/btc.png',
+  usdc:   '/images/tokens/usdc.png',
+  usdt:   '/images/tokens/usdt.png',
+  bnb:    '/images/tokens/bnb.png',
+  xrp:    '/images/tokens/xrp.png',
 };
 function iconFor(sym: string): string | null {
   const k = (sym || '').toLowerCase();
-  return BUNDLED_ICONS[k] ?? REMOTE_ICONS[k] ?? null;
+  return BUNDLED_ICONS[k] ?? null;
 }
 
 /** Coin avatar — icon composited over the brand-colour circle, with the
@@ -1444,18 +1446,23 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
 
   // Lazy chain-address derivation — only run when the tab is opened.
   useEffect(() => {
+    // Guard every setState behind a cancelled flag: the dynamic import can
+    // resolve after the Receive sheet closes or the chain switches, and a
+    // post-unmount setState is both a React warning and a wasted derivation.
+    let cancelled = false;
     if (chain === 'btc' && !btcAddr && seed.length) {
-      void import('../../lib/bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
-        .catch(() => setBtcAddr(''));
+      void import('../../lib/bitcoin').then(m => { if (!cancelled) setBtcAddr(m.getBitcoinAddress(seed.join(' '))); })
+        .catch(() => { if (!cancelled) setBtcAddr(''); });
     }
     if (chain === 'sol' && !solAddr && seed.length) {
-      void import('../../lib/solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
-        .catch(() => setSolAddr(''));
+      void import('../../lib/solana').then(m => { if (!cancelled) setSolAddr(m.getSolanaAddress(seed.join(' '))); })
+        .catch(() => { if (!cancelled) setSolAddr(''); });
     }
     if (chain === 'atom' && !atomAddr && seed.length) {
       void import('../../lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
-        .then(setAtomAddr).catch(() => setAtomAddr(''));
+        .then(a => { if (!cancelled) setAtomAddr(a); }).catch(() => { if (!cancelled) setAtomAddr(''); });
     }
+    return () => { cancelled = true; };
   }, [chain, seed, btcAddr, solAddr, atomAddr]);
 
   // Reset dual-format toggle when switching chains.
@@ -1758,7 +1765,14 @@ function ExtCrossChainSwap({ bridge }: { bridge: boolean }) {
   const [recipient, setRecipient]     = useState('');
   const [prices, setPrices]   = useState<Record<string, number>>({});
 
-  useEffect(() => { fetchEcosystemPrices().then(setPrices).catch(() => {}); }, []);
+  useEffect(() => {
+    // fetchEcosystemPrices() never rejects (it swallows network errors and
+    // returns the hard/placeholder map), but it IS async — guard setPrices so
+    // a late resolve after the swap modal closes doesn't touch a dead component.
+    let cancelled = false;
+    fetchEcosystemPrices().then(p => { if (!cancelled) setPrices(p); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => { if (!fromChain.tokens.includes(fromTok)) setFromTok(fromChain.tokens[0]); /* eslint-disable-next-line */ }, [fromId]);
   useEffect(() => { if (!toChain.tokens.includes(toTok)) setToTok(toChain.tokens[0]); /* eslint-disable-next-line */ }, [toId]);
 
