@@ -11,23 +11,24 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — VERSION "thanos-v1.06" (2026-06-22, commit
-// 435e5f7 / build ccee5d54, account imasssadkh). Shows its version in Settings
-// (bottom) so testers can confirm the installed build at a glance.
-// FIX in v1.06: the "Requiring unknown module undefined" crash — solana.ts
-// required @noble/hashes bare subpaths that v2.2.0 dropped from its exports
-// map; now uses the .js subpaths. Plus a resilience guard (a failed optional
-// lazy-load no longer bricks the wallet) and the centered login/onboarding form.
+// Latest production-apk build — VERSION "thanos-v1.07" (2026-06-24, build
+// 009cce29, account imasssadkh). Shows its version in Settings (bottom) so
+// testers can confirm the installed build at a glance.
+// FIX in v1.07: the onboarding/unlock screen no longer bounces — the RN
+// ScrollView is now bounces={false} + overScrollMode="never", so short steps
+// (welcome, unlock, password) sit STATIC; the tall 24-word seed step still scrolls.
+// From v1.06: the "Requiring unknown module undefined" crash fix (@noble/hashes
+// .js subpaths) + resilience guard + centered login/onboarding form.
 // From v1.05: external-EVM send/receive/balances (ETH + USDT/USDC, 8 chains).
 // From v1.04: ESM-bridge crash fix, reliable biometrics, password-gated reveal,
 // BTC real-fee + send-max, account-aware swap/allowances, LIVE MultX bridge.
-// NOTE: signed with the imasssadkh keystore — testers must uninstall any prior
-// Thanos build before installing (Android signature mismatch); the Settings
-// version tag (thanos-v1.06) then confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/rE9KbzLExGbexDAgMyBVsQz2TW9vcHqdImUtfny4ps8.apk';
+// NOTE: signed with the SAME imasssadkh keystore as v1.06 — testers on v1.06 can
+// upgrade IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
+// The Settings version tag (thanos-v1.07) confirms the new build took.
+const APK_URL = 'https://expo.dev/artifacts/eas/8n_0VCvk5imWF3Do_RErxEAnNJPwzmQ43_xBc8uiTQI.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
-const APK_VERSION = 'thanos-v1.06';
+const APK_VERSION = 'thanos-v1.07';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
