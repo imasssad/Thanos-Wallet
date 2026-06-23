@@ -145,8 +145,10 @@ export default function DocsPage() {
           <li style={li}>Sensible error handling (user cancels, no wallet, …)</li>
         </ul>
         <p style={p}>
-          This package collapses all of it into a single class and one method. It pairs with the wallet’s
-          backend at thanos.fi but works with your own auth server too.
+          This package collapses all of it into a single class and one method. The nonce and verify
+          endpoints run on <em>your</em> server — the SDK&apos;s defaults (<span style={kbd}>/api/auth/nonce</span>,
+          <span style={kbd}>/api/auth/verify</span>) are same-origin relative paths, shown below. There is no
+          hosted thanos.fi auth backend to depend on.
         </p>
 
         {/* Vanilla */}
@@ -260,7 +262,7 @@ app.post('/api/auth/verify', async (req, res) => {
                 ['nonceEndpoint', 'string | null', '/api/auth/nonce', 'null = generate nonce client-side'],
                 ['verifyEndpoint', 'string | null', '/api/auth/verify', 'null = skip backend round-trip'],
                 ['fetch', 'typeof fetch', 'global', 'Override for SSR / RN / edge runtimes'],
-                ['walletRdns', 'string', 'fi.thanos.wallet', 'Loosen for any EIP-6963 wallet'],
+                ['walletRdns', 'string', 'fi.thanos.wallet', 'Point at a specific wallet rdns to target it — no any-wallet mode'],
                 ['debug', 'boolean', 'false', 'Log discovery + flow steps'],
               ].map(([f, t, d, n]) => (
                 <tr key={f}>
