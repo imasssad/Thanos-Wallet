@@ -462,7 +462,19 @@ button:focus:not(:focus-visible),
 @media (max-width: 1024px) {
   .assets-layout { flex-direction: column; }
   .assets-chart-card { flex: 1 1 auto; width: 100%; box-sizing: border-box; }
-  .assets-table-card { width: 100%; }
+  /* Give the asset list real presence: ~3 rows minimum, expand down to fill
+     the space under the donut, and scroll the assets INSIDE the card (with a
+     sticky header) instead of collapsing to one row with dead space below. */
+  .assets-table-card {
+    width: 100%;
+    min-height: 280px;
+    max-height: 62dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .assets-table-card .data-table thead th {
+    position: sticky; top: 0; z-index: 1; background: var(--bg-card);
+  }
 }
 /* Phone: drop Price + 24h columns so Asset / Holdings / Value fit cleanly. */
 @media (max-width: 480px) {

@@ -15,6 +15,13 @@
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  // qr-scanner decodes in a Worker it spawns from a blob: URL (its own bundled
+  // code, see createObjectURL in qr-scanner.umd.min.js). With default-src 'self'
+  // and no worker-src, that worker is BLOCKED — so the camera opens but the QR
+  // never decodes and the scan just times out. Allow same-origin + blob:
+  // workers (child-src is the fallback older Safari consults for workers).
+  "worker-src 'self' blob:",
+  "child-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:"
     // CoinGecko serves token logos from BOTH hosts — /coins/markets returns
