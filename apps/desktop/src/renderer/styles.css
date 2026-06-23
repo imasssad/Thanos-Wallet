@@ -287,7 +287,10 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ── Main area ────────────────────────────────────────────────── */
 .main-area {
-  flex: 1; overflow-y: auto;
+  /* overflow-x:hidden — overflow-y:auto alone lets the browser promote the
+     x-axis to auto, so a too-wide child could be dragged sideways on a touch
+     laptop. (Mouse users just never see it.) Matches the web app. */
+  flex: 1; overflow-y: auto; overflow-x: hidden;
   padding: 18px 22px 26px;
   display: flex; flex-direction: column; gap: 14px;
   min-width: 0;

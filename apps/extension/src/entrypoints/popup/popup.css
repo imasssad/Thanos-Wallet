@@ -84,7 +84,7 @@ input, textarea { font-family: inherit; }
 
 /* ─── App shell ─── */
 .app { display: flex; flex-direction: column; height: 100%; background: var(--bg-base); }
-.app-body { flex: 1; overflow-y: auto; }
+.app-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
 /* ─── Bottom tabbar ─── */
 .tabbar {
