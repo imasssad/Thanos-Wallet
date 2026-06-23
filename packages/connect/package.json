@@ -4,17 +4,29 @@
   "description": "Drop-in Sign-In With Thanos integration — EIP-1193 + EIP-6963 discovery, SIWT flow, React + vanilla.",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./react": {
-      "types": "./dist/react.d.ts",
-      "import": "./dist/react.js"
+      "import": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
+      },
+      "require": {
+        "types": "./dist/react.d.cts",
+        "default": "./dist/react.cjs"
+      }
     }
   },
   "files": [
@@ -23,8 +35,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "prepublishOnly": "tsc -p tsconfig.json",
+    "build": "tsup",
+    "prepublishOnly": "tsc -p tsconfig.json --noEmit && tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo 'no lint configured'"
   },
@@ -32,11 +44,14 @@
     "react": ">=18"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "react": "^18.3.1",
+    "tsup": "^8.5.1",
     "typescript": "^5.6.3"
   },
   "keywords": [
