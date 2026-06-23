@@ -736,6 +736,11 @@ button:focus:not(:focus-visible),
 /* ── Main area ────────────────────────────────────────────────── */
 .main-area {
   flex: 1; overflow-y: auto;
+  /* Lock the horizontal axis. overflow-y:auto alone makes the browser promote
+     overflow-x to auto too, so any too-wide child (e.g. the quick-action row)
+     let the whole page be dragged sideways. Inner scrollers (tables in their
+     own overflow-x:auto cards) are unaffected. */
+  overflow-x: hidden;
   padding: 18px 22px 26px;
   display: flex; flex-direction: column; gap: 14px;
   min-width: 0;

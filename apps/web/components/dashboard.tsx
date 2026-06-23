@@ -845,8 +845,13 @@ export function Dashboard() {
         {/* ── 4 action buttons (Buy / Swap / Send / Receive) ────────── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          // minmax(0,1fr) (not bare 1fr) lets all 4 cards SHRINK to fit any
+          // width. Bare 1fr keeps each track at its content min-size, so on a
+          // narrow phone the row overflowed the viewport and the whole page
+          // could be dragged sideways — the "moving" the user saw.
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gap: 12,
+          width: '100%',
         }}>
           <ActionBtn
             icon={<DollarSign size={30} strokeWidth={2}/>}
@@ -1237,7 +1242,8 @@ function ActionBtn({ icon, label, onClick, disabled, title, soonBadge }: {
         position: 'relative',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 10,
-        padding: '24px 14px',
+        padding: '20px 8px',
+        minWidth: 0,
         background: 'var(--bg-elevated)',
         border: '1px solid var(--border-default)',
         borderRadius: 14,
