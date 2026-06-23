@@ -118,20 +118,20 @@ export default function DocsPage() {
 
         {/* Install */}
         <h2 style={h2}>Install</h2>
-        <p style={p}>Install straight from the hosted package — works today, no npm account needed:</p>
+        <p style={p}>Published on npm — install directly:</p>
+        <Code>{`npm install thanos-connect`}</Code>
+        <p style={p}>Or pull the hosted package file (no npm account needed):</p>
         <Code>{`npm install https://thanos.fi/sdk/thanos-connect-0.1.0.tgz`}</Code>
-        <p style={p}>Or download the package file and install it locally:</p>
-        <Code>{`npm install ./thanos-connect-0.1.0.tgz   # after downloading`}</Code>
         <p style={{ ...p, margin: '0 0 14px' }}>
           <a href="/sdk/thanos-connect-0.1.0.tgz" download style={{ ...link, fontWeight: 600 }}>
             ↓ Download thanos-connect-0.1.0.tgz
           </a>
-          <span style={{ color: '#64748b' }}> · 27 KB · MIT</span>
+          <span style={{ color: '#64748b' }}> · v0.1.0 · MIT</span>
         </p>
         <div style={callout}>
-          Zero runtime dependencies. Tree-shakeable. Works with any framework (React component shipped
-          at <span style={kbd}>thanos-connect/react</span>). <strong>Coming soon:</strong> once the npm
-          listing is published, <span style={kbd}>npm install thanos-connect</span> will work directly.
+          Zero runtime dependencies. Tree-shakeable. Dual <span style={kbd}>ESM + CommonJS</span> build, so it
+          works in a browser/bundler frontend <em>and</em> a Node/CJS backend (for server-side SIWE
+          verification). React component shipped at <span style={kbd}>thanos-connect/react</span>.
         </div>
 
         {/* Why */}
