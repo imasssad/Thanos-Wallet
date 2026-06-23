@@ -733,6 +733,22 @@ button:focus:not(:focus-visible),
 /* ── Workspace ────────────────────────────────────────────────── */
 .workspace { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
+/* iOS horizontal-drift guard. A vertical scroller (overflow-y:auto) with no
+   explicit overflow-x gets overflow-x PROMOTED to auto by the browser, so its
+   content can be dragged sideways on touch — the "moving" the user kept hitting
+   on the home, onboarding card, and token detail. Lock the x-axis on every
+   full-surface scroller. Intentional horizontal scrollers (.assets-table-card's
+   inner table, .card on phones) keep their own overflow-x:auto and aren't here. */
+.main-area,
+.token-detail-box,
+.token-detail-scroll,
+.right-panel,
+.modal-scroll,
+.onboard-card,
+.settings-view {
+  overflow-x: hidden;
+}
+
 /* ── Main area ────────────────────────────────────────────────── */
 .main-area {
   flex: 1; overflow-y: auto;
