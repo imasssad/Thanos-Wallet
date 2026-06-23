@@ -3717,6 +3717,12 @@ function OnboardingScreen({
       // keyboard — so Back / Create wallet / Import appeared "not clickable."
       // "handled" lets the button's onPress fire on the first tap.
       keyboardShouldPersistTaps="handled"
+      // No elastic bounce / over-scroll: short steps (welcome, unlock, password)
+      // stay STATIC instead of bouncing up/down; tall steps (24-word seed) still
+      // scroll normally — bounces:false disables only the edge bounce, not scroll.
+      bounces={false}
+      alwaysBounceVertical={false}
+      overScrollMode="never"
     >
       <View style={styles.onboardCard}>
         {/* The logo image is a full lockup (mark + "Thanos Wallet" +
