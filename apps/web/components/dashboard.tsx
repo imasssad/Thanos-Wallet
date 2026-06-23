@@ -744,8 +744,11 @@ export function Dashboard() {
 
   return (
     <div style={{
-      width: '100%', overflowY: 'auto', height: '100%', minHeight: 0,
+      width: '100%', overflowY: 'auto', overflowX: 'hidden', height: '100%', minHeight: 0,
       // Match .main-area: momentum scroll + contained overscroll on mobile.
+      // overflowX:'hidden' is REQUIRED — with overflowY:'auto' the browser
+      // promotes overflowX to 'auto' too, so any briefly-too-wide child let the
+      // whole home page be dragged sideways (the "still moving" the user saw).
       WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', scrollBehavior: 'smooth',
     }}>
       {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}

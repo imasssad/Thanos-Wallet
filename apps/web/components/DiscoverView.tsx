@@ -54,7 +54,7 @@ export function DiscoverView() {
     // (same as the dashboard root). Without this the Discover list overflowed
     // under the bottom nav and couldn't scroll. paddingBottom clears the nav.
     <div style={{
-      width: '100%', height: '100%', minHeight: 0, overflowY: 'auto',
+      width: '100%', height: '100%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
       WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', scrollBehavior: 'smooth',
     }}>
     <div className="page-wrap" style={{ maxWidth: 720, margin: '0 auto', padding: '20px 16px 96px' }}>
