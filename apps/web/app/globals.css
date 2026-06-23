@@ -1287,7 +1287,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   overscroll-behavior: none;
   display: flex; align-items: center; justify-content: center;
   background: var(--bg-base);
-  padding: 24px;
+  padding: 12px;
   position: relative;
   overflow: hidden;
 }
@@ -1322,10 +1322,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
      the card instead of clipping past the un-scrollable .onboard-wrap (which is
      overflow:hidden to clip the blur orbs), which used to strand the
      Create/Continue button off-screen on short/landscape phones. */
-  max-height: calc(100dvh - 48px);
+  max-height: calc(100dvh - 16px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
   background: #ffffff;
   border: 1px solid #ececef;
   border-radius: 22px;
@@ -1339,7 +1339,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* Desktop body-zoom (1.25) magnifies dvh, so divide to keep the card inside
    the real viewport — same trap/divisor as .app-shell and the modals. */
 @media (min-width: 769px) {
-  .onboard-card { max-height: calc((100dvh - 48px) / 1.25); }
+  .onboard-card { max-height: calc((100dvh - 16px) / 1.25); }
 }
 [data-theme="dark"] .onboard-card {
   background: linear-gradient(180deg, rgba(28,28,34,0.92), rgba(18,18,22,0.92));
@@ -1399,7 +1399,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--text-primary);
   text-align: center;
   line-height: 1.4;
-  margin-bottom: 28px;
+  margin-bottom: 16px;
   padding: 0 12px;
 }
 .onboard-btn { margin-bottom: 8px; }
@@ -1480,7 +1480,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* Default primary: rounded rectangle so it matches the outline button beside it */
 .onboard-card .btn-primary {
   height: 50px;
-  margin-top: 22px;
+  margin-top: 14px;
   border-radius: 13px;
   background: var(--blue);
   font-size: 16px; font-weight: 600;
@@ -1839,7 +1839,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
 
   /* Onboarding card: full width with margin */
-  .onboard-card { padding: 28px 22px 22px; }
+  .onboard-card { padding: 16px 20px 16px; }
   .onboard-title { font-size: 24px !important; }
   .seed-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
