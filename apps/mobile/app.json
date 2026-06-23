@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
     "userInterfaceStyle": "dark",
@@ -28,7 +28,7 @@
     },
     "android": {
       "package": "ai.thanos.wallet",
-      "versionCode": 1,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"
