@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Metadata, Viewport } from 'next';
 import { ThemeProvider } from '../components/providers/ThemeProvider';
+import { PwaInstall } from '../components/PwaInstall';
 import './globals.css';
 
 /**
@@ -16,11 +17,14 @@ export const viewport: Viewport = {
   width:        'device-width',
   initialScale: 1,
   viewportFit:  'cover',
+  themeColor:   '#080809',
 };
 
 export const metadata: Metadata = {
   title: 'Thanos Wallet — Web4 wallet for Lithosphere, Bitcoin, EVM',
   description: 'Self-custody multi-chain wallet built for the Lithosphere ecosystem. LITHO, wLITHO, FGPT, BTC, ETH — one key, every chain.',
+  applicationName: 'Thanos Wallet',
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Thanos' },
   icons: {
     icon: [
       { url: '/favicon.ico' },
@@ -40,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           {children}
+          <PwaInstall />
         </ThemeProvider>
       </body>
     </html>
