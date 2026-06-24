@@ -10,6 +10,14 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel an in-flight CI when a newer commit lands on the same ref. Rapid pushes
+# (a fixup series) shouldn't each run the full 10-job matrix to completion — only
+# the newest commit matters, and the superseded runs were burning through the
+# private-repo Actions minute budget that this whole failure traces back to.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   typecheck:
     name: typecheck (all workspaces)
