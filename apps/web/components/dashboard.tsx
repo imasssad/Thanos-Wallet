@@ -15,6 +15,7 @@ import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
 import { PortfolioChart } from './PortfolioChart';
+import { FitText } from './FitText';
 import { SecurityPanel } from './SecurityPanel';
 import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
@@ -644,7 +645,11 @@ export function Dashboard() {
   }, [liveActivity]);
 
   const totalUsd = COINS.reduce((s, c) => s + c.usdNum, 0);
-  const totalDisplay = `$${totalUsd.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  // Currency style → always 2 decimals + grouping (so $4,560,363.30, not .3).
+  const totalDisplay = totalUsd.toLocaleString('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
   // Holdings for the portfolio history chart (qty + current USD value).
   const holdings: Holding[] = useMemo(
     () => COINS.filter(c => c.balNum > 0 && c.usdNum > 0)
@@ -806,11 +811,11 @@ export function Dashboard() {
               }}>OFFLINE · SAMPLE</span>
             )}
           </div>
-          <div style={{
-            fontSize: 68, fontWeight: 800, letterSpacing: '-0.04em',
-            lineHeight: 1.05, marginTop: 10,
-          }}>
-            {balanceHidden ? '••••••' : totalDisplay}
+          <div style={{ marginTop: 10, width: '100%', textAlign: 'center' }}>
+            {/* Auto-shrinks so any magnitude fits on one line without overflow. */}
+            <FitText max={68} min={22} style={{ fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05 }}>
+              {balanceHidden ? '••••••' : totalDisplay}
+            </FitText>
           </div>
           <div style={{
             marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 12,
