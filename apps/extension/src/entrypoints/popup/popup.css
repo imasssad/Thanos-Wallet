@@ -57,8 +57,15 @@ body {
   background: var(--bg-base); color: var(--text-primary);
   font-size: 13px; letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
-  /* Modest zoom for popup readability — kept lower than web/desktop to avoid overflow in 360px popup */
-  zoom: 1.2;
+  /* NO `zoom` here — it makes EVERY button in the popup un-clickable.
+     A chrome.action popup self-sizes its window to the rendered content
+     (unlike a browser tab or the Electron window, which both carry a `zoom`
+     fine). On that self-sizing surface CSS `zoom` desyncs the paint box from
+     the pointer hit-test box: Chrome maps clicks against the un-zoomed layout
+     while painting the zoomed one, so every click lands offset and misses its
+     target. Chrome 128+ reworking `zoom` into a real CSS property made this
+     fatal here. If the popup must look bigger, scale font-size / the 360×600
+     box — never `zoom`. */
 }
 #root { width: 100%; height: 100%; }
 button { font-family: inherit; cursor: pointer; }
