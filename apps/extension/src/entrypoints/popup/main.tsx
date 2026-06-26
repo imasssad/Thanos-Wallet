@@ -2854,3 +2854,52 @@ try {
   console.error('[Thanos popup] failed to mount:', err);
   showFatalCard();
 }
+
+/* ── Click-blocker self-heal — the popup must NEVER be un-clickable ────────
+ * Companion to the crash guards above. Those cover a popup that won't render;
+ * this covers one that renders fine but can't be clicked — the "all buttons
+ * dead" symptom. That has exactly one cause: some element is hit-tested over
+ * the buttons (a stuck/transparent overlay, a layer with the wrong
+ * z-index/pointer-events) so the clicks never reach them. React can't see it
+ * (the tree mounted correctly); only a geometric hit-test can.
+ *
+ * A few times after mount, probe each visible <button> at its own centre. If —
+ * and ONLY if — EVERY visible button hit-tests to a foreign element, it's a
+ * genuine global blocker (a real full-screen modal can't trigger this: its own
+ * buttons hit-test to themselves, so "all buttons blocked" is impossible while
+ * any reachable button exists). Then heal it: a layer painted ON TOP gets
+ * pointer-events:none; a button the click falls THROUGH (its own/an ancestor's
+ * pointer-events:none) gets pointer-events restored. Healthy popup → no-op. */
+function describeEl(el: Element): string {
+  const h = el as HTMLElement;
+  const cls = typeof h.className === 'string' && h.className.trim()
+    ? '.' + h.className.trim().split(/\s+/).slice(0, 3).join('.') : '';
+  return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls;
+}
+function healClickBlockers(): void {
+  if (!__thanosMounted) return;
+  const btns = Array.from(document.querySelectorAll('button')).filter((b) => {
+    const r = b.getBoundingClientRect();
+    return r.width > 4 && r.height > 4 && r.bottom > 2 && r.top < window.innerHeight - 2;
+  });
+  if (btns.length === 0) return;
+  const fixes: Array<() => void> = [];
+  const culprits = new Set<string>();
+  for (const b of btns) {
+    const r = b.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!hit || hit === b || b.contains(hit)) continue;          // reachable → fine
+    if (hit.contains(b)) {                                        // click falls THROUGH the button
+      culprits.add(describeEl(b) + ' (pointer-events fell through)');
+      fixes.push(() => { (b as HTMLElement).style.pointerEvents = 'auto'; });
+    } else {                                                      // foreign layer painted on top
+      culprits.add(describeEl(hit));
+      fixes.push(() => { (hit as HTMLElement).style.pointerEvents = 'none'; });
+    }
+  }
+  if (fixes.length < btns.length) return;                        // some button is reachable → not global
+  fixes.forEach((f) => { try { f(); } catch { /* noop */ } });
+  // eslint-disable-next-line no-console
+  console.warn('[Thanos popup] every button was intercepted — healed:', Array.from(culprits).join(', '));
+}
+[250, 800, 2000].forEach((d) => setTimeout(healClickBlockers, d));
