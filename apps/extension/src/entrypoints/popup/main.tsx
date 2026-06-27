@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Wallet, HDNodeWallet, Mnemonic } from 'ethers';
+import { Wallet, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
 import { bridgeMakaluToKamet } from '../../lib/multx-bridge';
 import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from '../../lib/bridge-meta';
 import {
@@ -106,7 +106,10 @@ const SWAP_SYMBOLS = [
   'COLLE', 'IMAGE', 'AGII', 'BLDR', 'FGPT', 'MUSA',
 ] as const;
 
-function generateMnemonic(): string[] {
+function generateMnemonic(words: 12 | 24 = 12): string[] {
+  // 12 words = 128-bit entropy; 24 words = 256-bit (32 bytes). ethers'
+  // Wallet.createRandom() only ever yields 12, so derive 24 from entropy.
+  if (words === 24) return Mnemonic.fromEntropy(randomBytes(32)).phrase.split(' ');
   return Wallet.createRandom().mnemonic!.phrase.split(' ');
 }
 function isValidMnemonic(p: string) {
@@ -185,6 +188,7 @@ type OnboardStep = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm' 
 function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (s: string[]) => void }) {
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
+  const [wordCount, setWordCount] = useState<12 | 24>(12);
   const [importInput, setImportInput] = useState('');
   /* Verify-phrase: only N indices missing, user fills them from a pool */
   const VERIFY_MISSING = 4;
@@ -212,7 +216,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     return () => clearTimeout(t);
   }, [step, seedHidden]);
 
-  const startCreate = () => { setSeed(generateMnemonic()); setStep('create-warn'); };
+  const startCreate = () => { setSeed(generateMnemonic(wordCount)); setStep('create-warn'); };
   const goToVerify = () => {
     const idxs = Array.from({ length: seed.length }, (_, i) => i)
       .sort(() => Math.random() - 0.5).slice(0, VERIFY_MISSING).sort((a, b) => a - b);
@@ -321,13 +325,25 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
         {step === 'welcome' && <>
           <h1 className="onb-title">Welcome to Thanos</h1>
           <p className="onb-sub">Multi-chain Web4 wallet</p>
+          <div className="seedlen-toggle" role="group" aria-label="Recovery phrase length">
+            {([12, 24] as const).map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`seedlen-opt${wordCount === n ? ' active' : ''}`}
+                onClick={() => setWordCount(n)}
+              >
+                {n} words
+              </button>
+            ))}
+          </div>
           <button className="btn-primary" onClick={startCreate}>Create new wallet</button>
           <button className="btn-outline" onClick={() => setStep('import')}>Import existing</button>
         </>}
 
         {step === 'create-warn' && <>
           <h1 className="onb-title">Save your phrase</h1>
-          <p className="onb-sub">12 words = your wallet's only backup. Anyone with them has full access.</p>
+          <p className="onb-sub">{seed.length} words = your wallet's only backup. Anyone with them has full access.</p>
           <ul className="warn-list">
             <li>Write them down on paper</li>
             <li>Keep them safe and private</li>
@@ -341,7 +357,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
         {step === 'create-show' && <>
           <h1 className="onb-title">Recovery phrase</h1>
-          <p className="onb-sub">Write all 12 words down in order.</p>
+          <p className="onb-sub">Write all {seed.length} words down in order.</p>
           <div className="seed-grid" style={{ position: 'relative' }}>
             {seed.map((w, i) => (
               <div key={i} className="seed-cell">
@@ -1533,10 +1549,6 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
     background: 'transparent', border: 'none', borderBottom: border ? '1px solid var(--border-subtle)' : 'none',
     cursor: 'pointer', color: 'inherit',
   });
-  const dot: React.CSSProperties = {
-    width: 30, height: 30, borderRadius: '50%', background: 'var(--blue, #3b7af7)', color: '#fff',
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0,
-  };
   const backLink: React.CSSProperties = {
     background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
     fontSize: 12, fontWeight: 600, padding: '4px 2px', marginBottom: 4, alignSelf: 'flex-start',
@@ -1549,7 +1561,7 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
         <div className="modal-body" style={{ padding: '4px 0' }}>
           {EXT_NETWORKS.map((n, i) => (
             <button key={n.id} onClick={() => { setChain(n.id); setShowAlt(false); setAsset(null); setStep('asset'); }} style={rowBtn(i < EXT_NETWORKS.length - 1)}>
-              <span style={dot}>{n.sym[0]}</span>
+              <TokenAvatar sym={n.sym} color="var(--blue, #3b7af7)" />
               <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>{n.name}</span>
               <span style={{ color: 'var(--text-muted)' }}>›</span>
             </button>
@@ -1569,7 +1581,7 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
           <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px 6px' }}>Receiving on {netName}</div>
           {assets.map((a, i) => (
             <button key={a.sym} onClick={() => { setAsset(a); setStep('qr'); }} style={rowBtn(i < assets.length - 1)}>
-              <span style={dot}>{a.sym[0]}</span>
+              <TokenAvatar sym={a.sym} color="var(--blue, #3b7af7)" />
               <span style={{ flex: 1, textAlign: 'left' }}>
                 <span style={{ display: 'block', fontWeight: 600 }}>{a.sym}</span>
                 <span style={{ display: 'block', fontSize: 10, color: 'var(--text-muted)' }}>{a.name}</span>
@@ -1589,7 +1601,7 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
         <button onClick={() => setStep('asset')} style={{ ...backLink, marginBottom: 8 }}>‹ Back</button>
         {/* Asset header — what you're receiving + the network. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={dot}>{(asset?.sym ?? EXT_NETWORKS.find(n => n.id === chain)!.sym)[0]}</span>
+          <TokenAvatar sym={asset?.sym ?? EXT_NETWORKS.find(n => n.id === chain)!.sym} color="var(--blue, #3b7af7)" />
           <div style={{ textAlign: 'left' }}>
             <div style={{ fontSize: 14, fontWeight: 700 }}>{asset?.name} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>({asset?.sym})</span></div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>on {EXT_NETWORKS.find(n => n.id === chain)?.name}</div>

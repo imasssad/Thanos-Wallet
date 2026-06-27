@@ -527,6 +527,16 @@ input, textarea { font-family: inherit; }
   display: flex; align-items: center; justify-content: center;
 }
 
+/* 12 / 24-word recovery-phrase length picker (welcome screen). */
+.seedlen-toggle { display: flex; gap: 6px; width: 100%; margin: 2px 0 8px; }
+.seedlen-opt {
+  flex: 1; padding: 8px 0; border-radius: 10px; cursor: pointer;
+  background: rgba(127, 127, 140, 0.08); border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); font: inherit; font-size: 12px; font-weight: 600;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.seedlen-opt.active { background: var(--blue, #3b7af7); border-color: var(--blue, #3b7af7); color: #fff; }
+
 .seed-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
   background: var(--bg-elevated);
@@ -534,6 +544,9 @@ input, textarea { font-family: inherit; }
   border-radius: 10px;
   padding: 8px;
   margin-bottom: 10px;
+  /* 24-word phrases are 8 rows — cap the height and scroll inside the card
+     so the popup layout stays fixed (12 words / 4 rows never scrolls). */
+  max-height: 232px; overflow-y: auto; overflow-x: hidden;
 }
 [data-theme="dark"] .seed-grid {
   background: rgba(0,0,0,0.4);
