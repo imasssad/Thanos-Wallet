@@ -27,10 +27,10 @@
     "lint": "echo 'no lint configured'"
   },
   "dependencies": {
-    "@cosmjs/crypto": "^0.32.4",
-    "@cosmjs/encoding": "^0.32.4",
-    "@cosmjs/proto-signing": "^0.32.4",
-    "@cosmjs/stargate": "^0.32.4",
+    "@cosmjs/crypto": "^0.39.0",
+    "@cosmjs/encoding": "^0.39.0",
+    "@cosmjs/proto-signing": "^0.39.0",
+    "@cosmjs/stargate": "^0.39.0",
     "@litho/multx-sdk": "file:../../vendor/litho-multx-sdk-0.2.0.tgz",
     "@reown/walletkit": "^1.5.5",
     "@solana/web3.js": "^1.98.0",
@@ -60,6 +60,6 @@
     "vite-plugin-node-polyfills": "^0.28.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
-    "wxt": "^0.19.18"
+    "wxt": "^0.20.27"
   }
 }
