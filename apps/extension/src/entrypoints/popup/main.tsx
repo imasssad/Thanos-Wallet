@@ -154,6 +154,9 @@ const BUNDLED_ICONS: Record<string, string> = {
   usdt:   '/images/tokens/usdt.png',
   bnb:    '/images/tokens/bnb.png',
   xrp:    '/images/tokens/xrp.png',
+  pol:    '/images/tokens/pol.png',    // Polygon (POL, ex-MATIC)
+  matic:  '/images/tokens/pol.png',    // legacy ticker alias
+  avax:   '/images/tokens/avax.png',   // Avalanche C-Chain
 };
 function iconFor(sym: string): string | null {
   const k = (sym || '').toLowerCase();
