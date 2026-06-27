@@ -53,7 +53,12 @@
 
   var painted = false;
   function paint(kind, msg, stack) {
-    if (painted) return; painted = true;            // first error only
+    if (painted) return;
+    // Only surface STARTUP failures. Once React has taken over #root the
+    // boot-fallback is gone; a later runtime rejection (e.g. a lazily-loaded
+    // chain module) is the app's own concern — don't clobber a live UI.
+    if (!document.getElementById('boot-fallback')) return;
+    painted = true;
     try {
       var root = document.getElementById('root');
       if (!root) return;

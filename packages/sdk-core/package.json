@@ -2,6 +2,8 @@
   "name": "@thanos/sdk-core",
   "version": "0.2.0",
   "type": "module",
+  "//sideEffects": "All modules are pure (functions, classes, data) — no import has a load-time side effect other code relies on. This lets bundlers tree-shake the barrel's `export *`: the extension popup imports only a few helpers, so without this flag Rollup kept the whole barrel — incl. `clients/solana-client` → @solana/web3.js → @solana/buffer-layout, which TDZ-crashed (`Cannot access 'offset' before initialization`) at popup startup. Solana/Bitcoin now load lazily via `import()` at their call sites only.",
+  "sideEffects": false,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
