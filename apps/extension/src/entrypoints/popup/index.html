@@ -8,6 +8,12 @@
          (see popup.css `font-family`). MV3 review flags any remote resource,
          and a wallet popup has no reason to hit Google's CDN on every open. -->
     <link rel="stylesheet" href="./popup.css" />
+    <!-- Classic, pre-module boot guard: defines the Node globals bundled
+         crypto libs read at load time (so the top-level-await entry can't
+         freeze on a missing `process`/`global`), and paints any startup
+         error into #root instead of hanging on "Loading Thanos…". Must stay
+         a plain <script> (not type=module) so it runs BEFORE the entry. -->
+    <script src="/boot-guard.js"></script>
   </head>
   <body>
     <!-- #root ships a DARK, inline-styled fallback so the popup is never a

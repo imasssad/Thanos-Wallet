@@ -4,6 +4,10 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Thanos WalletConnect host</title>
+    <!-- Same pre-module boot guard as the popup: WalletConnect/readable-stream
+         read Node globals (`process`/`global`) at module load, which don't
+         exist in an offscreen document. Define them before the module runs. -->
+    <script src="/boot-guard.js"></script>
   </head>
   <body>
     <script type="module" src="./main.ts"></script>
