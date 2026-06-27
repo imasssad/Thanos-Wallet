@@ -1,6 +1,7 @@
 import { defineConfig } from 'wxt';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
   extensionApi: 'webextension-polyfill',
@@ -18,7 +19,24 @@ export default defineConfig({
   // load it. top-level-await covers the same library's await at module
   // top-level. Without these the popup build fails on `vite:wasm-fallback`.
   vite: () => ({
-    plugins: [wasm(), topLevelAwait()],
+    // Browser-bundled crypto libs (bitcoinjs-lib → cipher-base →
+    // readable-stream, plus WalletConnect) reference the Node globals
+    // `process`, `Buffer` and `global` at MODULE-LOAD time. In a
+    // chrome.action popup / offscreen page those don't exist, so the very
+    // first reference — `!process.browser` in readable-stream — throws
+    // `ReferenceError: process is not defined` at the TOP of the module.
+    // Because the popup entry is wrapped by top-level-await, that rejection
+    // freezes the whole module: createRoot AND the crash-guard watchdog
+    // never run, so the popup hangs forever on the "Loading Thanos…" boot
+    // fallback (and the offscreen WalletConnect host fails the same way).
+    // Polyfill the three globals — CSP-safe (injected as ESM imports, no
+    // inline script). We intentionally do NOT shim the global `crypto`:
+    // the vault relies on the browser's native WebCrypto.
+    plugins: [
+      nodePolyfills({ globals: { Buffer: true, global: true, process: true }, protocolImports: true }),
+      wasm(),
+      topLevelAwait(),
+    ],
     // NB: extension entrypoints are bundled with
     // `output.inlineDynamicImports: true` by WXT — each entrypoint
     // (popup, offscreen, background) has to ship as a single JS file

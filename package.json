@@ -4,24 +4,25 @@
   "version": "0.2.0",
   "packageManager": "pnpm@9.12.0",
   "scripts": {
-    "build":     "turbo run build",
-    "dev":       "turbo run dev --parallel",
-    "lint":      "eslint --max-warnings 500 \"apps/**/*.{ts,tsx,js}\" \"packages/**/src/**/*.{ts,tsx,js}\" \"services/**/src/**/*.{ts,tsx,js}\"",
-    "lint:fix":  "eslint --fix \"apps/**/*.{ts,tsx,js}\" \"packages/**/src/**/*.{ts,tsx,js}\" \"services/**/src/**/*.{ts,tsx,js}\"",
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint --max-warnings 500 \"apps/**/*.{ts,tsx,js}\" \"packages/**/src/**/*.{ts,tsx,js}\" \"services/**/src/**/*.{ts,tsx,js}\"",
+    "lint:fix": "eslint --fix \"apps/**/*.{ts,tsx,js}\" \"packages/**/src/**/*.{ts,tsx,js}\" \"services/**/src/**/*.{ts,tsx,js}\"",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "@eslint/js":                       "^9.13.0",
-    "@next/eslint-plugin-next":         "^15.0.0",
+    "@eslint/js": "^9.13.0",
+    "@next/eslint-plugin-next": "^15.0.0",
     "@typescript-eslint/eslint-plugin": "^8.10.0",
-    "eslint":                           "^9.13.0",
-    "eslint-plugin-jsx-a11y":           "^6.10.2",
-    "eslint-plugin-react-hooks":        "^5.0.0",
-    "globals":                          "^15.11.0",
-    "typescript-eslint":                "^8.10.0",
-    "tsx":                              "^4.19.2",
-    "turbo":                            "^2.1.3",
-    "typescript":                       "^5.6.3"
+    "eslint": "^9.13.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.11.0",
+    "tsx": "^4.19.2",
+    "turbo": "^2.1.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.10.0",
+    "vite-plugin-node-polyfills": "^0.28.0"
   },
   "pnpm": {
     "overrides": {
@@ -40,4 +41,3 @@
     }
   }
 }
-
