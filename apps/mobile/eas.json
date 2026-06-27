@@ -25,6 +25,10 @@
       }
     },
     "production-apk": { "extends": "preview" },
+    "ios-simulator": {
+      "extends": "preview",
+      "ios": { "simulator": true }
+    },
     "production": {
       "node": "20.11.0",
       "env": {
