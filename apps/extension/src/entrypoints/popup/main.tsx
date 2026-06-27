@@ -40,6 +40,7 @@ import {
   type Contact as AbContact,
 } from '../../lib/address-book';
 import { setContactEncryptionKey } from '../../lib/contact-crypto';
+import { addLocalActivity } from '../../lib/local-activity';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -733,23 +734,29 @@ function HomeScreen({
 
 function ActivityScreen() {
   const { activity, loading, offline } = usePortfolioCtx();
+  const [filter, setFilter] = useState<'All' | 'Sent' | 'Received' | 'Swap'>('All');
+  const shown = filter === 'All' ? activity : activity.filter((t) => t.label === filter);
   return (
     <div className="screen">
       <h1 className="page-title">Activity</h1>
       <div className="filter-row">
-        {['All', 'Sent', 'Received', 'Swap'].map((f, i) => (
-          <button key={f} className={`filter-pill ${i === 0 ? 'active' : ''}`}>{f}</button>
+        {(['All', 'Sent', 'Received', 'Swap'] as const).map((f) => (
+          <button key={f} className={`filter-pill ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
         ))}
       </div>
       <div className="section-header">Recent</div>
       <div className="card list">
         {loading && <div className="row-sub" style={{ padding: 12 }}>Loading activity…</div>}
         {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
-        {!loading && !offline && activity.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No transactions yet</div>}
-        {activity.map((t, i) => {
+        {!loading && !offline && shown.length === 0 && (
+          <div className="row-sub" style={{ padding: 12 }}>
+            {activity.length === 0 ? 'No transactions yet' : `No ${filter.toLowerCase()} transactions`}
+          </div>
+        )}
+        {shown.map((t, i) => {
           const Ic = t.label === 'Sent' ? ArrowUpRight : t.label === 'Received' ? ArrowDownLeft : Repeat;
           return (
-            <div key={t.id} className={`row ${i < activity.length - 1 ? 'row-border' : ''}`}>
+            <div key={t.id} className={`row ${i < shown.length - 1 ? 'row-border' : ''}`}>
               <div className="row-avatar" style={{ background: t.pos ? 'rgba(16,185,129,0.18)' : 'rgba(59,122,247,0.18)', color: t.pos ? '#10b981' : '#3b7af7' }}>
                 <Ic size={14} strokeWidth={2.4}/>
               </div>
@@ -879,6 +886,7 @@ function DiscoverScreen() {
 
 function SettingsScreen({
   isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook, onOpenPermissions,
+  address, accountName, onOpenChangePassword, onOpenRecoveryPhrase,
 }: {
   isDark: boolean;
   onToggleTheme: () => void;
@@ -886,7 +894,17 @@ function SettingsScreen({
   onOpenWalletConnect: () => void;
   onOpenAddressBook:   () => void;
   onOpenPermissions:   () => void;
+  address: string;
+  accountName: string;
+  onOpenChangePassword: () => void;
+  onOpenRecoveryPhrase: () => void;
 }) {
+  const [copiedAddr, setCopiedAddr] = useState(false);
+  const copyAddr = async () => {
+    if (!address) return;
+    try { await navigator.clipboard.writeText(address); } catch { /* clipboard blocked */ }
+    setCopiedAddr(true); setTimeout(() => setCopiedAddr(false), 1500);
+  };
   // Premium-pattern settings: icon-led section headers + a gradient title hero.
   // Adapted for the 360px popup — smaller paddings + tighter spacing.
   const SectionHead = ({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub: string }) => (
@@ -908,11 +926,11 @@ function SettingsScreen({
 
       <div className="acct-header-card">
         <img src="/icons/icon128.png" alt="" width="32" height="32"/>
-        <div style={{ flex: 1 }}>
-          <div className="acct-header-name">Account 1</div>
-          <div className="acct-header-addr">litho1a7…o9z4v</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="acct-header-name">{accountName}</div>
+          <div className="acct-header-addr">{address ? `${address.slice(0, 8)}…${address.slice(-5)}` : '—'}</div>
         </div>
-        <button className="copy-chip">Copy</button>
+        <button className="copy-chip" onClick={copyAddr} disabled={!address}>{copiedAddr ? 'Copied' : 'Copy'}</button>
       </div>
 
       <SectionHead Icon={Shield} title="Security" sub="Protect access to your wallet"/>
@@ -925,22 +943,22 @@ function SettingsScreen({
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </div>
-        <div className="set-row row-border">
+        <button className="set-row row-border" onClick={onOpenChangePassword} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
           <div className="set-icon"><Key size={15}/></div>
           <div style={{ flex: 1 }}>
             <div className="set-label">Change password</div>
             <div className="set-sub">Update wallet password</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
-        </div>
-        <div className="set-row">
+        </button>
+        <button className="set-row" onClick={onOpenRecoveryPhrase} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
           <div className="set-icon" style={{ color: 'var(--red)' }}><AlertTriangle size={15}/></div>
           <div style={{ flex: 1 }}>
             <div className="set-label" style={{ color: 'var(--red)' }}>Recovery phrase</div>
             <div className="set-sub">View your 12 / 24-word seed</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
-        </div>
+        </button>
       </div>
 
       <SectionHead Icon={User} title="Address book" sub="Saved contacts, cloud-synced when signed in"/>
@@ -1229,12 +1247,13 @@ const EXT_EVM_CHAIN_NAME: Record<number, string> = {
 const coinKey = (c: { sym: string; chainId?: number; tokenAddress?: string }): string =>
   `${c.sym}@${c.chainId ?? 'litho'}${c.tokenAddress ? ':' + c.tokenAddress : ''}`;
 
-function SendModal({ onClose, initialChain, initialCoin }: {
+function SendModal({ onClose, initialChain, initialCoin, address }: {
   onClose: () => void;
   initialChain?: ExtSendChain;
   initialCoin?: string;
+  address?: string;
 }) {
-  const { coins } = usePortfolioCtx();
+  const { coins, reload } = usePortfolioCtx();
   const seed = useWalletSeed();
   const [chain, setChain] = useState<ExtSendChain>(initialChain ?? 'evm');
   const [selectedKey, setSelectedKey] = useState('');
@@ -1292,6 +1311,8 @@ function SendModal({ onClose, initialChain, initialCoin }: {
           tokenAddress: coin.native ? undefined : coin.tokenAddress,
         });
         setTxHash(hash);
+        if (address) addLocalActivity(address, { hash, chain, sym: coin?.sym ?? 'LITHO', amount: amt, label: 'Sent', ts: Date.now() });
+        reload();
         setSending(false);
         return;
       }
@@ -1307,6 +1328,8 @@ function SendModal({ onClose, initialChain, initialCoin }: {
         memo:         chain === 'cosmos' ? memo : undefined,
       });
       setTxHash(hash);
+      if (address) addLocalActivity(address, { hash, chain, sym: chain === 'evm' ? (coin?.sym ?? 'LITHO') : meta.sym, amount: amt, label: 'Sent', ts: Date.now() });
+      reload();
       setSending(false);
     } catch (e) {
       setSending(false);
@@ -2295,7 +2318,121 @@ function SessionsPanel() {
 /* ──────────────────────── App shell ──────────────────────── */
 
 type Tab = 'home' | 'discover' | 'activity' | 'settings';
-type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | 'permissions' | null;
+type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | 'permissions' | 'recovery' | 'change-password' | null;
+
+/* Reveal the secret recovery phrase — re-prompts the password (defense in
+   depth) and decrypts the STORED vault before showing the words, rather than
+   trusting the in-memory copy. Words stay blurred until tapped. */
+function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
+  const [pwd, setPwd] = useState('');
+  const [words, setWords] = useState<string[] | null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [hidden, setHidden] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const reveal = async () => {
+    setBusy(true); setErr('');
+    try {
+      const v = loadVault();
+      if (!v) { setErr('No wallet found on this device.'); return; }
+      const r = await openVault(v, pwd);
+      if (!r) { setErr('Wrong password.'); return; }
+      setWords(r.mnemonic.trim().split(/\s+/));
+    } catch { setErr('Could not open the vault.'); }
+    finally { setBusy(false); }
+  };
+  const copyPhrase = async () => {
+    if (!words) return;
+    try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* blocked */ }
+    setCopied(true); setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <Modal title="Recovery phrase" onClose={onClose}>
+      <div className="modal-body" style={{ padding: 14 }}>
+        {!words ? (
+          <>
+            <p className="onb-sub" style={{ marginBottom: 10 }}>Enter your password to reveal your secret recovery phrase. Anyone with these words has full access to your wallet — never share them.</p>
+            <input className="field" type="password" placeholder="Password" autoFocus value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && pwd && !busy) reveal(); }} />
+            {err && <div className="onb-err">{err}</div>}
+            <button className="btn-primary" style={{ marginTop: 10 }} disabled={!pwd || busy} onClick={reveal}>{busy ? 'Verifying…' : 'Reveal phrase'}</button>
+          </>
+        ) : (
+          <>
+            <div className="seed-grid" style={{ position: 'relative' }}>
+              {words.map((w, i) => (
+                <div key={i} className="seed-cell">
+                  <span className="seed-num">{i + 1}.</span>
+                  <span style={{ userSelect: 'text', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
+                </div>
+              ))}
+              {hidden && (
+                <button type="button" onClick={() => setHidden(false)}
+                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  Tap to reveal
+                </button>
+              )}
+            </div>
+            <button className="btn-link" disabled={hidden} onClick={copyPhrase}>
+              {copied ? <><Check size={13}/> Copied</> : <><Copy size={13}/> Copy phrase</>}
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* Change the wallet password: verify the current one, re-encrypt the SAME seed
+   under the new password, and re-cache the session key so the popup stays
+   unlocked. */
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [cur, setCur] = useState('');
+  const [nw, setNw] = useState('');
+  const [cf, setCf] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const submit = async () => {
+    if (nw.length < 8) { setErr('New password must be at least 8 characters.'); return; }
+    if (nw !== cf)     { setErr('New passwords don’t match.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const v = loadVault();
+      if (!v) { setErr('No wallet found on this device.'); return; }
+      const r = await openVault(v, cur);
+      if (!r) { setErr('Current password is incorrect.'); return; }
+      const nv = await createVault(r.mnemonic, nw);
+      saveVault(nv);
+      const re = await openVault(nv, nw);
+      if (re) cacheSessionKey(re.key);
+      setDone(true);
+    } catch { setErr('Could not change the password.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Change password" onClose={onClose}>
+      <div className="modal-body" style={{ padding: 14 }}>
+        {done ? (
+          <>
+            <p className="onb-sub">Your password has been updated. Use the new password next time you unlock.</p>
+            <button className="btn-primary" style={{ marginTop: 10 }} onClick={onClose}>Done</button>
+          </>
+        ) : (
+          <>
+            <input className="field" type="password" placeholder="Current password" autoFocus value={cur} onChange={(e) => setCur(e.target.value)} />
+            <input className="field" type="password" placeholder="New password (min 8)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ marginTop: 8 }} />
+            <input className="field" type="password" placeholder="Confirm new password" value={cf} onChange={(e) => setCf(e.target.value)} style={{ marginTop: 8 }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) submit(); }} />
+            {err && <div className="onb-err">{err}</div>}
+            <button className="btn-primary" style={{ marginTop: 10 }} disabled={!cur || !nw || !cf || busy} onClick={submit}>{busy ? 'Updating…' : 'Update password'}</button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
 
 /* ─── EIP-1193 connection approval screen ──────────────────────────────── */
 function ApprovalScreen({
@@ -2405,6 +2542,7 @@ function App() {
   }, [unlocked]);
 
   const evmAddr   = seed.length ? deriveEvm(seed, activeIdx) : '';
+  const lithoAddr = useMemo(() => { try { return evmAddr ? evmToLitho(evmAddr) : ''; } catch { return evmAddr; } }, [evmAddr]);
   const portfolio = usePortfolio(evmAddr, seed);
 
   /** Switch to a different derived account. Updates storage so the
@@ -2740,7 +2878,7 @@ function App() {
     <PortfolioContext.Provider value={portfolio}>
       {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
       <MakaluWelcomeModal/>
-      {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); }}
+      {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); }} address={evmAddr}
         initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
         initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
       {modal === 'receive'       && <ReceiveModal       onClose={() => setModal(null)} address={evmAddr}/>}
@@ -2748,6 +2886,8 @@ function App() {
       {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
       {modal === 'address-book' && <AddressBookModal    onClose={() => setModal(null)}/>}
       {modal === 'permissions'  && <PermissionsModal    onClose={() => setModal(null)}/>}
+      {modal === 'recovery'        && <RecoveryPhraseModal onClose={() => setModal(null)}/>}
+      {modal === 'change-password' && <ChangePasswordModal onClose={() => setModal(null)}/>}
       {detailSym && (
         <TokenDetailModal
           sym={detailSym}
@@ -2768,7 +2908,7 @@ function App() {
           />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
-          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')}/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={`Account ${activeIdx + 1}`} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')}/>}
         </div>
         <div className="tabbar">
           {([

@@ -8,6 +8,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
+import { getLocalActivity } from '../../lib/local-activity';
 
 const INDEXER_BASE = String(
   (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
@@ -64,6 +65,25 @@ function relativeTime(iso?: string): string {
   if (h < 24) return `${h} hr ago`;
   const d = Math.floor(h / 24);
   return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
+/** Merge optimistic local sends (recorded at broadcast time) into the indexer
+ *  feed. Native LITHO / external-chain sends are never indexed, so without this
+ *  a user's own transaction never appears. Deduped by tx hash — once the
+ *  indexer reports the tx, the local copy drops out so there's no double row.
+ *  Local entries (newest) sort above the indexed ones. */
+function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] {
+  const local: DisplayTx[] = getLocalActivity(address).map((t) => ({
+    id: t.hash,
+    sym: t.sym,
+    label: t.label,
+    amount: `-${String(t.amount).replace(/^[+-]/, '')}`,
+    time: relativeTime(new Date(t.ts).toISOString()) || 'just now',
+    pos: false,
+    color: coinColor(t.sym),
+  }));
+  const fresh = local.filter((l) => !indexed.some((x) => x.id === l.id || x.id.includes(l.id)));
+  return [...fresh, ...indexed];
 }
 
 function txType(type: string): { label: 'Sent' | 'Received' | 'Swap' | 'Activity'; pos: boolean } {
@@ -244,10 +264,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           };
         });
 
-        setState({ coins, activity, totalUsd, loading: false, offline: false });
+        setState({ coins, activity: mergeLocalActivity(address, activity), totalUsd, loading: false, offline: false });
       } catch {
         if (cancelled) return;
-        setState({ coins: [], activity: [], totalUsd: 0, loading: false, offline: true });
+        // Indexer unreachable — still surface the user's own recorded sends.
+        setState({ coins: [], activity: mergeLocalActivity(address, []), totalUsd: 0, loading: false, offline: true });
       }
     })();
     return () => { cancelled = true; };
