@@ -21,14 +21,17 @@
  */
 
 const { app, ipcMain } = require('electron') as typeof import('electron');
-const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
+// NB: do NOT destructure `autoUpdater` here. electron-updater exposes it via a
+// lazy getter that constructs the AppUpdater (which reads app.getVersion()) on
+// FIRST access — doing that at import time throws "Cannot read properties of
+// undefined (reading 'getVersion')" in an unpackaged/dev run and crashes the
+// entire main process before any window shows. Require the module only; touch
+// `.autoUpdater` lazily inside startAutoUpdater, after the dev guard.
+const electronUpdater = require('electron-updater') as typeof import('electron-updater');
 const electronLog = require('electron-log') as typeof import('electron-log');
 import type { BrowserWindow } from 'electron';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-autoUpdater.logger = electronLog as any;
 electronLog.transports.file.level = 'info';
 
 let _window: BrowserWindow | null = null;
@@ -54,61 +57,70 @@ export function startAutoUpdater(window: BrowserWindow): void {
   if (_started) return;
   _started = true;
 
-  /* Disable auto-download by default: we want the user to opt in via the
-     banner before consuming their bandwidth on a wallet that's running
-     unattended. The renderer can flip this via ipc if we add a
-     "background updates" preference later. */
-  autoUpdater.autoDownload          = true;
-  autoUpdater.autoInstallOnAppQuit  = true;
-  autoUpdater.allowPrerelease       = false;
-
-  autoUpdater.on('checking-for-update', () => emit({ kind: 'checking' }));
-  autoUpdater.on('update-available', info => emit({
-    kind: 'available',
-    version: info.version,
-    releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : null,
-  }));
-  autoUpdater.on('update-not-available', () => emit({ kind: 'not-available' }));
-  autoUpdater.on('download-progress', p => emit({
-    kind:           'progress',
-    percent:        p.percent,
-    transferred:    p.transferred,
-    total:          p.total,
-    bytesPerSecond: p.bytesPerSecond,
-  }));
-  autoUpdater.on('update-downloaded', info => emit({
-    kind: 'downloaded',
-    version: info.version,
-    releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : null,
-  }));
-  autoUpdater.on('error', err => emit({ kind: 'error', message: (err as Error).message || 'updater error' }));
-
-  ipcMain.handle('updater:check',  () => autoUpdater.checkForUpdates().catch(e => ({ error: (e as Error).message })));
-  ipcMain.handle('updater:install', () => {
-    // false = don't silent-install (show progress); true = force-close even
-    // if app is still busy. The user's intent is explicit at this point.
-    autoUpdater.quitAndInstall(false, true);
-  });
-
-  // Skip in dev unless explicitly forced. Unpackaged builds don't have
-  // an update.json to compare against; electron-updater would 404.
+  // Skip entirely in dev / unpackaged — and CRUCIALLY before touching
+  // `autoUpdater`, because the first access constructs electron-updater's
+  // AppUpdater (app.getVersion()), which throws when unpackaged. Guarding here
+  // keeps `pnpm dev` / `electron .` runnable. Unpackaged builds also have no
+  // update feed to compare against (electron-updater would 404).
   if (!app.isPackaged && process.env.UPDATER_FORCE_DEV !== '1') {
-    electronLog.info('updater: skipped (NODE_ENV development / not packaged)');
+    electronLog.info('updater: skipped (not packaged / dev)');
     return;
   }
 
-  // First check after the window has had a moment to render — keeps the
-  // app launch perception snappy.
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(err => {
-      electronLog.warn('updater: initial check failed:', (err as Error).message);
-    });
-  }, 5_000);
+  // Construct + wire the updater lazily, and never let a failure (e.g. an
+  // electron-updater / electron version mismatch) crash the app — auto-update
+  // simply stays off.
+  try {
+    const { autoUpdater } = electronUpdater;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    autoUpdater.logger = electronLog as any;
 
-  // Periodic check. Cleared automatically on process exit.
-  setInterval(() => {
-    autoUpdater.checkForUpdates().catch(err => {
-      electronLog.warn('updater: periodic check failed:', (err as Error).message);
+    autoUpdater.autoDownload          = true;
+    autoUpdater.autoInstallOnAppQuit  = true;
+    autoUpdater.allowPrerelease        = false;
+
+    autoUpdater.on('checking-for-update', () => emit({ kind: 'checking' }));
+    autoUpdater.on('update-available', info => emit({
+      kind: 'available',
+      version: info.version,
+      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : null,
+    }));
+    autoUpdater.on('update-not-available', () => emit({ kind: 'not-available' }));
+    autoUpdater.on('download-progress', p => emit({
+      kind:           'progress',
+      percent:        p.percent,
+      transferred:    p.transferred,
+      total:          p.total,
+      bytesPerSecond: p.bytesPerSecond,
+    }));
+    autoUpdater.on('update-downloaded', info => emit({
+      kind: 'downloaded',
+      version: info.version,
+      releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : null,
+    }));
+    autoUpdater.on('error', err => emit({ kind: 'error', message: (err as Error).message || 'updater error' }));
+
+    ipcMain.handle('updater:check',  () => autoUpdater.checkForUpdates().catch(e => ({ error: (e as Error).message })));
+    ipcMain.handle('updater:install', () => {
+      // false = don't silent-install (show progress); true = force-close even
+      // if app is still busy. The user's intent is explicit at this point.
+      autoUpdater.quitAndInstall(false, true);
     });
-  }, ONE_HOUR_MS);
+
+    // First check after the window has had a moment to render.
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(err => {
+        electronLog.warn('updater: initial check failed:', (err as Error).message);
+      });
+    }, 5_000);
+
+    // Periodic check. Cleared automatically on process exit.
+    setInterval(() => {
+      autoUpdater.checkForUpdates().catch(err => {
+        electronLog.warn('updater: periodic check failed:', (err as Error).message);
+      });
+    }, ONE_HOUR_MS);
+  } catch (e) {
+    electronLog.warn('updater: unavailable, auto-update disabled:', (e as Error).message);
+  }
 }
