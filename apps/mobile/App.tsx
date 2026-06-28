@@ -124,7 +124,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.07';
+const APP_VERSION = 'thanos-v1.08';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -373,6 +373,15 @@ interface PortfolioState {
  *  When `seed` is provided, also derives BTC/SOL/ATOM addresses and
  *  fetches their native balances, merging them as additional assets so
  *  the dashboard shows a true cross-chain portfolio total. */
+// Heavy native chains (BTC / SOL / Cosmos) pull in @solana/web3.js + @cosmjs +
+// btc-signer. Importing + initialising those on the JS thread JAMS the Home
+// screen on low-end devices — a blank body for 1-2 minutes while React can't
+// commit a render. Default OFF: Home shows the Makalu/indexer balance + the
+// light external-EVM chains (ethers + fetch, no heavy crypto) instantly, and
+// BTC/SOL/Cosmos balances load on demand when the user opens Send/Receive for
+// them. Flip to true to show native balances on Home on capable devices.
+const HOME_LOAD_NATIVE_CHAINS = false;
+
 function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce]   = useState(0);
   const [assets, setAssets] = useState<DisplayAsset[]>([]);
@@ -389,8 +398,11 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     setLoading(true); setOffline(false);
     (async () => {
       try {
+        // Let a failed fetch REJECT (no inner .catch) so the handler below
+        // preserves the last known balance instead of wiping it to $0. A
+        // transient RPC/indexer hiccup must never blank the user's balance.
         const [portfolio, prices] = await Promise.all([
-          getPortfolio(address).catch(() => ({ assets: [], activity: [], walletAddress: address, updatedAt: '' })),
+          getPortfolio(address),
           fetchEcosystemPrices(),
         ]);
         if (cancelled) return;
@@ -426,7 +438,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
         if (!seedKey) return;
         const phrase = seedKey;
         type XRow = { sym: string; name: string; chainId: number; balance: number; decimals: number };
-        const derivers: Array<() => Promise<XRow>> = [
+        const derivers: Array<() => Promise<XRow>> = !HOME_LOAD_NATIVE_CHAINS ? [] : [
           async () => {
             const m = await import('./lib/bitcoin');
             const bal = parseFloat(await m.getBitcoinBalance(m.getBitcoinAddress(phrase))) || 0;
@@ -502,7 +514,11 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
         });
       } catch {
         if (cancelled) return;
-        setAssets([]); setTotal(0); setLoading(false); setOffline(true);
+        // PRESERVE the last known assets/total — only flag offline. Resetting
+        // to [] / 0 here is what made the balance "vanish" after a transient
+        // network failure. On the very first load there's nothing to keep, so
+        // the user just sees the empty state + the offline pill.
+        setLoading(false); setOffline(true);
       }
     })();
     return () => { cancelled = true; };
@@ -686,9 +702,9 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   );
 
   const QuickAction = ({ Icon, label, onPress }: { Icon: any; label: string; onPress?: () => void }) => (
-    <Pressable style={styles.qaBtn} onPress={onPress}>
-      <View style={styles.qaIcon}><Icon size={14} color={C.blue} strokeWidth={2.5}/></View>
-      <Text style={styles.qaLabel}>{label}</Text>
+    <Pressable style={({ pressed }) => [styles.qaBtn, pressed && { opacity: 0.6 }]} onPress={onPress}>
+      <View style={styles.qaIcon}><Icon size={20} color={C.blue} strokeWidth={2.4}/></View>
+      <Text style={styles.qaLabel} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 
@@ -5045,17 +5061,16 @@ function makeStyles(C: Colors) {
     },
 
     /* Quick action pills */
-    qaRow: { flexDirection: 'row', gap: 8, marginVertical: 4 },
+    qaRow: { flexDirection: 'row', gap: 10, marginVertical: 8 },
     qaBtn: {
-      flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7,
-      paddingVertical: 9, paddingLeft: 6, paddingRight: 12,
+      flex: 1, alignItems: 'center', gap: 9,
+      paddingVertical: 15,
       backgroundColor: C.bgCard,
       borderColor: C.borderSubtle, borderWidth: 1,
-      borderRadius: 999,
-      justifyContent: 'center',
+      borderRadius: 18,
     },
     qaIcon: {
-      width: 26, height: 26, borderRadius: 13,
+      width: 46, height: 46, borderRadius: 23,
       backgroundColor: C.blueDim,
       alignItems: 'center', justifyContent: 'center',
     },
