@@ -2,12 +2,22 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // Bitcoin's tiny-secp256k1 imports its .wasm via the ESM Wasm integration
 // proposal which Vite 5 doesn't handle by default — these two plugins make
 // the renderer build succeed. Same fix as apps/extension/wxt.config.ts.
 export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait()],
+  plugins: [
+    react(),
+    // Electron 33 SANDBOXES the renderer (no Node globals) and Vite externalizes
+    // node builtins in dev — so bundled crypto libs throw "process is not
+    // defined" and the window goes blank. Polyfill process / Buffer / global
+    // (same fix as apps/extension). CSP-safe; global `crypto` stays WebCrypto.
+    nodePolyfills({ globals: { Buffer: true, global: true, process: true }, protocolImports: true }),
+    wasm(),
+    topLevelAwait(),
+  ],
   build: {
     // tsc -p tsconfig.main.json runs FIRST and writes dist/index.js (the
     // Electron main-process entry). Vite would otherwise wipe dist/ before
