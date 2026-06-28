@@ -968,6 +968,18 @@ const DESKTOP_CHAIN_META: Record<DesktopSendChain, { label: string; sym: string;
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
+/* External-EVM assets share a symbol across networks — ETH lives on
+   Ethereum, Base, Arbitrum, Optimism and Linea all at once. Keying the
+   Send picker by `sym` alone always resolves to the first network's coin,
+   so you could never target ETH-on-Base. We key by sym+chainId instead,
+   which restores the extension's network→asset selection as a flat list.
+   Makalu coins carry no chainId (or 700777) and collapse to "::0". */
+const coinKey = (c: { sym: string; chainId?: number }) => `${c.sym}::${c.chainId ?? 0}`;
+const coinChainLabel = (c: { name: string; chainId?: number }) =>
+  c.chainId && c.chainId !== 700777
+    ? (c.name.includes('·') ? c.name.split('·').pop()!.trim() : c.name)
+    : 'Makalu';
+
 function SendModal({ onClose, initialChain, initialCoin, address }: {
   onClose: () => void;
   /** Pre-select chain + asset (opened from the token detail screen). */
@@ -1003,7 +1015,12 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
   const useLedger = signer === 'ledger';
   const useTrezor = signer === 'trezor';
 
-  const coin = coins.find(c => c.sym === selectedSym) ?? coins[0] ?? null;
+  // selectedSym holds a sym+chainId key once the user picks from the
+  // dropdown; the sym fallback covers `initialCoin` (a bare symbol passed
+  // when Send is opened from a token detail row).
+  const coin = coins.find(c => coinKey(c) === selectedSym)
+            ?? coins.find(c => c.sym === selectedSym)
+            ?? coins[0] ?? null;
   const amtNum = parseFloat(amount || '0');
   // Balance is from the seed account; when signing with hardware the
   // FROM account changes, so we don't gate on it (the device + RPC will).
@@ -1030,7 +1047,10 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
   /* Debounced pre-send simulation — keeps desktop parity with the web
      Send modal. Only fires when recipient + amount are both valid. */
   useEffect(() => {
-    if (chain !== 'evm' || !coin || !to.trim() || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    // The simulator only models Makalu (chainId 700777); skip it for
+    // external-EVM assets so we don't show a Makalu-based estimate for an
+    // Ethereum/Base/etc. send.
+    if (chain !== 'evm' || !coin || (coin.chainId && coin.chainId !== 700777) || !to.trim() || amtNum <= 0 || overBalance) { setSimReport(null); return; }
     const toAddr   = to.trim();
     const fromAddr = hwAddress || '';
     const amt      = amount;
@@ -1115,6 +1135,29 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
       const meta = DESKTOP_CHAIN_META[chain];
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
 
+      // External EVM (Ethereum / BNB / Polygon / Base / Arbitrum / Optimism /
+      // Linea / Avalanche): the selected coin carries its chainId. Makalu is
+      // 700777 and stays on the sendAsset path below; anything else routes
+      // through that chain's own RPC via sendExtEvm (seed-signed, like the
+      // extension). Mirrors apps/extension SendModal.
+      if (chain === 'evm' && coin?.chainId && coin.chainId !== 700777) {
+        const xm = await import('./evm-external');
+        if (xm.getExtEvmChain(coin.chainId)) {
+          const hash = await xm.sendExtEvm({
+            seed,
+            accountIdx:   getActiveAccountIndex(),
+            chainId:      coin.chainId,
+            recipient,
+            amount,
+            decimals:     coin.decimals,
+            tokenAddress: coin.native ? undefined : coin.tokenAddress,
+          });
+          setTxHash(hash);
+          if (address) addLocalActivity(address, { hash, chain, sym: coin.sym, amount, ts: Date.now() });
+          reload(); setSending(false); return;
+        }
+      }
+
       // Hardware-wallet paths for BTC / SOL bypass `sendAsset` since
       // sendAsset's hardware support is EVM-only by design. We dispatch
       // directly to the chain-specific signer modules instead.
@@ -1164,7 +1207,7 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
       <div className="modal-success">
         <div className="success-icon">✓</div>
         <div className="success-title">Transaction Sent</div>
-        <div className="success-sub">{amount} {chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? 'Makalu' : DESKTOP_CHAIN_META[chain].label}</div>
+        <div className="success-sub">{amount} {chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? (coin?.chainId && coin.chainId !== 700777 ? (coin.name.split('·').pop()?.trim() || 'EVM chain') : 'Makalu') : DESKTOP_CHAIN_META[chain].label}</div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', margin: '10px 0' }}>{txHash}</div>
         <button className="btn-primary" onClick={onClose}>Done</button>
       </div>
@@ -1202,9 +1245,9 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
         {chain === 'evm' ? (
           <>
             <label className="field-label">Asset</label>
-            <select className="field-select" value={coin?.sym ?? ''} onChange={e => setSelectedSym(e.target.value)}>
+            <select className="field-select" value={coin ? coinKey(coin) : ''} onChange={e => setSelectedSym(e.target.value)}>
               {coins.length === 0 && <option value="">No assets available</option>}
-              {coins.map(c => <option key={c.sym} value={c.sym}>{c.sym} — {c.name}</option>)}
+              {coins.map(c => <option key={coinKey(c)} value={coinKey(c)}>{c.sym} — {coinChainLabel(c)}</option>)}
             </select>
           </>
         ) : (
@@ -1424,7 +1467,10 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   } as const;
 
   const addr =
-    chain === 'evm'  ? (lithoAddr && !showAlt ? lithoAddr : evmAddr)
+    // EVM tab covers Makalu AND every external EVM chain, so default to the
+    // 0x form — it's the only address MetaMask / Coinbase / etc. recognise
+    // when receiving ETH/USDC/etc. The litho1 bech32 form is the alternate.
+    chain === 'evm'  ? (showAlt && lithoAddr ? lithoAddr : evmAddr)
     : chain === 'btc'  ? btcAddr
     : chain === 'sol'  ? solAddr
     : atomAddr;
@@ -1467,8 +1513,8 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
             borderRadius: 999, padding: 3, marginBottom: 12,
           }}>
             {[
-              { isAlt: false, label: 'Litho1' },
-              { isAlt: true,  label: 'EVM'    },
+              { isAlt: false, label: 'EVM (0x)' },
+              { isAlt: true,  label: 'Litho1'    },
             ].map(o => {
               const selected = o.isAlt === showAlt;
               return (

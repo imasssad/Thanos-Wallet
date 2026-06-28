@@ -126,6 +126,9 @@ export interface DisplayCoin {
   balance: number; balanceText: string; decimals: number;
   priceUsd: number; usdValue: number; pct: number; color: string;
   tokenAddress?: string; native: boolean;
+  /** External-EVM chain id (1/56/137/…) for non-Makalu EVM positions, so Send
+   *  can route them to that chain's RPC. Undefined for Makalu / BTC / SOL / ATOM. */
+  chainId?: number;
 }
 
 export interface DisplayTx {
@@ -252,7 +255,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
                 sym: chain.nativeSymbol, name: chain.name,
                 balance, balanceText: formatAmount(balance), decimals: 18,
                 priceUsd, usdValue: balance * priceUsd,
-                pct: 0, color: chain.color, native: true,
+                pct: 0, color: chain.color, native: true, chainId: chain.chainId,
               });
             }
             for (const { token, balance } of tokens) {
@@ -264,7 +267,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
                 balance, balanceText: formatAmount(balance), decimals: token.decimals,
                 priceUsd, usdValue: balance * priceUsd,
                 pct: 0, color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
-                tokenAddress: token.address, native: false,
+                tokenAddress: token.address, native: false, chainId: token.chainId,
               });
             }
           }
