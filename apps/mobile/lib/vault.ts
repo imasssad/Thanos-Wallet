@@ -28,7 +28,8 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { gcm } from '@noble/ciphers/aes.js';
-import { argon2idAsync } from '@noble/hashes/argon2.js';
+// argon2idAsync is lazy-imported inside deriveKey (legacy branch only) so the
+// Blake2b/Argon2 core isn't parsed at cold start — new vaults are all PBKDF2.
 import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { utf8ToBytes, bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
@@ -97,6 +98,8 @@ async function deriveKey(password: string, salt: Uint8Array, kdf: VaultKdf): Pro
     return pbkdf2Async(sha256, utf8ToBytes(password), salt, { c: kdf.c, dkLen: KEY_BYTES });
   }
   // Legacy Argon2id path — only hit by vaults predating the PBKDF2 switch.
+  // Lazy-imported so it stays off the cold-start eval graph.
+  const { argon2idAsync } = await import('@noble/hashes/argon2.js');
   return argon2idAsync(utf8ToBytes(password), salt, {
     t: kdf.t, m: kdf.m, p: kdf.p, dkLen: KEY_BYTES,
   });

@@ -4,8 +4,11 @@
  * Uses the same `qrcode` library as the web app so both surfaces render
  * identical codes. The library outputs plain SVG XML which we hand to
  * react-native-svg's <SvgXml/> in the Receive screen.
+ *
+ * `qrcode` is lazy-imported inside makeAddressQrSvg so its encoder tables stay
+ * off the cold-start eval graph — the parse helpers below (used early by the
+ * address field + WC routing) carry no deps, so importing this module is cheap.
  */
-import QRCode from 'qrcode';
 
 export interface QrOptions {
   size?:           number;   // SVG width/height in px
@@ -21,6 +24,7 @@ export interface QrOptions {
 export async function makeAddressQrSvg(payload: string, opts: QrOptions = {}): Promise<string | null> {
   if (!payload) return null;
   try {
+    const QRCode = (await import('qrcode')).default;
     const svg = await QRCode.toString(payload, {
       type:    'svg',
       margin:  1,

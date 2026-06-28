@@ -32,7 +32,9 @@ import {
 import { executeWcRequest, summariseRequest, WcSignerError } from '../lib/wc-signer';
 import { QrScannerModal } from './QrScannerModal';
 import { isWalletConnectUri } from '../lib/qr';
-import { TransactionSimulator, type SimulationReport } from '../lib/tx-simulator';
+// Value import is lazy (inside the async sim closure below) so this
+// always-mounted WC host doesn't pin tx-simulator + ethers onto cold start.
+import type { SimulationReport } from '../lib/tx-simulator';
 
 /* ─── Dark sheet palette ──────────────────────────────────────────── */
 const P = {
@@ -299,6 +301,7 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
     let cancelled = false;
     (async () => {
       try {
+        const { TransactionSimulator } = await import('../lib/tx-simulator');
         const sim = new TransactionSimulator();
         const valueWei  = BigInt(tx.value || '0x0');
         const amountEth = (Number(valueWei) / 1e18).toString();
