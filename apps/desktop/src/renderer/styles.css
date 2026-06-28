@@ -704,6 +704,42 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: 9px; padding: 9px 10px; color: var(--text-primary);
   font-size: 12px; font-family: inherit; outline: none; cursor: pointer; width: 100%;
 }
+
+/* CoinSelect — custom coin dropdown that can render token logos (a native
+   <option> can't). Drop-in for .field-select; see CoinSelect in main.tsx. */
+.coin-select { position: relative; width: 100%; }
+.coin-select-trigger {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  background: var(--bg-elevated); border: 1px solid var(--border-default);
+  border-radius: 9px; padding: 8px 10px; color: var(--text-primary);
+  font-size: 13px; font-family: inherit; cursor: pointer; outline: none;
+  transition: border-color 0.12s;
+}
+.coin-select-trigger:hover { border-color: rgba(59,122,247,0.4); }
+.coin-select-avatar {
+  width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: #fff;
+}
+.coin-select-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; text-align: left; }
+.coin-select-sym { font-weight: 600; white-space: nowrap; }
+.coin-select-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coin-select-caret { color: var(--text-muted); font-size: 10px; flex: 0 0 auto; }
+.coin-select-pop {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
+  max-height: 264px; overflow-y: auto; padding: 4px;
+  background: var(--bg-card); border: 1px solid var(--border-default);
+  border-radius: 9px; box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+}
+.coin-select-row {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  background: transparent; border: none; border-radius: 7px;
+  padding: 7px 8px; color: var(--text-primary); font-size: 13px;
+  font-family: inherit; cursor: pointer; text-align: left;
+}
+.coin-select-row:hover { background: var(--bg-elevated); }
+.coin-select-row.active { background: var(--blue-dim); }
+.coin-select-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-muted); }
 .fee-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); padding: 6px 0; border-top: 1px solid var(--border-subtle); margin-top: 8px; }
 
 /* ── Primary / outline buttons ────────────────────────────────── */

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
 import './styles.css';
@@ -14,7 +14,8 @@ import {
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { DappBrowserOverlay } from './components/DappBrowserOverlay';
-import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
+import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, type DisplayCoin } from './portfolio';
+import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain } from './evm-external-meta';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { addLocalActivity } from './local-activity';
@@ -195,37 +196,42 @@ const BUNDLED_ICONS: Record<string, string> = {
   // 2026-06 client icon pack — marks pre-sized for visual parity with
   // the BTC/ETH logos; render as-is. FGPT/MUSA have their own marks now
   // (the old `furgpt` key was the FurGPT dApp mascot, not a token icon).
-  litho:  '/images/tokens/litho.png',
-  jot:    '/images/tokens/jot.png',
-  lax:    '/images/tokens/lax.png',
-  colle:  '/images/tokens/colle.png',
-  image:  '/images/tokens/image.png',
-  agii:   '/images/tokens/agii.png',
-  fgpt:   '/images/tokens/fgpt.png',
-  musa:   '/images/tokens/musa.png',
-  atua:   '/images/tokens/atua.png',
-  ignite: '/images/tokens/ignite.png',
-  quantt: '/images/tokens/quantt.png',
+  litho:  './images/tokens/litho.png',
+  jot:    './images/tokens/jot.png',
+  lax:    './images/tokens/lax.png',
+  colle:  './images/tokens/colle.png',
+  image:  './images/tokens/image.png',
+  agii:   './images/tokens/agii.png',
+  fgpt:   './images/tokens/fgpt.png',
+  musa:   './images/tokens/musa.png',
+  atua:   './images/tokens/atua.png',
+  ignite: './images/tokens/ignite.png',
+  quantt: './images/tokens/quantt.png',
   // Mainstream coins — bundled (clean cropped PNGs from CoinGecko, offline-safe).
-  atom:   '/images/tokens/atom.png',
-  eth:    '/images/tokens/eth.png',
-  trx:    '/images/tokens/trx.png',
-  hype:   '/images/tokens/hype.png',
+  atom:   './images/tokens/atom.png',
+  eth:    './images/tokens/eth.png',
+  trx:    './images/tokens/trx.png',
+  hype:   './images/tokens/hype.png',
   // Solana — rendered from the official solana.com/branding SVG so it
   // matches Solana Foundation brand guidelines (purple→green gradient
   // logomark) rather than the CoinGecko thumbnail.
-  sol:    '/images/tokens/sol.png',
+  sol:    './images/tokens/sol.png',
   // Mainstream coins, stablecoins + L2s — now bundled locally (matches the
   // extension / web / mobile icon pack; no per-render CoinGecko hit).
-  btc:    '/images/tokens/btc.png',
-  litbtc: '/images/tokens/btc.png',
-  usdc:   '/images/tokens/usdc.png',
-  usdt:   '/images/tokens/usdt.png',
-  bnb:    '/images/tokens/bnb.png',
-  xrp:    '/images/tokens/xrp.png',
-  pol:    '/images/tokens/pol.png',
-  matic:  '/images/tokens/pol.png',
-  avax:   '/images/tokens/avax.png',
+  btc:    './images/tokens/btc.png',
+  litbtc: './images/tokens/btc.png',
+  usdc:   './images/tokens/usdc.png',
+  usdt:   './images/tokens/usdt.png',
+  bnb:    './images/tokens/bnb.png',
+  xrp:    './images/tokens/xrp.png',
+  pol:    './images/tokens/pol.png',
+  matic:  './images/tokens/pol.png',
+  avax:   './images/tokens/avax.png',
+  // Wrapped/bridged marks reuse their underlying asset's logo (matches the
+  // pol/matic + litbtc/btc aliasing above). Without these, Swap's wLITHO /
+  // LitETH render as a bare letter even in the new icon dropdown.
+  wlitho: './images/tokens/litho.png',
+  liteth: './images/tokens/eth.png',
 };
 const REMOTE_ICONS: Record<string, string> = {
   // Fallbacks for coins we don't bundle yet. CoinGecko CDN; `large/`
@@ -264,6 +270,62 @@ function TokenAvatar({ sym, color, className, label, style }: {
           onError={() => setFailed(true)}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
         />
+      )}
+    </div>
+  );
+}
+
+/* Rich coin dropdown — the native <select> the Send/Swap/Bridge modals used
+   can't render an <img> inside an <option> (the OS draws option text and
+   strips markup), so every picker showed bare ticker text with no logo. This
+   custom dropdown renders a TokenAvatar per row — matching the extension's
+   picker. Same value/onChange contract as a <select> so callers are a drop-in
+   swap. Closes on outside-click. */
+interface CoinSelectItem { value: string; sym: string; color: string; label: string; sub?: string }
+function CoinSelect({ items, value, onChange, placeholder, style }: {
+  items: CoinSelectItem[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const sel = items.find(i => i.value === value) ?? null;
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="coin-select" ref={ref} style={style}>
+      <button type="button" className="coin-select-trigger" onClick={() => setOpen(o => !o)}>
+        {sel ? (
+          <>
+            <TokenAvatar sym={sel.sym} color={sel.color} className="coin-select-avatar" label={sel.sym.slice(0, 2)} />
+            <span className="coin-select-text"><span className="coin-select-sym">{sel.label}</span>{sel.sub && <span className="coin-select-sub">{sel.sub}</span>}</span>
+          </>
+        ) : (
+          <span className="coin-select-sym" style={{ color: 'var(--text-muted)' }}>{placeholder ?? 'Select'}</span>
+        )}
+        <span className="coin-select-caret">▾</span>
+      </button>
+      {open && (
+        <div className="coin-select-pop">
+          {items.length === 0 && <div className="coin-select-empty">No assets available</div>}
+          {items.map(i => (
+            <button
+              type="button"
+              key={i.value}
+              className={`coin-select-row ${i.value === value ? 'active' : ''}`}
+              onClick={() => { onChange(i.value); setOpen(false); }}
+            >
+              <TokenAvatar sym={i.sym} color={i.color} className="coin-select-avatar" label={i.sym.slice(0, 2)} />
+              <span className="coin-select-text"><span className="coin-select-sym">{i.label}</span>{i.sub && <span className="coin-select-sub">{i.sub}</span>}</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -744,7 +806,7 @@ function MakaluWelcomeModal() {
   return (
     <div className="modal-backdrop" onClick={() => setVisible(false)}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 28 }}>
-        <img src="/images/icon128.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
+        <img src="./images/icon128.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
         <h2 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 6px' }}>
           Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM networks are built in too.
@@ -980,6 +1042,40 @@ const coinChainLabel = (c: { name: string; chainId?: number }) =>
     ? (c.name.includes('·') ? c.name.split('·').pop()!.trim() : c.name)
     : 'Makalu';
 
+// BTC/SOL/ATOM are their own Send tabs — exclude them from the EVM asset list.
+const NON_EVM_SYMS = new Set(['BTC', 'SOL', 'ATOM']);
+
+/* The Send EVM picker must show ALL supported assets, not just the ones the
+   user happens to hold — portfolio.ts drops zero-balance external coins, which
+   is why only "LITHO — Makalu" appeared. Rebuild the full list here: the user's
+   owned Makalu/ecosystem EVM coins first, then every external-EVM asset (8
+   chains' natives + USDT/USDC) as zero-balance entries, with any owned external
+   position (real balance) taking precedence over its synthetic placeholder.
+   Mirrors the extension's network→asset list so "all the coins" are selectable. */
+function buildEvmSendAssets(coins: DisplayCoin[]): DisplayCoin[] {
+  const evmOwned   = coins.filter(c => !NON_EVM_SYMS.has(c.sym));
+  const ownedByKey = new Map(evmOwned.map(c => [coinKey(c), c]));
+  const makalu     = evmOwned.filter(c => !c.chainId); // LITHO + ecosystem LEP100
+
+  const externalSynthetic: DisplayCoin[] = [
+    ...EXT_EVM_CHAINS.map((ch): DisplayCoin => ({
+      sym: ch.nativeSymbol, name: ch.name,
+      balance: 0, balanceText: '0', decimals: 18,
+      priceUsd: 0, usdValue: 0, pct: 0, color: ch.color,
+      native: true, chainId: ch.chainId,
+    })),
+    ...EXT_EVM_TOKENS.map((t): DisplayCoin => ({
+      sym: t.symbol, name: `${t.symbol} · ${getExtEvmChain(t.chainId)?.name ?? ''}`.trim(),
+      balance: 0, balanceText: '0', decimals: t.decimals,
+      priceUsd: 0, usdValue: 0, pct: 0,
+      color: t.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+      native: false, chainId: t.chainId, tokenAddress: t.address,
+    })),
+  ];
+  const external = externalSynthetic.map(s => ownedByKey.get(coinKey(s)) ?? s);
+  return [...makalu, ...external];
+}
+
 function SendModal({ onClose, initialChain, initialCoin, address }: {
   onClose: () => void;
   /** Pre-select chain + asset (opened from the token detail screen). */
@@ -1015,12 +1111,16 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
   const useLedger = signer === 'ledger';
   const useTrezor = signer === 'trezor';
 
-  // selectedSym holds a sym+chainId key once the user picks from the
-  // dropdown; the sym fallback covers `initialCoin` (a bare symbol passed
-  // when Send is opened from a token detail row).
-  const coin = coins.find(c => coinKey(c) === selectedSym)
-            ?? coins.find(c => c.sym === selectedSym)
-            ?? coins[0] ?? null;
+  // The EVM picker lists the full supported asset set (buildEvmSendAssets),
+  // not just owned coins, so resolve the selection against THAT list.
+  // selectedSym holds a sym+chainId key once picked from the dropdown; the
+  // sym fallback covers `initialCoin` (a bare symbol passed when Send is
+  // opened from a token detail row).
+  const evmAssets = useMemo(() => buildEvmSendAssets(coins), [coins]);
+  const coin = chain !== 'evm' ? null
+    : (evmAssets.find(c => coinKey(c) === selectedSym)
+       ?? evmAssets.find(c => c.sym === selectedSym)
+       ?? evmAssets[0] ?? null);
   const amtNum = parseFloat(amount || '0');
   // Balance is from the seed account; when signing with hardware the
   // FROM account changes, so we don't gate on it (the device + RPC will).
@@ -1245,10 +1345,12 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
         {chain === 'evm' ? (
           <>
             <label className="field-label">Asset</label>
-            <select className="field-select" value={coin ? coinKey(coin) : ''} onChange={e => setSelectedSym(e.target.value)}>
-              {coins.length === 0 && <option value="">No assets available</option>}
-              {coins.map(c => <option key={coinKey(c)} value={coinKey(c)}>{c.sym} — {coinChainLabel(c)}</option>)}
-            </select>
+            <CoinSelect
+              items={evmAssets.map(c => ({ value: coinKey(c), sym: c.sym, color: c.color, label: c.sym, sub: coinChainLabel(c) }))}
+              value={coin ? coinKey(coin) : ''}
+              onChange={setSelectedSym}
+              placeholder="Select asset"
+            />
           </>
         ) : (
           <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: 12 }}>
@@ -1687,9 +1789,10 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
         {mode === 'bridge' ? <DesktopBridgePanel seed={seed}/> : (<>
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <select className="field-select" value={from} onChange={e => setFrom(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['LITHO','wLITHO','FGPT','LitBTC','LitETH','USDC'].map(s => <option key={s}>{s}</option>)}
-          </select>
+          <CoinSelect
+            items={['LITHO','wLITHO','FGPT','LitBTC','LitETH','USDC'].map(s => ({ value: s, sym: s, color: coinColor(s), label: s }))}
+            value={from} onChange={setFrom} style={{ flex: '0 0 138px' }}
+          />
           <input className="field-input" value={amt} onChange={e => setAmt(e.target.value)} type="number" placeholder="0.00" style={{ flex: 1 }}/>
         </div>
 
@@ -1699,9 +1802,10 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
 
         <label className="field-label">To</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <select className="field-select" value={to} onChange={e => setTo(e.target.value)} style={{ flex: '0 0 100px' }}>
-            {['LitBTC','LitETH','LITHO','wLITHO','FGPT','USDC'].map(s => <option key={s}>{s}</option>)}
-          </select>
+          <CoinSelect
+            items={['LitBTC','LitETH','LITHO','wLITHO','FGPT','USDC'].map(s => ({ value: s, sym: s, color: coinColor(s), label: s }))}
+            value={to} onChange={setTo} style={{ flex: '0 0 138px' }}
+          />
           <div className="field-input" style={{ flex: 1, display: 'flex', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 700, fontSize: 18 }}>
             {out}
           </div>
@@ -1819,9 +1923,10 @@ function DesktopBridgePanel({ seed }: { seed: string[] }) {
         </span>
       </div>
       <label className="field-label" style={{ marginTop: 12 }}>Asset</label>
-      <select className="field-select" value={tokenSym} onChange={e => setTokenSym(e.target.value)}>
-        {BRIDGE_TOKENS.map(t => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
-      </select>
+      <CoinSelect
+        items={BRIDGE_TOKENS.map(t => ({ value: t.symbol, sym: t.symbol, color: coinColor(t.symbol), label: t.symbol }))}
+        value={tokenSym} onChange={setTokenSym}
+      />
       <label className="field-label" style={{ marginTop: 12 }}>Amount</label>
       <input className="field-input" type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00"/>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
@@ -2702,7 +2807,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
     <div className="onboard-wrap">
       <div className="onboard-card">
         <div className="onboard-logo">
-          <img src="/images/icon128.png" alt="Thanos"/>
+          <img src="./images/icon128.png" alt="Thanos"/>
         </div>
 
         {/* WELCOME ─────────────────────────────────────────── */}
@@ -2974,10 +3079,10 @@ function useOpenDapp() {
    root. Without this the tiles render a letter on a colour block, so the
    client-supplied ATUA mark (and the rest) never showed on desktop. */
 const DAPP_ICONS: Record<string, string> = {
-  agii: '/images/dapps/agii.png', colle: '/images/dapps/colle.png',
-  mansa: '/images/dapps/mansa.png', furgpt: '/images/dapps/furgpt.png',
-  imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png',
-  atua: '/images/dapps/atua.png',
+  agii: './images/dapps/agii.png', colle: './images/dapps/colle.png',
+  mansa: './images/dapps/mansa.png', furgpt: './images/dapps/furgpt.png',
+  imagen: './images/dapps/imagen.png', ignite: './images/dapps/ignite.png',
+  atua: './images/dapps/atua.png',
 };
 
 function DappTileIcon({ app }: { app: EcosystemApp }) {
@@ -3337,7 +3442,7 @@ function App() {
       <nav className="topnav">
         <div className="topnav-logo">
           <div className="logo-mark">
-            <img src="/images/icon128.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
+            <img src="./images/icon128.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
           </div>
           <span style={{ marginLeft: 8, fontSize: 18, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>THANOS</span>
         </div>

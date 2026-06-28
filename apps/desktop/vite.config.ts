@@ -8,6 +8,12 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 // proposal which Vite 5 doesn't handle by default — these two plugins make
 // the renderer build succeed. Same fix as apps/extension/wxt.config.ts.
 export default defineConfig({
+  // The packaged app loads the renderer via win.loadFile(index.html) → a
+  // file:// URL, where an ABSOLUTE '/assets/…' or '/images/…' path resolves to
+  // the filesystem/drive root (file:///C:/…) and 404s — leaving a blank window
+  // and no icons. Relative base makes Vite emit './assets/…' so everything
+  // resolves against dist/. Still correct in dev (Vite serves it fine).
+  base: './',
   plugins: [
     react(),
     // Electron 33 SANDBOXES the renderer (no Node globals) and Vite externalizes
