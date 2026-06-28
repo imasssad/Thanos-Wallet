@@ -17,6 +17,7 @@ import { DappBrowserOverlay } from './components/DappBrowserOverlay';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd } from './portfolio';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
+import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -604,6 +605,116 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+/* Change the wallet password: verify the current one, re-encrypt the SAME seed
+   under the new password, and re-cache the session key so the app stays
+   unlocked. Uses the proven createVault/openVault pair. */
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [cur, setCur] = useState('');
+  const [nw, setNw]   = useState('');
+  const [cf, setCf]   = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const submit = async () => {
+    if (nw.length < 8) { setErr('New password must be at least 8 characters.'); return; }
+    if (nw !== cf)     { setErr('New passwords don’t match.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const v = loadVault();
+      if (!v) { setErr('No wallet found on this device.'); return; }
+      const r = await openVault(v, cur);
+      if (!r) { setErr('Current password is incorrect.'); return; }
+      const nv = await createVault(r.mnemonic, nw);
+      saveVault(nv);
+      const re = await openVault(nv, nw);
+      if (re) cacheSessionKey(re.key);
+      setDone(true);
+    } catch { setErr('Could not change the password.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal title="Change password" onClose={onClose}>
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {done ? (
+          <>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Your password has been updated. Use the new password next time you unlock.</p>
+            <button className="settings-btn" onClick={onClose}>Done</button>
+          </>
+        ) : (
+          <>
+            <input className="field-input" type="password" placeholder="Current password" autoFocus value={cur} onChange={e => setCur(e.target.value)} />
+            <input className="field-input" type="password" placeholder="New password (min 8)" value={nw} onChange={e => setNw(e.target.value)} />
+            <input className="field-input" type="password" placeholder="Confirm new password" value={cf} onChange={e => setCf(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !busy) submit(); }} />
+            {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 13 }}>{err}</div>}
+            <button className="settings-btn" disabled={!cur || !nw || !cf || busy} onClick={submit}>{busy ? 'Updating…' : 'Update password'}</button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* Reveal / export the secret recovery phrase — re-prompts the password and
+   decrypts the STORED vault before showing the words (blurred until clicked). */
+function ExportSeedModal({ onClose }: { onClose: () => void }) {
+  const [pwd, setPwd]     = useState('');
+  const [words, setWords] = useState<string[] | null>(null);
+  const [err, setErr]     = useState('');
+  const [busy, setBusy]   = useState(false);
+  const [hidden, setHidden] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const reveal = async () => {
+    setBusy(true); setErr('');
+    try {
+      const v = loadVault();
+      if (!v) { setErr('No wallet found on this device.'); return; }
+      const r = await openVault(v, pwd);
+      if (!r) { setErr('Wrong password.'); return; }
+      setWords(r.mnemonic.trim().split(/\s+/));
+    } catch { setErr('Could not open the vault.'); }
+    finally { setBusy(false); }
+  };
+  const copyPhrase = async () => {
+    if (!words) return;
+    try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* blocked */ }
+    setCopied(true); setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <Modal title="Recovery phrase" onClose={onClose}>
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {!words ? (
+          <>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Enter your password to reveal your secret recovery phrase. Anyone with these words has full control of your wallet — never share them.</p>
+            <input className="field-input" type="password" placeholder="Password" autoFocus value={pwd} onChange={e => setPwd(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && pwd && !busy) reveal(); }} />
+            {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 13 }}>{err}</div>}
+            <button className="settings-btn settings-btn-danger" disabled={!pwd || busy} onClick={reveal}>{busy ? 'Verifying…' : 'Reveal phrase'}</button>
+          </>
+        ) : (
+          <>
+            <div className="seed-grid" style={{ position: 'relative' }}>
+              {words.map((w, i) => (
+                <div key={i} className="seed-word">
+                  <span className="seed-num">{i + 1}.</span>
+                  <span style={{ filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
+                </div>
+              ))}
+              {hidden && (
+                <button onClick={() => setHidden(false)}
+                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(2px)', border: 'none', borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
+                  Click to reveal
+                </button>
+              )}
+            </div>
+            <button className="settings-btn" disabled={hidden} onClick={copyPhrase}>{copied ? 'Copied ✓' : 'Copy phrase'}</button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /* First-run welcome card — introduces the Lithosphere Makalu home network
    the first time a user reaches the unlocked wallet. Self-gates on a
    localStorage flag (written the moment it shows) so it appears at most
@@ -846,13 +957,14 @@ const DESKTOP_CHAIN_META: Record<DesktopSendChain, { label: string; sym: string;
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
-function SendModal({ onClose, initialChain, initialCoin }: {
+function SendModal({ onClose, initialChain, initialCoin, address }: {
   onClose: () => void;
   /** Pre-select chain + asset (opened from the token detail screen). */
   initialChain?: DesktopSendChain;
   initialCoin?: string;
+  address?: string;
 }) {
-  const { coins } = usePortfolioCtx();
+  const { coins, reload } = usePortfolioCtx();
   const seed = useWalletSeed();
   const [chain, setChain] = useState<DesktopSendChain>(initialChain ?? 'evm');
   const [selectedSym, setSelectedSym] = useState(initialCoin ?? '');
@@ -999,19 +1111,19 @@ function SendModal({ onClose, initialChain, initialCoin }: {
         const m = await import('./ledger-btc-sign');
         const conn = ledger as unknown as Awaited<ReturnType<typeof m.connectLedgerBtc>>;
         const hash = await m.sendViaLedgerBtc(conn, { recipient, amount });
-        setTxHash(hash); setSending(false); return;
+        setTxHash(hash); if (address) addLocalActivity(address, { hash, chain, sym: DESKTOP_CHAIN_META[chain].sym, amount, ts: Date.now() }); reload(); setSending(false); return;
       }
       if (signer === 'ledger' && chain === 'solana' && ledger) {
         const m = await import('./ledger-sol-sign');
         const conn = ledger as unknown as Awaited<ReturnType<typeof m.connectLedgerSol>>;
         const hash = await m.sendViaLedgerSol(conn, { recipient, amount });
-        setTxHash(hash); setSending(false); return;
+        setTxHash(hash); if (address) addLocalActivity(address, { hash, chain, sym: DESKTOP_CHAIN_META[chain].sym, amount, ts: Date.now() }); reload(); setSending(false); return;
       }
       if (signer === 'trezor' && chain === 'bitcoin' && trezor) {
         const m = await import('./trezor-btc-sign');
         const conn = trezor as unknown as Awaited<ReturnType<typeof m.connectTrezorBtc>>;
         const hash = await m.sendViaTrezorBtc(conn, { recipient, amount });
-        setTxHash(hash); setSending(false); return;
+        setTxHash(hash); if (address) addLocalActivity(address, { hash, chain, sym: DESKTOP_CHAIN_META[chain].sym, amount, ts: Date.now() }); reload(); setSending(false); return;
       }
 
       const hash = await sendAsset({
@@ -1027,6 +1139,8 @@ function SendModal({ onClose, initialChain, initialCoin }: {
         trezor:       chain === 'evm' && signer === 'trezor' ? trezor ?? undefined : undefined,
       });
       setTxHash(hash);
+      if (address) addLocalActivity(address, { hash, chain, sym: chain === 'evm' ? (coin?.sym ?? 'LITHO') : DESKTOP_CHAIN_META[chain].sym, amount, ts: Date.now() });
+      reload();
       setSending(false);
     } catch (e) {
       setSending(false);
@@ -1936,12 +2050,14 @@ function StakingView() {
 }
 
 /* ──────────────────────── Settings view ──────────────────────── */
-function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => void; isDark: boolean; walletAddr: string }) {
+function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme: () => void; isDark: boolean; walletAddr: string; onLock: () => void }) {
   const [currency, setCurrency] = useState('USD');
   const [autoLock, setAutoLock] = useState('5');
   const [rpc, setRpc]           = useState('https://rpc.litho.ai');
   const [hwOpen, setHwOpen]     = useState(false);
   const [wcOpen, setWcOpen]     = useState(false);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
+  const [exportSeedOpen, setExportSeedOpen] = useState(false);
 
   const Section = ({
     icon: Icon, title, sub, children,
@@ -2008,16 +2124,16 @@ function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => 
             </select>
           </Row>
           <Row label="Change password" sub="Update your wallet password">
-            <button className="settings-btn"><KeyIcon size={14}/> Change</button>
+            <button className="settings-btn" onClick={() => setChangePwdOpen(true)}><KeyIcon size={14}/> Change</button>
           </Row>
           <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
-            <button className="settings-btn settings-btn-danger"><Download2 size={14}/> Export</button>
+            <button className="settings-btn settings-btn-danger" onClick={() => setExportSeedOpen(true)}><Download2 size={14}/> Export</button>
           </Row>
           <Row label="Hardware wallet" sub="Connect a Ledger via USB (Trezor support is wired through the same vendor allowlist)">
             <button className="settings-btn" onClick={() => setHwOpen(true)}><KeyIcon size={14}/> Connect</button>
           </Row>
           <Row label="Lock wallet now" sub="Sign out on this device">
-            <button className="settings-btn"><Lock2 size={14}/> Lock</button>
+            <button className="settings-btn" onClick={onLock}><Lock2 size={14}/> Lock</button>
           </Row>
         </Section>
 
@@ -2037,6 +2153,8 @@ function SettingsView({ toggleTheme, isDark, walletAddr }: { toggleTheme: () => 
 
         {hwOpen && <HardwareModal onClose={() => setHwOpen(false)} isDark={isDark}/>}
         {wcOpen && <WalletConnectModal evmAddress={walletAddr} onClose={() => setWcOpen(false)}/>}
+        {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)}/>}
+        {exportSeedOpen && <ExportSeedModal onClose={() => setExportSeedOpen(false)}/>}
 
         <Section icon={Info} title="About" sub="Build info and version">
           <Row label="Version" sub="Thanos Wallet Desktop">
@@ -3314,7 +3432,7 @@ function App() {
           onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setModal('swap'); }}
         />
       )}
-      {modal === 'send'    && <SendModal    onClose={() => { setModal(null); setSeedSym(null); }}
+      {modal === 'send'    && <SendModal    onClose={() => { setModal(null); setSeedSym(null); }} address={walletAddr}
         initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
         initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)} addresses={{ evm: addrs.evm, btc: addrs.btc, sol: addrs.sol }}/>}
@@ -3330,7 +3448,7 @@ function App() {
           {view === 'staking'      && <StakingView/>}
           {view === 'discover'     && <DiscoverView/>}
           {view === 'nfts'         && <NftsView/>}
-          {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark} walletAddr={walletAddr}/>}
+          {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark} walletAddr={walletAddr} onLock={lock}/>}
         </div>
 
         {view !== 'settings' && (

@@ -14,6 +14,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
+import { getLocalActivity } from './local-activity';
 
 const INDEXER_BASE = String(
   (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
@@ -76,6 +77,30 @@ function formatDate(iso?: string): string {
   const t = Date.parse(iso);
   if (isNaN(t)) return '—';
   return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Merge optimistic local sends (recorded at broadcast time) into the indexer
+ *  feed. Native LITHO / external-chain sends are never indexed, so without this
+ *  a user's own transaction never appears. Deduped by tx hash so once the
+ *  indexer reports the tx the local copy drops out. Local entries (newest)
+ *  sort above the indexed ones. */
+function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] {
+  const local: DisplayTx[] = getLocalActivity(address).map((t) => ({
+    id: t.hash,
+    sym: t.sym,
+    name: t.sym,
+    type: 'Send' as const,
+    date: formatDate(new Date(t.ts).toISOString()),
+    status: 'Completed' as const,
+    amount: `-${String(t.amount).replace(/^[+-]/, '')} ${t.sym}`,
+    pos: false,
+    color: coinColor(t.sym),
+    txHash: t.hash,
+  }));
+  const fresh = local.filter(
+    (l) => !indexed.some((x) => x.id === l.id || (!!x.txHash && x.txHash === l.txHash)),
+  );
+  return [...fresh, ...indexed];
 }
 
 /** Map an indexer activity type to a display type + direction. */
@@ -236,10 +261,10 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           };
         });
 
-        setState({ coins, activity, totalUsd, loading: false, offline: false });
+        setState({ coins, activity: mergeLocalActivity(address, activity), totalUsd, loading: false, offline: false });
       } catch {
         if (cancelled) return;
-        setState({ coins: [], activity: [], totalUsd: 0, loading: false, offline: true });
+        setState({ coins: [], activity: mergeLocalActivity(address, []), totalUsd: 0, loading: false, offline: true });
       }
     })();
     return () => { cancelled = true; };
