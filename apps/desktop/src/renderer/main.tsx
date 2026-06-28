@@ -1030,6 +1030,23 @@ const DESKTOP_CHAIN_META: Record<DesktopSendChain, { label: string; sym: string;
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
+/* Web-style network list — every chain is its OWN network (Makalu + the 8
+   external EVM chains, each distinct, + BTC/SOL/Cosmos), so Send/Receive pick a
+   network first and the asset list scopes to it. `kind` maps back to the broad
+   DesktopSendChain so all the existing send-routing + Ledger/Trezor signer logic
+   keeps working unchanged. */
+interface DesktopNetwork { id: string; label: string; kind: DesktopSendChain; chainId?: number; color: string; iconSym: string }
+const DESKTOP_NETWORKS: DesktopNetwork[] = [
+  { id: 'makalu', label: 'Lithosphere · Makalu', kind: 'evm', chainId: 700777, color: '#22c55e', iconSym: 'LITHO' },
+  ...EXT_EVM_CHAINS.map((c): DesktopNetwork => ({ id: c.slug, label: c.name, kind: 'evm', chainId: c.chainId, color: c.color, iconSym: c.nativeSymbol })),
+  { id: 'bitcoin', label: 'Bitcoin',    kind: 'bitcoin', color: '#f7931a', iconSym: 'BTC'  },
+  { id: 'solana',  label: 'Solana',     kind: 'solana',  color: '#14f195', iconSym: 'SOL'  },
+  { id: 'cosmos',  label: 'Cosmos Hub', kind: 'cosmos',  color: '#2e3148', iconSym: 'ATOM' },
+];
+const networkById = (id: string): DesktopNetwork => DESKTOP_NETWORKS.find(n => n.id === id) ?? DESKTOP_NETWORKS[0];
+const initialNetworkId = (chain?: DesktopSendChain): string =>
+  chain === 'bitcoin' ? 'bitcoin' : chain === 'solana' ? 'solana' : chain === 'cosmos' ? 'cosmos' : 'makalu';
+
 /* External-EVM assets share a symbol across networks — ETH lives on
    Ethereum, Base, Arbitrum, Optimism and Linea all at once. Keying the
    Send picker by `sym` alone always resolves to the first network's coin,
@@ -1085,7 +1102,9 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
 }) {
   const { coins, reload } = usePortfolioCtx();
   const seed = useWalletSeed();
-  const [chain, setChain] = useState<DesktopSendChain>(initialChain ?? 'evm');
+  const [networkId, setNetworkId] = useState<string>(initialNetworkId(initialChain));
+  const network = networkById(networkId);
+  const chain = network.kind;            // broad chain kind drives all existing routing/signer logic
   const [selectedSym, setSelectedSym] = useState(initialCoin ?? '');
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
@@ -1117,10 +1136,19 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
   // sym fallback covers `initialCoin` (a bare symbol passed when Send is
   // opened from a token detail row).
   const evmAssets = useMemo(() => buildEvmSendAssets(coins), [coins]);
+  // Web-style flow: the asset list is scoped to the SELECTED network — Makalu
+  // shows LITHO + ecosystem (no external chainId); each external chain shows its
+  // native + USDT/USDC.
+  const networkAssets = useMemo(() => {
+    if (chain !== 'evm') return [];
+    return network.chainId === 700777
+      ? evmAssets.filter(a => !a.chainId)
+      : evmAssets.filter(a => a.chainId === network.chainId);
+  }, [evmAssets, chain, network.chainId]);
   const coin = chain !== 'evm' ? null
-    : (evmAssets.find(c => coinKey(c) === selectedSym)
-       ?? evmAssets.find(c => c.sym === selectedSym)
-       ?? evmAssets[0] ?? null);
+    : (networkAssets.find(c => coinKey(c) === selectedSym)
+       ?? networkAssets.find(c => c.sym === selectedSym)
+       ?? networkAssets[0] ?? null);
   const amtNum = parseFloat(amount || '0');
   // Balance is from the seed account; when signing with hardware the
   // FROM account changes, so we don't gate on it (the device + RPC will).
@@ -1317,44 +1345,29 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
   return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body">
-        {/* Chain selector — switching out of EVM hides the LEP-100 asset
-            picker and the hardware-signer panel (HW signing is EVM-only
-            in this build). */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          {(Object.keys(DESKTOP_CHAIN_META) as DesktopSendChain[]).map(c => {
-            const selected = c === chain;
-            return (
-              <button
-                key={c}
-                type="button"
-                onClick={() => { setChain(c); setTo(''); setAmount(''); setMemo(''); }}
-                style={{
-                  flex: 1, padding: '8px 10px', borderRadius: 999, cursor: 'pointer',
-                  fontSize: 11, fontWeight: 700,
-                  background: selected ? 'var(--blue, #3b7af7)' : 'transparent',
-                  color: selected ? '#fff' : 'var(--text-secondary)',
-                  border: `1px solid ${selected ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
-                }}
-              >
-                {DESKTOP_CHAIN_META[c].sym}
-              </button>
-            );
-          })}
-        </div>
+        {/* Network → Asset (web-style). Picking a network scopes the asset list
+            and drives routing/signer via network.kind. */}
+        <label className="field-label">Network</label>
+        <CoinSelect
+          items={DESKTOP_NETWORKS.map(n => ({ value: n.id, sym: n.iconSym, color: n.color, label: n.label }))}
+          value={networkId}
+          onChange={(id) => { setNetworkId(id); setSelectedSym(''); setTo(''); setAmount(''); setMemo(''); }}
+          placeholder="Select network"
+        />
 
         {chain === 'evm' ? (
           <>
-            <label className="field-label">Asset</label>
+            <label className="field-label" style={{ marginTop: 14 }}>Asset</label>
             <CoinSelect
-              items={evmAssets.map(c => ({ value: coinKey(c), sym: c.sym, color: c.color, label: c.sym, sub: coinChainLabel(c) }))}
+              items={networkAssets.map(c => ({ value: coinKey(c), sym: c.sym, color: c.color, label: c.sym }))}
               value={coin ? coinKey(coin) : ''}
               onChange={setSelectedSym}
               placeholder="Select asset"
             />
           </>
         ) : (
-          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: 12 }}>
-            Sending native <strong>{DESKTOP_CHAIN_META[chain].sym}</strong> on {DESKTOP_CHAIN_META[chain].label}.
+          <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: 12 }}>
+            Sending native <strong>{DESKTOP_CHAIN_META[chain].sym}</strong> on {network.label}.
           </div>
         )}
 
@@ -1500,7 +1513,12 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   void addresses; // legacy prop — addresses are now derived lazily from the unlocked seed
   const seed = useContext(WalletSeedContext);
   const evmAddr = useMemo(() => seed.length ? deriveAddressesFromSeed(seed).evm : '', [seed]);
-  const [chain, setChain] = useState<'evm'|'btc'|'sol'|'atom'>('evm');
+  const [networkId, setNetworkId] = useState<string>('makalu');
+  const network = networkById(networkId);
+  // EVM networks all share the same 0x address, so the address logic stays
+  // keyed by the broad kind; the network picker is just the web-style chooser.
+  const chain: 'evm'|'btc'|'sol'|'atom' =
+    network.kind === 'bitcoin' ? 'btc' : network.kind === 'solana' ? 'sol' : network.kind === 'cosmos' ? 'atom' : 'evm';
   const [copied, setCopied] = useState(false);
   const [showAlt, setShowAlt] = useState(false);   // EVM tab: false=litho1, true=0x
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -1600,14 +1618,14 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   return (
     <Modal title="Receive" onClose={onClose}>
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
-        {/* Chain selector */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, width: '100%' }}>
-          {(['evm','btc','sol','atom'] as const).map(c => (
-            <button key={c} onClick={() => setChain(c)} className={`filter-pill ${chain === c ? 'active' : ''}`} style={{ flex: 1, fontSize: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-              <TokenAvatar sym={c === 'evm' ? 'ETH' : c.toUpperCase()} color={meta[c].color} className="coin-select-avatar" style={{ width: 15, height: 15, fontSize: 7 }} label={c === 'evm' ? 'E' : c[0].toUpperCase()} />
-              {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : c === 'sol' ? 'SOL' : 'ATOM'}
-            </button>
-          ))}
+        {/* Network selector (web-style — every chain distinct). */}
+        <div style={{ width: '100%', marginBottom: 12, textAlign: 'left' }}>
+          <CoinSelect
+            items={DESKTOP_NETWORKS.map(n => ({ value: n.id, sym: n.iconSym, color: n.color, label: n.label }))}
+            value={networkId}
+            onChange={setNetworkId}
+            placeholder="Select network"
+          />
         </div>
 
         {/* Lithosphere dual-format toggle — only on the EVM tab. */}
@@ -1648,10 +1666,10 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
         </div>
 
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, marginTop: 12 }}>
-          <TokenAvatar sym={chain === 'evm' ? 'ETH' : chain.toUpperCase()} color={meta[chain].color} className="coin-select-avatar" style={{ width: 18, height: 18, fontSize: 8 }} label={chain === 'evm' ? 'E' : chain[0].toUpperCase()} />
-          {meta[chain].label}
+          <TokenAvatar sym={network.iconSym} color={network.color} className="coin-select-avatar" style={{ width: 18, height: 18, fontSize: 8 }} label={network.iconSym.slice(0, 1)} />
+          {network.label}
         </div>
-        <div style={{ fontSize: 10, color: meta[chain].color, fontWeight: 600, marginBottom: 8 }}>● {meta[chain].network}</div>
+        <div style={{ fontSize: 10, color: network.color, fontWeight: 600, marginBottom: 8 }}>● {chain === 'evm' ? 'One 0x address — works on Makalu + every EVM chain' : meta[chain].network}</div>
         {chain !== 'evm' && chainBalance && (
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
             Balance: {chainBalance}
@@ -1663,7 +1681,9 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
           {copied ? '✓ Copied!' : 'Copy Address'}
         </button>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.6 }}>
-          Only send {meta[chain].label} assets to this address.
+          {chain === 'evm'
+            ? 'This 0x address receives assets on Makalu and every EVM chain (Ethereum, BNB, Polygon, Base, Arbitrum, Optimism, Linea, Avalanche).'
+            : `Only send ${network.label} assets to this address.`}
         </div>
       </div>
     </Modal>
