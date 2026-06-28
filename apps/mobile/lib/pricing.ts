@@ -61,7 +61,16 @@ export async function fetchEcosystemPrices(): Promise<Record<string, number>> {
     try {
       const ids = toFetch.map(([, id]) => id).join(',');
       const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd`;
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      // HARD timeout. The home's portfolio load awaits this inside a Promise.all,
+      // so a hanging price endpoint (no response) used to stall the whole home
+      // for MINUTES until the OS socket timeout — the "blank/stuck after login"
+      // report. Every other fetch in the app already bounds itself; prices was
+      // the one that didn't. On abort the catch below returns hard/placeholder
+      // prices so the home still paints.
+      const ctrl  = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6_000);
+      const res = await fetch(url, { headers: { accept: 'application/json' }, signal: ctrl.signal })
+        .finally(() => clearTimeout(timer));
       if (res.ok) {
         const data = (await res.json()) as Record<string, { usd?: number }>;
         for (const [sym, cgId] of toFetch) {
