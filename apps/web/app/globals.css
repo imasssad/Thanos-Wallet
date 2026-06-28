@@ -1323,10 +1323,14 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
      overflow:hidden to clip the blur orbs), which used to strand the
      Create/Continue button off-screen on short/landscape phones. */
   max-height: calc(100dvh - 16px);
-  /* The card NEVER scrolls — short steps fit and stay static (no scroll, no
-     bounce). The only genuinely tall content (the seed-word grid) scrolls
-     inside itself, so the card's buttons always stay on-screen. */
-  overflow-y: hidden;
+  /* Short steps fit and stay static (no scrollbar appears). But when a step is
+     genuinely taller than the viewport — the UNLOCK screen on a short or zoomed
+     window has no inner scroller — the card must scroll so the Unlock + "Reset
+     wallet" controls are reachable. overflow:hidden here CLIPPED them, locking
+     out anyone who forgot their password with no way to reset. Tall steps that
+     have their own inner scroller (the seed-word grid) still scroll inside
+     themselves. overscroll-behavior:none keeps it from rubber-band bouncing. */
+  overflow-y: auto;
   overscroll-behavior: none;
   background: #ffffff;
   border: 1px solid #ececef;
