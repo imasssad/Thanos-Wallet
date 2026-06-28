@@ -215,6 +215,17 @@ const BUNDLED_ICONS: Record<string, string> = {
   // matches Solana Foundation brand guidelines (purple→green gradient
   // logomark) rather than the CoinGecko thumbnail.
   sol:    '/images/tokens/sol.png',
+  // Mainstream coins, stablecoins + L2s — now bundled locally (matches the
+  // extension / web / mobile icon pack; no per-render CoinGecko hit).
+  btc:    '/images/tokens/btc.png',
+  litbtc: '/images/tokens/btc.png',
+  usdc:   '/images/tokens/usdc.png',
+  usdt:   '/images/tokens/usdt.png',
+  bnb:    '/images/tokens/bnb.png',
+  xrp:    '/images/tokens/xrp.png',
+  pol:    '/images/tokens/pol.png',
+  matic:  '/images/tokens/pol.png',
+  avax:   '/images/tokens/avax.png',
 };
 const REMOTE_ICONS: Record<string, string> = {
   // Fallbacks for coins we don't bundle yet. CoinGecko CDN; `large/`
@@ -733,7 +744,7 @@ function MakaluWelcomeModal() {
   return (
     <div className="modal-backdrop" onClick={() => setVisible(false)}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 28 }}>
-        <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
+        <img src="/images/icon128.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
         <h2 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 6px' }}>
           Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM networks are built in too.
@@ -2645,7 +2656,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
     <div className="onboard-wrap">
       <div className="onboard-card">
         <div className="onboard-logo">
-          <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
+          <img src="/images/icon128.png" alt="Thanos"/>
         </div>
 
         {/* WELCOME ─────────────────────────────────────────── */}
@@ -3280,7 +3291,7 @@ function App() {
       <nav className="topnav">
         <div className="topnav-logo">
           <div className="logo-mark">
-            <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
+            <img src="/images/icon128.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
           </div>
           <span style={{ marginLeft: 8, fontSize: 18, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>THANOS</span>
         </div>
