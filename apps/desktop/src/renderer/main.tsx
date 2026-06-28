@@ -1376,7 +1376,10 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
         <label className="field-label" style={{ marginTop: 14 }}>Amount</label>
         <div style={{ position: 'relative' }}>
           <input className="field-input" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} type="number" style={{ paddingRight: 60 }}/>
-          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+          <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+            {(chain === 'evm' ? coin?.sym : DESKTOP_CHAIN_META[chain].sym) && (
+              <TokenAvatar sym={chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym} color={chain === 'evm' ? (coin?.color ?? '#52525b') : '#52525b'} className="coin-select-avatar" style={{ width: 16, height: 16, fontSize: 8 }} label={(chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym).slice(0, 2)} />
+            )}
             {chain === 'evm' ? (coin?.sym ?? '') : DESKTOP_CHAIN_META[chain].sym}
           </span>
         </div>
@@ -1600,7 +1603,8 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
         {/* Chain selector */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 12, width: '100%' }}>
           {(['evm','btc','sol','atom'] as const).map(c => (
-            <button key={c} onClick={() => setChain(c)} className={`filter-pill ${chain === c ? 'active' : ''}`} style={{ flex: 1, fontSize: 11 }}>
+            <button key={c} onClick={() => setChain(c)} className={`filter-pill ${chain === c ? 'active' : ''}`} style={{ flex: 1, fontSize: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <TokenAvatar sym={c === 'evm' ? 'ETH' : c.toUpperCase()} color={meta[c].color} className="coin-select-avatar" style={{ width: 15, height: 15, fontSize: 7 }} label={c === 'evm' ? 'E' : c[0].toUpperCase()} />
               {c === 'evm' ? 'EVM' : c === 'btc' ? 'BTC' : c === 'sol' ? 'SOL' : 'ATOM'}
             </button>
           ))}
@@ -1643,7 +1647,10 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
             : <span style={{ fontSize: 12, color: '#666' }}>{addr ? 'Generating QR…' : 'Loading…'}</span>}
         </div>
 
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, marginTop: 12 }}>{meta[chain].label}</div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, marginTop: 12 }}>
+          <TokenAvatar sym={chain === 'evm' ? 'ETH' : chain.toUpperCase()} color={meta[chain].color} className="coin-select-avatar" style={{ width: 18, height: 18, fontSize: 8 }} label={chain === 'evm' ? 'E' : chain[0].toUpperCase()} />
+          {meta[chain].label}
+        </div>
         <div style={{ fontSize: 10, color: meta[chain].color, fontWeight: 600, marginBottom: 8 }}>● {meta[chain].network}</div>
         {chain !== 'evm' && chainBalance && (
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>

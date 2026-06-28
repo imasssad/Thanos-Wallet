@@ -983,6 +983,12 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: none;
   cursor: not-allowed;
 }
+/* In a "Back + primary" action row the primary must line up with the 48px
+   outline button. The margin-top:22 and 50px height above are only wanted on
+   the full-width STANDALONE onboarding buttons (which keep the .onboard-btn
+   class); without this override the row primary sat 22px lower and 2px taller
+   than Back — the misalignment on the Import / Set-password screens. */
+.onboard-card .btn-primary:not(.onboard-btn) { margin-top: 0; height: 48px; }
 [data-theme="dark"] .onboard-card .btn-primary {
   background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
   box-shadow:
