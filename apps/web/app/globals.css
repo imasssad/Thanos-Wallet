@@ -1,5 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap');
 
+/* Satoshi — the brand UI font. Self-hosted (woff2 in /public/fonts) so it works
+   under our strict CSP (font-src 'self' data:); no Fontshare CDN dependency. */
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-400.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-500.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-700.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-900.woff2') format('woff2'); font-weight: 900; font-style: normal; font-display: swap; }
+
 /* LITHO currency symbol (𝕃 = U+1D543). Geist and most UI fonts omit the
    math double-struck block, so we bundle a 1.3 KB single-glyph subset of
    Noto Sans Math. Render the literal 𝕃 inside a .litho-sym span. */
@@ -183,8 +190,8 @@ html {
 }
 
 body {
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-feature-settings: 'cv11' 1, 'ss01' 1;   /* Geist alternate forms */
+  font-family: 'Satoshi', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11' 1, 'ss01' 1;   /* Geist alternate forms (ignored by Satoshi) */
   background: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.5;

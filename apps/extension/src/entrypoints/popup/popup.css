@@ -1,3 +1,11 @@
+/* Satoshi — brand UI font, self-hosted in /public/fonts (MV3 CSP blocks remote
+   fonts, so no CDN). The popup named 'Geist' but never loaded it and fell back
+   to system-ui; now it actually ships a brand font. */
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-400.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-500.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-700.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Satoshi'; src: url('/fonts/satoshi/satoshi-900.woff2') format('woff2'); font-weight: 900; font-style: normal; font-display: swap; }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* Dark-first — :root IS the dark palette, so the very first paint
@@ -52,7 +60,7 @@
 
 html, body { width: 360px; height: 600px; overflow: hidden; }
 body {
-  font-family: 'Geist', system-ui, -apple-system, sans-serif;
+  font-family: 'Satoshi', 'Geist', system-ui, -apple-system, sans-serif;
   font-feature-settings: 'cv11' 1, 'ss01' 1;
   background: var(--bg-base); color: var(--text-primary);
   font-size: 13px; letter-spacing: -0.005em;
