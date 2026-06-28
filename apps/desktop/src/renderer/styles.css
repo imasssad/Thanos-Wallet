@@ -61,8 +61,10 @@ body {
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   user-select: none;
-  /* Global UI zoom — matches web app, scales all text/icons/padding 1.5x */
-  zoom: 1.5;
+  /* Global UI zoom. 1.5 overflowed the 1280px window — a horizontal scrollbar
+     and a cut-off top nav. 1.1 keeps text/icons comfortably sized AND fits the
+     default window so the layout reads as responsive. */
+  zoom: 1.1;
 }
 
 input, textarea { user-select: text; font-family: inherit; }

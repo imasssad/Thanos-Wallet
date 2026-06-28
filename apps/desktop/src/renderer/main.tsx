@@ -3120,7 +3120,7 @@ type Modal = 'send' | 'receive' | 'swap' | null;
 
 function App() {
   const [view, setView]     = useState<View>('dashboard');
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const [modal, setModal]   = useState<Modal>(null);
   /** Token-detail modal — opened by tapping any token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
@@ -3208,9 +3208,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Default to LIGHT unless user explicitly chose dark
+    // Dark-first (matches web / extension / mobile) — light only if explicitly chosen.
     const stored = localStorage.getItem('thanos-theme');
-    const dark   = stored === 'dark';
+    const dark   = stored !== 'light';
     setIsDark(dark);
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }, []);
@@ -3456,7 +3456,6 @@ function App() {
             <ExchangeWidget onSwap={() => setModal('swap')}/>
             <PortfolioList/>
             <AIAssistant/>
-            <StakingCard/>
           </aside>
         )}
       </div>
