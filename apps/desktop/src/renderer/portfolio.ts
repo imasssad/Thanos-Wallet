@@ -235,6 +235,41 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         }
 
+        // External EVM chains (Ethereum / BNB / Polygon / Base / Arbitrum /
+        // Optimism / Linea / Avalanche) — native coins + USDT/USDC at the SAME
+        // 0x address as Makalu. Best-effort; an RPC hiccup can't blank the rest.
+        try {
+          const m = await import('./evm-external');
+          const [natives, tokens] = await Promise.all([
+            m.getAllExtEvmNativeBalances(address),
+            m.getAllExtEvmTokenBalances(address),
+          ]);
+          if (!cancelled) {
+            for (const { chain, balance } of natives) {
+              if (balance <= 0) continue;
+              const priceUsd = prices[chain.nativeSymbol] ?? 0;
+              xchain.push({
+                sym: chain.nativeSymbol, name: chain.name,
+                balance, balanceText: formatAmount(balance), decimals: 18,
+                priceUsd, usdValue: balance * priceUsd,
+                pct: 0, color: chain.color, native: true,
+              });
+            }
+            for (const { token, balance } of tokens) {
+              if (balance <= 0) continue;
+              const priceUsd = prices[token.symbol] ?? 1; // stablecoins ~= $1
+              xchain.push({
+                sym: token.symbol,
+                name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
+                balance, balanceText: formatAmount(balance), decimals: token.decimals,
+                priceUsd, usdValue: balance * priceUsd,
+                pct: 0, color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+                tokenAddress: token.address, native: false,
+              });
+            }
+          }
+        } catch { /* best-effort — external chains stay hidden on failure */ }
+
         const totalUsd = priced.reduce((s, x) => s + x.usdValue, 0)
                        + xchain.reduce((s, x) => s + x.usdValue, 0);
         const coins: DisplayCoin[] = [
