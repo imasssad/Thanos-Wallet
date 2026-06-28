@@ -12,6 +12,24 @@ import {
  *  non-monospace on the other platform. Use this constant everywhere. */
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' }) as string;
 
+/* Brand font — make Satoshi (embedded via the expo-font config plugin, weights
+ * Regular/Medium/Bold) the default for EVERY Text/TextInput without editing each
+ * style. fontFamily is injected as the FIRST style entry so an explicit family
+ * (MONO addresses, 'LithoSym') still wins, and fontWeight picks the matching
+ * Satoshi weight. defaultProps can't do this (a component's own style replaces
+ * it), so we wrap render; __satoshi guards against double-wrap on fast-refresh. */
+const injectBrandFont = (Comp: any) => {
+  const orig = Comp?.render;
+  if (typeof orig !== 'function' || Comp.__satoshi) return;
+  Comp.__satoshi = true;
+  Comp.render = function (...args: any[]) {
+    const el = orig.apply(this, args);
+    return el ? React.cloneElement(el, { style: [{ fontFamily: 'Satoshi' }, el.props?.style] }) : el;
+  };
+};
+injectBrandFont(Text);
+injectBrandFont(TextInput);
+
 /** Address with highlighted head + tail — the visual-confirmation pattern
  *  every major wallet uses (client request 2026-06-12). Address-poisoning
  *  scams rely on matching the start/end of an address, so those are the
@@ -52,6 +70,7 @@ import {
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
   cacheSessionKey, getSessionKey, clearSessionKey,
   hasLegacyPlaintext, migrateLegacyPlaintext,
+  isHeavyLegacyKdf, upgradeVaultKdf,
   isSeedBackedUp, setSeedBackedUp,
 } from './lib/vault';
 import {
@@ -124,7 +143,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.08';
+const APP_VERSION = 'thanos-v1.09';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -398,33 +417,39 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     setLoading(true); setOffline(false);
     (async () => {
       try {
-        // Let a failed fetch REJECT (no inner .catch) so the handler below
-        // preserves the last known balance instead of wiping it to $0. A
-        // transient RPC/indexer hiccup must never blank the user's balance.
+        // Guard EACH fetch independently. A slow/failed Makalu indexer must NOT
+        // block prices, the external-EVM balances, or first paint — the plain
+        // Promise.all used to REJECT on any failure and strand the home on the
+        // full indexer timeout. On failure we keep the last-known balance
+        // (never blank it to $0) and just flag offline.
         const [portfolio, prices] = await Promise.all([
-          getPortfolio(address),
-          fetchEcosystemPrices(),
+          getPortfolio(address).catch(() => null),
+          fetchEcosystemPrices().catch(() => ({} as Record<string, number>)),
         ]);
         if (cancelled) return;
 
-        const evmRows: DisplayAsset[] = portfolio.assets.map((a) => {
-          let bal = 0;
-          try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
-          const priceUsd = prices[a.symbol] ?? 0;
-          return {
-            sym: a.symbol, name: a.name, chainId: a.chainId,
-            balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
-            priceUsd, usdValue: bal * priceUsd,
-            color: assetColor(a.symbol),
-            tokenAddress: a.tokenAddress, native: !!a.native,
-          };
-        });
-
-        // Render the LITHO/EVM rows immediately so the home is usable the
-        // instant the wallet unlocks.
-        if (cancelled) return;
-        setAssets(evmRows);
-        setTotal(evmRows.reduce((s, a) => s + a.usdValue, 0));
+        if (portfolio) {
+          const evmRows: DisplayAsset[] = portfolio.assets.map((a) => {
+            let bal = 0;
+            try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
+            const priceUsd = prices[a.symbol] ?? 0;
+            return {
+              sym: a.symbol, name: a.name, chainId: a.chainId,
+              balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
+              priceUsd, usdValue: bal * priceUsd,
+              color: assetColor(a.symbol),
+              tokenAddress: a.tokenAddress, native: !!a.native,
+            };
+          });
+          // Render the LITHO/EVM rows immediately so the home is usable the
+          // instant the wallet unlocks.
+          setAssets(evmRows);
+          setTotal(evmRows.reduce((s, a) => s + a.usdValue, 0));
+          setOffline(false);
+        } else {
+          // Indexer down — keep the last-known assets/total, just flag offline.
+          setOffline(true);
+        }
         setLoading(false);
 
         // Cross-chain natives (BTC/SOL/ATOM) pull in heavy libraries
@@ -3679,6 +3704,7 @@ function OnboardingScreen({
         setUnlockErr('No wallet on this device.');
         return;
       }
+      const t0 = Date.now();
       const opened = await openVault(vault, unlockPwd);
       if (!opened) {
         setUnlockErr('Incorrect password');
@@ -3686,6 +3712,15 @@ function OnboardingScreen({
         return;
       }
       cacheSessionKey(opened.key);
+      // Legacy vaults (pure-JS Argon2id, or a slow pre-calibration KDF) block the
+      // JS thread for seconds–MINUTES on every unlock — the "blank for 2-4 min on
+      // open" report. After this one slow unlock, transparently re-encrypt to a
+      // device-calibrated PBKDF2 vault (~0.6s) so every future unlock is fast.
+      // Deferred so it never delays entering the wallet.
+      if (isHeavyLegacyKdf(vault) || Date.now() - t0 > 2500) {
+        const mnemonic = opened.mnemonic, pwd = unlockPwd;
+        InteractionManager.runAfterInteractions(() => { void upgradeVaultKdf(mnemonic, pwd); });
+      }
       onComplete(opened.mnemonic.split(' '));
     } finally { setBusy(false); }
   };
@@ -4812,7 +4847,14 @@ function App() {
     );
   }
 
-  const walletAddr = walletSeed.length > 0 ? deriveEvmAddress(walletSeed, activeIdx) : '0x0000…0000';
+  // deriveEvmAddress runs a full BIP-39/BIP-32 HD derivation (synchronous
+  // PBKDF2 + key derivation). Computed inline it re-ran on EVERY render — i.e.
+  // every tab tap (setScreen re-renders App) — blocking the JS thread for tens
+  // of ms and making the bottom tabs feel laggy. Memoize on seed + account.
+  const walletAddr = useMemo(
+    () => (walletSeed.length > 0 ? deriveEvmAddress(walletSeed, activeIdx) : '0x0000…0000'),
+    [walletSeed, activeIdx],
+  );
   const shortAddr = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
 
   return (
@@ -4931,7 +4973,13 @@ function App() {
               {TABS.map(t => {
                 const active = screen === t.key || (t.key === 'home' && (screen === 'send' || screen === 'receive'));
                 return (
-                  <Pressable key={t.key} style={styles.tab} onPress={() => setScreen(t.key)}>
+                  <Pressable
+                    key={t.key}
+                    style={({ pressed }) => [styles.tab, pressed && { opacity: 0.55 }]}
+                    android_ripple={{ color: 'rgba(91,124,250,0.18)', borderless: false }}
+                    hitSlop={6}
+                    onPress={() => setScreen(t.key)}
+                  >
                     {active && <View style={styles.tabActiveBar}/>}
                     <t.Icon size={20} color={active ? colors.blue : colors.textMuted} strokeWidth={active ? 2.4 : 2}/>
                     <Text style={[styles.tabLabel, active && { color: colors.blue, fontWeight: '700' }]}>{t.label}</Text>

@@ -57,7 +57,7 @@ const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 // derive in ~100ms like web/extension but needs a native rebuild + a new dep;
 // this pure-JS adaptive path is reliable with no new module.) Legacy Argon2id /
 // fixed-600k vaults still decrypt via their own stored kdf block.
-const PBKDF2_TARGET_MS = 1000;     // aim derivation at ~1 second
+const PBKDF2_TARGET_MS = 600;      // aim derivation at ~0.6s on the creating device (hardware keystore backstops; NIST floor still applies)
 const PBKDF2_MIN_ITERS = 10_000;   // NIST SP 800-132 floor (hardware keystore backstops)
 const PBKDF2_MAX_ITERS = 600_000;  // OWASP target ceiling
 const KEY_BYTES = 32;              // AES-256
@@ -228,4 +228,22 @@ export async function migrateLegacyPlaintext(): Promise<{ ok: boolean; key?: Uin
   await createVault(mnem, pwd);          // also session-caches the key
   await AsyncStorage.multiRemove([LEGACY_HAS, LEGACY_MNEM, LEGACY_PWD, LEGACY_UNLOCK]);
   return { ok: true, key: sessionKey ?? undefined };
+}
+
+/* ─── Legacy heavy-KDF migration (Argon2id → calibrated PBKDF2) ──────────── */
+
+/** True if this vault uses pure-JS Argon2id (t=3, m=64MB) — which blocks the
+ *  Hermes JS thread for many seconds to MINUTES on real devices (the "app shows
+ *  blank for 2-4 min on open" report). Such vaults should be re-encrypted to a
+ *  device-calibrated PBKDF2 vault after a successful unlock. */
+export function isHeavyLegacyKdf(vault: EncryptedVault): boolean {
+  return vault.kdf.type === 'argon2id';
+}
+
+/** After a successful unlock, transparently re-encrypt the vault as a freshly
+ *  device-calibrated PBKDF2 vault (~0.6s unlock) using the plaintext mnemonic +
+ *  password already in hand — so the NEXT unlock is fast instead of minutes.
+ *  Best-effort: any failure leaves the original (still-working) vault intact. */
+export async function upgradeVaultKdf(mnemonic: string, password: string): Promise<void> {
+  try { await createVault(mnemonic, password); } catch { /* keep the existing vault */ }
 }
