@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Wallet, HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
+import { HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
 import './styles.css';
 import {
   createVault, openVault, openVaultWithKey,
@@ -2642,10 +2642,13 @@ const SEED_WORDS_DICT = [
   'aunt','author','auto','autumn','average','avocado','avoid','awake','aware','away',
 ];
 
-function generateSeedPhrase(_words = 12): string[] {
-  // Real BIP39 mnemonic via ethers v6 (browser-native, no Buffer polyfill needed)
-  const wallet = Wallet.createRandom();
-  return wallet.mnemonic!.phrase.split(' ');
+function generateSeedPhrase(words: 12 | 24 = 12): string[] {
+  // 12 words = 128-bit entropy (16 bytes), 24 = 256-bit (32 bytes). Real BIP39
+  // mnemonic via ethers v6; entropy from WebCrypto (browser-native + secure, no
+  // Buffer polyfill needed). Wallet.createRandom() only ever yields 12 words.
+  const entropy = new Uint8Array(words === 24 ? 32 : 16);
+  crypto.getRandomValues(entropy);
+  return Mnemonic.fromEntropy(entropy).phrase.split(' ');
 }
 
 function isValidMnemonic(phrase: string): boolean {
@@ -2698,6 +2701,7 @@ type OnboardStep = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm' 
 function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[], pwd: string) => void; hasVault: boolean }) {
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
   const [seed, setSeed] = useState<string[]>([]);
+  const [seedLen, setSeedLen] = useState<12 | 24>(12);
   const [importInput, setImportInput] = useState('');
   /* Seed auto-mask — parity with web. After 30 s on the create-show
      screen the phrase blurs out and the user has to tap to re-reveal. */
@@ -2723,8 +2727,17 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   const [showPwd, setShowPwd]     = useState(false);
 
   const startCreate = () => {
-    setSeed(generateSeedPhrase(12));
+    setSeed(generateSeedPhrase(seedLen));
     setStep('create-warn');
+  };
+
+  // 12/24-word choice on the recovery-phrase screen — regenerate a fresh
+  // phrase at the new length (parity with the extension's seedlen toggle).
+  const chooseSeedLen = (n: 12 | 24) => {
+    if (n === seedLen) return;
+    setSeedLen(n);
+    setSeed(generateSeedPhrase(n));
+    setSeedHidden(false);
   };
 
   const goToConfirm = () => {
@@ -2848,7 +2861,12 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
         {step === 'create-show' && (
           <>
             <h1 className="onboard-title">Your recovery phrase</h1>
-            <p className="onboard-sub">Write these 12 words down in order. You'll confirm them next.</p>
+            <p className="onboard-sub">Write these {seed.length} words down in order. You'll confirm them next.</p>
+            <div className="seedlen-toggle">
+              {([12, 24] as const).map(n => (
+                <button key={n} type="button" className={`seedlen-opt ${seedLen === n ? 'active' : ''}`} onClick={() => chooseSeedLen(n)}>{n} words</button>
+              ))}
+            </div>
             <div className="seed-grid" style={{ position: 'relative' }}>
               {seed.map((w, i) => (
                 <div key={i} className="seed-word">
