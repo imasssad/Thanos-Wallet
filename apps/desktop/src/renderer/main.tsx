@@ -413,8 +413,8 @@ function AIAssistant() {
       <div className="ai-body">
         <div className="ai-icon"><Bot size={17}/></div>
         <div>
-          <div className="ai-title">Optimize your portfolio balance ↗</div>
-          <div className="ai-sub">Powered by Quantt Agents — open to balance your portfolio across chains.</div>
+          <div className="ai-title">Quantt Agents ↗</div>
+          <div className="ai-sub">Your AI assistant — optimize your portfolio balance across chains.</div>
         </div>
       </div>
     </div>
@@ -820,7 +820,7 @@ function MakaluWelcomeModal() {
   return (
     <div className="modal-backdrop" onClick={() => setVisible(false)}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 28 }}>
-        <img src="./images/icon128.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
+        <img src="./images/Thanos_Logo.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
         <h2 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 6px' }}>
           Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM networks are built in too.
@@ -2861,7 +2861,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
     <div className="onboard-wrap">
       <div className="onboard-card">
         <div className="onboard-logo">
-          <img src="./images/icon128.png" alt="Thanos"/>
+          <img src="./images/Thanos_Logo.png" alt="Thanos"/>
         </div>
 
         {/* WELCOME ─────────────────────────────────────────── */}
@@ -3223,7 +3223,7 @@ function DiscoverView() {
     <div className="view-wrap" style={{ maxWidth: 760, margin: '0 auto', padding: '24px' }}>
       <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 4px' }}>Discover</h1>
       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-        Apps from the Lithosphere ecosystem — open in your browser.
+        Apps from the Lithosphere ecosystem — open in the built-in browser.
       </div>
 
       <div style={{ position: 'relative', marginBottom: 16 }}>
@@ -3510,9 +3510,9 @@ function App() {
       <nav className="topnav">
         <div className="topnav-logo">
           <div className="logo-mark">
-            <img src="./images/icon128.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
+            <img src="./images/Thanos_Logo.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
           </div>
-          <span style={{ marginLeft: 8, fontSize: 18, fontWeight: 800, letterSpacing: '0.04em', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>THANOS</span>
+          <span style={{ marginLeft: 8, fontSize: 18, fontWeight: 800, letterSpacing: '-0.03em', whiteSpace: 'nowrap', background: 'linear-gradient(90deg, #3b7af7 0%, #06b6d4 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Thanos</span>
         </div>
 
         <div className="nav-tabs">
