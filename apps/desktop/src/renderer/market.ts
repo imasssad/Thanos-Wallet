@@ -6,23 +6,18 @@
  * the MARKET mock.
  */
 import { useEffect, useState } from 'react';
+import { getMakaluLep100Tokens, fetchEcosystemPrices } from '@thanos/sdk-core';
 import { coinColor } from './portfolio';
 
-const MARKETS_URL =
-  'https://api.coingecko.com/api/v3/coins/markets' +
-  '?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=false' +
-  '&price_change_percentage=24h,7d';
-
-interface CGMarket {
-  id:            string;
-  symbol:        string;
-  name:          string;
-  current_price: number | null;
-  market_cap:    number | null;
-  total_volume:  number | null;
-  price_change_percentage_24h_in_currency?: number | null;
-  price_change_percentage_7d_in_currency?:  number | null;
-}
+/* The Market lists ONLY the Lithosphere ecosystem (per Esha) — LITHO + the
+   Makalu LEP100 tokens — not CoinGecko's global top-50. These tokens aren't on
+   global market feeds, so we show the live price from the shared ecosystem
+   price source; 24h/7d change + market cap + volume aren't available and read
+   as — until an ecosystem market feed lands. */
+const ECOSYSTEM_MARKET: { sym: string; name: string }[] = [
+  { sym: 'LITHO', name: 'Lithosphere' },
+  ...getMakaluLep100Tokens().map(t => ({ sym: t.symbol, name: t.name })),
+];
 
 export interface MarketRow {
   id: string; sym: string; name: string;
@@ -54,7 +49,7 @@ export function formatCompact(n: number): string {
   return '$' + n.toFixed(0);
 }
 
-/** Fetch the top-50 coins by market cap. Refetch via the returned reload(). */
+/** Live prices for the Lithosphere ecosystem tokens. Refetch via reload(). */
 export function useMarket(): MarketState {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Omit<MarketState, 'reload'>>({
@@ -65,32 +60,20 @@ export function useMarket(): MarketState {
     let cancelled = false;
     setState((s) => ({ ...s, loading: true, offline: false }));
     (async () => {
-      const ctrl  = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10_000);
       try {
-        const res = await fetch(MARKETS_URL, {
-          signal: ctrl.signal,
-          headers: { accept: 'application/json' },
-        });
-        if (!res.ok) throw new Error(`coingecko ${res.status}`);
-        const data = (await res.json()) as CGMarket[];
+        const prices = await fetchEcosystemPrices();
         if (cancelled) return;
-        const rows: MarketRow[] = data.map((m) => ({
-          id:    m.id,
-          sym:   (m.symbol || '').toUpperCase(),
-          name:  m.name,
-          price: m.current_price ?? 0,
-          chg24: m.price_change_percentage_24h_in_currency ?? 0,
-          chg7:  m.price_change_percentage_7d_in_currency ?? 0,
-          cap:   m.market_cap ?? 0,
-          vol:   m.total_volume ?? 0,
-          color: coinColor((m.symbol || '').toUpperCase()),
+        const rows: MarketRow[] = ECOSYSTEM_MARKET.map((t) => ({
+          id:    t.sym.toLowerCase(),
+          sym:   t.sym,
+          name:  t.name,
+          price: prices[t.sym] ?? 0,
+          chg24: 0, chg7: 0, cap: 0, vol: 0,   // no global market feed for ecosystem tokens yet
+          color: coinColor(t.sym),
         }));
         setState({ rows, loading: false, offline: false });
       } catch {
         if (!cancelled) setState({ rows: [], loading: false, offline: true });
-      } finally {
-        clearTimeout(timer);
       }
     })();
     return () => { cancelled = true; };

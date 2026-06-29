@@ -1,6 +1,6 @@
 // Use require() directly — Electron's module interceptor matches the literal "electron" string
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
-const { app, BrowserWindow, ipcMain, nativeTheme, shell, session } = require('electron') as typeof import('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, shell, session, clipboard } = require('electron') as typeof import('electron');
 
 /* USB / HID vendor IDs we let the renderer enumerate. Hardware-wallet
    manufacturers only — never a blanket "allow all devices" handler. */
@@ -103,6 +103,13 @@ app.whenReady().then(() => {
       if (u.protocol === 'https:' || u.protocol === 'http:') return shell.openExternal(url);
     } catch { /* malformed URL — ignore */ }
     return Promise.resolve();
+  });
+
+  // Clipboard via the main process — navigator.clipboard is blocked in the
+  // packaged file:// renderer, so every Copy button needs this bridge.
+  ipcMain.handle('clipboard:write', (_e, text: string) => {
+    clipboard.writeText(String(text ?? ''));
+    return { ok: true };
   });
 
   /* Main-process signer — keys never leave this process once `set-seed`

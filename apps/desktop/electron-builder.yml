@@ -54,8 +54,9 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
-  installerIcon: build/icons/icon.ico
-  uninstallerIcon: build/icons/icon.ico
+  # installerIcon/uninstallerIcon intentionally omitted — electron-builder
+  # derives them from `icon` (the blue brand square) so the installer matches
+  # the app icon. A stale icon.ico here previously showed the old white logo.
 
 # ─── Linux ───────────────────────────────────────────────────────────────────
 linux:

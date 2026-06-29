@@ -70,6 +70,7 @@ declare global {
       vaultSet(key: string, value: string): Promise<void>;
       vaultRemove(key: string): Promise<void>;
       openExternal?:      (url: string) => Promise<unknown>;
+      clipboardWrite?:    (text: string) => Promise<{ ok: boolean }>;
       onUpdateEvent?:     (cb: (ev: UpdaterEvent) => void) => () => void;
       checkForUpdate?:    () => Promise<unknown>;
       installAndRestart?: () => Promise<unknown>;
@@ -392,15 +393,28 @@ function PortfolioList() {
   );
 }
 
+/* Quantt Agents — the AI assistant the card routes to (opens in the in-app
+   browser). TODO(team): set the real Quantt Agents product URL; defaults to the
+   ecosystem hub so the card never opens an unverified destination in the wallet
+   browser until it's confirmed. */
+const QUANTT_AGENTS_URL = 'https://ecosystem.litho.ai';
+
 function AIAssistant() {
+  const open = useOpenDapp();
   return (
-    <div className="card">
+    <div
+      className="card"
+      role="button"
+      tabIndex={0}
+      onClick={() => open(QUANTT_AGENTS_URL, 'Quantt Agents')}
+      style={{ cursor: 'pointer' }}
+    >
       <div className="card-title" style={{ marginBottom: 10 }}>AI Assistant</div>
       <div className="ai-body">
         <div className="ai-icon"><Bot size={17}/></div>
         <div>
-          <div className="ai-title">Optimize your portfolio balance</div>
-          <div className="ai-sub">Your portfolio may benefit from better asset diversification across chains.</div>
+          <div className="ai-title">Optimize your portfolio balance ↗</div>
+          <div className="ai-sub">Powered by Quantt Agents — open to balance your portfolio across chains.</div>
         </div>
       </div>
     </div>
@@ -543,7 +557,7 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
   const { coins, activity, totalUsd, loading } = usePortfolioCtx();
   const balance = loading ? '···' : formatUsd(totalUsd);
   const liveLine = liveEth !== null
-    ? `Live ETH: ${parseFloat(liveEth).toFixed(6)} ETH`
+    ? `Live LITHO: ${parseFloat(liveEth).toFixed(3)} LITHO`
     : null;
   const holdings: Holding[] = useMemo(
     () => coins.filter(c => c.balance > 0 && c.usdValue > 0)
@@ -750,7 +764,7 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
   };
   const copyPhrase = async () => {
     if (!words) return;
-    try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* blocked */ }
+    await copyText(words.join(' '));
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
   return (
@@ -901,9 +915,9 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
   const [copied, setCopied] = useState(false);
   const copyAddr = () => {
     if (!coin?.tokenAddress) return;
-    void navigator.clipboard.writeText(coin.tokenAddress).then(() => {
+    void copyText(coin.tokenAddress).then(() => {
       setCopied(true); setTimeout(() => setCopied(false), 1600);
-    }).catch(() => {});
+    });
   };
 
   const rows = (activity ?? []).filter(t => t.sym.toLowerCase() === sym.toLowerCase()).slice(0, 8);
@@ -1610,7 +1624,7 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
 
   const copy = () => {
     if (!addr) return;
-    navigator.clipboard.writeText(addr).catch(() => {});
+    void copyText(addr);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -3098,6 +3112,15 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
  *  bridge (Electron blocks renderer window.open by default). */
 function openExternal(url: string) {
   window.thanosDesktop?.openExternal?.(url);
+}
+
+/** Copy text to the clipboard. Prefers the Electron clipboard bridge — the
+ *  packaged file:// renderer is a non-secure context, so navigator.clipboard
+ *  is blocked and every Copy button silently failed. Falls back to the Web API
+ *  in dev / if the bridge is missing. */
+async function copyText(text: string): Promise<void> {
+  try { if (window.thanosDesktop?.clipboardWrite) { await window.thanosDesktop.clipboardWrite(text); return; } } catch { /* fall through */ }
+  try { await navigator.clipboard.writeText(text); } catch { /* both unavailable */ }
 }
 
 /** Handler-injection context for opening a dApp inside the in-app

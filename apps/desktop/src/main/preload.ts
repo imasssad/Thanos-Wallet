@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
   /** Open an http(s) URL in the user's default browser. */
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
 
+  /** Write text to the OS clipboard via Electron's clipboard module.
+   *  navigator.clipboard is blocked in the packaged file:// renderer
+   *  (non-secure context), so every Copy button silently failed. */
+  clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text) as Promise<{ ok: boolean }>,
+
   /* ─── In-app dApp browser ────────────────────────────────────────────
      Mounts a sandboxed WebContentsView over the renderer area. The
      renderer draws the chrome (back / forward / reload / URL / close)
