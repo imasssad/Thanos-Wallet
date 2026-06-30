@@ -28,7 +28,11 @@ const createWindow = () => {
     backgroundColor: '#080809',
     webPreferences: {
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      // 1.1 UI scale-up applied at the Chromium level (NOT CSS `zoom`, which
+      // desynced click hit-testing so buttons across the app stopped
+      // registering). setZoomFactor below re-applies it on every load.
+      zoomFactor: 1.1,
     }
   });
 
@@ -77,6 +81,11 @@ const createWindow = () => {
 
   if (process.env.NODE_ENV === 'development') win.loadURL('http://localhost:5173');
   else win.loadFile(path.join(__dirname, 'index.html'));
+
+  // Keep the 1.1 UI scale-up at the Chromium level (correct click hit-testing,
+  // unlike CSS `zoom`). Re-applied on every load so HMR / navigation can't
+  // reset it to 1.0.
+  win.webContents.on('did-finish-load', () => { win.webContents.setZoomFactor(1.1); });
 
   // electron-updater starts polling once the renderer is mounted so the
   // banner UI is ready to receive `updater:event` IPC messages.

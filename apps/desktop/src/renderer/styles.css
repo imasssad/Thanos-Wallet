@@ -69,10 +69,11 @@ body {
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   user-select: none;
-  /* Global UI zoom. 1.5 overflowed the 1280px window — a horizontal scrollbar
-     and a cut-off top nav. 1.1 keeps text/icons comfortably sized AND fits the
-     default window so the layout reads as responsive. */
-  zoom: 1.1;
+  /* The 1.1 UI scale-up is applied at the Chromium level via
+     webContents.setZoomFactor (see src/main/index.ts) — NOT CSS `zoom`. CSS
+     `zoom` desynced the click hit-box from the painted element (offset grows
+     with distance from the top-left), so buttons across the app stopped
+     registering clicks. setZoomFactor scales hit-testing correctly. */
 }
 
 input, textarea { user-select: text; font-family: inherit; }
