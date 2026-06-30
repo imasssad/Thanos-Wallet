@@ -2559,6 +2559,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.03em;
+  white-space: nowrap;          /* "Thanos Wallet" must never wrap to a 2nd line */
   background: linear-gradient(90deg, #3b7af7 0%, #06b6d4 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -2566,8 +2567,11 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   color: #3b7af7; /* fallback */
 }
 @media (max-width: 480px) {
-  .lp-nav-logo img       { width: 36px; height: 36px; }
-  .lp-nav-logo-text      { font-size: 18px; }
+  .lp-nav-inner          { padding: 14px 16px; gap: 10px; }
+  .lp-nav-logo           { gap: 8px; }
+  .lp-nav-logo img       { width: 32px; height: 32px; }
+  .lp-nav-logo-text      { font-size: 16px; }
+  .lp-nav-cta            { padding: 8px 13px; font-size: 12px; }
 }
 .lp-nav-right {
   display: flex; align-items: center; gap: 32px;
@@ -2586,6 +2590,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border-radius: 999px;
   font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
   text-decoration: none;
+  white-space: nowrap;          /* keep "Open wallet" on one line */
+  flex-shrink: 0;
   transition: transform 0.15s, opacity 0.15s;
 }
 .lp-nav-cta:hover { transform: translateY(-1px); opacity: 0.9; }
