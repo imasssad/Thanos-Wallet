@@ -62,7 +62,7 @@ function Nav() {
       <div className="lp-nav-inner">
         <Link href="/" className="lp-nav-logo">
           <img src="/images/Thanos_Logo.png" alt="Thanos" width={44} height={44}/>
-          <span className="lp-nav-logo-text">Thanos</span>
+          <span className="lp-nav-logo-text">Thanos Wallet</span>
         </Link>
         <div className="lp-nav-right">
           <a href="#dashboard" className="lp-nav-link">Product</a>

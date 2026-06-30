@@ -3792,7 +3792,7 @@ function OnboardingScreen({
         <AnimatedSwitch keyName={step} style={{ width: '100%' }}>
 
         {step === 'welcome' && <>
-          <Text style={styles.onboardTitle}>Welcome to Thanos</Text>
+          <Text style={styles.onboardTitle}>Welcome to Thanos Wallet</Text>
           <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · EVM.</Text>
           <Btn style={styles.btnPrimary} onPress={() => setStep('create-length')}>
             <Text style={styles.btnPrimaryText}>Create new wallet</Text>
@@ -4538,7 +4538,7 @@ function MakaluWelcomeModal() {
       <Pressable onPress={() => setVisible(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 360, backgroundColor: C.bgCard, borderRadius: 18, padding: 24, alignItems: 'center' }}>
           <Image source={require('./assets/images/Thanos_Logo_Transparent.png')} style={{ width: 60, height: 60, marginBottom: 14, resizeMode: 'contain' }}/>
-          <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Welcome to Thanos</Text>
+          <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Welcome to Thanos Wallet</Text>
           <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 6 }}>
             Your wallet is on the Lithosphere Makalu network (chain 700777) — the Web4 home chain. The native coin is LITHO; Bitcoin, Solana, Cosmos and EVM are built in too.
           </Text>

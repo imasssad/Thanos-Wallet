@@ -3512,7 +3512,10 @@ function App() {
           <div className="logo-mark">
             <img src="./images/Thanos_Logo.png" alt="Thanos" style={{ width: 34, height: 34, objectFit: 'contain', display: 'block' }}/>
           </div>
-          <span style={{ marginLeft: 8, fontSize: 18, fontWeight: 800, letterSpacing: '-0.03em', whiteSpace: 'nowrap', background: 'linear-gradient(90deg, #3b7af7 0%, #06b6d4 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Thanos</span>
+          <span style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.03em', background: 'linear-gradient(90deg, #3b7af7 0%, #06b6d4 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Thanos</span>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-secondary)' }}>Wallet</span>
+          </span>
         </div>
 
         <div className="nav-tabs">

@@ -327,7 +327,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
         </div>
 
         {step === 'welcome' && <>
-          <h1 className="onb-title">Welcome to Thanos</h1>
+          <h1 className="onb-title">Welcome to Thanos Wallet</h1>
           <p className="onb-sub">Multi-chain Web4 wallet</p>
           <div className="seedlen-toggle" role="group" aria-label="Recovery phrase length">
             {([12, 24] as const).map((n) => (
@@ -1094,7 +1094,7 @@ function MakaluWelcomeModal() {
     <div className="modal-back" onClick={() => setVisible(false)}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: 22 }}>
         <img src="/icons/icon128.png" alt="Thanos" width={56} height={56} style={{ display: 'block', margin: '0 auto 14px', objectFit: 'contain' }}/>
-        <h2 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
+        <h2 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos Wallet</h2>
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 6px' }}>
           Your wallet is on the <strong>Lithosphere Makalu</strong> network (chain&nbsp;700777) — the Web4 home chain. The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM are built in too.
         </p>
