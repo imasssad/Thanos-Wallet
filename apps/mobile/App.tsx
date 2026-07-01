@@ -5221,20 +5221,34 @@ function App() {
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0 || isPrivateKeyWallet(walletSeed)) return;
     let cancel = false;
-    void discoverFundedAccountCount(walletSeed)
-      .then((n) => {
-        if (cancel) return;
-        if (n > getAccountCount()) { setAccountCount(n); setAccountCountState(n); }
-      })
-      .catch(() => { /* best-effort */ });
-    return () => { cancel = true; };
+    // Deferred: discovery's BIP39 seed derivation is synchronous, so run it AFTER
+    // the unlock transition + first paint settle. The home shows its cached-first
+    // data instantly instead of the screen freezing until discovery finishes.
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancel) return;
+      void discoverFundedAccountCount(walletSeed)
+        .then((n) => {
+          if (cancel) return;
+          if (n > getAccountCount()) { setAccountCount(n); setAccountCountState(n); }
+        })
+        .catch(() => { /* best-effort */ });
+    });
+    return () => { cancel = true; task.cancel(); };
   }, [unlocked, walletSeed]);
 
-  // Per-account EVM addresses for the switcher (identify which account is which).
+  // Derive the mnemonic seed once, then reuse its child addresses for both the
+  // active wallet and the account switcher. Re-deriving the same BIP-39 seed in
+  // separate useMemos blocked the Hermes JS thread during the first unlocked
+  // render on slower devices.
   const accountAddresses = useMemo(
     () => (walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? deriveAccountAddresses(walletSeed, accountCount) : []),
     [walletSeed, accountCount],
   );
+  const walletAddr = useMemo(() => {
+    if (walletSeed.length === 0) return '0x0000000000000000000000000000000000000000';
+    if (isPrivateKeyWallet(walletSeed)) return deriveEvmAddress(walletSeed);
+    return accountAddresses[activeIdx] ?? accountAddresses[0] ?? '0x0000000000000000000000000000000000000000';
+  }, [walletSeed, accountAddresses, activeIdx]);
 
   const switchAccount = (idx: number) => {
     if (idx < 0 || idx >= accountCount) return;
@@ -5294,9 +5308,9 @@ function App() {
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;
     isNotificationsEnabled().then(on => {
-      if (on) registerPush(deriveEvmAddress(walletSeed, activeIdx)).catch(() => {});
+      if (on) registerPush(walletAddr).catch(() => {});
     });
-  }, [unlocked, walletSeed, activeIdx]);
+  }, [unlocked, walletSeed, walletAddr]);
 
   // Load the custom-RPC override (Settings) into the signer at boot.
   useEffect(() => {
@@ -5332,16 +5346,6 @@ function App() {
     // (in OnboardingScreen) wipes it.
   };
 
-  // deriveEvmAddress runs a full BIP-39/BIP-32 HD derivation (synchronous
-  // PBKDF2). Memoized on seed + account so it doesn't re-run on every render
-  // (e.g. every tab tap). MUST be declared BEFORE the early returns below — it's
-  // a hook, so calling it only in the unlocked branch changed the hook count
-  // between renders ("Rendered more hooks than during the previous render"
-  // crash on the boot/unlock transition).
-  const walletAddr = useMemo(
-    () => (walletSeed.length > 0 ? deriveEvmAddress(walletSeed, activeIdx) : '0x0000…0000'),
-    [walletSeed, activeIdx],
-  );
   const shortAddr = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
 
   // Wait for storage check before deciding which screen to show

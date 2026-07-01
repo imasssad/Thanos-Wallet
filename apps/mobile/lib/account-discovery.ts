@@ -20,17 +20,35 @@ let _kam: JsonRpcProvider | null = null;
 const makalu = () => (_mak ??= new JsonRpcProvider(MAKALU_RPC, 700777, { staticNetwork: true }));
 const kamet  = () => (_kam ??= new JsonRpcProvider(KAMET_RPC, 900523, { staticNetwork: true }));
 
-/** EVM (0x) address for a given HD account index. */
-export function deriveEvmAddressAt(seed: string[], idx: number): string {
-  return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${idx}`).address;
+/**
+ * m/44'/60'/0'/0 parent node. The mnemonic→seed step is PBKDF2-HMAC-SHA512 with
+ * 2048 rounds — expensive in pure JS on Hermes. Deriving it ONCE here and then
+ * deriveChild(idx) per account (cheap EC math) is the fix: deriveEvmAddressAt()
+ * used to call HDNodeWallet.fromPhrase() — which re-runs the full 2048-round seed
+ * derivation — on EVERY call. Scanning all MAX_ACCOUNTS indices that way ran the
+ * seed derivation MAX_ACCOUNTS times back-to-back and froze the JS thread for
+ * minutes right after unlock (the "blank home for 3-4 min" report).
+ */
+function accountParentNode(seed: string[]): HDNodeWallet {
+  // fromPhrase computes the seed ONCE at the parent path m/44'/60'/0'/0; each
+  // deriveChild(idx) below is then cheap EC math. NOTE: fromMnemonic(mnemonic)
+  // WITHOUT a path does NOT return the master — it defaults to m/44'/60'/0'/0/0,
+  // so deriving the parent that way yields wrong addresses. Keep the explicit path.
+  return HDNodeWallet.fromPhrase(seed.join(' '), undefined, "m/44'/60'/0'/0");
 }
 
-/** Derive every account address from 0..count-1 (for the switcher / labels). */
+/** EVM (0x) address for a given HD account index. */
+export function deriveEvmAddressAt(seed: string[], idx: number): string {
+  return accountParentNode(seed).deriveChild(idx).address;
+}
+
+/** Derive every account address 0..count-1 — seed derived ONCE, children cheap. */
 export function deriveAccountAddresses(seed: string[], count: number): string[] {
   if (!seed || seed.length === 0) return [];
+  const parent = accountParentNode(seed);
   const out: string[] = [];
   for (let i = 0; i < count; i++) {
-    try { out.push(deriveEvmAddressAt(seed, i)); } catch { out.push(''); }
+    try { out.push(parent.deriveChild(i).address); } catch { out.push(''); }
   }
   return out;
 }
@@ -43,9 +61,13 @@ export function deriveAccountAddresses(seed: string[], count: number): string[] 
  */
 export async function discoverFundedAccountCount(seed: string[]): Promise<number> {
   if (!seed || seed.length === 0) return 1;
+  // Derive the seed ONCE, then one cheap child per index — was MAX_ACCOUNTS full
+  // BIP39 seed derivations back-to-back, the JS-thread freeze right after unlock.
+  const parent = accountParentNode(seed);
   const results = await Promise.allSettled(
     Array.from({ length: MAX_ACCOUNTS }, (_, i) => i).map(async (i) => {
-      const addr = deriveEvmAddressAt(seed, i);
+      let addr = '';
+      try { addr = parent.deriveChild(i).address; } catch { return { i, funded: false }; }
       const [m, k] = await Promise.allSettled([makalu().getBalance(addr), kamet().getBalance(addr)]);
       const v = (r: PromiseSettledResult<bigint>) => (r.status === 'fulfilled' ? r.value : 0n);
       return { i, funded: v(m) > 0n || v(k) > 0n };
