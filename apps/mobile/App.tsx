@@ -5199,6 +5199,7 @@ function App() {
   // store is AsyncStorage so we hydrate once on app start.
   const [activeIdx, setActiveIdx]            = useState(0);
   const [accountCount, setAccountCountState] = useState(1);
+  const [acctSheetOpen, setAcctSheetOpen]    = useState(false);
   useEffect(() => {
     void loadAccountsFromStorage().then(() => {
       setActiveIdx(getActiveAccountIndex());
@@ -5406,6 +5407,83 @@ function App() {
             {/* In-app browser overlay (Discover dApps / typed links) */}
             {browserUrl && <InAppBrowser url={browserUrl} onClose={() => setBrowserUrl(null)} seed={walletSeed}/>}
 
+            {/* Account switcher — dark-themed bottom sheet (replaces the OS
+                white Alert that clashed with the app theme). */}
+            <Modal
+              visible={acctSheetOpen}
+              transparent
+              animationType="slide"
+              statusBarTranslucent
+              onRequestClose={() => setAcctSheetOpen(false)}
+            >
+              <Pressable
+                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}
+                onPress={() => setAcctSheetOpen(false)}
+              >
+                {/* Inner press swallows taps so tapping the sheet doesn't dismiss it. */}
+                <Pressable
+                  onPress={() => {}}
+                  style={{
+                    backgroundColor: colors.bgSurface,
+                    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+                    borderTopWidth: 1, borderColor: colors.borderSubtle,
+                    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 34,
+                  }}
+                >
+                  <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderDefault, alignSelf: 'center', marginBottom: 16 }}/>
+                  <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: '800', letterSpacing: -0.4 }}>Account</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 2, marginBottom: 16 }}>
+                    {`Active · Account ${(isPrivateKeyWallet(walletSeed) ? 0 : activeIdx) + 1}`}
+                  </Text>
+
+                  {Array.from({ length: isPrivateKeyWallet(walletSeed) ? 1 : accountCount }, (_, i) => {
+                    const a = accountAddresses[i];
+                    const tag = a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
+                    const active = i === (isPrivateKeyWallet(walletSeed) ? 0 : activeIdx);
+                    return (
+                      <Pressable
+                        key={i}
+                        onPress={() => { switchAccount(i); setAcctSheetOpen(false); }}
+                        style={({ pressed }) => [{
+                          flexDirection: 'row', alignItems: 'center', gap: 12,
+                          padding: 14, borderRadius: 14, marginBottom: 8,
+                          backgroundColor: active ? colors.blueDim : colors.bgElevated,
+                          borderWidth: 1, borderColor: active ? colors.blue : colors.borderSubtle,
+                        }, pressed && { opacity: 0.85 }]}
+                      >
+                        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: active ? colors.blue : colors.bgCard, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: active ? '#fff' : colors.textSecondary, fontSize: 15, fontWeight: '800' }}>{i + 1}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '700' }}>{`Account ${i + 1}`}</Text>
+                          {tag ? <Text style={{ color: colors.textMuted, fontSize: 12, fontFamily: MONO, marginTop: 1 }}>{tag}</Text> : null}
+                        </View>
+                        {active ? <Check size={20} color={colors.blue} strokeWidth={2.8}/> : null}
+                      </Pressable>
+                    );
+                  })}
+
+                  {accountCount < MAX_ACCOUNTS && !isPrivateKeyWallet(walletSeed) && (
+                    <Pressable
+                      onPress={() => { addAccount(); setAcctSheetOpen(false); }}
+                      style={({ pressed }) => [{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        paddingVertical: 14, borderRadius: 14, marginTop: 4,
+                        backgroundColor: colors.blueDim, borderWidth: 1, borderColor: 'rgba(59,122,247,0.28)',
+                      }, pressed && { opacity: 0.85 }]}
+                    >
+                      <Plus size={18} color={colors.blue} strokeWidth={2.6}/>
+                      <Text style={{ color: colors.blue, fontSize: 14, fontWeight: '700' }}>Add account</Text>
+                    </Pressable>
+                  )}
+
+                  <Pressable onPress={() => setAcctSheetOpen(false)} style={{ paddingVertical: 14, marginTop: 6 }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '600', textAlign: 'center' }}>Cancel</Text>
+                  </Pressable>
+                </Pressable>
+              </Pressable>
+            </Modal>
+
             {/* Top header */}
             <View style={styles.topbar}>
               <Pressable
@@ -5415,29 +5493,7 @@ function App() {
                    the previous tap-to-lock behaviour. */
                 onPress={() => {
                   if (walletSeed.length === 0) return;
-                  // PK wallets are single-account — show one entry regardless of
-                  // any stale persisted count from a previous mnemonic wallet.
-                  const pkWallet = isPrivateKeyWallet(walletSeed);
-                  const shownCount = pkWallet ? 1 : accountCount;
-                  const shownActive = pkWallet ? 0 : activeIdx;
-                  Alert.alert(
-                    'Account',
-                    `Active: Account ${shownActive + 1}`,
-                    [
-                      ...Array.from({ length: shownCount }, (_, i) => {
-                        const a = accountAddresses[i];
-                        const tag = a ? `  ${a.slice(0, 6)}…${a.slice(-4)}` : '';
-                        return {
-                          text: `${i === shownActive ? '✓ ' : ''}Account ${i + 1}${tag}`,
-                          onPress: () => switchAccount(i),
-                        };
-                      }),
-                      // No "Add account" for private-key wallets — a raw key
-                      // is a single account, not an HD tree.
-                      ...(accountCount < MAX_ACCOUNTS && !isPrivateKeyWallet(walletSeed) ? [{ text: '+ Add account', onPress: addAccount }] : []),
-                      { text: 'Cancel', style: 'cancel' as const },
-                    ],
-                  );
+                  setAcctSheetOpen(true);   // dark-themed bottom sheet (below)
                 }}
                 onLongPress={() => Alert.alert(
                   'Lock wallet?',
