@@ -134,10 +134,13 @@ export interface ThanosApiClientOptions {
   storage:  StorageAdapter;
   /** Optional fetch override (testing / non-browser env) */
   fetch?:   typeof fetch;
+  /** Maximum time for one API request before it is aborted. */
+  requestTimeoutMs?: number;
 }
 
 const ACCESS_KEY  = 'access';
 const REFRESH_KEY = 'refresh';
+const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
 
 /* ─── Client ───────────────────────────────────────────────────────── */
 export class ThanosApiClient {
@@ -145,6 +148,7 @@ export class ThanosApiClient {
   private platform: Platform;
   private storage:  StorageAdapter;
   private _fetch:   typeof fetch;
+  private requestTimeoutMs: number;
 
   /** Promise of an in-flight refresh, deduped across concurrent 401s. */
   private refreshing: Promise<string | null> | null = null;
@@ -154,6 +158,7 @@ export class ThanosApiClient {
     this.platform = opts.platform;
     this.storage  = opts.storage;
     this._fetch   = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /* Public auth surface ------------------------------------------------ */
@@ -231,7 +236,7 @@ export class ThanosApiClient {
       if (access) headers['authorization'] = `Bearer ${access}`;
     }
 
-    const res = await this._fetch(this.baseUrl + path, {
+    const res = await this.fetchWithTimeout(this.baseUrl + path, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -242,7 +247,7 @@ export class ThanosApiClient {
       const newAccess = await this.tryRefresh();
       if (newAccess) {
         headers['authorization'] = `Bearer ${newAccess}`;
-        const retry = await this._fetch(this.baseUrl + path, {
+        const retry = await this.fetchWithTimeout(this.baseUrl + path, {
           method,
           headers,
           body: body === undefined ? undefined : JSON.stringify(body),
@@ -262,6 +267,21 @@ export class ThanosApiClient {
     return json as T;
   }
 
+  private async fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    try {
+      return await this._fetch(input, { ...init, signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error('Server took too long to respond. Check your connection and try again.');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** Deduped refresh — concurrent callers wait for one in-flight refresh. */
   private async tryRefresh(): Promise<string | null> {
     if (this.refreshing) return this.refreshing;
@@ -271,7 +291,7 @@ export class ThanosApiClient {
         const refresh = await this.storage.get(REFRESH_KEY);
         if (!refresh) return null;
 
-        const res = await this._fetch(this.baseUrl + '/auth/refresh', {
+        const res = await this.fetchWithTimeout(this.baseUrl + '/auth/refresh', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-platform': this.platform },
           body: JSON.stringify({ refreshToken: refresh }),
