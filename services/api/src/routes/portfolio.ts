@@ -32,6 +32,7 @@
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { log } from '../lib/log.js';
+import { breaker } from '../lib/circuit-breaker.js';
 
 export const portfolioRouter = Router();
 
@@ -87,6 +88,15 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 5_000):
   } finally { clearTimeout(t); }
 }
 
+/** fetchJson guarded by a per-upstream circuit breaker (T3). Once `dep` is
+ *  failing/timing out, calls fast-fail for a cooldown window instead of every
+ *  request paying the timeout — the caller's existing catch serves the SAME
+ *  stale/degraded fallback, just immediately. Also caps in-flight concurrency
+ *  per dep. Recovers automatically via a half-open trial after the cooldown. */
+function guardedFetchJson<T>(dep: string, url: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
+  return breaker(dep).run(() => fetchJson<T>(url, init, timeoutMs));
+}
+
 async function getPrices(symbols: string[]): Promise<Record<string, number>> {
   if (priceCache && Date.now() - priceCache.at < PRICE_TTL_MS) return priceCache.data;
   // Map symbols → coingecko ids. Same canonical set the wallet uses on-chain.
@@ -94,7 +104,7 @@ async function getPrices(symbols: string[]): Promise<Record<string, number>> {
   if (ids.length === 0) return {};
   try {
     const url = `${COINGECKO}/simple/price?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd`;
-    const json = await fetchJson<Record<string, { usd?: number }>>(url, undefined, 4_000);
+    const json = await guardedFetchJson<Record<string, { usd?: number }>>('coingecko', url, undefined, 4_000);
     const out: Record<string, number> = {};
     for (const sym of symbols) {
       const id = COINGECKO_IDS[sym];
@@ -129,7 +139,8 @@ interface IndexerHoldingsResp {
 
 async function fetchLithoPositions(address: string): Promise<Position[]> {
   try {
-    const json = await fetchJson<IndexerHoldingsResp>(
+    const json = await guardedFetchJson<IndexerHoldingsResp>(
+      'indexer',
       `${INDEXER_URL}/lep100/holdings/${encodeURIComponent(address)}`,
     );
     const items = json.items ?? [];
@@ -155,10 +166,10 @@ async function fetchLithoPositions(address: string): Promise<Position[]> {
 
 async function fetchBtcPosition(address: string): Promise<Position | null> {
   try {
-    const data = await fetchJson<{
+    const data = await guardedFetchJson<{
       chain_stats: { funded_txo_sum: number; spent_txo_sum: number };
       mempool_stats: { funded_txo_sum: number; spent_txo_sum: number };
-    }>(`${BTC_API}/address/${encodeURIComponent(address)}`);
+    }>('btc-mempool', `${BTC_API}/address/${encodeURIComponent(address)}`);
     const sats = (data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum)
                + (data.mempool_stats.funded_txo_sum - data.mempool_stats.spent_txo_sum);
     const btc = sats / 1e8;
@@ -175,7 +186,7 @@ async function fetchBtcPosition(address: string): Promise<Position | null> {
 
 async function fetchSolPosition(address: string): Promise<Position | null> {
   try {
-    const data = await fetchJson<{ result: { value: number } }>(SOLANA_RPC, {
+    const data = await guardedFetchJson<{ result: { value: number } }>('solana-rpc', SOLANA_RPC, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getBalance', params: [address] }),
     });
@@ -191,7 +202,8 @@ async function fetchSolPosition(address: string): Promise<Position | null> {
 
 async function fetchCosmosPosition(address: string): Promise<Position | null> {
   try {
-    const data = await fetchJson<{ balances?: Array<{ denom: string; amount: string }> }>(
+    const data = await guardedFetchJson<{ balances?: Array<{ denom: string; amount: string }> }>(
+      'cosmos-rest',
       `${COSMOS_REST}/cosmos/bank/v1beta1/balances/${encodeURIComponent(address)}`,
       { headers: { accept: 'application/json' } },
     );
