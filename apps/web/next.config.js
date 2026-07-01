@@ -81,8 +81,21 @@ const nextConfig = {
   eslint:     { ignoreDuringBuilds: true },
 
   async headers() {
+    // T5 — cache the public, non-personalized marketing/legal/docs pages.
+    // These routes are statically pre-rendered and identical for every visitor,
+    // so a shared cache (nginx proxy_cache / any CDN) can serve the rendered
+    // HTML directly: s-maxage caches it 1h and serves it stale for a day while
+    // it revalidates; the browser gets a short 60s max-age. Deliberately NOT
+    // applied to /app/* (per-user wallet), /api, /rpc or /download (dynamic).
+    const CACHE_PUBLIC_PAGE = [{
+      key: 'Cache-Control',
+      value: 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    }];
     return [
-      { source: '/(.*)', headers: SECURITY_HEADERS },
+      { source: '/(.*)',    headers: SECURITY_HEADERS },
+      { source: '/',        headers: CACHE_PUBLIC_PAGE },
+      { source: '/privacy', headers: CACHE_PUBLIC_PAGE },
+      { source: '/docs',    headers: CACHE_PUBLIC_PAGE },
     ];
   },
 
