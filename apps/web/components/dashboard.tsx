@@ -26,6 +26,7 @@ import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
 import { getAllEvmNativeBalances, getEvmChain, type EvmChain } from '../lib/evm-chains';
 import { getAllEvmTokenBalances, type EvmToken } from '../lib/evm-tokens';
+import { pendingActivityRows } from '../lib/tx-store';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -64,14 +65,19 @@ function projectAsset(a: IndexerAsset, prices: Record<string, number> | null) {
   };
 }
 
-function projectActivity(item: IndexerActivityItem) {
+function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
   const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
   const decimals = canon?.decimals ?? 18;
   let amountStr = item.amount;
-  try {
-    amountStr = parseFloat(ethers.formatUnits(item.amount, decimals))
-      .toLocaleString('en-US', { maximumFractionDigits: 6 });
-  } catch { /* leave raw */ }
+  // Local optimistic rows already carry a human-readable amount (as the
+  // user typed it) — the indexer rows carry raw base units. Only run the
+  // formatUnits decode on indexer rows.
+  if (!item.local) {
+    try {
+      amountStr = parseFloat(ethers.formatUnits(item.amount, decimals))
+        .toLocaleString('en-US', { maximumFractionDigits: 6 });
+    } catch { /* leave raw */ }
+  }
   const isOut = item.type === 'send' || item.type === 'burn';
   return {
     sym:    item.symbol,
@@ -734,10 +740,31 @@ export function Dashboard() {
     }));
   }, [liveAssets, solBalance, btcBalance, evmChainBalances, evmTokenBalances, prices]);
 
+  /* Bumped to force a recompute of the optimistic pending rows (localStorage
+     mutations don't trigger React). Ticked when the Send modal closes and on
+     a light interval so a just-broadcast tx shows instantly, and a pending
+     row that reconciles/expires drops on its own. */
+  const [pendingTick, setPendingTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setPendingTick(t => t + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
   const TXS = useMemo(() => {
-    if (!liveActivity || liveActivity.length === 0) return [];
-    return liveActivity.slice(0, 6).map(projectActivity);
-  }, [liveActivity]);
+    // Confirmed/indexed activity rows.
+    const indexed = (liveActivity ?? []).map(projectActivity);
+    // Optimistic local sends not yet in the indexer result — deduped by hash
+    // against the indexed rows, so a tx drops its Pending copy the moment the
+    // indexer reports it (the real confirmed row wins).
+    const indexedHashes = (liveActivity ?? [])
+      .map(a => a.txHash ?? a.id)
+      .filter((h): h is string => !!h);
+    const pending = pendingActivityRows(indexedHashes).map(projectActivity);
+    // Pending rows first (top of the list), then indexed. Cap at 6 like before.
+    return [...pending, ...indexed].slice(0, 6);
+    // pendingTick forces re-eval after a send / on the interval.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveActivity, pendingTick]);
 
   const totalUsd = COINS.reduce((s, c) => s + c.usdNum, 0);
   // Currency style → always 2 decimals + grouping (so $4,560,363.30, not .3).
@@ -858,7 +885,7 @@ export function Dashboard() {
       // whole home page be dragged sideways (the "still moving" the user saw).
       WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', scrollBehavior: 'smooth',
     }}>
-      {modal === 'send'    && <SendModal    onClose={() => setModal(null)}/>}
+      {modal === 'send'    && <SendModal    onClose={() => { setModal(null); setPendingTick(t => t + 1); }}/>}
       {modal === 'receive' && <ReceiveModal onClose={() => setModal(null)}/>}
       {modal === 'swap'    && <SwapModal    fullScreen={swapFull} onClose={() => { setModal(null); setSwapFull(false); }}/>}
       {modal === 'laxcard' && <LaxCardModal onClose={() => setModal(null)}/>}

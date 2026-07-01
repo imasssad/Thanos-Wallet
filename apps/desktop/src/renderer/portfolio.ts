@@ -97,6 +97,7 @@ function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] 
     pos: false,
     color: coinColor(t.sym),
     txHash: t.hash,
+    pending: true, // local-only until the indexer reports this hash (see filter below)
   }));
   const fresh = local.filter(
     (l) => !indexed.some((x) => x.id === l.id || (!!x.txHash && x.txHash === l.txHash)),
@@ -139,6 +140,9 @@ export interface DisplayTx {
   status: 'Completed' | 'Pending' | 'Failed';
   amount: string; pos: boolean; color: string;
   txHash?: string;
+  /** True while this row is a local-only optimistic send the indexer hasn't
+   *  reported yet. Drives the subtle "Pending" badge; cleared once reconciled. */
+  pending?: boolean;
 }
 
 export interface PortfolioState {

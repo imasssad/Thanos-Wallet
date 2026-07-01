@@ -110,6 +110,7 @@ import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
+import { addLocalActivity, getLocalActivity, type LocalActivityItem } from './lib/local-activity';
 import {
   getPortfolioSnapshot, setPortfolioSnapshot,
   getActivitySnapshot, setActivitySnapshot,
@@ -623,6 +624,27 @@ function txDisplay(type: string): { label: string; positive: boolean } {
   }
 }
 
+/** Subtle amber "Pending" pill for optimistic (local-only, not-yet-indexed)
+ *  sends. Inline-styled so it's outside makeStyles' x1.5 font scaling — sizes
+ *  are authored at their true rendered target. Fixed footprint so it doesn't
+ *  cause layout shift when the row reconciles and the badge disappears. */
+const PENDING_AMBER = '#f59e0b';
+function PendingBadge() {
+  return (
+    <View
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999,
+        backgroundColor: 'rgba(245,158,11,0.14)',
+        borderWidth: 1, borderColor: 'rgba(245,158,11,0.32)',
+      }}
+    >
+      <View style={{ width: 5, height: 5, borderRadius: 999, backgroundColor: PENDING_AMBER }}/>
+      <Text style={{ color: PENDING_AMBER, fontSize: 10, fontWeight: '700', letterSpacing: 0.2 }}>Pending</Text>
+    </View>
+  );
+}
+
 /** Accept an EVM 0x address, a litho1 bech32 address, or a .litho name. */
 function isValidRecipient(v: string): boolean {
   const s = (v || '').trim();
@@ -644,9 +666,20 @@ interface ActivityState {
 function useActivity(address: string): ActivityState {
   const [nonce, setNonce]   = useState(0);
   const [items, setItems]   = useState<IndexerActivityItem[]>([]);
+  const [local, setLocal]   = useState<LocalActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+
+  // Load the optimistic local (unconfirmed) sends. Runs on address change and
+  // on every reload so a fresh broadcast + pull-to-refresh surfaces it, and so
+  // the row drops once the indexer catches up (dedup below).
+  useEffect(() => {
+    let cancelled = false;
+    if (!address) { setLocal([]); return; }
+    getLocalActivity(address).then((l) => { if (!cancelled) setLocal(l); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [address, nonce]);
 
   // Cached-first: paint this address's last-known activity immediately.
   const prevAddrRef = useRef<string | null>(null);
@@ -684,7 +717,19 @@ function useActivity(address: string): ActivityState {
     return () => { cancelled = true; };
   }, [address, nonce]);
 
-  return { items, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
+  // Merge optimistic local sends into the indexer feed, deduped by tx hash.
+  // A local entry is kept ("Pending") only while the indexer hasn't reported
+  // its hash; the moment it does, the local copy drops and the real confirmed
+  // row shows — no double entry, no layout shift. Local (newest) sort on top.
+  const merged = useMemo(() => {
+    if (local.length === 0) return items;
+    const fresh = local.filter(
+      (l) => !items.some((x) => (!!x.txHash && x.txHash === l.txHash) || x.id === l.id),
+    );
+    return fresh.length === 0 ? items : [...fresh, ...items];
+  }, [items, local]);
+
+  return { items: merged, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
 }
 
 /* ─────────────────────────── Skeletons ─────────────────────────────
@@ -1255,6 +1300,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
             decimals:     coin.decimals,
             tokenAddress: coin.native ? undefined : coin.tokenAddress,
           });
+          // Optimistic Activity row — recorded AFTER the broadcast returned a
+          // hash. Never touches signing/broadcast; merged + deduped by the
+          // activity hook, drops once the indexer reports the tx.
+          void addLocalActivity(addr, { hash, sym: coin.sym, amount: amt, ts: Date.now(), type: 'send' });
           setSending(false);
           setAmt(''); setTo(''); setMemo('');
           isNotificationsEnabled().then(on => {
@@ -1279,9 +1328,13 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
         tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
         memo:         chain === 'cosmos' ? memo : undefined,
       });
+      const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
+      // Optimistic Activity row — recorded AFTER the broadcast returned a hash.
+      // Never touches signing/broadcast; merged + deduped by the activity hook,
+      // drops once the indexer reports the tx.
+      void addLocalActivity(addr, { hash, sym, amount: amt, ts: Date.now(), type: 'send' });
       setSending(false);
       setAmt(''); setTo(''); setMemo('');
-      const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
       const network = chain === 'evm' ? 'Makalu' : meta.label;
       // Fire a local notification (works without a push server) when enabled.
       isNotificationsEnabled().then(on => {
@@ -1958,7 +2011,10 @@ function ActivityScreen() {
                 <TxIcon size={16} color={d.positive ? C.green : C.blue} strokeWidth={2.4}/>
               </View>
               <View style={styles.rowMid}>
-                <Text style={styles.rowSymbol}>{d.label} {t.symbol}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.rowSymbol}>{d.label} {t.symbol}</Text>
+                  {t.status === 'pending' ? <PendingBadge/> : null}
+                </View>
                 <Text style={styles.rowSub}>{relativeTime(t.ts) || (t.status ?? '')}</Text>
               </View>
               <View style={styles.rowRight}>
@@ -3724,11 +3780,18 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
           return (
             <View key={t.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
               <View>
-                <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{d.label}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{d.label}</Text>
+                  {t.status === 'pending' ? <PendingBadge/> : null}
+                </View>
                 <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.ts ? new Date(t.ts).toLocaleDateString() : '—'}</Text>
               </View>
               <Text style={{ color: d.positive ? C.green : C.textSecondary, fontFamily: MONO, fontSize: 12 }}>
-                {(() => { try { const n = parseFloat(formatUnits(t.amount, coin?.decimals ?? 18)); return `${d.positive ? '+' : '-'}${n.toLocaleString('en-US', { maximumFractionDigits: 6 })}`; } catch { return t.amount; } })()} {sym}
+                {/* Pending (local) rows already hold a human-readable amount — the
+                    indexer rows are raw smallest-unit, so only those get formatUnits. */}
+                {t.status === 'pending'
+                  ? `-${String(t.amount).replace(/^[+-]/, '')}`
+                  : (() => { try { const n = parseFloat(formatUnits(t.amount, coin?.decimals ?? 18)); return `${d.positive ? '+' : '-'}${n.toLocaleString('en-US', { maximumFractionDigits: 6 })}`; } catch { return t.amount; } })()} {sym}
               </Text>
             </View>
           );

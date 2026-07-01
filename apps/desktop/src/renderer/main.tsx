@@ -276,6 +276,26 @@ function TokenAvatar({ sym, color, className, label, style }: {
   );
 }
 
+/* Subtle "Pending" pill for optimistic local-only sends — shown only while a
+   broadcast tx hasn't been reported by the indexer yet. Amber (#f59e0b),
+   on-brand, with a small dot; matches the status-pill footprint so the row
+   doesn't shift when it reconciles to the real status. */
+function PendingBadge() {
+  return (
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+        color: '#f59e0b', background: 'rgba(245,158,11,0.12)',
+        border: '1px solid rgba(245,158,11,0.28)', whiteSpace: 'nowrap',
+      }}
+    >
+      <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
+      Pending
+    </span>
+  );
+}
+
 /* Rich coin dropdown — the native <select> the Send/Swap/Bridge modals used
    can't render an <img> inside an <option> (the OS draws option text and
    strips markup), so every picker showed bare ticker text with no logo. This
@@ -766,10 +786,14 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
                 </td>
                 <td>{tx.date}</td>
                 <td>
-                  <span className={`status-pill status-${tx.status.toLowerCase()}`}>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
-                    {tx.status}
-                  </span>
+                  {tx.pending
+                    ? <PendingBadge/>
+                    : (
+                      <span className={`status-pill status-${tx.status.toLowerCase()}`}>
+                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
+                        {tx.status}
+                      </span>
+                    )}
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   <span className={tx.pos ? 'amt-pos' : 'amt-neg'}>{tx.amount}</span>
@@ -1133,7 +1157,10 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
           {rows.length === 0 && <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
           {rows.map(t => (
             <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
-              <div><div style={{ fontWeight: 600 }}>{t.type}</div><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.date}</div></div>
+              <div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>{t.type}{t.pending && <PendingBadge/>}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.date}</div>
+              </div>
               <div style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 12, color: t.pos ? 'var(--green)' : 'var(--text-secondary)' }}>{t.amount}</div>
             </div>
           ))}
@@ -2316,10 +2343,14 @@ function TransactionsView() {
                 </td>
                 <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tx.date}</td>
                 <td>
-                  <span className={`status-pill status-${tx.status.toLowerCase()}`}>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
-                    {tx.status}
-                  </span>
+                  {tx.pending
+                    ? <PendingBadge/>
+                    : (
+                      <span className={`status-pill status-${tx.status.toLowerCase()}`}>
+                        <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }}/>
+                        {tx.status}
+                      </span>
+                    )}
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   <span className={tx.pos ? 'amt-pos' : 'amt-neg'}>{tx.amount}</span>

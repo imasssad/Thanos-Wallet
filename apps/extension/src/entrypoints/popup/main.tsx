@@ -929,7 +929,7 @@ function ActivityScreen() {
                 <Ic size={14} strokeWidth={2.4}/>
               </div>
               <div className="row-mid">
-                <div className="row-name">{t.label} {t.sym}</div>
+                <div className="row-name">{t.label} {t.sym}{t.pending && <span className="pending-pill">Pending</span>}</div>
                 <div className="row-sub">{t.time}</div>
               </div>
               <div className="row-right">
@@ -1388,7 +1388,7 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
         {rows.length === 0 && <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
         {rows.map(t => (
           <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
-            <div><div style={{ fontWeight: 600 }}>{t.label}</div><div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.time}</div></div>
+            <div><div style={{ fontWeight: 600 }}>{t.label}{t.pending && <span className="pending-pill">Pending</span>}</div><div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.time}</div></div>
             <span style={{ fontFamily: 'Geist Mono, monospace', color: t.pos ? '#10b981' : 'var(--text-secondary)' }}>{t.amount}</span>
           </div>
         ))}

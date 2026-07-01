@@ -17,12 +17,21 @@ export interface LocalTx {
 
 const keyFor = (addr: string) => `thanos-local-activity:${(addr || '').toLowerCase()}`;
 const MAX = 50;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h — a dropped/failed tx never lingers past this
 
 export function getLocalActivity(addr: string): LocalTx[] {
   if (!addr || typeof localStorage === 'undefined') return [];
   try {
     const arr = JSON.parse(localStorage.getItem(keyFor(addr)) || '[]');
-    return Array.isArray(arr) ? (arr as LocalTx[]) : [];
+    if (!Array.isArray(arr)) return [];
+    // Expire-on-read: drop entries older than 24h so a tx the indexer never
+    // reports (dropped/failed) can't sit as a permanent "Pending" row.
+    const cutoff = Date.now() - MAX_AGE_MS;
+    const live = (arr as LocalTx[]).filter((t) => typeof t?.ts === 'number' && t.ts >= cutoff);
+    if (live.length !== arr.length) {
+      try { localStorage.setItem(keyFor(addr), JSON.stringify(live)); } catch { /* non-fatal */ }
+    }
+    return live;
   } catch {
     return [];
   }

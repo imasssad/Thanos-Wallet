@@ -494,6 +494,31 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     return () => { cancelled = true; clearTimeout(t); };
   }, [coin, to, amount, recipientValidation.valid, canonicalEvm, isEvmSend, isSolanaSend, isBitcoinSend, isCosmosSend, evmChainId, wallet?.addresses?.evm]);
 
+  /* Record a just-broadcast send in the local pending-tx store so the
+     Activity feed can show an optimistic "Pending" row until the indexer
+     reports it. Called AFTER a broadcast returns a hash — never gates or
+     alters signing/broadcast. Chain maps to the store's coarse buckets
+     (Lithosphere + external EVM → 'evm'). Bitcoin records its own richer
+     entry (with an RBF snapshot) inline, so it's excluded here. */
+  const recordPendingSend = (hash: string) => {
+    if (!hash) return;
+    const chain: 'evm' | 'solana' = isSolanaSend ? 'solana' : 'evm';
+    const tok = evmChainId ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin) : null;
+    try {
+      recordPendingTx({
+        id:           hash,
+        chain,
+        symbol:       coin,
+        recipient:    to.trim(),
+        amount,
+        tokenAddress: tok?.address,
+        status:       'broadcast',
+        broadcastAt:  Date.now(),
+        updatedAt:    Date.now(),
+      });
+    } catch { /* localStorage unavailable — purely a UX layer, ignore */ }
+  };
+
   const onSubmit = async () => {
     if (!walletReady) {
       setError('Wallet is locked. Please refresh and unlock.');
@@ -687,6 +712,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
                                    amount: maxMode ? String(Math.max(0, parseFloat(amount || '0') - 0.00001)) : amount })
           : await sendSplToken({  mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount,
                                    mintAddress: selectedToken.address, decimals: selectedToken.decimals });
+        recordPendingSend(sig);
         setTxHash(sig);
         setStage('pending');
         // Solana finalizes in ~13s on average. Treat it as confirmed
@@ -726,6 +752,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
             value,
             path:  ledgerEvm.path,
           });
+          recordPendingSend(hash);
           setTxHash(hash);
           setStage('pending');
           provider.waitForTransaction(hash)
@@ -750,6 +777,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           const hash = await sendEvmWithTrezor({
             account: trezorEvm, chainId: evmChainId, recipient: to.trim(), amount,
           });
+          recordPendingSend(hash);
           setTxHash(hash);
           setStage('pending');
           getEvmProvider(evmChainId).waitForTransaction(hash)
@@ -783,6 +811,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
               symbol: stable.symbol, recipient: to.trim(), amount, accountIdx: acctIdx,
             })
           : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: to.trim(), amount, accountIdx: acctIdx });
+        recordPendingSend(result.hash);
         setTxHash(result.hash);
         setStage('pending');
         result.wait()
@@ -826,6 +855,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           value,
           path:  ledgerEvm.path,
         });
+        recordPendingSend(hash);
         setTxHash(hash);
         setStage('pending');
         lithoProvider.waitForTransaction(hash)
@@ -856,6 +886,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
         const hash = await sendEvmWithTrezor({
           account: trezorEvm, chainId: lithoChainId, recipient: evmRecipient, amount,
         });
+        recordPendingSend(hash);
         setTxHash(hash);
         setStage('pending');
         lithoProvider.waitForTransaction(hash)
@@ -887,6 +918,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
         const result = await sendLithoNative(walletInput, {
           chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount, accountIdx: getActiveAccountIndex(),
         });
+        recordPendingSend(result.hash);
         setTxHash(result.hash);
         setStage('pending');
         result.wait()
@@ -942,6 +974,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
           throw workerErr;
         }
       }
+      recordPendingSend(hash);
       setTxHash(hash);
       setStage('pending');
       // Worker path: poll the chain for confirmation via the main-thread

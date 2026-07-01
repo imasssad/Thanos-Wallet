@@ -234,6 +234,21 @@ input, textarea { font-family: inherit; }
   background: var(--bg-elevated);
   padding: 2px 8px; border-radius: 999px;
 }
+/* Optimistic-send indicator: subtle amber pill shown only while a locally
+   recorded tx is not yet confirmed by the indexer. Inline-flex + fixed
+   line-height keeps the row height identical when it reconciles away. */
+.pending-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 6px; vertical-align: middle;
+  font-size: 10px; font-weight: 600; line-height: 1;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+  padding: 2px 7px; border-radius: 999px;
+}
+.pending-pill::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: #f59e0b;
+}
 .section-label {
   font-size: 10px; font-weight: 700; letter-spacing: 1px;
   color: var(--text-muted); margin-top: 8px; padding: 0 4px;
