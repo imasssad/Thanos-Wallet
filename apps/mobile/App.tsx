@@ -3497,7 +3497,6 @@ type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | '
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Home',     Icon: Home },
   { key: 'market',   label: 'Market',   Icon: TrendingUp },
-  { key: 'swap',     label: 'Swap',     Icon: Repeat },
   { key: 'discover', label: 'Discover', Icon: Compass },
   { key: 'activity', label: 'Activity', Icon: Clock },
   { key: 'settings', label: 'Settings', Icon: SettingsIcon },
@@ -4984,7 +4983,7 @@ function App() {
                   >
                     {active && <View style={styles.tabActiveBar}/>}
                     <t.Icon size={20} color={active ? colors.blue : colors.textMuted} strokeWidth={active ? 2.4 : 2}/>
-                    <Text style={[styles.tabLabel, active && { color: colors.blue, fontWeight: '700' }]}>{t.label}</Text>
+                    <Text numberOfLines={1} style={[styles.tabLabel, active && { color: colors.blue, fontWeight: '700' }]}>{t.label}</Text>
                   </Pressable>
                 );
               })}
