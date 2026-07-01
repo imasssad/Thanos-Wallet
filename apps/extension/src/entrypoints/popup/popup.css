@@ -738,7 +738,7 @@ input, textarea { font-family: inherit; }
 
 /* ══════════════════ ob2 — minimal-luxe onboarding (welcome + unlock) ══════════════════
    Mirrors the mobile app's new direction. Blue is the only accent; green is a status
-   color only. Prefixed ob2- so nothing collides with existing .onb-*/.btn-*. */
+   color only. Prefixed ob2- so nothing collides with the existing onb and btn class families. */
 
 .ob2-welcome, .ob2-unlock {
   display: flex; flex-direction: column; align-items: center;

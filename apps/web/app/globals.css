@@ -3655,7 +3655,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ============================================================
    OB2 — minimal-luxe onboarding (welcome + unlock)
-   Prefixed ob2- to avoid collision with existing .onboard-*/.onb-*/.btn-*
+   Prefixed ob2- to avoid collision with the existing onboard, onb and btn class families
    ============================================================ */
 
 /* HERO MARK — logo inside slowly-rotating thin blue gradient ring + breathing under-glow */
