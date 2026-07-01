@@ -2820,6 +2820,14 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
    *  Chromium confirm() dialog, the most dated element in the app. */
   const [confirmReset, setConfirmReset] = useState(false);
   const [showPwd, setShowPwd]     = useState(false);
+  /* ob2 value-prop carousel — active slide index synced from scroll */
+  const [ob2Slide, setOb2Slide] = useState(0);
+  const OB2_SLIDES = [
+    { t: ['Own your keys.', 'Own your future.'], s: 'True self-custody — your recovery phrase never leaves this device.' },
+    { t: ['One wallet.', 'Every chain.'], s: 'Lithosphere · Bitcoin · EVM, unified in a single Web4 wallet.' },
+    { t: ['Move value', 'without friction.'], s: 'Hold, swap and bridge across chains — with quiet, total control.' },
+  ];
+  const ob2OpenLegal = (url: string) => window.thanosDesktop?.openExternal?.(url);
 
   const startCreate = () => {
     setSeed(generateSeedPhrase(seedLen));
@@ -2921,18 +2929,52 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   return (
     <div className="onboard-wrap">
       <div className="onboard-card">
-        <div className="onboard-logo">
-          <img src="./images/Thanos_Logo.png" alt="Thanos"/>
-        </div>
+        {step !== 'welcome' && step !== 'unlock' && (
+          <div className="onboard-logo">
+            <img src="./images/Thanos_Logo.png" alt="Thanos"/>
+          </div>
+        )}
 
         {/* WELCOME ─────────────────────────────────────────── */}
         {step === 'welcome' && (
-          <>
-            <h1 className="onboard-title">Welcome to Thanos</h1>
-            <p className="onboard-sub">A multi-chain Web4 wallet — Lithosphere, Bitcoin, EVM.</p>
-            <button className="btn-primary onboard-btn" onClick={startCreate}>Create new wallet</button>
-            <button className="btn-outline onboard-btn" style={{ width: '100%', height: 42 }} onClick={() => setStep('import')}>Import existing wallet</button>
-          </>
+          <div className="ob2-flow">
+            <div className="ob2-mark">
+              <img src="./images/Thanos_Logo.png" alt="Thanos Wallet"/>
+            </div>
+
+            <div
+              className="ob2-carousel"
+              onScroll={e => {
+                const el = e.currentTarget;
+                const i = Math.round(el.scrollLeft / el.clientWidth);
+                if (i !== ob2Slide) setOb2Slide(i);
+              }}
+            >
+              {OB2_SLIDES.map((sl, i) => (
+                <div className="ob2-slide" key={i}>
+                  <h1 className="ob2-slide-title">{sl.t[0]}<br/>{sl.t[1]}</h1>
+                  <p className="ob2-slide-sub">{sl.s}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="ob2-dots">
+              {OB2_SLIDES.map((_, i) => (
+                <span key={i} className={`ob2-dot ${i === ob2Slide ? 'ob2-dot-on' : ''}`} />
+              ))}
+            </div>
+
+            <div style={{ width: '100%', marginTop: 22 }}>
+              <button className="ob2-pill" onClick={startCreate}>Create a new wallet</button>
+              <button className="ob2-ghost" onClick={() => setStep('import')}>I already have a wallet</button>
+            </div>
+
+            <p className="ob2-legal">
+              By continuing you agree to our{' '}
+              <a onClick={() => ob2OpenLegal('https://thanos.fi/terms')}>Terms</a>{' '}and{' '}
+              <a onClick={() => ob2OpenLegal('https://thanos.fi/privacy')}>Privacy Policy</a>.
+            </p>
+          </div>
         )}
 
         {/* CREATE — WARNING ────────────────────────────────── */}
@@ -3101,9 +3143,14 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
         {/* UNLOCK (returning user) ─────────────────────────── */}
         {step === 'unlock' && (
-          <>
-            <p className="onboard-tagline">Secure and trusted multi-chain crypto wallet</p>
+          <div className="ob2-flow">
+            <div className="ob2-mark ob2-mark-sm">
+              <img src="./images/Thanos_Logo.png" alt="Thanos Wallet"/>
+            </div>
+            <h1 className="ob2-title">Welcome back</h1>
+            <p className="ob2-sub">Enter your password to unlock Thanos Wallet.</p>
 
+            <div className="ob2-unlock-fields">
             <label className="field-label-pro">Password</label>
             <div className="input-with-trail">
               <input
@@ -3131,19 +3178,19 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
             {unlockErr && <div className="onboard-err">{unlockErr}</div>}
 
-            <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd || vaultBusy}>
+            <button className="ob2-pill" style={{ marginTop: 14 }} onClick={tryUnlock} disabled={!unlockPwd || vaultBusy}>
               {vaultBusy ? 'Unlocking…' : 'Unlock'}
             </button>
+            </div>
 
-            <div className="onboard-footer">
-              <p className="footer-text">
+            <div className="ob2-reset">
+              <p className="ob2-reset-text">
                 {confirmReset
                   ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
                   : "Can't login? You can erase your current wallet and set up a new one"}
               </p>
               <button
-                className="footer-link"
-                style={confirmReset ? { color: 'var(--red, #f87171)', fontWeight: 700 } : undefined}
+                className={`ob2-reset-link ${confirmReset ? 'ob2-reset-danger' : ''}`}
                 onClick={() => {
                   if (!confirmReset) {
                     setConfirmReset(true);
@@ -3158,7 +3205,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
                 {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

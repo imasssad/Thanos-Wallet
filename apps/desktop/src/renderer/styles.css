@@ -1394,3 +1394,103 @@ button { font-family: inherit; cursor: pointer; }
   .settings-input      { min-width: 160px; font-size: 11px; }
   .settings-btn        { padding: 7px 11px; font-size: 12px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ob2- : minimal-luxe onboarding (welcome + unlock only)
+   Mirrors the mobile app's premium direction. Blue is the only
+   CTA accent. All classes prefixed ob2- to avoid collisions.
+   ═══════════════════════════════════════════════════════════════ */
+
+.ob2-flow { display: flex; flex-direction: column; align-items: center; width: 100%; }
+
+/* HERO MARK — rotating thin blue gradient ring + breathing under-glow */
+.ob2-mark { position: relative; width: 128px; height: 128px; display: grid; place-items: center; margin: 0 auto; }
+.ob2-mark img { width: 62%; height: 62%; object-fit: contain; position: relative; z-index: 1; }
+.ob2-mark::before {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, #3b7af7, rgba(59,122,247,0.06) 42%, transparent 62%, #3b7af7);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  animation: ob2-spin 26s linear infinite;
+}
+.ob2-mark::after {
+  content: ''; position: absolute; inset: -28%; border-radius: 50%; z-index: 0;
+  background: radial-gradient(circle, rgba(59,122,247,0.45), transparent 60%);
+  animation: ob2-pulse 5.6s ease-in-out infinite;
+}
+.ob2-mark-sm { width: 92px; height: 92px; }
+
+@keyframes ob2-spin  { to { transform: rotate(360deg); } }
+@keyframes ob2-pulse { 0%,100% { opacity: .4; transform: scale(.94); } 50% { opacity: .72; transform: scale(1.08); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ob2-mark::before { animation: none; }
+  .ob2-mark::after  { animation: none; }
+}
+
+/* VALUE-PROP CAROUSEL — horizontal scroll-snap, 3 slides */
+.ob2-carousel {
+  display: flex; width: 100%; margin: 26px 0 4px;
+  overflow-x: auto; scroll-snap-type: x mandatory;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.ob2-carousel::-webkit-scrollbar { display: none; }
+.ob2-slide {
+  flex: 0 0 100%; scroll-snap-align: center;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 0 6px; box-sizing: border-box;
+}
+.ob2-slide-title {
+  font-size: 23px; font-weight: 700; line-height: 1.22; letter-spacing: -0.5px;
+  color: var(--text-primary); margin: 0 0 10px;
+}
+.ob2-slide-sub {
+  font-size: 13.5px; line-height: 1.5; color: var(--text-secondary);
+  margin: 0; max-width: 320px;
+}
+
+/* PAGER DOTS — active stretches into a pill */
+.ob2-dots { display: flex; gap: 6px; justify-content: center; margin: 16px 0 4px; }
+.ob2-dot {
+  width: 6px; height: 6px; border-radius: 3px; background: var(--border-default, #2a2a35);
+  transition: width .28s ease, background .28s ease;
+}
+.ob2-dot.ob2-dot-on { width: 18px; background: var(--blue); }
+
+/* CTAs */
+.ob2-pill {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 52px; border: none; border-radius: 26px; cursor: pointer;
+  background: linear-gradient(135deg, #5c92ff, #3b7af7); color: #fff;
+  font-size: 15px; font-weight: 700; letter-spacing: -0.3px;
+  box-shadow: 0 8px 22px rgba(59,122,247,0.32);
+  transition: filter .12s, transform .08s;
+}
+.ob2-pill:hover  { filter: brightness(1.06); }
+.ob2-pill:active { transform: translateY(1px); }
+.ob2-pill:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+
+.ob2-ghost {
+  width: 100%; height: 48px; background: transparent; border: none;
+  color: var(--text-secondary); font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;
+}
+.ob2-ghost:hover { color: var(--text-primary); }
+
+/* LEGAL FOOTER */
+.ob2-legal {
+  color: var(--text-muted); font-size: 11.5px; line-height: 1.5;
+  text-align: center; margin-top: 16px;
+}
+.ob2-legal a { color: var(--blue); text-decoration: none; cursor: pointer; }
+.ob2-legal a:hover { text-decoration: underline; }
+
+/* UNLOCK — welcome-back block */
+.ob2-title { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; color: var(--text-primary); text-align: center; margin: 18px 0 6px; }
+.ob2-sub   { font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); text-align: center; margin: 0 0 22px; }
+.ob2-unlock-fields { width: 100%; }
+
+.ob2-reset { text-align: center; margin-top: 20px; }
+.ob2-reset-text { color: var(--text-muted); font-size: 11.5px; line-height: 1.5; margin: 0 0 6px; }
+.ob2-reset-link { background: none; border: none; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); transition: color .12s; }
+.ob2-reset-link:hover { color: var(--text-primary); }
+.ob2-reset-link.ob2-reset-danger { color: var(--red, #f87171); font-weight: 700; }

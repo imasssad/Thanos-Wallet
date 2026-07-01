@@ -696,3 +696,123 @@ input, textarea { font-family: inherit; }
   padding: 12px 0 8px;
   letter-spacing: 0.04em;
 }
+
+/* ══════════════════ ob2 — minimal-luxe onboarding (welcome + unlock) ══════════════════
+   Mirrors the mobile app's new direction. Blue is the only accent; green is a status
+   color only. Prefixed ob2- so nothing collides with existing .onb-*/.btn-*. */
+
+.ob2-welcome, .ob2-unlock {
+  display: flex; flex-direction: column; align-items: center;
+  width: 100%;
+}
+
+/* Hero mark — logo in a slowly-rotating thin blue gradient ring + breathing glow. */
+.ob2-mark { position: relative; width: 128px; height: 128px; display: grid; place-items: center; margin: 0 auto; }
+.ob2-mark img { width: 62%; height: 62%; object-fit: contain; position: relative; z-index: 1; }
+.ob2-mark::before {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, #3b7af7, rgba(59,122,247,0.06) 42%, transparent 62%, #3b7af7);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+  animation: ob2-spin 26s linear infinite;
+}
+.ob2-mark::after {
+  content: ''; position: absolute; inset: -28%; border-radius: 50%; z-index: 0;
+  background: radial-gradient(circle, rgba(59,122,247,0.45), transparent 60%);
+  animation: ob2-pulse 5.6s ease-in-out infinite;
+}
+@keyframes ob2-spin { to { transform: rotate(360deg); } }
+@keyframes ob2-pulse { 0%,100% { opacity: .4; transform: scale(.94); } 50% { opacity: .72; transform: scale(1.08); } }
+
+/* Smaller hero for the unlock step. */
+.ob2-mark-sm { width: 84px; height: 84px; margin-bottom: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ob2-mark::before { animation: none; }
+  .ob2-mark::after { animation: none; opacity: .5; transform: scale(1); }
+}
+
+/* Value-prop carousel — auto-advancing in the cramped popup. */
+.ob2-carousel { width: 100%; margin: 16px 0 4px; overflow: hidden; }
+.ob2-slide { text-align: center; padding: 0 4px; animation: ob2-fade .5s ease; }
+@keyframes ob2-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.ob2-slide-head {
+  font-size: 19px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.2;
+  color: var(--text-primary); margin-bottom: 8px;
+}
+[data-theme="dark"] .ob2-slide-head {
+  background: linear-gradient(180deg, #fff 0%, #cbd5e1 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.ob2-slide-sub {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  max-width: 280px; margin: 0 auto;
+}
+
+/* Pager dots — active dot stretches into a pill. */
+.ob2-dots { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 14px; }
+.ob2-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: var(--border-strong);
+  border: none; padding: 0; cursor: pointer;
+  transition: width .28s cubic-bezier(0.16,1,0.3,1), background .28s;
+}
+.ob2-dot.ob2-dot-active { width: 18px; background: var(--blue); }
+
+/* CTAs — gradient pill primary + whisper ghost secondary. */
+.ob2-pill {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 52px; border: none; border-radius: 26px; cursor: pointer;
+  background: linear-gradient(135deg, #5c92ff, #3b7af7); color: #fff;
+  font-size: 15px; font-weight: 700; letter-spacing: -0.3px;
+  box-shadow: 0 8px 22px rgba(59,122,247,0.32);
+  transition: filter .12s, transform .08s;
+}
+.ob2-pill:hover { filter: brightness(1.06); }
+.ob2-pill:active { transform: translateY(1px); }
+.ob2-pill:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+
+.ob2-ghost {
+  width: 100%; height: 48px; background: transparent; border: none;
+  color: var(--text-secondary); font-size: 14px; font-weight: 600; cursor: pointer;
+  margin-top: 10px;
+}
+.ob2-ghost:hover { color: var(--text-primary); }
+
+/* Legal footer. */
+.ob2-legal {
+  color: var(--text-muted); font-size: 11.5px; line-height: 1.5;
+  text-align: center; margin-top: 16px;
+}
+.ob2-legal a { color: var(--blue); text-decoration: none; cursor: pointer; }
+.ob2-legal a:hover { text-decoration: underline; }
+
+/* Actions block — full-width, snug under the carousel. */
+.ob2-actions { width: 100%; margin-top: 18px; }
+
+/* Unlock step. */
+.ob2-unlock-title {
+  font-size: 20px; font-weight: 800; letter-spacing: -0.03em;
+  text-align: center; margin-top: 6px; color: var(--text-primary);
+}
+[data-theme="dark"] .ob2-unlock-title {
+  background: linear-gradient(180deg, #fff 0%, #cbd5e1 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.ob2-unlock-sub {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  text-align: center; margin-top: 4px; margin-bottom: 18px;
+}
+.ob2-unlock-form { width: 100%; }
+.ob2-reset {
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+  text-align: center;
+}
+.ob2-reset-text { font-size: 11px; color: var(--text-muted); line-height: 1.45; margin-bottom: 6px; }
+.ob2-reset-link {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-secondary); font-size: 12px; font-weight: 600; padding: 4px;
+}
+.ob2-reset-link:hover { color: var(--text-primary); }
+.ob2-reset-link.ob2-reset-armed { color: var(--red); font-weight: 700; }

@@ -86,6 +86,14 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
      30s after the user lands here, requiring a deliberate re-tap to view
      them again. Defends against shoulder-surf + a left-open laptop. */
   const [seedHidden, setSeedHidden] = useState(false);
+  /* Value-prop carousel (welcome step): active slide index, synced to the
+     scroll-snap position via an onScroll handler. */
+  const [slide, setSlide] = useState(0);
+  const OB2_SLIDES = [
+    { title: 'Own your keys. Own your future.', sub: 'True self-custody — your recovery phrase never leaves this device.' },
+    { title: 'One wallet. Every chain.',         sub: 'Lithosphere · Bitcoin · EVM, unified in a single Web4 wallet.' },
+    { title: 'Move value without friction.',     sub: 'Hold, swap and bridge across chains — with quiet, total control.' },
+  ];
 
   const startCreate = () => { setStep('create-length'); };
   const pickLengthAndGenerate = (n: 12 | 24) => {
@@ -267,15 +275,47 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   return (
     <div className="onboard-wrap">
       <div className="onboard-card">
-        <div className="onboard-logo">
-          <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
-        </div>
+        {step !== 'welcome' && step !== 'unlock' && (
+          <div className="onboard-logo">
+            <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
+          </div>
+        )}
 
         {step === 'welcome' && <>
-          <h1 className="onboard-title">Welcome to Thanos</h1>
-          <p className="onboard-sub">Multi-chain Web4 wallet — Lithosphere · Bitcoin · EVM</p>
-          <button className="btn-primary onboard-btn" onClick={startCreate}>Create new wallet</button>
-          <button className="btn-outline onboard-btn" style={{ width: '100%' }} onClick={() => setStep('import-choose')}>Import existing wallet</button>
+          <div className="ob2-welcome">
+            <div className="ob2-mark ob2-hero">
+              <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
+            </div>
+            <div
+              className="ob2-carousel"
+              onScroll={e => {
+                const el = e.currentTarget;
+                setSlide(Math.round(el.scrollLeft / el.clientWidth));
+              }}
+            >
+              {OB2_SLIDES.map((s, i) => (
+                <div className="ob2-slide" key={i}>
+                  <div className="ob2-slide-title">{s.title}</div>
+                  <div className="ob2-slide-sub">{s.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div className="ob2-dots">
+              {OB2_SLIDES.map((_, i) => (
+                <span key={i} className={`ob2-dot${i === slide ? ' ob2-dot-active' : ''}`}/>
+              ))}
+            </div>
+            <div className="ob2-cta">
+              <button className="ob2-pill" onClick={startCreate}>Create a new wallet</button>
+              <button className="ob2-ghost" onClick={() => setStep('import-choose')}>I already have a wallet</button>
+            </div>
+            <p className="ob2-legal">
+              By continuing you agree to our{' '}
+              <a href="https://thanos.fi/terms" target="_blank" rel="noopener noreferrer">Terms</a>{' '}
+              and{' '}
+              <a href="https://thanos.fi/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+            </p>
+          </div>
         </>}
 
         {step === 'import-choose' && <>
@@ -513,39 +553,46 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
         </>}
 
         {step === 'unlock' && <>
-          <p className="onboard-tagline">Secure and trusted multi-chain crypto wallet</p>
-          <label className="field-label-pro">Password</label>
-          <div className="input-with-trail">
-            <input
-              className="field-input field-input-with-trail"
-              type={showPwd ? 'text' : 'password'}
-              value={unlockPwd}
-              onChange={e => { setUnlockPwd(e.target.value); setUnlockErr(''); }}
-              onKeyDown={e => e.key === 'Enter' && tryUnlock()}
-              autoFocus
-              placeholder="Enter password"
-            />
-            <button type="button" className="input-trail-btn" onClick={() => setShowPwd(s => !s)} aria-label={showPwd ? 'Hide' : 'Show'} tabIndex={-1}>
-              {showPwd ? <EyeOff size={18}/> : <Eye size={18}/>}
-            </button>
-          </div>
-          {unlockErr && <div className="onboard-err">{unlockErr}</div>}
-          <button className="btn-primary onboard-btn btn-pill" onClick={tryUnlock} disabled={!unlockPwd || busy}>
-            {busy ? 'Unlocking…' : 'Unlock'}
-          </button>
-          <div className="onboard-footer">
-            <p className="footer-text">
-              {confirmReset
-                ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
-                : "Can't login? You can erase your current wallet and set up a new one"}
-            </p>
-            <button
-              className="footer-link"
-              style={confirmReset ? { color: 'var(--red, #f87171)', fontWeight: 700 } : undefined}
-              onClick={resetWallet}
-            >
-              {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
-            </button>
+          <div className="ob2-unlock">
+            <div className="ob2-mark ob2-mark-sm">
+              <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
+            </div>
+            <h1 className="ob2-unlock-title">Welcome back</h1>
+            <p className="ob2-unlock-sub">Enter your password to unlock Thanos Wallet.</p>
+            <div className="ob2-unlock-form">
+              <label className="field-label-pro">Password</label>
+              <div className="input-with-trail">
+                <input
+                  className="field-input field-input-with-trail"
+                  type={showPwd ? 'text' : 'password'}
+                  value={unlockPwd}
+                  onChange={e => { setUnlockPwd(e.target.value); setUnlockErr(''); }}
+                  onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+                  autoFocus
+                  placeholder="Enter password"
+                />
+                <button type="button" className="input-trail-btn" onClick={() => setShowPwd(s => !s)} aria-label={showPwd ? 'Hide' : 'Show'} tabIndex={-1}>
+                  {showPwd ? <EyeOff size={18}/> : <Eye size={18}/>}
+                </button>
+              </div>
+              {unlockErr && <div className="onboard-err">{unlockErr}</div>}
+              <button className="ob2-pill" style={{ marginTop: 16 }} onClick={tryUnlock} disabled={!unlockPwd || busy}>
+                {busy ? 'Unlocking…' : 'Unlock'}
+              </button>
+            </div>
+            <div className="ob2-reset">
+              <p className="ob2-reset-text">
+                {confirmReset
+                  ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
+                  : "Can't login? You can erase your current wallet and set up a new one."}
+              </p>
+              <button
+                className={`ob2-reset-link${confirmReset ? ' ob2-reset-armed' : ''}`}
+                onClick={resetWallet}
+              >
+                {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
+              </button>
+            </div>
           </div>
         </>}
       </div>
