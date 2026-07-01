@@ -11,27 +11,27 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — VERSION "thanos-v1.09" (2026-06-28, build
-// e7e0d196, account imasssadkh). Shows its version in Settings (bottom) so
+// Latest production-apk build — VERSION "thanos-v1.10" (2026-06-29, build
+// 134e36b0, account imasssadkh). Shows its version in Settings (bottom) so
 // testers can confirm the installed build at a glance.
-// NEW in v1.09 (performance + font): the "blank for minutes after login" stall
-// is fixed — fetchEcosystemPrices now times out at 6s (it was the one fetch
-// with no AbortController, and the home awaited it). Legacy Argon2id vaults
-// transparently re-encrypt to a calibrated PBKDF2 vault after one unlock
-// (minutes -> ~0.6s); walletAddr is memoized (no HD derive per tap); bottom
-// tabs have instant press feedback; argon2/qrcode/tx-simulator lazy-load off
-// cold start. Brand font is now Satoshi.
-// From v1.08: Home native-chain derivers gated off the portfolio path;
-// getPortfolio failure surfaces offline instead of wiping balances.
-// From v1.07: onboarding/unlock screen no longer bounces.
+// FIX in v1.10 (crash): v1.09 crashed on unlock with "Rendered more hooks than
+// during the previous render" — the walletAddr useMemo sat BELOW App's early
+// returns (boot splash / unlock gate), so it ran only in the unlocked branch =
+// a changing hook count. Moved the memo above the early returns.
+// From v1.09 (performance + font): the "blank for minutes after login" stall
+// is fixed — fetchEcosystemPrices times out at 6s; legacy Argon2id vaults
+// re-encrypt to a calibrated PBKDF2 vault after one unlock (minutes -> ~0.6s);
+// walletAddr memoized; bottom tabs have instant press feedback; argon2/qrcode/
+// tx-simulator lazy-load off cold start. Brand font is Satoshi.
+// From v1.08: Home native-chain derivers gated off the portfolio path.
 // From v1.05: external-EVM send/receive/balances (ETH + USDT/USDC, 8 chains).
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
-// The Settings version tag (thanos-v1.09) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/PRTjJ3NQJ3yFy-KW0o8po6ZNRvd4c7R_WOi2R705weo.apk';
+// The Settings version tag (thanos-v1.10) confirms the new build took.
+const APK_URL = 'https://expo.dev/artifacts/eas/9wUggpFzUq2HFsIO2Q9nRAyQtvVw6dViYKrtqP48Qzo.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
-const APK_VERSION = 'thanos-v1.09';
+const APK_VERSION = 'thanos-v1.10';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
