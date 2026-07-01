@@ -129,6 +129,7 @@ import {
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
+  Check, CreditCard, Sparkles,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -712,6 +713,19 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
   );
 }
 
+/* LAX virtual card + Quantt Agents — same offer the web/desktop/extension
+   clients show. Native LAX issuance is gated on the partner API, so "Get
+   Started" opens the LAX application (lax.money) in the device browser.
+   QUANTT_AGENTS_URL defaults to the ecosystem hub until the real Quantt
+   product URL is confirmed. */
+const LAX_APPLY_URL = 'https://lax.money';
+const QUANTT_AGENTS_URL = 'https://ecosystem.litho.ai';
+const LAX_BENEFITS = [
+  'Get a LAX Debit Card for free',
+  'Unlimited top-ups with 0 fees',
+  'Accepted worldwide where Visa™ is accepted',
+];
+
 function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string) => void }) {
   const C = useColors();
   const styles = useStyles();
@@ -885,6 +899,62 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           ))}
         </View>
       </View>
+
+      {/* LAX virtual card — Visa "Algorithmic" debit card (opens lax.money) */}
+      <View style={[styles.card, { padding: 16, marginTop: 16 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+          <CreditCard size={15} color={C.blue}/>
+          <Text style={{ color: C.textSecondary, fontSize: 12, fontWeight: '700' }}>Virtual Card</Text>
+        </View>
+        <View style={{
+          width: '100%', aspectRatio: 1.586, borderRadius: 14, overflow: 'hidden',
+          backgroundColor: '#0a0d18', borderWidth: 1, borderColor: 'rgba(59,122,247,0.30)',
+          padding: 15, justifyContent: 'space-between',
+        }}>
+          <Text style={{ color: '#7ea0ff', fontSize: 22, fontWeight: '800', letterSpacing: 6 }}>LAX</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: '#3b7af7', fontSize: 26, fontWeight: '800', fontStyle: 'italic' }}>VISA</Text>
+            <Text style={{ color: '#5b8cff', fontSize: 11, fontWeight: '500', marginTop: 1 }}>Algorithmic</Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: 15, fontWeight: '800', color: C.textPrimary, marginTop: 14, marginBottom: 10 }}>
+          Own Your Crypto Virtual Card
+        </Text>
+        {LAX_BENEFITS.map(b => (
+          <View key={b} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 7 }}>
+            <Check size={15} color={C.blue} strokeWidth={2.6} style={{ marginTop: 1 }}/>
+            <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 18, flex: 1 }}>{b}</Text>
+          </View>
+        ))}
+        <Pressable
+          onPress={() => Linking.openURL(LAX_APPLY_URL).catch(() => {})}
+          style={({ pressed }) => [{
+            marginTop: 14, height: 46, borderRadius: 12, backgroundColor: C.blue,
+            alignItems: 'center', justifyContent: 'center',
+          }, pressed && { opacity: 0.85 }]}
+        >
+          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Get Started</Text>
+        </Pressable>
+      </View>
+
+      {/* Quantt Agents — AI assistant card (mirrors desktop) */}
+      <Pressable
+        onPress={() => Linking.openURL(QUANTT_AGENTS_URL).catch(() => {})}
+        style={({ pressed }) => [styles.card, { padding: 16, marginTop: 12 }, pressed && { opacity: 0.85 }]}
+      >
+        <Text style={{ color: C.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 11 }}>AI Assistant</Text>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+            <Sparkles size={17} color={C.blue}/>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Quantt Agents ↗</Text>
+            <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 }}>
+              Your AI assistant — optimize your portfolio balance across chains.
+            </Text>
+          </View>
+        </View>
+      </Pressable>
     </ScrollView>
   );
 }

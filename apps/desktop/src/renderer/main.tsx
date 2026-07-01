@@ -421,6 +421,67 @@ function AIAssistant() {
   );
 }
 
+/* LAX virtual card — Visa "Algorithmic" debit card. Native in-app issuance /
+   balance is gated on the LAX partner API; until that lands "Get Started"
+   opens the LAX application (lax.money) in the in-app browser. Mirrors the
+   web app's LaxCardPromo so all clients show the same offer. */
+const LAX_APPLY_URL = 'https://lax.money';
+const LAX_BENEFITS = [
+  'Get a LAX Debit Card for free',
+  'Unlimited top-ups with 0 fees',
+  'Accepted worldwide where Visa™ is accepted',
+];
+
+/* CSS recreation of the LAX Visa card art (self-contained — no image asset). */
+function LaxCardArt() {
+  return (
+    <div style={{
+      position: 'relative', width: '100%', aspectRatio: '1.586 / 1',
+      borderRadius: 14, overflow: 'hidden',
+      background: 'radial-gradient(130% 130% at 50% -10%, #141a2e 0%, #0a0d18 55%, #05070f 100%)',
+      border: '1px solid rgba(59,122,247,0.28)', boxShadow: '0 14px 34px rgba(0,0,0,0.5)',
+    }}>
+      <div style={{
+        position: 'absolute', top: '9%', left: '7%', fontSize: 22, fontWeight: 800, letterSpacing: '0.32em',
+        background: 'linear-gradient(90deg,#5b8cff,#9bb0ff)', WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+      }}>LAX</div>
+      <div style={{ position: 'absolute', bottom: '10%', right: '7%', textAlign: 'right', lineHeight: 1 }}>
+        <div style={{
+          fontSize: 26, fontWeight: 800, fontStyle: 'italic',
+          background: 'linear-gradient(90deg,#1a3fd6,#3b7af7)', WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+        }}>VISA</div>
+        <div style={{ fontSize: 10, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>Algorithmic</div>
+      </div>
+    </div>
+  );
+}
+
+function LaxCard() {
+  const open = useOpenDapp();
+  return (
+    <div className="card">
+      <div className="card-title" style={{ marginBottom: 12 }}>Virtual Card</div>
+      <LaxCardArt/>
+      <div style={{ fontSize: 15, fontWeight: 800, margin: '14px 0 10px', color: 'var(--text-primary)' }}>
+        Own Your Crypto Virtual Card
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {LAX_BENEFITS.map(b => (
+          <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4 }}>
+            <span style={{ color: 'var(--blue)', fontWeight: 800, flexShrink: 0 }}>✓</span>
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+      <button className="btn-exchange" onClick={() => open(LAX_APPLY_URL, 'LAX Virtual Card')}>
+        Get Started
+      </button>
+    </div>
+  );
+}
+
 /* Honest staking teaser — replaces the fake "Solstice" position card
    (14.20% yield, 68% progress, an unlock date that had already passed).
    Same approach the web app took: a clear Coming-soon instead of a mock
@@ -3688,6 +3749,7 @@ function App() {
           <aside className="right-panel">
             <ExchangeWidget onSwap={() => setModal('swap')}/>
             <PortfolioList/>
+            <LaxCard/>
             <AIAssistant/>
           </aside>
         )}

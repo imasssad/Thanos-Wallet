@@ -8,6 +8,7 @@ import {
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search,
   Fingerprint, Key, AlertTriangle, Globe, Zap, Bell, Shield,
+  Sparkles, CreditCard,
 } from 'lucide-react';
 import {
   createVault, openVault, openVaultWithKey,
@@ -557,6 +558,100 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
   );
 }
 
+/* LAX virtual card + Quantt Agents — same offer the web/desktop clients show.
+   Native LAX issuance is gated on the partner API, so "Get Started" opens the
+   LAX application (lax.money) in a real tab. QUANTT_AGENTS_URL defaults to the
+   ecosystem hub until the real Quantt product URL is confirmed. */
+const LAX_APPLY_URL = 'https://lax.money';
+const QUANTT_AGENTS_URL = 'https://ecosystem.litho.ai';
+const LAX_BENEFITS = [
+  'Get a LAX Debit Card for free',
+  'Unlimited top-ups with 0 fees',
+  'Accepted worldwide where Visa™ is accepted',
+];
+
+/* CSS recreation of the LAX Visa card art (self-contained — no image asset). */
+function LaxCardArt() {
+  return (
+    <div style={{
+      position: 'relative', width: '100%', aspectRatio: '1.586 / 1',
+      borderRadius: 12, overflow: 'hidden',
+      background: 'radial-gradient(130% 130% at 50% -10%, #141a2e 0%, #0a0d18 55%, #05070f 100%)',
+      border: '1px solid rgba(59,122,247,0.28)', boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
+    }}>
+      <div style={{
+        position: 'absolute', top: '9%', left: '7%', fontSize: 20, fontWeight: 800, letterSpacing: '0.32em',
+        background: 'linear-gradient(90deg,#5b8cff,#9bb0ff)', WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+      }}>LAX</div>
+      <div style={{ position: 'absolute', bottom: '10%', right: '7%', textAlign: 'right', lineHeight: 1 }}>
+        <div style={{
+          fontSize: 23, fontWeight: 800, fontStyle: 'italic',
+          background: 'linear-gradient(90deg,#1a3fd6,#3b7af7)', WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+        }}>VISA</div>
+        <div style={{ fontSize: 9, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>Algorithmic</div>
+      </div>
+    </div>
+  );
+}
+
+function LaxCard() {
+  return (
+    <div className="card" style={{ padding: 16, marginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700 }}>
+        <CreditCard size={14} color="var(--blue)"/> Virtual Card
+      </div>
+      <LaxCardArt/>
+      <div style={{ fontSize: 14.5, fontWeight: 800, margin: '13px 0 9px', color: 'var(--text-primary)' }}>
+        Own Your Crypto Virtual Card
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {LAX_BENEFITS.map(b => (
+          <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.4 }}>
+            <Check size={15} color="var(--blue)" strokeWidth={2.6} style={{ marginTop: 1, flexShrink: 0 }}/>
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+      <button className="btn-primary" onClick={() => browser.tabs.create({ url: LAX_APPLY_URL })}>
+        Get Started
+      </button>
+    </div>
+  );
+}
+
+/* Quantt Agents — the AI assistant card (mirrors desktop). Opens the product
+   in a real tab. */
+function AIAssistant() {
+  return (
+    <div
+      className="card"
+      role="button"
+      tabIndex={0}
+      onClick={() => browser.tabs.create({ url: QUANTT_AGENTS_URL })}
+      style={{ padding: 16, marginTop: 12, cursor: 'pointer' }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11 }}>AI Assistant</div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+          background: 'var(--blue-dim)', color: 'var(--blue)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Sparkles size={16}/>
+        </div>
+        <div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>Quantt Agents ↗</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>
+            Your AI assistant — optimize your portfolio balance across chains.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomeScreen({
   onAction, onLock, onOpenSettings, onOpenToken,
   activeIdx, accountCount, onSwitch, onAddAccount,
@@ -728,6 +823,9 @@ function HomeScreen({
           </div>
         ))}
       </div>
+
+      <LaxCard/>
+      <AIAssistant/>
     </div>
   );
 }
