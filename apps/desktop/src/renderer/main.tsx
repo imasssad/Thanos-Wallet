@@ -360,6 +360,52 @@ function ExchangeWidget({ onSwap }: { onSwap: () => void }) {
 const OpenTokenDetail = React.createContext<((sym: string) => void) | null>(null);
 const useOpenTokenDetail = () => useContext(OpenTokenDetail);
 
+/* ───── Skeleton placeholders (cold first-load only) ─────
+   Shown ONLY when loading===true AND there is no cached/prior data.
+   A hydrated snapshot renders the real content instead. */
+function SkeletonPortfolioRows({ n = 4 }: { n?: number }) {
+  return (
+    <>
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} className="sk-portfolio-row" aria-hidden="true">
+          <div className="sk sk-portfolio-icon"/>
+          <div className="sk-portfolio-lines">
+            <div className="sk sk-line sk-line-name"/>
+            <div className="sk sk-line sk-line-sub"/>
+          </div>
+          <div className="sk-portfolio-right">
+            <div className="sk sk-line sk-line-price"/>
+            <div className="sk sk-line sk-line-chg"/>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* Generic table-row skeleton — colSpan spans the parent table's columns. */
+function SkeletonTableRows({ rows = 5, cols }: { rows?: number; cols: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <tr key={i} aria-hidden="true">
+          <td>
+            <div className="tx-cell">
+              <div className="sk sk-portfolio-icon" style={{ width: 28, height: 28 }}/>
+              <div className="sk sk-cell sk-cell-name"/>
+            </div>
+          </td>
+          {Array.from({ length: Math.max(0, cols - 1) }).map((__, j) => (
+            <td key={j} style={{ textAlign: 'right' }}>
+              <div className="sk sk-cell sk-cell-sm"/>
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
 function PortfolioList() {
   const { coins, loading, offline } = usePortfolioCtx();
   const openDetail = useOpenTokenDetail();
@@ -370,7 +416,7 @@ function PortfolioList() {
         <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}>View all</button>
       </div>
       <div className="portfolio-list">
-        {loading && <div className="portfolio-sym" style={{ padding: 12 }}>Loading balances…</div>}
+        {loading && coins.length === 0 && <SkeletonPortfolioRows n={4}/>}
         {!loading && offline && <div className="portfolio-sym" style={{ padding: 12 }}>Indexer offline</div>}
         {!loading && !offline && coins.length === 0 && (
           <div className="portfolio-sym" style={{ padding: 12 }}>No assets yet</div>
@@ -616,7 +662,9 @@ function SecurityPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
 
 function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null; onOpenSettings: () => void }) {
   const { coins, activity, totalUsd, loading } = usePortfolioCtx();
-  const balance = loading ? '···' : formatUsd(totalUsd);
+  // Cold first-load (no cached data) → shimmer; otherwise show real/cached total
+  // immediately (cached-first) even while a background refresh runs.
+  const coldLoad = loading && coins.length === 0;
   const liveLine = liveEth !== null
     ? `Live LITHO: ${parseFloat(liveEth).toFixed(3)} LITHO`
     : null;
@@ -632,7 +680,7 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
         <div>
           <div className="balance-label">Total balance</div>
           <div className="balance-amount">
-            {balance}
+            {coldLoad ? <span className="sk sk-balance" aria-hidden="true"/> : formatUsd(totalUsd)}
           </div>
           {liveLine && (
             <div style={{ fontSize: 11, color: 'var(--blue)', marginTop: 8, fontFamily: 'Geist Mono, monospace', fontWeight: 500 }}>
@@ -2087,6 +2135,7 @@ function MarketView() {
             </tr>
           </thead>
           <tbody>
+            {loading && rows.length === 0 && <SkeletonTableRows rows={6} cols={7}/>}
             {filtered.map((c, i) => (
               <tr key={c.id} style={{ cursor: 'pointer' }}>
                 <td style={{ color: 'var(--text-muted)', fontSize: 11 }}>{i + 1}</td>
@@ -2112,7 +2161,7 @@ function MarketView() {
             ))}
           </tbody>
         </table>
-        {loading && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading market data…</div>}
+        {loading && rows.length > 0 && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading market data…</div>}
         {!loading && offline && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Market data unavailable — CoinGecko may be rate-limiting.</div>}
         {!loading && !offline && filtered.length === 0 && (
           <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No coins match your search.</div>
@@ -2158,7 +2207,7 @@ function PortfolioView() {
             </svg>
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total</div>
-              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>{loading ? '···' : formatUsd(totalUsd)}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>{loading && coins.length === 0 ? '···' : formatUsd(totalUsd)}</div>
             </div>
           </div>
           {coins.map(c => (
@@ -2183,6 +2232,7 @@ function PortfolioView() {
               </tr>
             </thead>
             <tbody>
+              {loading && coins.length === 0 && <SkeletonTableRows rows={5} cols={5}/>}
               {coins.map(c => (
                 <tr key={c.sym} onClick={() => openDetail?.(c.sym)} style={{ cursor: 'pointer' }}>
                   <td>
@@ -2209,7 +2259,7 @@ function PortfolioView() {
               ))}
             </tbody>
           </table>
-          {loading && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading holdings…</div>}
+          {loading && coins.length > 0 && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading holdings…</div>}
           {!loading && offline && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Indexer offline.</div>}
           {!loading && !offline && coins.length === 0 && (
             <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No holdings yet.</div>
@@ -2249,6 +2299,7 @@ function TransactionsView() {
             </tr>
           </thead>
           <tbody>
+            {loading && activity.length === 0 && <SkeletonTableRows rows={5} cols={5}/>}
             {filtered.map((tx) => (
               <tr key={tx.id}>
                 <td>
@@ -2277,7 +2328,7 @@ function TransactionsView() {
             ))}
           </tbody>
         </table>
-        {loading && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading transactions…</div>}
+        {loading && activity.length > 0 && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Loading transactions…</div>}
         {!loading && offline && <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>Indexer offline.</div>}
         {!loading && !offline && filtered.length === 0 && (
           <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No transactions.</div>

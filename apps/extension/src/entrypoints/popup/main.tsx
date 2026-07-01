@@ -167,6 +167,29 @@ function iconFor(sym: string): string | null {
 
 /** Coin avatar — icon composited over the brand-colour circle, with the
  *  ticker initial as the fallback when no icon resolves or it errors. */
+/** Shimmer placeholder rows shaped like a real asset/activity row. Rendered
+ *  only on a true cold load (loading && no cached data) so the popup never
+ *  paints a bare "Loading…" line. */
+function SkeletonRows({ count = 4 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="sk-row">
+          <div className="sk sk-avatar" />
+          <div className="sk-row-mid">
+            <div className="sk sk-line" style={{ width: '52%' }} />
+            <div className="sk sk-line" style={{ width: '32%' }} />
+          </div>
+          <div className="sk-row-right">
+            <div className="sk sk-line" style={{ width: 52 }} />
+            <div className="sk sk-line" style={{ width: 36 }} />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function TokenAvatar({ sym, color }: { sym: string; color: string }) {
   const [failed, setFailed] = useState(false);
   const src = failed ? null : iconFor(sym);
@@ -804,7 +827,9 @@ function HomeScreen({
 
       <div className="balance-card">
         <div className="balance-label">TOTAL BALANCE</div>
-        <div className="balance-amt">{loading ? '···' : formatUsd(totalUsd)}</div>
+        {loading && coins.length === 0
+          ? <div className="sk sk-line" style={{ width: 150, height: 28, marginTop: 4 }} />
+          : <div className="balance-amt">{formatUsd(totalUsd)}</div>}
       </div>
 
       {holdings.length > 0 && <MiniChart holdings={holdings}/>}
@@ -851,7 +876,7 @@ function HomeScreen({
         <span className="count-pill">{coins.length}</span>
       </div>
       <div className="card list">
-        {loading && <div className="row-sub" style={{ padding: 12 }}>Loading balances…</div>}
+        {loading && coins.length === 0 && <SkeletonRows count={4} />}
         {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
         {!loading && !offline && coins.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No assets yet</div>}
         {coins.map((a, i) => (
@@ -889,7 +914,7 @@ function ActivityScreen() {
       </div>
       <div className="section-header">Recent</div>
       <div className="card list">
-        {loading && <div className="row-sub" style={{ padding: 12 }}>Loading activity…</div>}
+        {loading && activity.length === 0 && <SkeletonRows count={4} />}
         {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
         {!loading && !offline && shown.length === 0 && (
           <div className="row-sub" style={{ padding: 12 }}>

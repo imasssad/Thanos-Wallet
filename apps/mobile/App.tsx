@@ -110,6 +110,10 @@ import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource } from './lib/token-icons';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
+import {
+  getPortfolioSnapshot, setPortfolioSnapshot,
+  getActivitySnapshot, setActivitySnapshot,
+} from './lib/portfolio-cache';
 import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib/pricing';
 // Lightweight bridge metadata only (no SDK/ethers) so the Bridge UI renders
 // without pulling the heavy ESM bridge SDK onto the eager load path. The
@@ -386,6 +390,9 @@ interface DisplayAsset {
 }
 interface PortfolioState {
   assets: DisplayAsset[]; totalUsd: number; loading: boolean; offline: boolean;
+  /** true once a persisted snapshot has painted for this address (suppresses the
+   *  cold-load skeleton). */
+  hydrated: boolean;
   reload: () => void;
 }
 
@@ -408,9 +415,38 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [totalUsd, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+  // Cached-first: true once we've painted a persisted snapshot for the current
+  // address. Suppresses the cold-load skeleton (we already show real numbers).
+  const [hydrated, setHydrated] = useState(false);
 
   // Memoise the seed string so the effect doesn't re-fire on every render.
   const seedKey = seed?.join(' ') ?? '';
+
+  // Hydrate from the current address's last-known snapshot the instant this
+  // address is selected, so the home paints real numbers immediately while the
+  // background refresh (the effect below) runs. AsyncStorage is async but fast;
+  // loading stays true so the refresh still happens.
+  const prevAddrRef = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setHydrated(false);
+    // On a real account SWITCH, clear the prior account's numbers so we never
+    // show account A's balances under account B. (Within one address the fetch
+    // effect below still keeps last-known on failure — the offline contract.)
+    if (prevAddrRef.current !== null && prevAddrRef.current !== address) {
+      setAssets([]); setTotal(0);
+    }
+    prevAddrRef.current = address;
+    if (!address) return;
+    (async () => {
+      const snap = await getPortfolioSnapshot(address);
+      if (cancelled || !snap) return;
+      setAssets(snap.assets as DisplayAsset[]);
+      setTotal(snap.totalUsd);
+      setHydrated(true);
+    })();
+    return () => { cancelled = true; };
+  }, [address]);
 
   useEffect(() => {
     if (!address) { setAssets([]); setTotal(0); setLoading(false); setOffline(false); return; }
@@ -447,6 +483,10 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
           setAssets(evmRows);
           setTotal(evmRows.reduce((s, a) => s + a.usdValue, 0));
           setOffline(false);
+          // Persist this SUCCESSFUL fetch as the new snapshot (public data only).
+          // Guarded inside setPortfolioSnapshot: empty arrays are ignored so a
+          // bad/empty result never poisons a good snapshot.
+          void setPortfolioSnapshot(address, evmRows, evmRows.reduce((s, a) => s + a.usdValue, 0));
         } else {
           // Indexer down — keep the last-known assets/total, just flag offline.
           setOffline(true);
@@ -532,7 +572,12 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
                 }),
               ];
               if (!cancelled && extRows.length) {
-                setAssets(prev => [...prev, ...extRows]);
+                setAssets(prev => {
+                  const merged = [...prev, ...extRows];
+                  // Re-save the fuller snapshot (native + cross-chain + external).
+                  void setPortfolioSnapshot(address, merged, merged.reduce((s, r) => s + r.usdValue, 0));
+                  return merged;
+                });
                 setTotal(prev => prev + extRows.reduce((s, r) => s + r.usdValue, 0));
               }
             } catch { /* best-effort */ }
@@ -550,7 +595,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     return () => { cancelled = true; };
   }, [address, nonce, seedKey]);
 
-  return { assets, totalUsd, loading, offline, reload: () => setNonce((n) => n + 1) };
+  return { assets, totalUsd, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
 }
 
 /** Relative "x min ago" label from an ISO timestamp. */
@@ -589,7 +634,10 @@ function isValidRecipient(v: string): boolean {
 }
 
 interface ActivityState {
-  items: IndexerActivityItem[]; loading: boolean; offline: boolean; reload: () => void;
+  items: IndexerActivityItem[]; loading: boolean; offline: boolean;
+  /** true once a persisted snapshot has painted for this address. */
+  hydrated: boolean;
+  reload: () => void;
 }
 
 /** Fetch the wallet's recent on-chain activity from the indexer. */
@@ -598,18 +646,138 @@ function useActivity(address: string): ActivityState {
   const [items, setItems]   = useState<IndexerActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Cached-first: paint this address's last-known activity immediately.
+  const prevAddrRef = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setHydrated(false);
+    if (prevAddrRef.current !== null && prevAddrRef.current !== address) {
+      setItems([]);
+    }
+    prevAddrRef.current = address;
+    if (!address) return;
+    (async () => {
+      const snap = await getActivitySnapshot(address);
+      if (cancelled || !snap) return;
+      setItems(snap.items);
+      setHydrated(true);
+    })();
+    return () => { cancelled = true; };
+  }, [address]);
 
   useEffect(() => {
     if (!address) { setItems([]); setLoading(false); setOffline(false); return; }
     let cancelled = false;
     setLoading(true); setOffline(false);
     getActivity(address)
-      .then((list) => { if (!cancelled) { setItems(list); setLoading(false); } })
-      .catch(()    => { if (!cancelled) { setItems([]); setLoading(false); setOffline(true); } });
+      .then((list) => {
+        if (cancelled) return;
+        setItems(list); setLoading(false);
+        // Persist the successful fetch (guarded: empty lists are not written so a
+        // good snapshot is never clobbered by an empty/transient result).
+        void setActivitySnapshot(address, list);
+      })
+      // PRESERVE offline contract: keep whatever items we have, flag offline.
+      .catch(()    => { if (!cancelled) { setLoading(false); setOffline(true); } });
     return () => { cancelled = true; };
   }, [address, nonce]);
 
-  return { items, loading, offline, reload: () => setNonce((n) => n + 1) };
+  return { items, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
+}
+
+/* ─────────────────────────── Skeletons ─────────────────────────────
+   Shimmer placeholders shaped like the real content, shown ONLY on a true
+   COLD first load (loading===true AND no cached/prior data). No new deps —
+   a single Animated.Value pulses opacity 0.4<->1 in a loop. Colours use the
+   client's --bg-elevated / --bg-hover equivalents (C.bgElevated / C.bgHover).
+   Non-text Views, so the file's x1.5 font scaling doesn't apply. */
+
+/** One shimmering block. Reuses a shared Animated pulse passed by the parent so
+ *  every block in a group breathes in sync. */
+function SkeletonBlock({
+  width, height, radius = 8, style, pulse,
+}: {
+  width: number | `${number}%`; height: number; radius?: number;
+  style?: any; pulse: Animated.Value;
+}) {
+  const C = useColors();
+  return (
+    <Animated.View
+      style={[
+        {
+          width, height, borderRadius: radius,
+          backgroundColor: C.bgHover,
+          opacity: pulse,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+/** Shared pulse hook — one looped 0.4<->1 opacity animation. */
+function useSkeletonPulse(): Animated.Value {
+  const pulse = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1,   duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return pulse;
+}
+
+/** Balance-hero skeleton: a big amount bar + three metric stubs. */
+function BalanceSkeleton() {
+  const styles = useStyles();
+  const pulse = useSkeletonPulse();
+  return (
+    <View style={styles.balanceCard}>
+      <View style={styles.balanceCardOverlay}/>
+      <SkeletonBlock width={90}  height={12} pulse={pulse} style={{ marginBottom: 14 }}/>
+      <SkeletonBlock width={180} height={34} radius={10} pulse={pulse}/>
+      <View style={styles.balanceDivider}/>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {[0, 1, 2].map((k) => (
+          <View key={k}>
+            <SkeletonBlock width={54} height={10} pulse={pulse} style={{ marginBottom: 8 }}/>
+            <SkeletonBlock width={40} height={16} pulse={pulse}/>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** N asset/activity rows shaped like the real list rows (avatar + two text
+ *  lines + a right-aligned value). */
+function RowSkeleton({ count = 4 }: { count?: number }) {
+  const styles = useStyles();
+  const C = useColors();
+  const pulse = useSkeletonPulse();
+  return (
+    <View style={styles.card}>
+      {Array.from({ length: count }).map((_, i) => (
+        <View key={i} style={[styles.row, i < count - 1 && styles.rowBorder]}>
+          <SkeletonBlock width={36} height={36} radius={18} pulse={pulse}/>
+          <View style={styles.rowMid}>
+            <SkeletonBlock width={110} height={13} pulse={pulse} style={{ marginBottom: 7 }}/>
+            <SkeletonBlock width={64}  height={11} pulse={pulse}/>
+          </View>
+          <View style={[styles.rowRight, { alignItems: 'flex-end' }]}>
+            <SkeletonBlock width={70} height={13} pulse={pulse} style={{ marginBottom: 7, backgroundColor: C.bgHover }}/>
+            <SkeletonBlock width={46} height={11} pulse={pulse}/>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 /* ─────────────────────────── Reusable bits ─────────────────────────── */
@@ -731,8 +899,11 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
-  const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr, seed);
+  const { assets, totalUsd, loading, offline, hydrated, reload } = usePortfolio(addr, seed);
   const networks = new Set(assets.map((a) => a.chainId)).size;
+  // Cold first load only: loading AND nothing cached/painted yet. If a snapshot
+  // hydrated the view (or any assets are already present), show real data.
+  const showSkeleton = loading && !hydrated && assets.length === 0;
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
   useEffect(() => { isSeedBackedUp().then(setBackedUp).catch(() => {}); }, []);
   const holdings: Holding[] = useMemo(
@@ -764,11 +935,12 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         </View>
       </View>
 
-      {/* Balance hero CARD with gradient feel */}
+      {/* Balance hero CARD with gradient feel — skeleton only on cold load */}
+      {showSkeleton ? <BalanceSkeleton/> : (
       <View style={styles.balanceCard}>
         <View style={styles.balanceCardOverlay}/>
         <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
-        <Text style={styles.balanceAmt}>{loading ? '···' : formatUsd(totalUsd)}</Text>
+        <Text style={styles.balanceAmt}>{(loading && !hydrated) ? '···' : formatUsd(totalUsd)}</Text>
         <View style={styles.balanceDivider}/>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <View>
@@ -787,6 +959,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           </View>
         </View>
       </View>
+      )}
 
       {/* Portfolio history chart */}
       {holdings.length > 0 && <PortfolioChart holdings={holdings}/>}
@@ -870,11 +1043,12 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
             <ChevronRight size={16} color={C.textMuted}/>
           </View>
         </Pressable>
+        {showSkeleton ? <RowSkeleton count={4}/> : (
         <View style={styles.card}>
-          {loading && (
+          {loading && assets.length === 0 && (
             <Text style={[styles.rowSub, { padding: 16 }]}>Loading balances…</Text>
           )}
-          {!loading && offline && (
+          {!loading && offline && assets.length === 0 && (
             <Text style={[styles.rowSub, { padding: 16 }]}>
               Couldn’t reach the indexer — pull down to retry.
             </Text>
@@ -898,6 +1072,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
             </Pressable>
           ))}
         </View>
+        )}
       </View>
 
       {/* LAX virtual card — Visa "Algorithmic" debit card (opens lax.money) */}
@@ -1725,9 +1900,11 @@ function ActivityScreen() {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
-  const { items, loading, offline, reload } = useActivity(addr);
+  const { items, loading, offline, hydrated, reload } = useActivity(addr);
   const [filter, setFilter] = useState<'All' | 'Sent' | 'Received' | 'Swap'>('All');
   const shown = filter === 'All' ? items : items.filter(t => txDisplay(t.type).label === filter);
+  // Cold first load only: nothing cached/painted yet.
+  const showSkeleton = loading && !hydrated && items.length === 0;
 
   return (
     <ScrollView
@@ -1754,11 +1931,12 @@ function ActivityScreen() {
       </View>
 
       <Text style={styles.dateHeader}>Recent</Text>
+      {showSkeleton ? <RowSkeleton count={5}/> : (
       <View style={styles.card}>
-        {loading && (
+        {loading && items.length === 0 && (
           <Text style={[styles.rowSub, { padding: 16 }]}>Loading activity…</Text>
         )}
-        {!loading && offline && (
+        {!loading && offline && items.length === 0 && (
           <Text style={[styles.rowSub, { padding: 16 }]}>
             Couldn’t reach the indexer — pull down to retry.
           </Text>
@@ -1795,6 +1973,7 @@ function ActivityScreen() {
           );
         })}
       </View>
+      )}
     </ScrollView>
   );
 }

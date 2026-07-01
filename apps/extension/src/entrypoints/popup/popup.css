@@ -97,6 +97,30 @@ input, textarea { font-family: inherit; }
 .pos { color: var(--green); }
 .neg { color: var(--red); }
 
+/* ─── Skeleton shimmer (cold-load placeholders) ───────────────────────────
+   Shown ONLY on a true cold first load (loading && no cached data). Shimmers
+   between --bg-elevated and --bg-hover, matching the popup's blue-dark palette.
+   sk- prefix avoids collisions with existing rules. */
+@keyframes sk-shimmer { to { background-position: -200% 0; } }
+.sk {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 0%,
+    var(--bg-hover) 50%,
+    var(--bg-elevated) 100%
+  );
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.2s ease-in-out infinite;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+.sk-line { height: 12px; }
+.sk-row { display: flex; align-items: center; gap: 10px; padding: 11px 12px; }
+.sk-row + .sk-row { border-top: 1px solid var(--border-subtle); }
+.sk-avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+.sk-row-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sk-row-right { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+
 /* ─── App shell ─── */
 .app { display: flex; flex-direction: column; height: 100%; background: var(--bg-base); }
 .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; }

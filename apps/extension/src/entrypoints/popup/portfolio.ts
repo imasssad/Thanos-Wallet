@@ -9,6 +9,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
 import { getLocalActivity } from '../../lib/local-activity';
+import { loadSnapshot, saveSnapshot } from './portfolio-cache';
 
 const INDEXER_BASE = String(
   (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
@@ -139,11 +140,19 @@ async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
  *  provided, also derives BTC/SOL/ATOM addresses and adds their native
  *  balances to the displayed coin list — so the dashboard total
  *  reflects every chain. */
+/** Build the initial hook state, seeded synchronously from this address's
+ *  last-known snapshot so the (re)mounted popup paints real numbers instantly.
+ *  loading stays true — a background refresh always runs. */
+function initialStateFor(address: string): Omit<PortfolioState, 'reload'> {
+  const snap = /^0x[0-9a-fA-F]{40}$/.test(address || '') ? loadSnapshot(address) : null;
+  return snap
+    ? { coins: snap.coins, activity: snap.activity, totalUsd: snap.totalUsd, loading: true, offline: false }
+    : { coins: [], activity: [], totalUsd: 0, loading: true, offline: false };
+}
+
 export function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce] = useState(0);
-  const [state, setState] = useState<Omit<PortfolioState, 'reload'>>({
-    coins: [], activity: [], totalUsd: 0, loading: true, offline: false,
-  });
+  const [state, setState] = useState<Omit<PortfolioState, 'reload'>>(() => initialStateFor(address));
 
   const seedKey = seed?.join(' ') ?? '';
 
@@ -152,6 +161,8 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
       setState({ coins: [], activity: [], totalUsd: 0, loading: false, offline: false });
       return;
     }
+    // Address changed — hydrate from THAT address's snapshot (or empty).
+    setState(initialStateFor(address));
     let cancelled = false;
     setState((s) => ({ ...s, loading: true, offline: false }));
     (async () => {
@@ -264,7 +275,17 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           };
         });
 
-        setState({ coins, activity: mergeLocalActivity(address, activity), totalUsd, loading: false, offline: false });
+        const mergedActivity = mergeLocalActivity(address, activity);
+        setState({ coins, activity: mergedActivity, totalUsd, loading: false, offline: false });
+        // Persist the fresh result so the next popup open paints instantly.
+        // Guard on coins.length: fetchPortfolio catches an indexer outage to []
+        // (see above), which reaches here with offline:false — without this
+        // guard that empty result would overwrite a good snapshot and defeat
+        // cached-first on the next open. A genuinely-empty wallet simply isn't
+        // cached (it just shows a brief skeleton next time), which is fine.
+        if (coins.length > 0) {
+          saveSnapshot(address, { coins, activity: mergedActivity, totalUsd });
+        }
       } catch {
         if (cancelled) return;
         // Indexer unreachable — still surface the user's own recorded sends.

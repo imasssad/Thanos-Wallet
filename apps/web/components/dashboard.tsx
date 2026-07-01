@@ -20,6 +20,7 @@ import { SecurityPanel } from './SecurityPanel';
 import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
 import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
+import { loadPortfolioSnapshot, savePortfolioSnapshot } from '../lib/cache-store';
 import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
@@ -446,6 +447,77 @@ function StakingCard() {
   );
 }
 
+/* ─── Skeletons (cold-load only) ───────────────────────────────────────
+   Shimmer placeholders SHAPED like the real content, shown ONLY on a true
+   cold first load (loading && no cached/prior data). Reuses the `.skeleton`
+   shimmer class from globals.css; `sk-` wrappers just lay out the shapes. */
+
+function Sk({ w, h, r = 6, style }: { w?: number | string; h: number; r?: number; style?: React.CSSProperties }) {
+  return (
+    <span
+      className="skeleton"
+      style={{ display: 'block', width: w ?? '100%', height: h, borderRadius: r, ...style }}
+    />
+  );
+}
+
+/** Token-row skeletons — same layout as the real coin rows below. */
+function TokenRowsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="sk-token-rows" style={{ display: 'flex', flexDirection: 'column' }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '14px 4px',
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
+        >
+          <Sk w={44} h={44} r={22}/>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Sk w={90} h={14}/>
+            <Sk w={140} h={11}/>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+            <Sk w={80} h={14}/>
+            <Sk w={56} h={11}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Activity-row skeletons — matches the payment-history table rhythm. */
+function ActivityRowsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="card sk-activity">
+      <div className="table-top" style={{ marginBottom: 8 }}>
+        <Sk w={140} h={16}/>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {Array.from({ length: rows }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 0', borderBottom: '1px solid var(--border-subtle)',
+            }}
+          >
+            <Sk w={36} h={36} r={10}/>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Sk w={120} h={13}/>
+              <Sk w={70} h={10}/>
+            </div>
+            <Sk w={80} h={13}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -462,9 +534,27 @@ export function Dashboard() {
   const prices    = usePrices();
   const quotes    = useQuotes();
 
-  const [liveAssets,   setLiveAssets]   = useState<IndexerAsset[] | null>(null);
-  const [liveActivity, setLiveActivity] = useState<IndexerActivityItem[] | null>(null);
+  /* CACHED-FIRST: seed live state synchronously from THIS address's
+     last-known-good snapshot so the dashboard paints real numbers on
+     mount instead of blank/skeleton. A background refresh still runs
+     (loading stays "live" until getPortfolio resolves). Purely additive —
+     the fetch/offline logic below is unchanged. */
+  const initialSnap = useMemo(() => loadPortfolioSnapshot(evmAddress), [evmAddress]);
+  const [liveAssets,   setLiveAssets]   = useState<IndexerAsset[] | null>(initialSnap?.assets ?? null);
+  const [liveActivity, setLiveActivity] = useState<IndexerActivityItem[] | null>(initialSnap?.activity ?? null);
   const [indexerOk,    setIndexerOk]    = useState<boolean>(true);
+
+  /* When the address changes, swap to THAT address's snapshot (or null if
+     none) before the background refresh lands. Skipped on the very first
+     render — the useState initializers already applied the snapshot, and
+     re-applying would clobber a fresh fetch that resolved first. */
+  const firstAddrRef = React.useRef(true);
+  useEffect(() => {
+    if (firstAddrRef.current) { firstAddrRef.current = false; return; }
+    const snap = loadPortfolioSnapshot(evmAddress);
+    setLiveAssets(snap?.assets ?? null);
+    setLiveActivity(snap?.activity ?? null);
+  }, [evmAddress]);
 
   useEffect(() => {
     if (!evmAddress) return;
@@ -473,9 +563,14 @@ export function Dashboard() {
       try {
         const p = await getPortfolio(evmAddress);
         if (cancel) return;
-        setLiveAssets(p.assets ?? []);
-        setLiveActivity(p.activity ?? []);
+        const assets   = p.assets ?? [];
+        const activity = p.activity ?? [];
+        setLiveAssets(assets);
+        setLiveActivity(activity);
         setIndexerOk(true);
+        // Only persist a real, successful result — never an offline/empty
+        // fallback — so a good snapshot is never poisoned.
+        savePortfolioSnapshot(evmAddress, { assets, activity });
       } catch (e) {
         if (cancel) return;
         if (e instanceof IndexerOffline) {
@@ -726,6 +821,13 @@ export function Dashboard() {
     });
   }, [COINS, netFilter]);
 
+  /* COLD LOAD = the portfolio fetch hasn't resolved AND no snapshot
+     hydrated the view (liveAssets/liveActivity are still their initial
+     null). In that state show skeletons; once a snapshot or the fresh
+     fetch supplied data, render the real content (never a skeleton). */
+  const assetsCold   = liveAssets   === null;
+  const activityCold = liveActivity === null;
+
   /* Buy on-ramp. Today this redirects to Transak's hosted widget with
      the wallet's EVM address pre-populated. Requires
      NEXT_PUBLIC_TRANSAK_API_KEY to be set at build time; without it the
@@ -812,10 +914,16 @@ export function Dashboard() {
             )}
           </div>
           <div style={{ marginTop: 10, width: '100%', textAlign: 'center' }}>
-            {/* Auto-shrinks so any magnitude fits on one line without overflow. */}
-            <FitText max={68} min={22} style={{ fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05 }}>
-              {balanceHidden ? '••••••' : totalDisplay}
-            </FitText>
+            {assetsCold ? (
+              /* Cold-load balance hero placeholder — same visual weight as
+                 the real total, centered. */
+              <Sk w={260} h={54} r={12} style={{ margin: '0 auto' }}/>
+            ) : (
+              /* Auto-shrinks so any magnitude fits on one line without overflow. */
+              <FitText max={68} min={22} style={{ fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1.05 }}>
+                {balanceHidden ? '••••••' : totalDisplay}
+              </FitText>
+            )}
           </div>
           <div style={{
             marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 12,
@@ -954,7 +1062,8 @@ export function Dashboard() {
 
             {/* Big token rows */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {filteredCoins.length === 0 && (
+              {assetsCold && <TokenRowsSkeleton rows={4}/>}
+              {!assetsCold && filteredCoins.length === 0 && (
                 <div style={{
                   padding: '32px 16px', textAlign: 'center',
                   background: 'var(--bg-elevated)',
@@ -1124,7 +1233,11 @@ export function Dashboard() {
           </div>
         )}
 
-        {tab === 'activity' && TXS.length === 0 && (
+        {tab === 'activity' && activityCold && (
+          <ActivityRowsSkeleton rows={5}/>
+        )}
+
+        {tab === 'activity' && !activityCold && TXS.length === 0 && (
           <div style={{
             padding: '36px 16px', textAlign: 'center',
             background: 'var(--bg-elevated)',

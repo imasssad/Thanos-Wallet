@@ -15,6 +15,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
 import { getLocalActivity } from './local-activity';
+import { readSnapshot, writeSnapshot } from './portfolio-cache';
 
 const INDEXER_BASE = String(
   (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
@@ -171,8 +172,18 @@ async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
  *  portfolio so the total reflects every chain the wallet manages. */
 export function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce] = useState(0);
-  const [state, setState] = useState<Omit<PortfolioState, 'reload'>>({
-    coins: [], activity: [], totalUsd: 0, loading: true, offline: false,
+  // Cached-first: paint real last-known numbers for this address immediately
+  // (loading still true — a background refresh is running). Never blocks or
+  // changes the fetch below.
+  const [state, setState] = useState<Omit<PortfolioState, 'reload'>>(() => {
+    const snap = readSnapshot(address);
+    return {
+      coins:    snap?.coins ?? [],
+      activity: snap ? mergeLocalActivity(address, snap.activity) : [],
+      totalUsd: snap?.totalUsd ?? 0,
+      loading:  true,
+      offline:  false,
+    };
   });
 
   const seedKey = seed?.join(' ') ?? '';
@@ -183,7 +194,16 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
       return;
     }
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, offline: false }));
+    // Cached-first on address change: show THIS address's last-known snapshot
+    // (or empty if none) while the fresh fetch runs in the background.
+    const snap = readSnapshot(address);
+    setState({
+      coins:    snap?.coins ?? [],
+      activity: mergeLocalActivity(address, snap?.activity ?? []),
+      totalUsd: snap?.totalUsd ?? 0,
+      loading:  true,
+      offline:  false,
+    });
     (async () => {
       try {
         const [pf, prices] = await Promise.all([
@@ -299,6 +319,12 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           };
         });
 
+        // Cache-write: only persist a snapshot when the fetch produced real
+        // data. An empty result (indexer 500 caught to []) must never overwrite
+        // a good snapshot — that would poison the cached-first view.
+        if (coins.length > 0) {
+          writeSnapshot(address, { coins, totalUsd, activity });
+        }
         setState({ coins, activity: mergeLocalActivity(address, activity), totalUsd, loading: false, offline: false });
       } catch {
         if (cancelled) return;
