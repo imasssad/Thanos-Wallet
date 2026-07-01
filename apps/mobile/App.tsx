@@ -149,7 +149,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.10';
+const APP_VERSION = 'thanos-v1.11';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
