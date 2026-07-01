@@ -34,6 +34,8 @@ let pool: Pool;
 // chain.ts assumes RPC env vars present at import time.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let processTransferLog: any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let batchProcessTransferLogs: any;
 
 /** Pad an EVM address to a 32-byte hex topic. */
 function addrTopic(addr: string): string {
@@ -93,6 +95,7 @@ beforeAll(async () => {
   // file load. We deliberately don't import the whole indexer entrypoint.
   const mod = await import('../lep100-sync.js');
   processTransferLog = mod.processTransferLog;
+  batchProcessTransferLogs = mod.batchProcessTransferLogs;
 });
 
 beforeEach(async () => {
@@ -181,6 +184,67 @@ describeIfDb('processTransferLog — real Postgres', () => {
     const total = await balanceOf(ALICE) + await balanceOf(BOB);
     // Minted 1000, burned 100 → 900 net outstanding.
     expect(total).toBe(900n);
+  });
+});
+
+/* Batched path (used by syncRange) — must produce identical balances to the
+ * per-event path above, plus handle whole-batch idempotency and partial-overlap
+ * replays where only genuinely-new events may mutate balances. */
+describeIfDb('batchProcessTransferLogs — real Postgres (batched path)', () => {
+  const times   = new Map<number, Date>();
+  const symbols = new Map<string, string>([[TOKEN.toLowerCase(), 'TST']]);
+  function batch(logs: Log[]) {
+    for (const l of logs) {
+      if (l.blockNumber != null && !times.has(l.blockNumber)) {
+        times.set(l.blockNumber, new Date('2026-05-23T12:00:00Z'));
+      }
+    }
+    return batchProcessTransferLogs(logs, times, symbols);
+  }
+
+  it('mint + transfer + burn in ONE batch nets correctly', async () => {
+    await batch([
+      makeTransferLog({ from: ZERO,  to: ALICE, valueWei: 1000n, blockNumber: 1, logIndex: 0, txHash: '0x' + 'a1'.repeat(32) }),
+      makeTransferLog({ from: ALICE, to: BOB,   valueWei:  300n, blockNumber: 2, logIndex: 0, txHash: '0x' + 'a2'.repeat(32) }),
+      makeTransferLog({ from: ALICE, to: ZERO,  valueWei:  100n, blockNumber: 3, logIndex: 0, txHash: '0x' + 'a3'.repeat(32) }),
+    ]);
+    expect(await balanceOf(ALICE)).toBe(600n);   // 1000 - 300 - 100
+    expect(await balanceOf(BOB)).toBe(300n);
+    expect(await balanceOf(ZERO)).toBe(0n);       // zero-address never credited/debited
+    expect(await eventCount()).toBe(3);
+  });
+
+  it('matches the per-event scenario (mint→transfer→burn)', async () => {
+    await batch([
+      makeTransferLog({ from: ZERO,  to: ALICE, valueWei: 100n, blockNumber: 1, logIndex: 0, txHash: '0x' + 'b1'.repeat(32) }),
+      makeTransferLog({ from: ALICE, to: BOB,   valueWei:  30n, blockNumber: 2, logIndex: 0, txHash: '0x' + 'b2'.repeat(32) }),
+      makeTransferLog({ from: ALICE, to: ZERO,  valueWei:  40n, blockNumber: 3, logIndex: 0, txHash: '0x' + 'b3'.repeat(32) }),
+    ]);
+    expect(await balanceOf(ALICE)).toBe(30n);     // 100 - 30 - 40
+    expect(await balanceOf(BOB)).toBe(30n);
+  });
+
+  it('re-running the same batch is idempotent (balances + events unchanged)', async () => {
+    const logs = [
+      makeTransferLog({ from: ZERO,  to: ALICE, valueWei: 500n, blockNumber: 1, logIndex: 0, txHash: '0x' + 'c1'.repeat(32) }),
+      makeTransferLog({ from: ALICE, to: BOB,   valueWei: 200n, blockNumber: 2, logIndex: 0, txHash: '0x' + 'c2'.repeat(32) }),
+    ];
+    await batch(logs);
+    await batch(logs);                            // replay the whole batch
+    expect(await balanceOf(ALICE)).toBe(300n);
+    expect(await balanceOf(BOB)).toBe(200n);
+    expect(await eventCount()).toBe(2);
+  });
+
+  it('partial-overlap batch: only genuinely-new events mutate balances', async () => {
+    const e1 = makeTransferLog({ from: ZERO, to: ALICE, valueWei: 100n, blockNumber: 1, logIndex: 0, txHash: '0x' + 'd1'.repeat(32) });
+    await batch([e1]);
+    expect(await balanceOf(ALICE)).toBe(100n);
+    const e2 = makeTransferLog({ from: ALICE, to: BOB, valueWei: 25n, blockNumber: 2, logIndex: 0, txHash: '0x' + 'd2'.repeat(32) });
+    await batch([e1, e2]);                        // e1 is a duplicate, e2 is new
+    expect(await balanceOf(ALICE)).toBe(75n);     // 100 - 25 (e1 NOT double-counted)
+    expect(await balanceOf(BOB)).toBe(25n);
+    expect(await eventCount()).toBe(2);
   });
 });
 

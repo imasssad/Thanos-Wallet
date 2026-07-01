@@ -187,6 +187,132 @@ export async function processTransferLog(log: Log, blockTimestamp: Date, symbol 
   }
 }
 
+/**
+ * Batched equivalent of processTransferLog for a whole range of logs — one
+ * transaction, a multi-row event INSERT + aggregated balance UPSERTs, instead
+ * of a connect()+BEGIN/COMMIT and 3–4 statements PER event. On a backfill
+ * (~thousands of events) this collapses tens of thousands of round-trips into a
+ * handful of statements.
+ *
+ * Idempotency is preserved exactly: the event INSERT is ON CONFLICT DO NOTHING
+ * and only the rows it ACTUALLY inserts (RETURNING) contribute balance deltas,
+ * so re-scanning a range that's already indexed is a no-op — same guarantee the
+ * per-event path gave via `if (rowCount === 0) skip`.
+ */
+export async function batchProcessTransferLogs(
+  logs: Log[],
+  blockTimes: Map<number, Date>,
+  symbolByAddr: Map<string, string>,
+): Promise<void> {
+  if (logs.length === 0) return;
+  // 500 events * 9 bound params = 4,500 — comfortably under Postgres' 65,535
+  // parameter cap, and small enough to avoid long row locks on lep100_balances.
+  const CHUNK = 500;
+  const zero = ZERO_ADDRESS.toLowerCase();
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+
+    // 1) Multi-row event insert (chunked). RETURNING gives back only the rows
+    //    that were genuinely inserted (not conflict-skipped duplicates), so we
+    //    know which events are new and may mutate balances.
+    const insertedKeys = new Set<string>();
+    for (let i = 0; i < logs.length; i += CHUNK) {
+      const slice = logs.slice(i, i + CHUNK);
+      const tuples: string[] = [];
+      const params: unknown[] = [];
+      slice.forEach((log, j) => {
+        const b = j * 9;
+        const ts = log.blockNumber != null ? (blockTimes.get(log.blockNumber) ?? new Date()) : new Date();
+        tuples.push(`($${b+1},$${b+2},'Transfer',$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9})`);
+        params.push(
+          MAKALU_CHAIN_ID,
+          log.address.toLowerCase(),
+          log.transactionHash,
+          log.blockNumber,
+          log.index,
+          topicToAddress(log.topics[1]),
+          topicToAddress(log.topics[2]),
+          BigInt(log.data || '0x0').toString(),
+          ts.toISOString(),
+        );
+      });
+      const res = await client.query(
+        `insert into lep100_events
+           (chain_id, contract_address, event_name, tx_hash, block_number, log_index,
+            from_address, to_address, amount, occurred_at)
+         values ${tuples.join(',')}
+         on conflict (chain_id, tx_hash, log_index) do nothing
+         returning tx_hash, log_index`,
+        params,
+      );
+      for (const r of res.rows) insertedKeys.add(`${r.tx_hash}:${r.log_index}`);
+    }
+
+    // 2) Aggregate net balance deltas per (contract, owner) from ONLY the
+    //    newly-inserted events. Mint (from==0x0) credits only `to`; burn
+    //    (to==0x0) debits only `from`; both net out for repeat owners in-range.
+    const deltas = new Map<string, bigint>();
+    const newIncoming: Array<{ to: string; symbol: string; txHash: string }> = [];
+    for (const log of logs) {
+      if (!insertedKeys.has(`${log.transactionHash}:${log.index}`)) continue;
+      const from = topicToAddress(log.topics[1]);
+      const to   = topicToAddress(log.topics[2]);
+      const value = BigInt(log.data || '0x0');
+      const contract = log.address.toLowerCase();
+      if (from !== zero) {
+        const k = `${contract}|${from}`;
+        deltas.set(k, (deltas.get(k) ?? 0n) - value);
+      }
+      if (to !== zero) {
+        const k = `${contract}|${to}`;
+        deltas.set(k, (deltas.get(k) ?? 0n) + value);
+        if (log.transactionHash) {
+          newIncoming.push({ to, symbol: symbolByAddr.get(contract) ?? 'tokens', txHash: log.transactionHash });
+        }
+      }
+    }
+
+    // 3) Apply deltas as chunked multi-row UPSERTs. `balance + excluded.balance`
+    //    both creates a new row at the delta and increments an existing one —
+    //    equivalent to the old insert-zero-then-update pair, in one statement.
+    const entries = [...deltas.entries()];
+    for (let i = 0; i < entries.length; i += CHUNK) {
+      const slice = entries.slice(i, i + CHUNK);
+      const tuples: string[] = [];
+      const params: unknown[] = [];
+      slice.forEach(([k, delta], j) => {
+        const sep = k.indexOf('|');
+        const contract = k.slice(0, sep);
+        const owner = k.slice(sep + 1);
+        const b = j * 4;
+        tuples.push(`($${b+1},$${b+2},$${b+3},$${b+4}::numeric,now())`);
+        params.push(MAKALU_CHAIN_ID, contract, owner, delta.toString());
+      });
+      await client.query(
+        `insert into lep100_balances (chain_id, contract_address, owner_address, balance, updated_at)
+         values ${tuples.join(',')}
+         on conflict (chain_id, contract_address, owner_address) do update
+           set balance = lep100_balances.balance + excluded.balance,
+               updated_at = now()`,
+        params,
+      );
+    }
+
+    await client.query('commit');
+
+    // 4) Push the recipients of new incoming transfers (best-effort, post-commit
+    //    like the per-event path).
+    for (const n of newIncoming) notifyReceive(n.to, n.symbol, n.txHash);
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /* ─── Sync passes ────────────────────────────────────────────────────── */
 
 async function syncRange(fromBlock: number, toBlock: number, tokens: TokenSpec[]): Promise<number> {
@@ -211,10 +337,8 @@ async function syncRange(fromBlock: number, toBlock: number, tokens: TokenSpec[]
   }
 
   const symbolByAddr = new Map(tokens.map(t => [t.address.toLowerCase(), t.fallbackSymbol ?? 'tokens']));
-  for (const log of logs) {
-    const ts = log.blockNumber != null ? (blockTimes.get(log.blockNumber) ?? new Date()) : new Date();
-    await processTransferLog(log, ts, symbolByAddr.get(log.address.toLowerCase()) ?? 'tokens');
-  }
+  // One transaction for the whole range instead of a connect()+txn per event.
+  await batchProcessTransferLogs(logs, blockTimes, symbolByAddr);
   return logs.length;
 }
 
