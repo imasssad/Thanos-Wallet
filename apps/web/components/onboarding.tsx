@@ -328,7 +328,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           >
             <div style={{ fontSize: 13, fontWeight: 700 }}>Recovery phrase</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              12 / 15 / 18 / 21 / 24-word BIP39 mnemonic — recommended
+              12–24 word BIP39 phrase · recommended
             </div>
           </button>
           <button
@@ -338,7 +338,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
           >
             <div style={{ fontSize: 13, fontWeight: 700 }}>Private key</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              0x-prefixed 32-byte hex — imports a single account
+              0x-prefixed 32-byte hex · single account
             </div>
           </button>
           <button className="btn-link" style={{ marginTop: 14 }} onClick={() => setStep('welcome')}>Back</button>

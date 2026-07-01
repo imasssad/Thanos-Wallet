@@ -1493,6 +1493,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* Default primary: rounded rectangle so it matches the outline button beside it */
 .onboard-card .btn-primary {
   height: 50px;
+  min-width: 0;               /* let flex:1 equalise width vs the Back button */
   margin-top: 14px;
   border-radius: 13px;
   background: var(--blue);
@@ -1530,15 +1531,20 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset;
 }
 
-/* Outline buttons (light + dark) — matches primary height/radius for clean side-by-side rows */
+/* Outline buttons (light + dark) — matches primary height/radius for clean
+   side-by-side rows. min-height (not a fixed height) so multi-line option cards
+   (import-choose: title + description) grow to fit instead of the text
+   spilling below the border; margin-top matches the primary (14px) so the two
+   sit level in a flex row; min-width:0 lets flex:1 equalise their widths. */
 .onboard-card .btn-outline {
-  height: 50px !important;
+  min-height: 50px;
+  min-width: 0;
   border-radius: 13px;
   background: #ffffff;
   border: 1px solid #d4d4d8;
   font-size: 16px; font-weight: 600;
   color: var(--text-primary);
-  margin-top: 22px;
+  margin-top: 14px;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .onboard-card .btn-outline:hover {
