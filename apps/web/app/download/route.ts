@@ -11,9 +11,15 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — VERSION "thanos-v1.10" (2026-06-29, build
-// 134e36b0, account imasssadkh). Shows its version in Settings (bottom) so
+// Latest production-apk build — VERSION "thanos-v1.11" (2026-07-01, build
+// 54e55adb, account imasssadkh). Shows its version in Settings (bottom) so
 // testers can confirm the installed build at a glance.
+// NEW in v1.11: premium minimal-luxe onboarding (welcome + unlock), LAX +
+// Quantt cards on Home, cached-first render + skeleton screens, optimistic
+// pending-tx + address book, and a dark-themed account switcher (replaces the
+// OS white Alert). Build fix: JitPack promoted to a settings-level Maven repo
+// so the WalletConnect-Pay 'yttrium' native dep resolves (was 504-ing on
+// Sonatype snapshots).
 // FIX in v1.10 (crash): v1.09 crashed on unlock with "Rendered more hooks than
 // during the previous render" — the walletAddr useMemo sat BELOW App's early
 // returns (boot splash / unlock gate), so it ran only in the unlocked branch =
@@ -27,11 +33,11 @@
 // From v1.05: external-EVM send/receive/balances (ETH + USDT/USDC, 8 chains).
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
-// The Settings version tag (thanos-v1.10) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/9wUggpFzUq2HFsIO2Q9nRAyQtvVw6dViYKrtqP48Qzo.apk';
+// The Settings version tag (thanos-v1.11) confirms the new build took.
+const APK_URL = 'https://expo.dev/artifacts/eas/FUiDAOMGl1Gr6tOdYHLbfQMN3N5R9pmPG8txCrjqVcc.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
-const APK_VERSION = 'thanos-v1.10';
+const APK_VERSION = 'thanos-v1.11';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
