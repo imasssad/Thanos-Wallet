@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  ActivityIndicator, Alert, Animated, AppState, Easing, Image, InteractionManager, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
+  ActivityIndicator, Alert, Animated, AppState, Dimensions, Easing, Image, InteractionManager, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
@@ -120,7 +120,7 @@ import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availa
 import { apiClient, type AuthUser } from './lib/auth-client';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
-import { SvgXml } from 'react-native-svg';
+import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -3631,6 +3631,178 @@ const AUTOLOCK_OPTIONS = [
   { label: 'Never',      minutes: 0 },
 ];
 
+/* ══════════════════════ MINIMAL-LUXE ONBOARDING KIT ══════════════════════
+   Premium blue-only welcome + unlock. Every gradient/glow is react-native-svg;
+   every motion is the built-in Animated API. A true swipeable 3-slide value-prop
+   carousel with animated pager dots. Each helper reads styles/colors via the
+   useStyles()/useColors() hooks, so they are self-sufficient. */
+
+/* Unique SVG gradient id per instance — prevents url(#id) collisions when
+   several marks / pills coexist (e.g. across carousel slides). */
+let _obUid = 0;
+function useObUid(prefix: string) {
+  const ref = useRef<string | null>(null);
+  if (ref.current === null) ref.current = `${prefix}${++_obUid}`;
+  return ref.current;
+}
+
+const OB_SLIDES = [
+  { headline: 'Own your keys.\nOwn your future.', sub: 'True self-custody — your recovery phrase never leaves this device.' },
+  { headline: 'One wallet.\nEvery chain.',        sub: 'Lithosphere · Bitcoin · EVM, unified in a single Web4 wallet.' },
+  { headline: 'Move value\nwithout friction.',    sub: 'Hold, swap and bridge across chains — with quiet, total control.' },
+];
+
+/* Brand mark inside a slowly-rotating thin gradient ring + a soft breathing
+   radial under-glow. One elegant SVG accent. */
+function ObMark({ size = 128 }: { size?: number }) {
+  const C = useColors();
+  const glowId = useObUid('obGlow');
+  const ringId = useObUid('obRing');
+  const spin  = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(enter, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const a = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 26000, easing: Easing.linear, useNativeDriver: true }));
+    const b = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 2800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 2800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    a.start(); b.start();
+    return () => { a.stop(); b.stop(); };
+  }, []);
+  const rotate      = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const glowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.55] });
+  const glowScale   = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.08] });
+  const enterScale  = enter.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+  const r = size / 2 - 5;
+  return (
+    <Animated.View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', opacity: enter, transform: [{ scale: enterScale }] }}>
+      {/* soft radial under-glow */}
+      <Animated.View pointerEvents="none" style={{ position: 'absolute', opacity: glowOpacity, transform: [{ scale: glowScale }] }}>
+        <Svg width={size * 2} height={size * 2}>
+          <Defs>
+            <RadialGradient id={glowId} cx="50%" cy="50%" r="50%">
+              <Stop offset="0%"   stopColor={C.blue} stopOpacity={0.55} />
+              <Stop offset="55%"  stopColor={C.blue} stopOpacity={0.13} />
+              <Stop offset="100%" stopColor={C.blue} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Circle cx={size} cy={size} r={size} fill={`url(#${glowId})`} />
+        </Svg>
+      </Animated.View>
+      {/* thin gradient ring, slowly rotating */}
+      <Animated.View pointerEvents="none" style={{ position: 'absolute', transform: [{ rotate }] }}>
+        <Svg width={size} height={size}>
+          <Defs>
+            <SvgGradient id={ringId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0%"   stopColor={C.blue} stopOpacity={0.95} />
+              <Stop offset="42%"  stopColor={C.blue} stopOpacity={0.12} />
+              <Stop offset="68%"  stopColor={C.blue} stopOpacity={0} />
+              <Stop offset="100%" stopColor={C.blue} stopOpacity={0.8} />
+            </SvgGradient>
+          </Defs>
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={`url(#${ringId})`} strokeWidth={1.5} fill="none" strokeLinecap="round" />
+        </Svg>
+      </Animated.View>
+      <Image source={require('./assets/images/Thanos_Logo_Transparent.png')} style={{ width: size * 0.6, height: size * 0.6 }} resizeMode="contain" />
+    </Animated.View>
+  );
+}
+
+/* Primary CTA: an SVG-LinearGradient-filled pill wrapped in the in-scope Btn so
+   ripple + press-scale + the wiring onPress are preserved. The blue shadow lives
+   on an OUTER wrapper (obPillShadow) because the shared Btn hard-codes
+   overflow:'hidden', which would clip the iOS shadow. */
+function ObGradientPill({ label, onPress, disabled, busy: pillBusy, ripple }: {
+  label: React.ReactNode; onPress?: () => void; disabled?: boolean; busy?: boolean; ripple?: string;
+}) {
+  const styles = useStyles();
+  const C = useColors();
+  const fillId = useObUid('obPillFill');
+  const [w, setW] = useState(Dimensions.get('window').width - 48);
+  const H = 54;
+  return (
+    <View style={[styles.obPillShadow, disabled && { opacity: 0.5 }]}>
+      <Btn style={styles.obPill} disabled={disabled} onPress={onPress} ripple={ripple ?? 'rgba(255,255,255,0.22)'}>
+        <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+          <Svg width={w} height={H}>
+            <Defs>
+              <SvgGradient id={fillId} x1="0%" y1="0%" x2="100%" y2="100%">
+                <Stop offset="0%"   stopColor="#5c92ff" />
+                <Stop offset="100%" stopColor={C.blue} />
+              </SvgGradient>
+            </Defs>
+            <Rect x={0} y={0} width={w} height={H} rx={H / 2} fill={`url(#${fillId})`} />
+          </Svg>
+        </View>
+        {pillBusy ? <BtnBusy label="Unlocking…" /> : <Text style={styles.obPillText}>{label}</Text>}
+      </Btn>
+    </View>
+  );
+}
+
+/* Animated pager dots — the active dot stretches into a pill + brightens as the
+   carousel scrolls. Driven by the carousel's Animated scrollX. */
+function ObDots({ count, scrollX, slideW }: { count: number; scrollX: Animated.Value; slideW: number }) {
+  const styles = useStyles();
+  const C = useColors();
+  return (
+    <View style={styles.obDots}>
+      {Array.from({ length: count }).map((_, i) => {
+        const inputRange = [(i - 1) * slideW, i * slideW, (i + 1) * slideW];
+        const w = scrollX.interpolate({ inputRange, outputRange: [6, 18, 6], extrapolate: 'clamp' });
+        const o = scrollX.interpolate({ inputRange, outputRange: [0.35, 1, 0.35], extrapolate: 'clamp' });
+        return <Animated.View key={i} style={{ height: 6, width: w, borderRadius: 3, backgroundColor: C.blue, opacity: o }} />;
+      })}
+    </View>
+  );
+}
+
+/* True swipeable value-prop carousel — horizontal paging ScrollView, bold
+   2-line headlines, animated pager dots. Slide width = its own measured width,
+   so it never overflows a 360-wide phone and snaps cleanly. */
+function ObCarousel() {
+  const styles = useStyles();
+  const [w, setW] = useState(Math.min(Dimensions.get('window').width, 460) - 48);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  return (
+    <View style={{ width: '100%' }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: false })}
+      >
+        {OB_SLIDES.map((s, i) => (
+          <View key={i} style={{ width: w, alignItems: 'center', paddingHorizontal: 8 }}>
+            <Text style={styles.obHeadline}>{s.headline}</Text>
+            <Text style={styles.obSub}>{s.sub}</Text>
+          </View>
+        ))}
+      </ScrollView>
+      <View style={{ marginTop: 22 }}>
+        <ObDots count={OB_SLIDES.length} scrollX={scrollX} slideW={w} />
+      </View>
+    </View>
+  );
+}
+
+/* Legal footer — Terms + Privacy, blue links, tap-through preserved. */
+function ObLegal() {
+  const styles = useStyles();
+  const C = useColors();
+  return (
+    <Text style={styles.obLegal}>
+      By continuing you agree to our{' '}
+      <Text style={{ color: C.blue }} onPress={() => Linking.openURL('https://thanos.fi/terms').catch(() => {})}>Terms</Text>
+      {' '}&amp;{' '}
+      <Text style={{ color: C.blue }} onPress={() => Linking.openURL('https://thanos.fi/privacy').catch(() => {})}>Privacy Policy</Text>
+    </Text>
+  );
+}
+
 /* ─────────────────── Onboarding ─────────────────── */
 
 type OnboardStep = 'welcome' | 'create-length' | 'create-warn' | 'create-show' | 'create-confirm'
@@ -3828,10 +4000,13 @@ function OnboardingScreen({
     setUnlockErr('');
   };
 
+  // Welcome + unlock render full-bleed (their own hero + viewport height);
+  // the create/import form steps keep the boxed logo + card.
+  const obFullBleed = step === 'welcome' || step === 'unlock';
   return (
     <ScrollView
       style={[styles.scroll, { backgroundColor: C.bgBase }]}
-      contentContainerStyle={styles.onboardWrap}
+      contentContainerStyle={obFullBleed ? styles.obWrapBleed : styles.onboardWrap}
       // CRITICAL: without this, when the keyboard is open (password / import
       // steps) the FIRST tap on a button is swallowed to just dismiss the
       // keyboard — so Back / Create wallet / Import appeared "not clickable."
@@ -3844,6 +4019,80 @@ function OnboardingScreen({
       alwaysBounceVertical={false}
       overScrollMode="never"
     >
+      {obFullBleed ? (
+        <AnimatedSwitch keyName={step} style={{ flex: 1, width: '100%' }}>
+
+        {step === 'welcome' && (<>
+          <View style={styles.obHero}>
+            <View style={styles.obHeroTop}>
+              <ObMark size={128} />
+              <View style={{ height: 36 }} />
+              <ObCarousel />
+            </View>
+            <View style={styles.obActions}>
+              <ObGradientPill label="Create a new wallet" onPress={() => setStep('create-length')} />
+              <Btn style={styles.obGhost} onPress={() => setStep('import-choose')} ripple="rgba(59,122,247,0.18)">
+                <Text style={styles.obGhostText}>I already have a wallet</Text>
+              </Btn>
+              <ObLegal />
+            </View>
+          </View>
+        </>)}
+
+        {step === 'unlock' && (<>
+          <View style={styles.obHero}>
+            <View style={styles.obHeroTop}>
+              <ObMark size={108} />
+              <Text style={styles.obUnlockTitle}>Welcome back</Text>
+              <Text style={styles.obUnlockSub}>Enter your password to unlock Thanos Wallet.</Text>
+            </View>
+            <View style={styles.obActions}>
+              {bioAvail.on && (
+                <Btn
+                  style={[styles.obBio, { opacity: busy ? 0.6 : 1 }]}
+                  disabled={busy}
+                  onPress={tryBiometricUnlock}
+                  ripple="rgba(59,122,247,0.18)"
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    {bioAvail.kind === 'face'
+                      ? <ScanFace    size={18} color={C.blue} />
+                      : <Fingerprint size={18} color={C.blue} />}
+                    <Text style={styles.obBioText}>Unlock with {biometricLabel(bioAvail.kind)}</Text>
+                  </View>
+                </Btn>
+              )}
+              <View style={[styles.obInputWrap, unlockErr ? styles.obInputWrapErr : null]}>
+                <TextInput
+                  style={styles.obInput}
+                  secureTextEntry
+                  placeholder="Password"
+                  placeholderTextColor={C.textMuted}
+                  value={unlockPwd}
+                  onChangeText={t => { setUnlockPwd(t); setUnlockErr(''); }}
+                  onSubmitEditing={tryUnlock}
+                  autoFocus={!bioAvail.on}
+                />
+              </View>
+              {unlockErr ? <Text style={styles.obErr}>{unlockErr}</Text> : null}
+              <ObGradientPill label="Unlock" busy={busy} disabled={!unlockPwd || busy} onPress={tryUnlock} />
+              <Pressable onPress={() => Alert.alert(
+                'Reset wallet',
+                'This deletes your wallet from this device. You can restore with your recovery phrase.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Reset', style: 'destructive', onPress: resetWallet },
+                ],
+              )}>
+                <Text style={styles.obReset}>Forgot password? Reset wallet</Text>
+              </Pressable>
+              <ObLegal />
+            </View>
+          </View>
+        </>)}
+
+        </AnimatedSwitch>
+      ) : (
       <View style={styles.onboardCard}>
         {/* The logo image is a full lockup (mark + "Thanos Wallet" +
             "AI-POWERED WEB3 EXPERIENCE"), same asset the web login uses.
@@ -3859,17 +4108,6 @@ function OnboardingScreen({
         </View>
 
         <AnimatedSwitch keyName={step} style={{ width: '100%' }}>
-
-        {step === 'welcome' && <>
-          <Text style={styles.onboardTitle}>Welcome to Thanos Wallet</Text>
-          <Text style={styles.onboardSub}>Multi-chain Web4 wallet. Lithosphere · Bitcoin · EVM.</Text>
-          <Btn style={styles.btnPrimary} onPress={() => setStep('create-length')}>
-            <Text style={styles.btnPrimaryText}>Create new wallet</Text>
-          </Btn>
-          <Btn style={styles.btnOutline} onPress={() => setStep('import-choose')} ripple="rgba(59,122,247,0.18)">
-            <Text style={styles.btnOutlineText}>Import existing wallet</Text>
-          </Btn>
-        </>}
 
         {step === 'import-choose' && <>
           <Text style={styles.onboardTitle}>Import wallet</Text>
@@ -4170,60 +4408,9 @@ function OnboardingScreen({
           </View>
         </>}
 
-        {step === 'unlock' && <>
-          <Text style={styles.onboardTagline}>Secure and trusted multi-chain crypto wallet</Text>
-          {bioAvail.on && (
-            <Btn
-              style={[styles.btnSecondary, { width: '100%', marginBottom: 12, opacity: busy ? 0.6 : 1 }]}
-              disabled={busy}
-              onPress={tryBiometricUnlock}
-              ripple="rgba(59,122,247,0.18)"
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                {bioAvail.kind === 'face'
-                  ? <ScanFace    size={18} color={C.textPrimary}/>
-                  : <Fingerprint size={18} color={C.textPrimary}/>}
-                <Text style={styles.btnSecondaryText}>
-                  Unlock with {biometricLabel(bioAvail.kind)}
-                </Text>
-              </View>
-            </Btn>
-          )}
-          <Text style={styles.fieldLabel}>Password</Text>
-          <TextInput
-            style={styles.input}
-            secureTextEntry
-            placeholder="Enter password"
-            placeholderTextColor={C.textMuted}
-            value={unlockPwd}
-            onChangeText={t => { setUnlockPwd(t); setUnlockErr(''); }}
-            onSubmitEditing={tryUnlock}
-            autoFocus={!bioAvail.on}
-          />
-          {unlockErr ? <Text style={styles.onboardErr}>{unlockErr}</Text> : null}
-          <Btn
-            style={[styles.btnPrimary, { opacity: (unlockPwd && !busy) ? 1 : 0.45 }]}
-            disabled={!unlockPwd || busy}
-            onPress={tryUnlock}
-          >
-            {busy
-              ? <BtnBusy label="Unlocking…" />
-              : <Text style={styles.btnPrimaryText}>Unlock</Text>}
-          </Btn>
-          <Pressable onPress={() => Alert.alert(
-            'Reset wallet',
-            'This deletes your wallet from this device. You can restore with your recovery phrase.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Reset', style: 'destructive', onPress: resetWallet },
-            ],
-          )}>
-            <Text style={styles.btnLink}>Forgot password? Reset wallet</Text>
-          </Pressable>
-        </>}
-
         </AnimatedSwitch>
       </View>
+      )}
     </ScrollView>
   );
 }
@@ -5672,6 +5859,162 @@ function makeStyles(C: Colors) {
       textAlign: 'center', paddingVertical: 14,
       marginTop: 8,
       borderTopColor: C.borderSubtle, borderTopWidth: 1,
+    },
+
+    /* ── Minimal-luxe onboarding (fullBleed welcome + unlock).
+          NOTE: every fontSize/lineHeight here is authored at (target ÷ 1.5)
+          because makeStyles() runs the whole sheet through _scaleFontSizes()
+          which multiplies fontSize AND lineHeight by 1.5. The rendered visual
+          sizes are shown in the comments. ── */
+    obWrapBleed: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'flex-start' },
+    obHero: {
+      flex: 1,
+      width: '100%',
+      alignSelf: 'stretch',
+      minHeight: Dimensions.get('window').height - 40, // pins CTAs to the bottom inside the outer ScrollView
+      justifyContent: 'space-between',
+      paddingHorizontal: 24,
+      paddingTop: 64,
+      paddingBottom: 34,
+    },
+    obHeroTop: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    obHeadline: {
+      color: C.textPrimary,
+      fontSize: 21,   // -> ~32 rendered
+      lineHeight: 24, // -> 36
+      fontWeight: '800',
+      letterSpacing: -0.8,
+      textAlign: 'center',
+    },
+    obSub: {
+      color: C.textSecondary,
+      fontSize: 9.5,  // -> ~14 rendered
+      lineHeight: 13, // -> ~20
+      letterSpacing: -0.1,
+      textAlign: 'center',
+      marginTop: 12,
+      maxWidth: 300,
+    },
+    obDots: {
+      flexDirection: 'row',
+      gap: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    obActions: {
+      width: '100%',
+    },
+    obPillShadow: {
+      width: '100%',
+      borderRadius: 27,
+      // shadow lives here (not on Btn) — Btn hard-codes overflow:'hidden' which
+      // would clip the iOS shadow.
+      shadowColor: C.blue,
+      shadowOpacity: 0.35,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
+    },
+    obPill: {
+      height: 54,
+      borderRadius: 27,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    obPillText: {
+      color: '#fff',
+      fontSize: 10.7, // -> ~16 rendered
+      fontWeight: '700',
+      letterSpacing: -0.3,
+    },
+    obGhost: {
+      height: 52,
+      borderRadius: 26,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 12,
+    },
+    obGhostText: {
+      color: C.textSecondary,
+      fontSize: 10,   // -> 15 rendered
+      fontWeight: '600',
+      letterSpacing: -0.2,
+    },
+    obLegal: {
+      color: C.textMuted,
+      fontSize: 7.7,  // -> ~11.5 rendered
+      lineHeight: 11, // -> ~17
+      textAlign: 'center',
+      marginTop: 18,
+      paddingHorizontal: 12,
+    },
+    obUnlockTitle: {
+      color: C.textPrimary,
+      fontSize: 18,   // -> 27 rendered
+      fontWeight: '800',
+      letterSpacing: -0.8,
+      textAlign: 'center',
+      marginTop: 28,
+    },
+    obUnlockSub: {
+      color: C.textSecondary,
+      fontSize: 9.5,  // -> ~14 rendered
+      lineHeight: 13, // -> ~20
+      textAlign: 'center',
+      marginTop: 8,
+      maxWidth: 280,
+    },
+    obInputWrap: {
+      backgroundColor: C.bgCard,
+      borderColor: C.borderDefault,
+      borderWidth: 1,
+      borderRadius: 16,
+    },
+    obInputWrapErr: {
+      borderColor: C.red,
+    },
+    obInput: {
+      height: 54,
+      color: C.textPrimary,
+      fontSize: 10,   // -> 15 rendered
+      paddingHorizontal: 16,
+      letterSpacing: -0.2,
+    },
+    obBio: {
+      height: 52,
+      borderRadius: 26,
+      borderWidth: 1,
+      borderColor: 'rgba(59,122,247,0.28)',
+      backgroundColor: C.blueDim,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    obBioText: {
+      color: C.blue,
+      fontSize: 9.5,  // -> ~14 rendered
+      fontWeight: '700',
+      letterSpacing: -0.2,
+    },
+    obErr: {
+      color: C.red,
+      fontSize: 8.3,  // -> ~12.5 rendered
+      fontWeight: '600',
+      textAlign: 'center',
+      marginTop: 12,
+      marginBottom: 2,
+    },
+    obReset: {
+      color: C.textMuted,
+      fontSize: 8.7,  // -> ~13 rendered
+      fontWeight: '500',
+      textAlign: 'center',
+      paddingVertical: 16,
     },
   }));
 }
