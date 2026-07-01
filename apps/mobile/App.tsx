@@ -143,7 +143,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.09';
+const APP_VERSION = 'thanos-v1.10';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -4804,6 +4804,18 @@ function App() {
     // (in OnboardingScreen) wipes it.
   };
 
+  // deriveEvmAddress runs a full BIP-39/BIP-32 HD derivation (synchronous
+  // PBKDF2). Memoized on seed + account so it doesn't re-run on every render
+  // (e.g. every tab tap). MUST be declared BEFORE the early returns below — it's
+  // a hook, so calling it only in the unlocked branch changed the hook count
+  // between renders ("Rendered more hooks than during the previous render"
+  // crash on the boot/unlock transition).
+  const walletAddr = useMemo(
+    () => (walletSeed.length > 0 ? deriveEvmAddress(walletSeed, activeIdx) : '0x0000…0000'),
+    [walletSeed, activeIdx],
+  );
+  const shortAddr = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
+
   // Wait for storage check before deciding which screen to show
   if (hasVault === null) {
     return (
@@ -4846,16 +4858,6 @@ function App() {
       </ThemeCtx.Provider>
     );
   }
-
-  // deriveEvmAddress runs a full BIP-39/BIP-32 HD derivation (synchronous
-  // PBKDF2 + key derivation). Computed inline it re-ran on EVERY render — i.e.
-  // every tab tap (setScreen re-renders App) — blocking the JS thread for tens
-  // of ms and making the bottom tabs feel laggy. Memoize on seed + account.
-  const walletAddr = useMemo(
-    () => (walletSeed.length > 0 ? deriveEvmAddress(walletSeed, activeIdx) : '0x0000…0000'),
-    [walletSeed, activeIdx],
-  );
-  const shortAddr = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
 
   return (
     <ThemeCtx.Provider value={colors}>
