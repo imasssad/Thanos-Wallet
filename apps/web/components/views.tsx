@@ -803,24 +803,63 @@ function AddressBookSection({ Section, Row }: {
   }, []);
 
   const onAdd = async () => {
+    const trimmedName = name.trim();
+    const trimmedAddr = address.trim();
+    if (!trimmedName || !trimmedAddr) return;
+
     setErr(null);
     setBusy(true);
+
+    // Optimistic: show the contact immediately with a provisional id.
+    // The real (canonical/server-issued) row replaces it on reconcile.
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimistic: Contact = {
+      id:          optimisticId,
+      name:        trimmedName,
+      evm:         trimmedAddr,
+      updatedAt:   Date.now(),
+      pendingSync: true,
+    };
+    setContacts(prev => [...prev, optimistic]);
+    // Clear the inputs right away so the happy path feels instant.
+    setName('');
+    setAddress('');
+
     try {
-      await addContact({ name, address });
+      await addContact({ name: trimmedName, address: trimmedAddr });
+      // Reconcile: swap the provisional entry for the canonical cache
+      // (server id / checksummed address). onContactsChanged also fires,
+      // but reconcile here keeps the swap in-sync even if that's missed.
       setContacts(loadContacts());
-      setName('');
-      setAddress('');
     } catch (e) {
+      // Roll back the optimistic insert and surface the failure.
+      setContacts(prev => prev.filter(c => c.id !== optimisticId));
       setErr(e instanceof Error ? e.message : 'Could not add contact');
+      // Restore the inputs so the user can retry without re-typing.
+      setName(trimmedName);
+      setAddress(trimmedAddr);
     } finally {
       setBusy(false);
     }
   };
 
   const onDelete = async (id: string) => {
+    setErr(null);
+    // Snapshot the exact prior list so we can restore position on failure.
+    const snapshot = contacts;
+    if (!snapshot.some(c => c.id === id)) return;
+
+    // Optimistic: drop it from the UI immediately.
+    setContacts(prev => prev.filter(c => c.id !== id));
+
     try {
-      if (await deleteContact(id)) setContacts(loadContacts());
+      const removed = await deleteContact(id);
+      // Reconcile with the cache (handles the server-wins case).
+      if (removed) setContacts(loadContacts());
+      else setContacts(snapshot); // nothing was removed — restore.
     } catch (e) {
+      // Restore the exact prior state (position preserved) and surface it.
+      setContacts(snapshot);
       setErr(e instanceof Error ? e.message : 'Could not delete contact');
     }
   };

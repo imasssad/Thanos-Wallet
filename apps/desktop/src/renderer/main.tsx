@@ -2560,18 +2560,58 @@ function AddressBookSection({
   }, []);
 
   const onAdd = async () => {
-    setErr(null); setBusy(true);
+    const trimmedName = name.trim();
+    const trimmedAddr = address.trim();
+    if (!trimmedName || !trimmedAddr) return;
+
+    // Optimistic: build a placeholder row and show it immediately.
+    const tempId = `optimistic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const optimistic: AbContact = {
+      id:          tempId,
+      name:        trimmedName,
+      evm:         trimmedAddr,
+      litho:       (() => { try { return evmToLitho(trimmedAddr) || undefined; } catch { return undefined; } })(),
+      updatedAt:   Date.now(),
+      pendingSync: true,
+    };
+    setErr(null);
+    setContacts(prev => [...prev, optimistic]);
+    setName(''); setAddress('');
+    setBusy(true);
+
     try {
-      await addContact({ name, address });
-      setName(''); setAddress('');
-      setContacts(loadContacts());
+      const canonical = await addContact({ name: trimmedName, address: trimmedAddr });
+      // Reconcile: swap the placeholder for the server/canonical row (id, checksummed evm, sync state).
+      setContacts(prev => prev.map(c => (c.id === tempId ? canonical : c)));
     } catch (e) {
+      // Roll back the optimistic insert and surface the failure.
+      setContacts(prev => prev.filter(c => c.id !== tempId));
+      setName(trimmedName); setAddress(trimmedAddr);
       setErr(e instanceof Error ? e.message : 'Could not add contact');
     } finally { setBusy(false); }
   };
   const onDelete = async (id: string) => {
-    try { if (await deleteContact(id)) setContacts(loadContacts()); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Could not delete'); }
+    // Snapshot the exact prior position so we can restore it on failure.
+    const index = contacts.findIndex(c => c.id === id);
+    if (index < 0) return;
+    const removed = contacts[index];
+
+    setErr(null);
+    // Optimistic: drop it from the list immediately.
+    setContacts(prev => prev.filter(c => c.id !== id));
+
+    try {
+      await deleteContact(id);
+    } catch (e) {
+      // Roll back to the exact prior position and surface the failure.
+      setContacts(prev => {
+        if (prev.some(c => c.id === removed.id)) return prev;
+        const next = prev.slice();
+        next.splice(Math.min(index, next.length), 0, removed);
+        return next;
+      });
+      setErr(e instanceof Error ? e.message : 'Could not delete');
+    }
   };
 
   return (

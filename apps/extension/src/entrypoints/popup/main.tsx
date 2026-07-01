@@ -1871,20 +1871,70 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
 
   const onAdd = async () => {
     setErr(null);
+    const trimmedName = name.trim();
+    const trimmedAddr = address.trim();
+    if (!trimmedName || !trimmedAddr) return;
+
+    // Optimistic insert — show the contact instantly, then reconcile with
+    // the server row (or roll back on failure). The temp id lets us find &
+    // remove this exact entry if the API call rejects.
+    const tempId = `optimistic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const optimistic: AbContact = {
+      id:          tempId,
+      name:        trimmedName,
+      evm:         trimmedAddr,
+      updatedAt:   Date.now(),
+      pendingSync: true,
+    };
+    setContacts(prev => [...prev, optimistic]);
+    setName(''); setAddress('');
     setBusy(true);
     try {
-      await addContact({ name, address });
-      setName(''); setAddress('');
+      // addContact persists the canonical row to local storage on success;
+      // loadContacts() then reflects the reconciled entry (real id/checksum).
+      await addContact({ name: trimmedName, address: trimmedAddr });
       setContacts(loadContacts());
     } catch (e) {
+      // Roll back: drop only the optimistic entry, and surface the error.
+      setContacts(prev => prev.filter(c => c.id !== tempId));
+      setName(trimmedName); setAddress(trimmedAddr);
       setErr(e instanceof Error ? e.message : 'Could not add contact');
     } finally {
       setBusy(false);
     }
   };
   const onDelete = async (id: string) => {
-    try { if (await deleteContact(id)) setContacts(loadContacts()); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Could not delete'); }
+    setErr(null);
+    // Snapshot the exact prior state so we can restore position on failure.
+    const prev = contacts;
+    const idx  = prev.findIndex(c => c.id === id);
+    if (idx === -1) return;
+    const removed = prev[idx];
+
+    // Optimistic removal — vanish instantly, then confirm with the API.
+    setContacts(prev.filter(c => c.id !== id));
+    try {
+      if (await deleteContact(id)) {
+        setContacts(loadContacts());
+      } else {
+        // Nothing was deleted server-side — restore the exact prior state.
+        setContacts(cur => {
+          if (cur.some(c => c.id === removed.id)) return cur;
+          const next = [...cur];
+          next.splice(Math.min(idx, next.length), 0, removed);
+          return next;
+        });
+      }
+    } catch (e) {
+      // Restore the removed contact at its original position + show error.
+      setContacts(cur => {
+        if (cur.some(c => c.id === removed.id)) return cur;
+        const next = [...cur];
+        next.splice(Math.min(idx, next.length), 0, removed);
+        return next;
+      });
+      setErr(e instanceof Error ? e.message : 'Could not delete');
+    }
   };
 
   return (

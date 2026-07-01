@@ -3112,18 +3112,47 @@ function AddressBookModal({ visible, onClose }: { visible: boolean; onClose: () 
   if (!visible) return null;
 
   const onAdd = async () => {
+    const nm = name.trim(), addr = address.trim();
+    if (!nm || !addr) return;
     setErr(null); setBusy(true);
+    // Optimistic: show the contact immediately, then reconcile with the server.
+    const tempId = `optimistic:${Date.now()}`;
+    const optimistic: AbContact = {
+      id: tempId, name: nm, evm: addr, updatedAt: Date.now(), pendingSync: true,
+    };
+    setContacts(prev => [...prev, optimistic]);
+    setName(''); setAddress('');
     try {
-      await addContact({ name, address });
-      setName(''); setAddress('');
+      await addContact({ name: nm, address: addr });
+      // Reconcile against the canonical persisted list (server row/id, dedup).
       setContacts(loadContacts());
     } catch (e) {
+      // Roll back the optimistic entry and surface a visible error.
+      setContacts(prev => prev.filter(c => c.id !== tempId));
+      setName(nm); setAddress(addr);
       setErr(e instanceof Error ? e.message : 'Could not add contact');
     } finally { setBusy(false); }
   };
   const onDelete = async (id: string) => {
-    try { if (await deleteContact(id)) setContacts(loadContacts()); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Could not delete'); }
+    setErr(null);
+    // Snapshot exact prior position for rollback.
+    const idx = contacts.findIndex(c => c.id === id);
+    if (idx < 0) return;
+    const removed = contacts[idx];
+    // Optimistic: remove immediately.
+    setContacts(prev => prev.filter(c => c.id !== id));
+    try {
+      await deleteContact(id);
+      setContacts(loadContacts());
+    } catch (e) {
+      // Restore the removed contact to its exact previous index.
+      setContacts(prev => {
+        const next = prev.slice();
+        next.splice(Math.min(idx, next.length), 0, removed);
+        return next;
+      });
+      setErr(e instanceof Error ? e.message : 'Could not delete contact');
+    }
   };
 
   return (
