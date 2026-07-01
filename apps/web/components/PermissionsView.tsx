@@ -289,6 +289,29 @@ interface DAppRow {
   expires:  string | null;
 }
 
+/* dApp `url` + `icon` come from UNTRUSTED WalletConnect session metadata (an
+ * attacker's dApp sets them). Sanitize them at this projection boundary:
+ *  - url: only http(s) may reach the rendered <a href>. A malicious dApp could
+ *    set url = "javascript:…"; because the app CSP allows script-src
+ *    'unsafe-inline', clicking such an anchor WOULD execute in the wallet origin
+ *    (a stored-then-clicked XSS with access to localStorage/session). We drop
+ *    any non-http(s) scheme (javascript:, data:, vbscript:, file:, …).
+ *  - icon: only https may reach the <img src> (blocks data:/blob:/javascript:).
+ *    An <img> can't execute script, but this stops it being used as a tracking
+ *    beacon or an inert-but-spoofed data: payload — defense-in-depth. */
+function safeHttpUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  try {
+    const proto = new URL(url).protocol;
+    return proto === 'http:' || proto === 'https:' ? url : '';
+  } catch { return ''; }
+}
+function safeHttpsIcon(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try { return new URL(url).protocol === 'https:' ? url : null; }
+  catch { return null; }
+}
+
 function projectSession(s: SessionTypes.Struct): DAppRow {
   const peer = s.peer?.metadata ?? { name: 'Unknown dApp', url: '', icons: [] as string[] };
   const chains = s.namespaces?.eip155?.chains ?? [];
@@ -296,8 +319,8 @@ function projectSession(s: SessionTypes.Struct): DAppRow {
   return {
     topic:   s.topic,
     name:    peer.name || 'Unknown dApp',
-    url:     peer.url || '',
-    icon:    Array.isArray(peer.icons) && peer.icons[0] ? peer.icons[0] : null,
+    url:     safeHttpUrl(peer.url),
+    icon:    safeHttpsIcon(Array.isArray(peer.icons) ? peer.icons[0] : null),
     chains:  chains.join(', ') || 'eip155:700777',
     expires: ts,
   };
