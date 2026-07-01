@@ -118,11 +118,24 @@ jobs:
 
       - name: Build + sign (macOS)
         if: matrix.target == 'mac'
-        run: pnpm --filter @thanos/desktop exec electron-builder --mac --publish never
+        run: |
+          # A GitHub secret that isn't configured arrives as an EMPTY STRING,
+          # not unset. electron-builder treats an empty-but-defined CSC_LINK as
+          # "a certificate was provided" and tries to read it from path "" —
+          # which resolves to the cwd (apps/desktop) and fails with
+          # "... not a file". When no cert is present, force a clean UNSIGNED
+          # build: drop the empty vars and disable keychain auto-discovery.
+          if [ -z "$CSC_LINK" ]; then
+            echo "::notice::No macOS signing certificate configured — building UNSIGNED."
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          pnpm --filter @thanos/desktop exec electron-builder --mac --publish never
         env:
-          # When CSC_LINK is unset, electron-builder produces an unsigned
-          # build instead of failing — useful for preview tags. Real
-          # releases set all five and notarization runs automatically.
+          # When these are unset, electron-builder produces an unsigned build
+          # instead of failing — useful for preview tags. Real releases set all
+          # five and notarization runs automatically. (See the guard above: an
+          # empty secret is *defined*, so we normalize it to truly-unset.)
           CSC_LINK:                    ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD:            ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID:                    ${{ secrets.APPLE_ID }}
