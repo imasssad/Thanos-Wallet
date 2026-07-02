@@ -275,7 +275,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   return (
     <div className="onboard-wrap">
       <div className="onboard-card">
-        {step !== 'welcome' && step !== 'unlock' && (
+        {step !== 'welcome' && (
           <div className="onboard-logo">
             <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
           </div>
@@ -553,46 +553,39 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
         </>}
 
         {step === 'unlock' && <>
-          <div className="ob2-unlock">
-            <div className="ob2-mark">
-              <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos"/>
-            </div>
-            <h1 className="ob2-unlock-title">Welcome back</h1>
-            <p className="ob2-unlock-sub">Enter your password to unlock Thanos Wallet.</p>
-            <div className="ob2-unlock-form">
-              <label className="field-label-pro">Password</label>
-              <div className="input-with-trail">
-                <input
-                  className="field-input field-input-with-trail"
-                  type={showPwd ? 'text' : 'password'}
-                  value={unlockPwd}
-                  onChange={e => { setUnlockPwd(e.target.value); setUnlockErr(''); }}
-                  onKeyDown={e => e.key === 'Enter' && tryUnlock()}
-                  autoFocus
-                  placeholder="Enter password"
-                />
-                <button type="button" className="input-trail-btn" onClick={() => setShowPwd(s => !s)} aria-label={showPwd ? 'Hide' : 'Show'} tabIndex={-1}>
-                  {showPwd ? <EyeOff size={18}/> : <Eye size={18}/>}
-                </button>
-              </div>
-              {unlockErr && <div className="onboard-err">{unlockErr}</div>}
-              <button className="ob2-pill" style={{ marginTop: 16 }} onClick={tryUnlock} disabled={!unlockPwd || busy}>
-                {busy ? 'Unlocking…' : 'Unlock'}
-              </button>
-            </div>
-            <div className="ob2-reset">
-              <p className="ob2-reset-text">
-                {confirmReset
-                  ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
-                  : "Can't login? You can erase your current wallet and set up a new one."}
-              </p>
-              <button
-                className={`ob2-reset-link${confirmReset ? ' ob2-reset-armed' : ''}`}
-                onClick={resetWallet}
-              >
-                {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
-              </button>
-            </div>
+          <p className="onboard-tagline">Secure and trusted multi-chain crypto wallet</p>
+          <label className="field-label-pro">Password</label>
+          <div className="input-with-trail">
+            <input
+              className="field-input field-input-with-trail"
+              type={showPwd ? 'text' : 'password'}
+              value={unlockPwd}
+              onChange={e => { setUnlockPwd(e.target.value); setUnlockErr(''); }}
+              onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+              autoFocus
+              placeholder="Enter password"
+            />
+            <button type="button" className="input-trail-btn" onClick={() => setShowPwd(s => !s)} aria-label={showPwd ? 'Hide' : 'Show'} tabIndex={-1}>
+              {showPwd ? <EyeOff size={18}/> : <Eye size={18}/>}
+            </button>
+          </div>
+          {unlockErr && <div className="onboard-err">{unlockErr}</div>}
+          <button className="btn-primary onboard-btn btn-pill" onClick={tryUnlock} disabled={!unlockPwd || busy}>
+            {busy ? 'Unlocking…' : 'Unlock'}
+          </button>
+          <div className="onboard-footer">
+            <p className="footer-text">
+              {confirmReset
+                ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
+                : "Can't login? You can erase your current wallet and set up a new one"}
+            </p>
+            <button
+              className="footer-link"
+              style={confirmReset ? { color: 'var(--red, #f87171)', fontWeight: 700 } : undefined}
+              onClick={resetWallet}
+            >
+              {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
+            </button>
           </div>
         </>}
       </div>

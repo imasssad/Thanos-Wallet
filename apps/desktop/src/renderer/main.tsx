@@ -3051,7 +3051,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   return (
     <div className="onboard-wrap">
       <div className="onboard-card">
-        {step !== 'welcome' && step !== 'unlock' && (
+        {step !== 'welcome' && (
           <div className="onboard-logo">
             <img src="./images/Thanos_Logo.png" alt="Thanos"/>
           </div>
@@ -3265,14 +3265,9 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
         {/* UNLOCK (returning user) ─────────────────────────── */}
         {step === 'unlock' && (
-          <div className="ob2-flow">
-            <div className="ob2-mark">
-              <img src="./images/Thanos_Logo.png" alt="Thanos Wallet"/>
-            </div>
-            <h1 className="ob2-title">Welcome back</h1>
-            <p className="ob2-sub">Enter your password to unlock Thanos Wallet.</p>
+          <>
+            <p className="onboard-tagline">Secure and trusted multi-chain crypto wallet</p>
 
-            <div className="ob2-unlock-fields">
             <label className="field-label-pro">Password</label>
             <div className="input-with-trail">
               <input
@@ -3300,19 +3295,19 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
             {unlockErr && <div className="onboard-err">{unlockErr}</div>}
 
-            <button className="ob2-pill" style={{ marginTop: 14 }} onClick={tryUnlock} disabled={!unlockPwd || vaultBusy}>
+            <button className="btn-primary btn-pill" onClick={tryUnlock} disabled={!unlockPwd || vaultBusy}>
               {vaultBusy ? 'Unlocking…' : 'Unlock'}
             </button>
-            </div>
 
-            <div className="ob2-reset">
-              <p className="ob2-reset-text">
+            <div className="onboard-footer">
+              <p className="footer-text">
                 {confirmReset
                   ? 'This permanently deletes the wallet from this device. Restore needs your recovery phrase.'
                   : "Can't login? You can erase your current wallet and set up a new one"}
               </p>
               <button
-                className={`ob2-reset-link ${confirmReset ? 'ob2-reset-danger' : ''}`}
+                className="footer-link"
+                style={confirmReset ? { color: 'var(--red, #f87171)', fontWeight: 700 } : undefined}
                 onClick={() => {
                   if (!confirmReset) {
                     setConfirmReset(true);
@@ -3327,7 +3322,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
                 {confirmReset ? 'Click again to erase wallet' : 'Reset wallet'}
               </button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
