@@ -3266,7 +3266,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
         {/* UNLOCK (returning user) ─────────────────────────── */}
         {step === 'unlock' && (
           <div className="ob2-flow">
-            <div className="ob2-mark ob2-mark-sm">
+            <div className="ob2-mark">
               <img src="./images/Thanos_Logo.png" alt="Thanos Wallet"/>
             </div>
             <h1 className="ob2-title">Welcome back</h1>
