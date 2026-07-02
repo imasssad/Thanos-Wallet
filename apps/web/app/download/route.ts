@@ -11,10 +11,14 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — VERSION "thanos-v1.11" (2026-07-01, build
-// 54e55adb, account imasssadkh). Shows its version in Settings (bottom) so
+// Latest production-apk build — VERSION "thanos-v1.12" (2026-07-02, build
+// e407da55, account imasssadkh). Shows its version in Settings (bottom) so
 // testers can confirm the installed build at a glance.
-// NEW in v1.11: premium minimal-luxe onboarding (welcome + unlock), LAX +
+// NEW in v1.12: account discovery derives the BIP39 seed ONCE (cheap per-account
+// child derivation) — kills the multi-minute JS-thread freeze right after unlock;
+// the discovery scan is deferred until after first paint; and API requests now
+// abort after a 12s timeout with a clear message instead of hanging.
+// From v1.11: premium minimal-luxe onboarding (welcome + unlock), LAX +
 // Quantt cards on Home, cached-first render + skeleton screens, optimistic
 // pending-tx + address book, and a dark-themed account switcher (replaces the
 // OS white Alert). Build fix: JitPack promoted to a settings-level Maven repo
@@ -33,11 +37,11 @@
 // From v1.05: external-EVM send/receive/balances (ETH + USDT/USDC, 8 chains).
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
-// The Settings version tag (thanos-v1.11) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/FUiDAOMGl1Gr6tOdYHLbfQMN3N5R9pmPG8txCrjqVcc.apk';
+// The Settings version tag (thanos-v1.12) confirms the new build took.
+const APK_URL = 'https://expo.dev/artifacts/eas/LKkV0e8JBLF1V-8kP7JFQVvV8sUdv1k2yUVZ_BGt9NQ.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
-const APK_VERSION = 'thanos-v1.11';
+const APK_VERSION = 'thanos-v1.12';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
