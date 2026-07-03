@@ -1198,6 +1198,20 @@ const assetKeyOf = (a: { sym: string; chainId: number; tokenAddress?: string }):
  *  Used to route sends + skip the Makalu-only pre-send simulation. */
 const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
 
+/** Chain-appropriate tx-explorer URL — mirrors the web Send modal's routing.
+ *  URLs duplicate lib/{bitcoin,solana,cosmos}.ts constants on purpose: those
+ *  modules are lazy-loaded (heavy chain SDKs), and importing them here just
+ *  for a URL would drag them into the eager bundle. */
+function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: string): string {
+  if (extExplorerBase) return `${extExplorerBase}/tx/${hash}`;
+  switch (chain) {
+    case 'bitcoin': return `https://mempool.space/tx/${hash}`;
+    case 'solana':  return `https://explorer.solana.com/tx/${hash}`;
+    case 'cosmos':  return `https://www.mintscan.io/cosmos/tx/${hash}`;
+    default:        return `https://makalu.litho.ai/tx/${hash}`;
+  }
+}
+
 function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string }) {
   const C = useColors();
   const styles = useStyles();
@@ -1219,6 +1233,9 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   // mirrors the web Send modal so mobile users get the same
   // "contract recipient" + "insufficient balance" warnings before signing.
   const [simReport, setSimReport] = useState<import('./lib/tx-simulator').SimulationReport | null>(null);
+  // Send-success modal state (replaces the OS white Alert — mirrors the web
+  // Send modal's success stage: ✓ icon, hash → explorer link, Done).
+  const [sentInfo, setSentInfo] = useState<{ hash: string; sym: string; amount: string; network: string; explorerUrl: string } | null>(null);
 
   const coin =
     (selectedKey ? assets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
@@ -1309,11 +1326,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
           isNotificationsEnabled().then(on => {
             if (on) notifyLocal('Transaction sent', `${amt} ${coin.sym} broadcast on ${extChain.name}.`);
           });
-          Alert.alert(
-            'Transaction sent ✓',
-            `${amt} ${coin.sym} broadcast on ${extChain.name}.\n\nTx hash:\n${hash}`,
-            [{ text: 'Done', onPress: goBack }],
-          );
+          setSentInfo({ hash, sym: coin.sym, amount: amt, network: extChain.name, explorerUrl: txExplorerUrl(chain, hash, extChain.explorerUrl) });
           return;
         }
       }
@@ -1340,11 +1353,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
       isNotificationsEnabled().then(on => {
         if (on) notifyLocal('Transaction sent', `${amt} ${sym} broadcast on ${network}.`);
       });
-      Alert.alert(
-        'Transaction sent ✓',
-        `${amt} ${sym} broadcast on ${network}.\n\nTx hash:\n${hash}`,
-        [{ text: 'Done', onPress: goBack }],
-      );
+      setSentInfo({ hash, sym, amount: amt, network, explorerUrl: txExplorerUrl(chain, hash) });
     } catch (e) {
       setSending(false);
       Alert.alert('Send failed', (e as Error)?.message || 'Could not broadcast the transaction.');
@@ -1556,6 +1565,37 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
             ))}
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Send success — themed modal replacing the OS white Alert; mirrors the
+          web Send modal's success stage (✓ icon, tx hash → explorer, Done).
+          Backdrop tap intentionally does NOT dismiss — Done (or hardware back)
+          is the only way out, so the user always sees where they land. */}
+      <Modal visible={!!sentInfo} transparent animationType="fade" onRequestClose={() => { setSentInfo(null); goBack(); }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ width: '100%', maxWidth: 360, backgroundColor: C.bgCard, borderRadius: 18, padding: 24, alignItems: 'center' }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(16,185,129,0.14)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <Text style={{ color: '#10b981', fontSize: 26, fontWeight: '800' }}>✓</Text>
+            </View>
+            <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Transaction sent</Text>
+            {sentInfo && (
+              <>
+                <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 12 }}>
+                  {sentInfo.amount} {sentInfo.sym} broadcast on {sentInfo.network}.
+                </Text>
+                <Pressable onPress={() => Linking.openURL(sentInfo.explorerUrl).catch(() => {})} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
+                  <Text style={{ color: C.blue, fontSize: 11, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) }}>
+                    {sentInfo.hash.slice(0, 14)}…{sentInfo.hash.slice(-10)}
+                  </Text>
+                  <Text style={{ color: C.blue, fontSize: 12, marginTop: 4, fontWeight: '600' }}>View on explorer →</Text>
+                </Pressable>
+              </>
+            )}
+            <Pressable style={[styles.btnPrimary, { alignSelf: 'stretch' }]} onPress={() => { setSentInfo(null); goBack(); }}>
+              <Text style={styles.btnPrimaryText}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
       </Modal>
 
       {amtNum > 0 && !!coin && (
