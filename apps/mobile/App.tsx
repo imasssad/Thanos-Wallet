@@ -944,6 +944,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
+  const openBrowser = useBrowser();
   const { assets, totalUsd, loading, offline, hydrated, reload } = usePortfolio(addr, seed);
   const networks = new Set(assets.map((a) => a.chainId)).size;
   // Cold first load only: loading AND nothing cached/painted yet. If a snapshot
@@ -1014,14 +1015,11 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         <QuickAction Icon={ArrowUpRight}  label="Send"    onPress={() => navigate('send')}/>
         <QuickAction Icon={ArrowDownLeft} label="Receive" onPress={() => navigate('receive')}/>
         <QuickAction Icon={Repeat}        label="Swap"    onPress={() => navigate('swap')}/>
-        <QuickAction Icon={Plus} label="Buy" onPress={() => Alert.alert(
-          'Buy crypto',
-          'Card on-ramp is coming soon. Until then, you can receive funds from another wallet or exchange.',
-          [
-            { text: 'Not now', style: 'cancel' },
-            { text: 'Receive', onPress: () => navigate('receive') },
-          ],
-        )}/>
+        {/* TGE — opens the Ignite token-generation event in the in-app dApp
+            browser, which injects the window.thanos EIP-1193 provider from the
+            unlocked seed so the page can connect to this wallet (replaces the
+            old "Buy" card-on-ramp placeholder). */}
+        <QuickAction Icon={Plus} label="TGE" onPress={() => openBrowser('https://tge.ignite.trade/')}/>
       </View>
 
       {/* Security: recovery-phrase backup nudge */}
