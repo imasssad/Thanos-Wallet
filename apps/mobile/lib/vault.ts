@@ -135,7 +135,15 @@ export async function createVault(mnemonic: string, password: string): Promise<E
     iv:         bytesToHex(iv),
     ciphertext: bytesToHex(ct),
   };
-  await SecureStore.setItemAsync(VAULT_KEY, JSON.stringify(vault));
+  // keychainAccessible AFTER_FIRST_UNLOCK: the vault must survive a device
+  // REBOOT and be readable at app launch — the default is not guaranteed to be,
+  // so set it explicitly (iOS attribute; no-op on Android, which persists via
+  // EncryptedSharedPreferences). AFTER_FIRST_UNLOCK (not *_THIS_DEVICE_ONLY)
+  // keeps the encrypted blob restorable to a new device from an encrypted
+  // backup — safe because it's password-encrypted and useless without it.
+  await SecureStore.setItemAsync(VAULT_KEY, JSON.stringify(vault), {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+  });
   // Cache the freshly derived key so the caller can skip a second derivation.
   cacheSessionKey(key);
   return vault;

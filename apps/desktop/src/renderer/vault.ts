@@ -165,8 +165,15 @@ export async function openVaultWithKey(
 /* ─── Storage layer ─────────────────────────────────────────────────────── */
 export function saveVault(vault: EncryptedVault): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.vault, JSON.stringify(vault));
+  const json = JSON.stringify(vault);
+  localStorage.setItem(STORAGE_KEYS.vault, json);
   localStorage.setItem(STORAGE_KEYS.hasVault, '1');
+  // Durable backing: localStorage on the packaged file:// origin is NOT
+  // persisted across app restarts, so the vault must also live in the OS
+  // keychain (keytar). localStorage stays the fast synchronous read cache;
+  // hydrateVaultFromKeychain() repopulates it from the keychain at boot.
+  mirrorToKeychain(STORAGE_KEYS.vault, json);
+  mirrorToKeychain(STORAGE_KEYS.hasVault, '1');
 }
 
 export function loadVault(): EncryptedVault | null {
@@ -182,8 +189,8 @@ export function isSeedBackedUp(): boolean {
 }
 export function setSeedBackedUp(backedUp: boolean): void {
   if (typeof window === 'undefined') return;
-  if (backedUp) localStorage.setItem(STORAGE_KEYS.seedBackedUp, '1');
-  else          localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
+  if (backedUp) { localStorage.setItem(STORAGE_KEYS.seedBackedUp, '1'); mirrorToKeychain(STORAGE_KEYS.seedBackedUp, '1'); }
+  else          { localStorage.removeItem(STORAGE_KEYS.seedBackedUp); removeFromKeychain(STORAGE_KEYS.seedBackedUp); }
 }
 
 /* ─── Multi-account derivation index ─────────────────────────────── */
@@ -200,6 +207,7 @@ export function setActiveAccountIndex(idx: number): void {
   if (typeof window === 'undefined') return;
   if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_ACCOUNTS) return;
   localStorage.setItem(STORAGE_KEY_ACTIVE_IDX, String(idx));
+  mirrorToKeychain(STORAGE_KEY_ACTIVE_IDX, String(idx));
 }
 export function getAccountCount(): number {
   if (typeof window === 'undefined') return 1;
@@ -210,6 +218,7 @@ export function setAccountCount(n: number): void {
   if (typeof window === 'undefined') return;
   if (!Number.isInteger(n) || n < 1 || n > MAX_ACCOUNTS) return;
   localStorage.setItem(STORAGE_KEY_ACCT_COUNT, String(n));
+  mirrorToKeychain(STORAGE_KEY_ACCT_COUNT, String(n));
 }
 
 export function clearVault(): void {
@@ -220,6 +229,11 @@ export function clearVault(): void {
   localStorage.removeItem(STORAGE_KEYS.legacyMnemonic);
   localStorage.removeItem(STORAGE_KEYS.legacyPassword);
   localStorage.removeItem(STORAGE_KEYS.legacyUnlocked);
+  localStorage.removeItem(STORAGE_KEY_ACTIVE_IDX);
+  localStorage.removeItem(STORAGE_KEY_ACCT_COUNT);
+  // Wipe the durable keychain copies too, or a "Reset wallet" would leave the
+  // old vault behind and it would resurrect on the next launch's hydration.
+  for (const key of DURABLE_KEYS) removeFromKeychain(key);
   clearSessionKey();
 }
 
@@ -276,3 +290,67 @@ export async function migrateLegacyPlaintext(): Promise<{ ok: boolean; key?: Uin
 
 /** Exported for tests / outside callers. */
 export const VAULT_STORAGE_KEYS = STORAGE_KEYS;
+
+/* ─── Durable keychain backing (keytar via the preload bridge) ───────────────
+ *
+ * WHY: in the packaged desktop app the renderer loads from a file:// origin,
+ * where Chromium does NOT persist localStorage across restarts — so the vault
+ * (localStorage-only) vanished on every relaunch and the app fell back to the
+ * onboarding screen ("create a new wallet every restart"). The OS keychain
+ * (macOS Keychain / Windows Credential Vault via keytar) is the durable store;
+ * the main process exposes it as vaultGet/vaultSet/vaultRemove on the preload
+ * bridge. We keep localStorage as a synchronous read cache (so loadVault() et
+ * al. stay sync and no call site changes) and mirror every durable write into
+ * the keychain, then rehydrate localStorage FROM the keychain once at boot.
+ */
+const DURABLE_KEYS: readonly string[] = [
+  STORAGE_KEYS.vault,
+  STORAGE_KEYS.hasVault,
+  STORAGE_KEYS.seedBackedUp,
+  STORAGE_KEY_ACTIVE_IDX,
+  STORAGE_KEY_ACCT_COUNT,
+];
+
+interface VaultBridge {
+  vaultGet(key: string): Promise<string | null>;
+  vaultSet(key: string, value: string): Promise<void>;
+  vaultRemove(key: string): Promise<void>;
+}
+function keychain(): VaultBridge | null {
+  if (typeof window === 'undefined') return null;
+  const b = window.thanosDesktop;
+  return b && typeof b.vaultGet === 'function' ? (b as VaultBridge) : null;
+}
+
+/** Fire-and-forget durable write. Never throws — the localStorage cache write
+ *  has already happened, and keytar being briefly unavailable must not break
+ *  the UI (it just costs durability until the next successful write). */
+function mirrorToKeychain(key: string, value: string): void {
+  keychain()?.vaultSet(key, value).catch(() => { /* durability best-effort */ });
+}
+function removeFromKeychain(key: string): void {
+  keychain()?.vaultRemove(key).catch(() => { /* best-effort */ });
+}
+
+/**
+ * Rehydrate localStorage from the OS keychain. MUST be awaited once at startup
+ * BEFORE React mounts, so the synchronous loadVault()/hasVault reads in the
+ * boot flow see the persisted vault. Also seeds the keychain from any existing
+ * localStorage values (one-time upgrade for wallets created before this fix,
+ * or in dev where localStorage did persist).
+ */
+export async function hydrateVaultFromKeychain(): Promise<void> {
+  const kc = keychain();
+  if (!kc || typeof window === 'undefined') return;
+  await Promise.all(DURABLE_KEYS.map(async (key) => {
+    try {
+      const fromKeychain = await kc.vaultGet(key);
+      if (fromKeychain != null) {
+        localStorage.setItem(key, fromKeychain);        // keychain is source of truth
+      } else {
+        const fromLocal = localStorage.getItem(key);    // upgrade path: push local → keychain
+        if (fromLocal != null) await kc.vaultSet(key, fromLocal).catch(() => {});
+      }
+    } catch { /* leave localStorage as-is for this key */ }
+  }));
+}

@@ -11,6 +11,7 @@ import {
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount,       setAccountCount,
   MAX_ACCOUNTS,
+  hydrateVaultFromKeychain,
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { DappBrowserOverlay } from './components/DappBrowserOverlay';
@@ -3927,4 +3928,11 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App/>);
+// Rehydrate the vault from the OS keychain BEFORE mounting React — the app's
+// boot flow reads loadVault()/hasVault synchronously, so the durable copy must
+// already be in the localStorage cache. Never blocks longer than the keychain
+// round-trip; on failure the app still mounts (falls back to onboarding).
+void (async () => {
+  try { await hydrateVaultFromKeychain(); } catch { /* mount anyway */ }
+  createRoot(document.getElementById('root')!).render(<App/>);
+})();
