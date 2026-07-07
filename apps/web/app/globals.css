@@ -1385,13 +1385,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   height: 104px;
 }
 .onboard-logo img {
-  width: 104px !important; height: 104px !important;
-  filter: drop-shadow(0 12px 28px rgba(59,122,247,0.22));
+  width: 74px !important; height: 74px !important;
+  filter: drop-shadow(0 10px 22px rgba(59,122,247,0.22));
 }
 [data-theme="dark"] .onboard-logo::before {
   content: '';
   position: absolute;
-  width: 96px; height: 96px;
+  width: 68px; height: 68px;
   background: radial-gradient(circle, rgba(59,122,247,0.28) 0%, transparent 60%);
   filter: blur(16px);
   z-index: -1;
@@ -1401,7 +1401,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .onboard-title {
-  font-size: 22px; font-weight: 700; letter-spacing: -0.035em;
+  font-size: 20px; font-weight: 700; letter-spacing: -0.035em;
   text-align: center; margin-bottom: 5px;
   color: var(--text-primary);
 }
@@ -1608,12 +1608,12 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin: 18px 0 6px;
+  margin: 12px 0 4px;
 }
 .phrase-len-tile {
   display: flex; flex-direction: column; align-items: center;
-  gap: 4px;
-  padding: 22px 14px 18px;
+  gap: 3px;
+  padding: 16px 14px 14px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: 14px;
@@ -1633,18 +1633,18 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   background: rgba(59,122,247,0.08);
 }
 .phrase-len-num {
-  font-size: 36px; font-weight: 800;
+  font-size: 30px; font-weight: 800;
   letter-spacing: -0.04em;
   color: var(--blue);
   line-height: 1;
 }
 .phrase-len-label {
-  font-size: 13px; font-weight: 600;
+  font-size: 12.5px; font-weight: 600;
   color: var(--text-primary);
 }
 .phrase-len-sub {
-  font-size: 11px; color: var(--text-muted);
-  margin-top: 4px;
+  font-size: 10.5px; color: var(--text-muted);
+  margin-top: 3px;
 }
 
 .warn-list {
@@ -2029,7 +2029,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   opacity: 0.7;
 }
 
-.onboard-logo { height: 88px; margin-bottom: 8px; }
+.onboard-logo { height: 72px; margin-bottom: 6px; }
 
 [data-theme="dark"] .onboard-logo::before {
   content: '';
