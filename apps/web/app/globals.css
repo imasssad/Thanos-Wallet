@@ -3666,7 +3666,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* HERO MARK — logo inside slowly-rotating thin blue gradient ring + breathing under-glow */
 .ob2-mark {
   position: relative;
-  width: 100px; height: 100px;
+  width: 84px; height: 84px;
   display: grid; place-items: center;
   margin: 0 auto;
 }
@@ -3697,7 +3697,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* WELCOME layout */
 .ob2-welcome { display: flex; flex-direction: column; }
-.ob2-hero { margin-top: 2px; margin-bottom: 12px; }
+.ob2-hero { margin-top: 0; margin-bottom: 8px; }
 
 /* VALUE-PROP CAROUSEL — horizontal scroll-snap */
 .ob2-carousel {
@@ -3716,13 +3716,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   text-align: center;
 }
 .ob2-slide-title {
-  font-size: 24px; font-weight: 800; letter-spacing: -0.6px; line-height: 1.2;
+  font-size: 20px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.15;
   color: var(--text-primary);
-  margin: 0 auto; max-width: 15ch;
+  margin: 0 auto; max-width: 16ch;
 }
 .ob2-slide-sub {
-  margin-top: 12px;
-  font-size: 14px; line-height: 1.55; font-weight: 500;
+  margin-top: 8px;
+  font-size: 13px; line-height: 1.5; font-weight: 500;
   color: var(--text-secondary);
   max-width: 30ch; margin-left: auto; margin-right: auto;
 }
@@ -3730,7 +3730,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 /* PAGER DOTS */
 .ob2-dots {
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .ob2-dot {
   width: 6px; height: 6px; border-radius: 3px;
@@ -3743,7 +3743,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 /* CTAs */
-.ob2-cta { margin-top: 14px; }
+.ob2-cta { margin-top: 10px; }
 .ob2-pill {
   display: flex; align-items: center; justify-content: center;
   width: 100%; height: 52px;
@@ -3757,10 +3757,10 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .ob2-pill:active { transform: translateY(1px); }
 .ob2-pill:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 .ob2-ghost {
-  width: 100%; height: 44px;
+  width: 100%; height: 40px;
   background: transparent; border: none;
   color: var(--text-secondary);
-  font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 6px;
+  font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 4px;
 }
 .ob2-ghost:hover { color: var(--text-primary); }
 
