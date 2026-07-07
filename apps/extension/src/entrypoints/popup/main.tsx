@@ -21,6 +21,11 @@ import {
   MAX_ACCOUNTS,
 } from '../../lib/vault';
 import {
+  persistSessionKey, loadPersistedSessionKey, clearPersistedSessionKey,
+  getSessionDuration, setSessionDuration,
+  SESSION_DURATION_OPTIONS, type SessionDuration,
+} from './session-store';
+import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
@@ -295,7 +300,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
       saveVault(vault);
       setSeedBackedUp(true); // create flow includes seed verification
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) { cacheSessionKey(opened.key); void persistSessionKey(opened.key); }
       onComplete(seed);
     } finally { setBusy(false); }
   };
@@ -313,7 +318,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
       saveVault(vault);
       setSeedBackedUp(true); // imported — user already holds the phrase
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) { cacheSessionKey(opened.key); void persistSessionKey(opened.key); }
       onComplete(words);
     } finally { setBusy(false); }
   };
@@ -327,6 +332,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
       const opened = await openVault(vault, unlockPwd);
       if (!opened) { setUnlockErr('Incorrect password'); setUnlockPwd(''); return; }
       cacheSessionKey(opened.key);
+      void persistSessionKey(opened.key);
       onComplete(opened.mnemonic.split(' '));
     } finally { setBusy(false); }
   };
@@ -1077,6 +1083,18 @@ function SettingsScreen({
     try { await navigator.clipboard.writeText(address); } catch { /* clipboard blocked */ }
     setCopiedAddr(true); setTimeout(() => setCopiedAddr(false), 1500);
   };
+
+  // Session duration (auto-lock) — how long the wallet stays unlocked across
+  // popup closes. Persisted in extension storage; default 1h.
+  const [sessionDur, setSessionDur] = useState<SessionDuration>('1h');
+  useEffect(() => { getSessionDuration().then(setSessionDur).catch(() => {}); }, []);
+  const onChangeDuration = async (d: SessionDuration) => {
+    setSessionDur(d);
+    await setSessionDuration(d);
+    // Re-persist the live key so the new window takes effect immediately.
+    const k = getSessionKey();
+    if (k) await persistSessionKey(k);
+  };
   // Premium-pattern settings: icon-led section headers + a gradient title hero.
   // Adapted for the 360px popup — smaller paddings + tighter spacing.
   const SectionHead = ({ Icon, title, sub }: { Icon: React.ElementType; title: string; sub: string }) => (
@@ -1114,6 +1132,21 @@ function SettingsScreen({
             <div className="set-sub">Coming soon</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
+        </div>
+        <div className="set-row row-border">
+          <div className="set-icon"><Clock size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Auto-lock</div>
+            <div className="set-sub">Stay unlocked for</div>
+          </div>
+          <select
+            className="set-select"
+            value={sessionDur}
+            onChange={(e) => { void onChangeDuration(e.target.value as SessionDuration); }}
+            style={{ background: 'var(--bg-elev, #1a1a1f)', color: 'var(--text-primary)', border: '1px solid var(--border, #2a2a30)', borderRadius: 8, padding: '5px 8px', fontSize: 12 }}
+          >
+            {SESSION_DURATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
         <button className="set-row row-border" onClick={onOpenChangePassword} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
           <div className="set-icon"><Key size={15}/></div>
@@ -2628,7 +2661,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       const nv = await createVault(r.mnemonic, nw);
       saveVault(nv);
       const re = await openVault(nv, nw);
-      if (re) cacheSessionKey(re.key);
+      if (re) { cacheSessionKey(re.key); void persistSessionKey(re.key); }
       setDone(true);
     } catch { setErr('Could not change the password.'); }
     finally { setBusy(false); }
@@ -2866,11 +2899,28 @@ function App() {
 
       if (vault) {
         try {
-          const key = getSessionKey();
+          // sessionStorage first (same-popup refresh), then the persisted key
+          // (chrome.storage.session/local) which SURVIVES popup close for the
+          // user's chosen session duration — this is what stops the constant
+          // password re-prompts. Expiry is enforced inside loadPersistedSessionKey.
+          let key = getSessionKey();
+          if (!key) key = await loadPersistedSessionKey();
           if (key) {
             const mnemonic = await openVaultWithKey(vault, key);
-            if (mnemonic) { setSeed(mnemonic.split(' ')); setUnlocked(true); }
-            else clearSessionKey();
+            if (mnemonic) {
+              const words = mnemonic.split(' ');
+              setSeed(words); setUnlocked(true);
+              cacheSessionKey(key); // reseed the fast in-page cache
+              // Re-announce the active address so dApps / eth_accounts work on an
+              // auto-unlock (mirrors onComplete), and refresh the persisted key so
+              // the sliding window reflects this use.
+              try {
+                const addr = deriveEvm(words, getActiveAccountIndex());
+                browser?.runtime?.sendMessage({ type: 'thanos-active-address', address: addr });
+              } catch { /* background may be asleep; it hydrates on next message */ }
+            } else {
+              clearSessionKey(); await clearPersistedSessionKey();
+            }
           }
         } catch { /* session unlock is best-effort; the unlock screen still works */ }
       }
@@ -2898,6 +2948,7 @@ function App() {
     setUnlocked(false);
     setSeed([]);
     clearSessionKey();
+    void clearPersistedSessionKey(); // drop the survives-popup-close key too
     // Tell the background SW the wallet is locked so dApps see accountsChanged([]).
     try { browser?.runtime?.sendMessage({ type: 'thanos-lock' }); } catch {}
   };
