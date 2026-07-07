@@ -350,6 +350,8 @@ await provider.request({
             <Link href="/privacy" style={footLink}>Privacy</Link>
             <a href="/download" style={footLink}>Download APK</a>
             <a href="https://github.com/imasssad/Thanos-Wallet" target="_blank" rel="noreferrer" style={footLink}>GitHub</a>
+            <a href="https://t.me/ThanosWallet" target="_blank" rel="noreferrer" style={footLink}>Telegram</a>
+            <a href="https://discord.gg/khEm4nArFy" target="_blank" rel="noreferrer" style={footLink}>Discord</a>
             <a href="mailto:support@thanos.fi" style={footLink}>Support</a>
           </nav>
           <div style={{ fontSize: 12, color: '#64748b' }}>© 2026 Thanos Wallet · MIT</div>
