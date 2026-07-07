@@ -72,6 +72,7 @@ declare global {
       vaultRemove(key: string): Promise<void>;
       openExternal?:      (url: string) => Promise<unknown>;
       clipboardWrite?:    (text: string) => Promise<{ ok: boolean }>;
+      notify?:            (title: string, body: string) => Promise<{ ok: boolean }>;
       onUpdateEvent?:     (cb: (ev: UpdaterEvent) => void) => () => void;
       checkForUpdate?:    () => Promise<unknown>;
       installAndRestart?: () => Promise<unknown>;
@@ -1958,13 +1959,14 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
         await new Promise(r => setTimeout(r, Math.min(4000 + i * 2000, 30000)));
         try {
           const s = await mod.getStatus(id);
-          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); break; }
-          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); break; }
+          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); void window.thanosDesktop?.notify?.('Swap complete', 'Your swap completed.'); break; }
+          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); void window.thanosDesktop?.notify?.('Swap failed', s.error || 'The swap could not complete.'); break; }
           setPollMsg(`Status: ${s.state}`);
         } catch { /* keep polling */ }
       }
     } catch (e) {
       setErr((e as Error).message || 'Swap failed');
+      void window.thanosDesktop?.notify?.('Swap failed', (e as Error).message || 'The swap could not complete.');
     } finally { setBusy(false); }
   };
 
@@ -2099,10 +2101,16 @@ function DesktopBridgePanel({ seed }: { seed: string[] }) {
         source: { seed, accountIdx: getActiveAccountIndex() }, token, amount: amt,
         onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
       });
-      if (res.status !== 'completed') { setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.'); }
+      if (res.status !== 'completed') {
+        setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.');
+        void window.thanosDesktop?.notify?.('Bridge — release pending', `${amt} ${token.symbol} locked on Makalu; awaiting release on Kamet.`);
+      } else {
+        void window.thanosDesktop?.notify?.('Bridge complete', `${amt} ${token.symbol} bridged Makalu → Kamet.`);
+      }
     } catch (e) {
       setStep('error');
       setErr(e instanceof MultXError ? e.message : (e instanceof Error ? e.message : 'Bridge failed'));
+      void window.thanosDesktop?.notify?.('Bridge failed', e instanceof Error ? e.message : 'The bridge could not complete.');
     }
   }
 

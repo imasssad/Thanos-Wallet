@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
    *  (non-secure context), so every Copy button silently failed. */
   clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text) as Promise<{ ok: boolean }>,
 
+  /** Show an OS notification for wallet activity (WC requests, tx confirm/fail,
+   *  bridge/swap). Notification lives in the main process. */
+  notify: (title: string, body: string) => ipcRenderer.invoke('notify:show', title, body) as Promise<{ ok: boolean }>,
+
   /* ─── In-app dApp browser ────────────────────────────────────────────
      Mounts a sandboxed WebContentsView over the renderer area. The
      renderer draws the chrome (back / forward / reload / URL / close)

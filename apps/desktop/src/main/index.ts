@@ -1,6 +1,6 @@
 // Use require() directly — Electron's module interceptor matches the literal "electron" string
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
-const { app, BrowserWindow, ipcMain, nativeTheme, shell, session, clipboard } = require('electron') as typeof import('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, shell, session, clipboard, Notification } = require('electron') as typeof import('electron');
 
 /* USB / HID vendor IDs we let the renderer enumerate. Hardware-wallet
    manufacturers only — never a blanket "allow all devices" handler. */
@@ -118,6 +118,15 @@ app.whenReady().then(() => {
   // packaged file:// renderer, so every Copy button needs this bridge.
   ipcMain.handle('clipboard:write', (_e, text: string) => {
     clipboard.writeText(String(text ?? ''));
+    return { ok: true };
+  });
+
+  // OS notification for wallet activity (WC requests, tx confirm/fail, bridge/
+  // swap). Notification is a main-process API; the renderer calls it over IPC.
+  ipcMain.handle('notify:show', (_e, title: string, body: string) => {
+    try {
+      if (Notification.isSupported()) new Notification({ title: String(title ?? ''), body: String(body ?? '') }).show();
+    } catch { /* notifications unavailable / disabled */ }
     return { ok: true };
   });
 

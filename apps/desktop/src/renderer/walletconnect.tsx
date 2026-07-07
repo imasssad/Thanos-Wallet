@@ -109,18 +109,25 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
       const kit = await getKit();
       if (cancel) return;
       kit.on('session_proposal', (p) => {
-        setProposal({ id: p.id, name: p.params.proposer.metadata?.name ?? 'dApp' });
+        const name = p.params.proposer.metadata?.name ?? 'dApp';
+        setProposal({ id: p.id, name });
+        void window.thanosDesktop?.notify?.('Connection request', `${name} wants to connect to your wallet.`);
       });
       kit.on('session_delete', () => void refresh());
       kit.on('session_request', (event) => {
         const session = kit.getActiveSessions()[event.topic];
+        const method = event.params.request.method;
+        const name = session?.peer?.metadata?.name ?? 'dApp';
         setPending({
           id:     event.id,
           topic:  event.topic,
-          method: event.params.request.method,
+          method,
           params: (event.params.request.params as unknown[]) ?? [],
-          name:   session?.peer?.metadata?.name ?? 'dApp',
+          name,
         });
+        const title = method === 'eth_sendTransaction' || method === 'eth_signTransaction'
+          ? 'Transaction request' : 'Signature request';
+        void window.thanosDesktop?.notify?.(title, `${name} is requesting your approval.`);
       });
       void refresh();
     })().catch((e) => setErr((e as Error).message));
