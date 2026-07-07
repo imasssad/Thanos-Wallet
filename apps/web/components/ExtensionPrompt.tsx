@@ -16,22 +16,22 @@ import { Puzzle, X, Smartphone, Download } from 'lucide-react';
  *  - Dismissible per surface; the choice is remembered in localStorage.
  *
  * Rendered once on the landing page (app/page.tsx).
- *
- * TODO: STORE_URL points at each store's search for "Thanos Wallet" until the
- * listings are published — swap in the real listing URLs when they go live.
  */
 
 const DISMISS_EXT = 'thanos_ext_prompt_dismissed';
 const DISMISS_APK = 'thanos_apk_prompt_dismissed';
 
-// The browser extension isn't published to any store yet, so the desktop
-// "Get the extension" prompt would link to a dead store search. Keep it OFF
-// until the listings go live — then flip this to true (and swap STORE_URL for
-// the real listing URLs).
-const EXTENSION_PUBLISHED = false;
+// The Chrome Web Store listing is LIVE, so the desktop "Get the extension"
+// prompt links straight to it. Brave/Edge/Opera install from the same Chrome
+// store. Firefox (AMO) isn't published yet — the prompt is gated to Chromium
+// browsers below so Firefox users don't get a dead link.
+const EXTENSION_PUBLISHED = true;
+
+const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj';
 
 const STORE_URL: Record<'chrome' | 'firefox', string> = {
-  chrome:  'https://chromewebstore.google.com/search/Thanos%20Wallet',
+  chrome:  CHROME_STORE_URL,
+  // AMO listing not live yet — Firefox is excluded from the desktop prompt.
   firefox: 'https://addons.mozilla.org/firefox/search/?q=Thanos%20Wallet',
 };
 
@@ -99,7 +99,13 @@ export function ExtensionPrompt() {
     try { dismissed = localStorage.getItem(key) === '1'; } catch { /* ignore */ }
     if (dismissed) return;
 
-    if (p === 'desktop') setBrowser(detectBrowser());
+    if (p === 'desktop') {
+      const b = detectBrowser();
+      // Only Chromium browsers (Chrome/Brave/Edge/Opera) can install from the
+      // live Chrome Web Store listing; skip Firefox until AMO goes live.
+      if (b.storeKey !== 'chrome') return;
+      setBrowser(b);
+    }
     // Desktop waits a beat so the extension can inject + flip `installed`
     // before we bother showing the prompt; Android has nothing to wait for.
     const t = setTimeout(() => setShow(true), p === 'android' ? 700 : 1200);

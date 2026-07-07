@@ -411,6 +411,9 @@ type DL = {
   /** True for a real file download (e.g. the APK) — rendered as a plain
    *  <a> with full navigation, not a client-side <Link>. */
   dl?: boolean;
+  /** True for an external link (e.g. the Chrome Web Store) — plain <a> that
+   *  opens in a new tab. */
+  ext?: boolean;
   Icon: React.FC<{ size?: number }>;
 };
 
@@ -419,7 +422,7 @@ const DOWNLOADS: DL[] = [
   { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
   { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
   { n: '04', name: 'Android',   sub: 'Phone · Tablet · APK (Play Store soon)',            cta: 'Download .apk', href: '/download', ready: true, dl: true, Icon: IconAndroid },
-  { n: '05', name: 'Extension', sub: 'Chrome · Firefox · dApp signer for window.thanos',  cta: 'Chrome Store',  href: '#',    ready: false, Icon: IconExtension },
+  { n: '05', name: 'Extension', sub: 'Chrome · Brave · Edge · dApp signer for window.thanos', cta: 'Chrome Store', href: 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj', ready: true, ext: true, Icon: IconExtension },
 ];
 
 function PlatformSection() {
@@ -437,16 +440,17 @@ function PlatformSection() {
         </p>
 
         <div className="lp-dl-list">
-          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, dl, Icon }, idx) => {
-            // Real downloads (APK) use a plain <a> for full navigation; live
-            // in-app routes use Next <Link> for client-side nav.
-            const Tag = ready && !dl ? Link : 'a';
+          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, dl, ext, Icon }, idx) => {
+            // External links (Chrome store) + real downloads (APK) use a plain
+            // <a>; live in-app routes use Next <Link> for client-side nav.
+            const Tag = ready && !dl && !ext ? Link : 'a';
             // Web/Desktop = Thanos blue. iOS muted, Android green, Extension cyan.
             const tints = ['#3b7af7', '#06b6d4', '#9ca3af', '#10b981', '#22d3ee'];
             return (
               <Tag
                 key={n}
                 href={href}
+                {...(ext ? { target: '_blank', rel: 'noreferrer' } : {})}
                 {...(!ready ? { onClick: (e: React.MouseEvent) => e.preventDefault(), 'aria-disabled': true } : {})}
                 className={`lp-dl-row ${ready ? 'is-live' : 'is-soon'}`}
                 style={{ ['--tile-tint' as any]: tints[idx % tints.length] }}
