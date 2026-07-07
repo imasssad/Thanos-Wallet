@@ -11,10 +11,15 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — VERSION "thanos-v1.12" (2026-07-02, build
-// e407da55, account imasssadkh). Shows its version in Settings (bottom) so
+// Latest production-apk build — VERSION "thanos-v1.13" (2026-07-07, build
+// 758268d5, account imasssadkh). Shows its version in Settings (bottom) so
 // testers can confirm the installed build at a glance.
-// NEW in v1.12: account discovery derives the BIP39 seed ONCE (cheap per-account
+// NEW in v1.13: WalletConnect deep-link handoff (thanoswallet://wc?uri=… auto-
+// pairs) + raw wc:// on iOS; activity notifications (WC requests, tx confirm/
+// fail, bridge/swap); themed send-success modal; TGE quick action opens
+// tge.ignite.trade in the in-app browser. Also formats activity token amounts
+// by decimals (fixed via the indexer — no client change needed).
+// From v1.12: account discovery derives the BIP39 seed ONCE (cheap per-account
 // child derivation) — kills the multi-minute JS-thread freeze right after unlock;
 // the discovery scan is deferred until after first paint; and API requests now
 // abort after a 12s timeout with a clear message instead of hanging.
@@ -37,11 +42,11 @@
 // From v1.05: external-EVM send/receive/balances (ETH + USDT/USDC, 8 chains).
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
-// The Settings version tag (thanos-v1.12) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/LKkV0e8JBLF1V-8kP7JFQVvV8sUdv1k2yUVZ_BGt9NQ.apk';
+// The Settings version tag (thanos-v1.13) confirms the new build took.
+const APK_URL = 'https://expo.dev/artifacts/eas/o_mg-6klL710Q88Jqsy2EaXvr3z5Q-XDosSm4aTC_6M.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
-const APK_VERSION = 'thanos-v1.12';
+const APK_VERSION = 'thanos-v1.13';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
