@@ -5239,6 +5239,25 @@ export default function Root() {
   );
 }
 
+/** Extract a WalletConnect `wc:` URI from an incoming deep link. Supported
+ *  handoff formats (see the mobile integration guide):
+ *    • wc:...                              raw WC URI (Android `wc` scheme)
+ *    • thanoswallet://wc?uri=<enc wc:...>  the wallet's own scheme (iOS + Android)
+ *    • https://thanos.fi/wc?uri=<enc>      universal / app link
+ *  Returns null for any other deep link so unrelated links are ignored. */
+function extractWcUri(url: string): string | null {
+  if (!url) return null;
+  if (url.startsWith('wc:')) return url;
+  const m = url.match(/[?&]uri=([^&]+)/);
+  if (m) {
+    try {
+      const decoded = decodeURIComponent(m[1]);
+      if (decoded.startsWith('wc:')) return decoded;
+    } catch { /* malformed percent-encoding — ignore */ }
+  }
+  return null;
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
@@ -5249,6 +5268,20 @@ function App() {
   // dark by default). The Settings toggle still lets users switch to light.
   const [isDark, setIsDark] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
+  // WalletConnect deep-link handoff. A wc: URI handed off by an integrating dApp
+  // (thanoswallet://wc?uri=… / a raw wc: link / the thanos.fi universal link) is
+  // stashed here and auto-paired once unlocked — the supported mobile connect
+  // path. Works from any screen; the manual paste/scan entry lives in Settings.
+  const [pendingWcUri, setPendingWcUri] = useState<string | null>(null);
+  useEffect(() => {
+    const handle = (url: string | null) => {
+      const wc = url ? extractWcUri(url) : null;
+      if (wc) setPendingWcUri(wc);
+    };
+    Linking.getInitialURL().then(handle).catch(() => {});
+    const sub = Linking.addEventListener('url', (e) => handle(e.url));
+    return () => sub.remove();
+  }, []);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
@@ -5464,6 +5497,18 @@ function App() {
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}
             <WalletConnectRequestHost seed={walletSeed}/>
+
+            {/* WalletConnect deep-link pairing — opens + auto-pairs when a dApp
+                hands off a wc: URI via thanoswallet://wc?uri=… Rendered app-level
+                so the handoff works from any screen. */}
+            {pendingWcUri && (
+              <WalletConnectModal
+                visible
+                initialUri={pendingWcUri}
+                evmAddress={walletAddr}
+                onClose={() => setPendingWcUri(null)}
+              />
+            )}
 
             {/* In-app browser overlay (Discover dApps / typed links) */}
             {browserUrl && <InAppBrowser url={browserUrl} onClose={() => setBrowserUrl(null)} seed={walletSeed}/>}

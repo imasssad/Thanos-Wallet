@@ -15,7 +15,7 @@
  * Signing is delegated to lib/wc-signer.ts; pairing + session lifecycle
  * to lib/walletconnect.ts.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Modal, View, Text, Pressable, TextInput, ScrollView,
   StyleSheet, ActivityIndicator,
@@ -56,8 +56,8 @@ const P = {
 type WcView = 'list' | 'pair' | 'proposal';
 
 export function WalletConnectModal({
-  visible, onClose, evmAddress,
-}: { visible: boolean; onClose: () => void; evmAddress: string }) {
+  visible, onClose, evmAddress, initialUri,
+}: { visible: boolean; onClose: () => void; evmAddress: string; initialUri?: string | null }) {
   const [view, setView]         = useState<WcView>('list');
   const [uri, setUri]           = useState('');
   const [busy, setBusy]         = useState(false);
@@ -75,9 +75,12 @@ export function WalletConnectModal({
 
   useEffect(() => {
     if (!visible) return;
-    setView('list'); setUri(''); setError(null); setProposal(null);
+    setError(null); setProposal(null);
     void refreshSessions();
-  }, [visible, refreshSessions]);
+    // A deep-link handoff (thanoswallet://wc?uri=… or a raw wc: link) preselects
+    // the pair view + auto-pairs below; otherwise land on the sessions list.
+    if (!initialUri) { setView('list'); setUri(''); }
+  }, [visible, initialUri, refreshSessions]);
 
   // Subscribe to incoming proposals while the modal is mounted.
   useEffect(() => {
@@ -106,6 +109,21 @@ export function WalletConnectModal({
       setBusy(false);
     }
   };
+
+  // Deep-link handoff: when the modal opens carrying a wc: URI (extracted from
+  // thanoswallet://wc?uri=… / a raw wc: link / the thanos.fi universal link),
+  // show the pair view and pair immediately — no paste/scan needed. Keyed on the
+  // URI so re-opening with a NEW link re-pairs, but the same link won't loop.
+  const pairedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!visible || !initialUri) return;
+    if (pairedRef.current === initialUri) return;
+    pairedRef.current = initialUri;
+    setView('pair');
+    setUri(initialUri);
+    void doPair(initialUri);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialUri]);
 
   const onApprove = async () => {
     if (!proposal || !evmAddress) return;
