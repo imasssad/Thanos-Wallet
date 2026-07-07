@@ -72,6 +72,24 @@ async function ensureOffscreen(): Promise<void> {
   }
 }
 
+function hostOf(origin: string): string {
+  try { return new URL(origin).host; } catch { return origin; }
+}
+
+/** OS/browser notification for an incoming dApp request — fires from the
+ *  service worker so the user is alerted even when the popup is closed.
+ *  Best-effort: the API is absent on some builds / may be user-disabled. */
+function notifyRequest(title: string, message: string): void {
+  try {
+    void browser.notifications?.create({
+      type:    'basic',
+      iconUrl: browser.runtime.getURL('/icons/icon128.png'),
+      title,
+      message,
+    });
+  } catch { /* notifications API unavailable */ }
+}
+
 async function getConnections(): Promise<ConnectionMap> {
   const { connections } = await browser.storage.local.get('connections');
   return (connections as ConnectionMap) ?? {};
@@ -134,6 +152,7 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
       await browser.storage.session.set({
         pending_approval: { id, origin, method, params } as PendingApproval,
       });
+      notifyRequest('Connection request', `${hostOf(origin)} wants to connect to Thanos Wallet.`);
       try { await browser.action.openPopup(); }
       catch {
         // Some browsers (older Firefox) reject openPopup outside a user
@@ -209,6 +228,10 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
       await browser.storage.session.set({
         pending_rpc_request: { id, origin, method, params, address: conn.address } as PendingRpcRequest,
       });
+      notifyRequest(
+        method === 'eth_sendTransaction' ? 'Transaction request' : 'Signature request',
+        `${hostOf(origin)} is requesting your approval.`,
+      );
       try { await browser.action.openPopup(); }
       catch { /* user may need to open the popup manually */ }
 

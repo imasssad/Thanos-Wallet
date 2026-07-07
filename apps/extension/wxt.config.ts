@@ -65,7 +65,7 @@ export default defineConfig({
     // No 'tabs' permission: tabs.create() needs none, tabs.query({}) returns the
     // ids we use without it, and tabs.sendMessage works via host_permissions.
     // (Chrome Web Store rejected 0.2.0 for requesting 'tabs' unnecessarily.)
-    permissions: ['storage', 'activeTab', 'offscreen'],
+    permissions: ['storage', 'activeTab', 'offscreen', 'notifications'],
     host_permissions: ['https://*/*', 'http://*/*'],
     // injected.js must be loadable from page context for the MAIN-world
     // window.thanos provider injection.
