@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ethers } from 'ethers';
 import {
-  ArrowUpRight, ArrowDownLeft, Repeat, DollarSign,
+  ArrowUpRight, ArrowDownLeft, Repeat,
   ChevronDown, MoreVertical, SlidersHorizontal, ExternalLink,
   Image as ImageIcon, Sparkles, BadgeCheck,
   Eye, EyeOff, ShieldCheck,
@@ -852,26 +852,11 @@ export function Dashboard() {
   const assetsCold   = liveAssets   === null;
   const activityCold = liveActivity === null;
 
-  /* Buy on-ramp. Today this redirects to Transak's hosted widget with
-     the wallet's EVM address pre-populated. Requires
-     NEXT_PUBLIC_TRANSAK_API_KEY to be set at build time; without it the
-     button stays disabled (no point opening a broken widget). */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const transakApiKey = (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_TRANSAK_API_KEY) || '';
-  const onBuy = () => {
-    if (!transakApiKey || !evmAddress) return;
-    const url =
-      'https://global.transak.com/?'
-      + new URLSearchParams({
-          apiKey:                transakApiKey,
-          walletAddress:         evmAddress,
-          defaultCryptoCurrency: 'ETH',
-          fiatCurrency:          'USD',
-          themeColor:            '3b7af7',
-          hideMenu:              'true',
-        }).toString();
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
+  /* TGE — the Ignite token-generation event. Opens in a new tab; the page
+     connects to this wallet via WalletConnect (the web wallet doesn't inject
+     a provider into other tabs/iframes, so there's no silent auto-connect
+     here — a cross-origin iframe couldn't reach window.thanos either). */
+  const onTge = () => window.open('https://tge.ignite.trade/', '_blank', 'noopener,noreferrer');
 
   return (
     <div style={{
@@ -994,12 +979,10 @@ export function Dashboard() {
           width: '100%',
         }}>
           <ActionBtn
-            icon={<DollarSign size={30} strokeWidth={2}/>}
-            label="Buy"
-            disabled={!transakApiKey}
-            soonBadge={!transakApiKey}
-            title={transakApiKey ? 'Buy crypto via Transak (opens in new tab)' : 'Fiat on-ramp launching soon — Buy will route to Transak when enabled.'}
-            onClick={onBuy}
+            icon={<Sparkles size={30} strokeWidth={2}/>}
+            label="TGE"
+            title="Open the Ignite TGE (tge.ignite.trade) in a new tab"
+            onClick={onTge}
           />
           <ActionBtn
             icon={<Repeat size={30} strokeWidth={2}/>}
