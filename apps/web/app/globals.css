@@ -1339,16 +1339,20 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
      themselves. overscroll-behavior:none keeps it from rubber-band bouncing. */
   overflow-y: auto;
   overscroll-behavior: none;
+  /* Hidden scrollbar — the flow is compacted to fit one screen, so this is only
+     a silent safety net for very short/zoomed windows (no visible scrollbar). */
+  scrollbar-width: none;
   background: #ffffff;
   border: 1px solid #ececef;
   border-radius: 22px;
-  padding: 22px 28px 20px;
+  padding: 18px 26px 16px;
   box-shadow:
     0 1px 2px rgba(15,15,20,0.04),
     0 12px 32px rgba(15,15,20,0.06);
   position: relative; z-index: 1;
   animation: onboardFade 0.4s ease-out;
 }
+.onboard-card::-webkit-scrollbar { display: none; }
 /* Desktop body-zoom (1.25) magnifies dvh, so divide to keep the card inside
    the real viewport — same trap/divisor as .app-shell and the modals. */
 @media (min-width: 769px) {
@@ -1397,25 +1401,25 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .onboard-title {
-  font-size: 26px; font-weight: 700; letter-spacing: -0.035em;
-  text-align: center; margin-bottom: 6px;
+  font-size: 22px; font-weight: 700; letter-spacing: -0.035em;
+  text-align: center; margin-bottom: 5px;
   color: var(--text-primary);
 }
 .onboard-sub {
-  font-size: 15px; color: var(--text-muted);
-  text-align: center; line-height: 1.55;
-  margin-bottom: 24px; padding: 0 4px;
+  font-size: 13.5px; color: var(--text-muted);
+  text-align: center; line-height: 1.45;
+  margin-bottom: 14px; padding: 0 4px;
   font-weight: 400;
 }
 .onboard-tagline {
-  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.02em;
   color: var(--text-primary);
   text-align: center;
-  line-height: 1.4;
-  margin-bottom: 16px;
+  line-height: 1.35;
+  margin-bottom: 10px;
   padding: 0 12px;
 }
-.onboard-btn { margin-bottom: 8px; }
+.onboard-btn { margin-bottom: 6px; }
 .onboard-err {
   font-size: 14px; color: #fca5a5;
   margin-top: 12px; text-align: center;
@@ -1658,28 +1662,23 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 
 .seed-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
   background: rgba(0,0,0,0.3);
   border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 12px; padding: 14px;
-  margin-bottom: 14px;
-  /* The card no longer scrolls, so the 24-word grid takes its own internal
-     scroll on short phones — the Back/Continue buttons below stay visible. */
-  max-height: 38vh;
-  max-height: 38dvh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  border-radius: 12px; padding: 10px;
+  margin-bottom: 12px;
+  /* Compacted to show all words at once — no internal scroll. */
 }
 .seed-word {
-  font-family: 'Geist Mono', monospace; font-size: 14px;
+  font-family: 'Geist Mono', monospace; font-size: 12.5px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.04);
   border-radius: 7px;
-  padding: 8px 10px; display: flex; gap: 6px; align-items: center;
+  padding: 5px 8px; display: flex; gap: 5px; align-items: center;
   color: var(--text-primary);
   transition: border-color 0.15s;
 }
-.seed-num { color: var(--text-muted); font-size: 12px; min-width: 16px; font-weight: 600; }
+.seed-num { color: var(--text-muted); font-size: 11px; min-width: 14px; font-weight: 600; }
 .seed-faded { opacity: 0.45; }
 .seed-input { padding: 0 10px; border-color: rgba(59,122,247,0.3); }
 .seed-input input {
@@ -1693,7 +1692,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   cursor: pointer;
   border-style: dashed;
   border-color: var(--border-default);
-  min-height: 34px;
+  min-height: 28px;
 }
 .seed-slot:not(.filled):hover { border-color: var(--border-strong); }
 .seed-slot.filled {
@@ -1709,8 +1708,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .seed-slot-word { font-weight: 600; min-height: 1em; }
 
 .seed-pool {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  padding: 12px; margin-bottom: 12px;
+  display: flex; flex-wrap: wrap; gap: 5px;
+  padding: 8px; margin-bottom: 10px;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   background: rgba(0,0,0,0.15);
@@ -2030,7 +2029,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   opacity: 0.7;
 }
 
-.onboard-logo { height: 200px; margin-bottom: 18px; }
+.onboard-logo { height: 88px; margin-bottom: 8px; }
 
 [data-theme="dark"] .onboard-logo::before {
   content: '';
