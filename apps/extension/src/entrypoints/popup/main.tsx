@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
-import { bridgeMakaluToKamet } from '../../lib/multx-bridge';
+// NOTE: bridgeMakaluToKamet (heavy — MultX SDK + ethers v5) is lazy-imported at
+// its call site so it stays OUT of the popup cold-start bundle. Only the light
+// bridge metadata is eager.
 import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from '../../lib/bridge-meta';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
@@ -2143,6 +2145,7 @@ function ExtMakaluKametBridge({ seed }: { seed: string[] }) {
     if (!ready || amtNum <= 0) return;
     setErr(''); setTxHash(''); setStep('approving');
     try {
+      const { bridgeMakaluToKamet } = await import('../../lib/multx-bridge');
       const res = await bridgeMakaluToKamet({
         source: { seed, accountIdx: getActiveAccountIndex() }, token, amount: amt,
         onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
