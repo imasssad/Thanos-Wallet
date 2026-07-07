@@ -12,7 +12,7 @@
  * VPS today (one provider, ~10 tokens, polling every 15s). If load grows
  * past that, move into the existing BullMQ worker.
  */
-import { Log } from 'ethers';
+import { Log, formatUnits } from 'ethers';
 import { ensureSchema, pool, q } from './db.js';
 import {
   MAKALU_CHAIN_ID,
@@ -456,15 +456,27 @@ export async function getMakaluSeedTokenList() {
   };
 }
 
+/** Raw base units → clean human string using the token's own decimals.
+ *  e.g. ("5000000000000000000", 18) → "5"; ("1250000", 6) → "1.25".
+ *  Leaves the raw value on any parse failure rather than crashing the feed. */
+function formatTokenAmount(raw: string, decimals: number): string {
+  try {
+    const s = formatUnits(raw, decimals);          // e.g. "5.0"
+    return s.includes('.') ? s.replace(/\.?0+$/, '') : s; // trim trailing zeros → "5"
+  } catch {
+    return raw;
+  }
+}
+
 export async function buildSeedActivity(walletAddress: string) {
   const lower = walletAddress.toLowerCase();
   const rows = await q<{
     id: string; tx_hash: string; block_number: string;
     from_address: string; to_address: string; amount: string;
-    occurred_at: string; symbol: string;
+    occurred_at: string; symbol: string; decimals: number;
   }>(
     `select e.id, e.tx_hash, e.block_number, e.from_address, e.to_address,
-            e.amount, e.occurred_at, t.symbol
+            e.amount, e.occurred_at, t.symbol, t.decimals
        from lep100_events e
        join lep100_tokens t on t.chain_id = e.chain_id
                           and t.contract_address = e.contract_address
@@ -482,8 +494,13 @@ export async function buildSeedActivity(walletAddress: string) {
       kind: isReceive ? 'receive' : 'send',
       status: 'confirmed',
       title: `${isReceive ? 'Received' : 'Sent'} ${r.symbol}`,
-      amount: r.amount,
+      // Human-readable amount (raw / 10^decimals). Every client renders this
+      // string as-is; the web client's own formatUnits re-decode is removed in
+      // the same deploy so it doesn't double-format. `decimals` is included for
+      // forward-compat / self-describing rows.
+      amount: formatTokenAmount(r.amount, r.decimals),
       symbol: r.symbol,
+      decimals: r.decimals,
       txHash: r.tx_hash,
       createdAt: r.occurred_at,
     };

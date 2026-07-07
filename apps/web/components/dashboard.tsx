@@ -67,17 +67,14 @@ function projectAsset(a: IndexerAsset, prices: Record<string, number> | null) {
 
 function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
   const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
-  const decimals = canon?.decimals ?? 18;
-  let amountStr = item.amount;
-  // Local optimistic rows already carry a human-readable amount (as the
-  // user typed it) — the indexer rows carry raw base units. Only run the
-  // formatUnits decode on indexer rows.
-  if (!item.local) {
-    try {
-      amountStr = parseFloat(ethers.formatUnits(item.amount, decimals))
-        .toLocaleString('en-US', { maximumFractionDigits: 6 });
-    } catch { /* leave raw */ }
-  }
+  // Both sources now carry a HUMAN-readable amount: the indexer formats by the
+  // token's decimals (see services/indexer buildSeedActivity), and local
+  // optimistic rows store the amount as the user typed it. So no formatUnits
+  // decode here — just prettify with thousands separators when it's numeric.
+  const asNum = Number(item.amount);
+  const amountStr = Number.isFinite(asNum)
+    ? asNum.toLocaleString('en-US', { maximumFractionDigits: 6 })
+    : item.amount;
   const isOut = item.type === 'send' || item.type === 'burn';
   return {
     sym:    item.symbol,
