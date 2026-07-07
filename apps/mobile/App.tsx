@@ -143,7 +143,7 @@ import {
   fetchTokenHistory, fetchTokenMarketDetails,
   type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from './lib/price-history';
-import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal } from './lib/notifications';
+import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal, notifyIfEnabled } from './lib/notifications';
 
 /* ╔══════════════════════════════════════════════════════════════════╗
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
@@ -1351,6 +1351,18 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
       isNotificationsEnabled().then(on => {
         if (on) notifyLocal('Transaction sent', `${amt} ${sym} broadcast on ${network}.`);
       });
+      // Then watch the Makalu receipt (read-only, fire-and-forget — the tx is
+      // already broadcast) and notify confirmed/failed. Makalu path only; the
+      // external-EVM branch returned earlier, and BTC/SOL/ATOM use other chains.
+      if (chain === 'evm') {
+        void (async () => {
+          try {
+            const { waitForReceipt } = await import('./lib/signer');
+            const rc = await waitForReceipt(hash);
+            if (rc) void notifyIfEnabled(rc.ok ? 'Transaction confirmed' : 'Transaction failed', `${amt} ${sym} on ${network}.`);
+          } catch { /* best-effort */ }
+        })();
+      }
       setSentInfo({ hash, sym, amount: amt, network, explorerUrl: txExplorerUrl(chain, hash) });
     } catch (e) {
       setSending(false);
@@ -2237,11 +2249,17 @@ function MobileMakaluKametBridge() {
         source, token, amount: amt,
         onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
       });
-      if (res.status !== 'completed') { setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.'); }
+      if (res.status !== 'completed') {
+        setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.');
+        void notifyIfEnabled('Bridge — release pending', `${amt} ${token.symbol} locked on Makalu; awaiting release on Kamet.`);
+      } else {
+        void notifyIfEnabled('Bridge complete', `${amt} ${token.symbol} bridged Makalu → Kamet.`);
+      }
     } catch (e) {
       // MultXError extends Error and carries a decoded user-facing .message.
       setStep('error');
       setErr(e instanceof Error ? e.message : 'Bridge failed');
+      void notifyIfEnabled('Bridge failed', e instanceof Error ? e.message : 'The bridge could not complete.');
     }
   }
 
@@ -2388,13 +2406,14 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         await new Promise(r => setTimeout(r, Math.min(4000 + i * 2000, 30000)));
         try {
           const s = await mod.getStatus(id);
-          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); break; }
-          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); break; }
+          if (s.state === 'completed') { setPollMsg('Swap complete ✓'); void notifyIfEnabled('Swap complete', `Swapped ${from} → ${to}.`); break; }
+          if (s.state === 'failed') { setErr(s.error || 'Swap failed'); void notifyIfEnabled('Swap failed', s.error || 'The swap could not complete.'); break; }
           setPollMsg(`Status: ${s.state}`);
         } catch { /* keep polling */ }
       }
     } catch (e) {
       setErr((e as Error).message || 'Swap failed');
+      void notifyIfEnabled('Swap failed', (e as Error).message || 'The swap could not complete.');
     } finally { setBusy(false); }
   };
 

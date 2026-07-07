@@ -88,6 +88,16 @@ export async function signAndBroadcast(
   return sent.hash;
 }
 
+/** Read-only: wait for a Makalu tx receipt so callers can fire a
+ *  "confirmed / failed" notification. Returns {ok} on a mined receipt,
+ *  or null on timeout/error (never throws — pure best-effort). */
+export async function waitForReceipt(hash: string): Promise<{ ok: boolean } | null> {
+  try {
+    const r = await provider().waitForTransaction(hash, 1, 90_000); // 1 conf, 90s cap
+    return r ? { ok: r.status === 1 } : null;
+  } catch { return null; }
+}
+
 export async function signTransaction(
   hdPath: string, tx: TransactionRequest,
 ): Promise<string> {

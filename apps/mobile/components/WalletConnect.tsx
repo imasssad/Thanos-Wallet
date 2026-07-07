@@ -32,6 +32,7 @@ import {
 import { executeWcRequest, summariseRequest, WcSignerError } from '../lib/wc-signer';
 import { QrScannerModal } from './QrScannerModal';
 import { isWalletConnectUri } from '../lib/qr';
+import { notifyIfEnabled, wcRequestTitle } from '../lib/notifications';
 // Value import is lazy (inside the async sim closure below) so this
 // always-mounted WC host doesn't pin tx-simulator + ethers onto cold start.
 import type { SimulationReport } from '../lib/tx-simulator';
@@ -81,7 +82,12 @@ export function WalletConnectModal({
   // Subscribe to incoming proposals while the modal is mounted.
   useEffect(() => {
     let unsub: (() => void) | undefined;
-    onSessionProposal((p) => { setProposal(p); setBusy(false); setView('proposal'); })
+    onSessionProposal((p) => {
+      setProposal(p); setBusy(false); setView('proposal');
+      const name = (p as unknown as { params?: { proposer?: { metadata?: { name?: string } } } })
+                     .params?.proposer?.metadata?.name ?? 'A dApp';
+      void notifyIfEnabled('Connection request', `${name} wants to connect to your wallet.`);
+    })
       .then(fn => { unsub = fn; })
       .catch(() => {});
     return () => { if (unsub) unsub(); };
@@ -275,15 +281,19 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
     onSessionRequest((req) => {
       const method = req.params.request.method;
       const params = req.params.request.params;
+      const dApp = (req as unknown as { verifyContext?: { verified?: { origin?: string } } })
+                     .verifyContext?.verified?.origin ?? 'A connected dApp';
       setPending({
         topic:   req.topic,
         id:      req.id,
         method,
         params,
         summary: summariseRequest(method, params),
-        dApp:    (req as unknown as { verifyContext?: { verified?: { origin?: string } } })
-                   .verifyContext?.verified?.origin ?? 'A connected dApp',
+        dApp,
       });
+      // Alert the user even if the app is backgrounded — this host is always
+      // mounted, so the notification fires for every incoming dApp request.
+      void notifyIfEnabled(wcRequestTitle(method), `${dApp} is requesting your approval.`);
     }).then(fn => { unsub = fn; }).catch(() => {});
     return () => { if (unsub) unsub(); };
   }, []);

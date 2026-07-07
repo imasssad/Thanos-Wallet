@@ -122,3 +122,18 @@ export async function notifyLocal(title: string, body: string): Promise<void> {
     await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null });
   } catch { /* notifications may be disabled at OS level */ }
 }
+
+/** Fire a local notification ONLY if the user has notifications enabled.
+ *  Convenience wrapper so activity call sites are one fire-and-forget line. */
+export async function notifyIfEnabled(title: string, body: string): Promise<void> {
+  try { if (await isNotificationsEnabled()) await notifyLocal(title, body); }
+  catch { /* best-effort */ }
+}
+
+/** Human notification title for an incoming WalletConnect request method. */
+export function wcRequestTitle(method: string): string {
+  if (method === 'eth_sendTransaction' || method === 'eth_signTransaction') return 'Transaction request';
+  if (method === 'personal_sign' || method === 'eth_sign'
+      || method === 'eth_signTypedData_v4' || method === 'eth_signTypedData') return 'Signature request';
+  return 'Wallet request';
+}
