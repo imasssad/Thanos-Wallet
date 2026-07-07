@@ -20,7 +20,13 @@
         "NSCameraUsageDescription": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
         "NSFaceIDUsageDescription": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely.",
         "NSLocalNetworkUsageDescription": "Thanos Wallet connects to local nodes when you configure a custom RPC endpoint.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "walletconnect",
+            "CFBundleURLSchemes": ["wc"]
+          }
+        ]
       },
       "associatedDomains": [
         "applinks:thanos.fi"

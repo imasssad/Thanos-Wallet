@@ -117,6 +117,10 @@ const nextConfig = {
       { source: '/rpc/makalu',   destination: 'https://rpc.litho.ai/' },
       { source: '/rpc/makalu-2', destination: 'https://rpc-2.litho.ai/' },
       { source: '/rpc/kamet',    destination: 'https://rpc-3.litho.ai/' },
+      // Apple universal-links manifest for the WalletConnect handoff
+      // (thanos.fi/wc → Thanos mobile). Internal rewrite, so it's served with
+      // the route handler's application/json + no redirect, as Apple requires.
+      { source: '/.well-known/apple-app-site-association', destination: '/api/aasa' },
     ];
   },
 
