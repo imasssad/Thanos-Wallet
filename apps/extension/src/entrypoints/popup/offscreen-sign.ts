@@ -57,13 +57,17 @@ export async function signTx(args: {
 }
 
 export async function signPersonalMessage(args: {
-  seed: string[]; hdPath?: string; message: string | Uint8Array;
+  seed: string[]; hdPath?: string; messageHex: string;
 }): Promise<string> {
+  // messageHex is a 0x hex string, NOT a Uint8Array: chrome.runtime.sendMessage
+  // serializes as JSON, so a Uint8Array would arrive as a plain object
+  // {0:.., 1:..} and ethers.signMessage would throw "invalid BytesLike". The
+  // offscreen getBytes()-decodes this hex and signs the raw bytes.
   const r = await send<BridgeOk & { signature: string }>({
-    type:    'sign.evm-personal',
-    seed:    args.seed.join(' '),
-    hdPath:  args.hdPath ?? "m/44'/60'/0'/0/0",
-    message: args.message,
+    type:       'sign.evm-personal',
+    seed:       args.seed.join(' '),
+    hdPath:     args.hdPath ?? "m/44'/60'/0'/0/0",
+    messageHex: args.messageHex,
   });
   return r.signature;
 }

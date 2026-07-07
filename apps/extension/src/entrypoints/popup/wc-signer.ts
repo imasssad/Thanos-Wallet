@@ -10,7 +10,7 @@
  * The pure-display helpers (summariseRequest, account / chain-id
  * lookups) stay local — they don't need to sign anything.
  */
-import { getBytes, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic } from 'ethers';
+import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic } from 'ethers';
 import { getActiveAccountIndex } from '../../lib/vault';
 import {
   signAndBroadcastTx, signPersonalMessage, signTypedData,
@@ -78,14 +78,16 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       return `0x${MAKALU_CHAIN_ID.toString(16)}`;
 
     case 'personal_sign': {
-      const hexMsg = params[0] as string;
-      const message: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
-      return signPersonalMessage({ seed, hdPath: path, message });
+      const raw = params[0] as string;
+      // Normalize to a 0x hex string for the JSON-serialized bridge to the
+      // offscreen signer (a Uint8Array would be mangled by sendMessage's JSON).
+      const messageHex = isHexString(raw) ? raw : hexlify(toUtf8Bytes(String(raw)));
+      return signPersonalMessage({ seed, hdPath: path, messageHex });
     }
     case 'eth_sign': {
-      const hexMsg = params[1] as string;
-      const message: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
-      return signPersonalMessage({ seed, hdPath: path, message });
+      const raw = params[1] as string;
+      const messageHex = isHexString(raw) ? raw : hexlify(toUtf8Bytes(String(raw)));
+      return signPersonalMessage({ seed, hdPath: path, messageHex });
     }
     case 'eth_signTypedData_v4': {
       const typed = JSON.parse(params[1] as string) as {

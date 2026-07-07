@@ -155,8 +155,11 @@ function projectSession(s: SessionTypes.Struct) {
  *   sign.evm-erc20-transfer  { seed, hdPath, tokenAddress, to, amount } → { hash }
  */
 async function handleSignMessage(msg: { type: string; [k: string]: unknown }): Promise<unknown> {
-  const { Mnemonic, HDNodeWallet, Contract } = await import('ethers');
-  const sdk = await import('@thanos/sdk-core');
+  const { Mnemonic, HDNodeWallet, Contract, getBytes } = await import('ethers');
+  // NOTE: @thanos/sdk-core is imported lazily INSIDE the branches that need it
+  // (evm-tx / erc20-transfer, for getMakaluProvider). personal_sign and
+  // typed-data must not depend on it loading — if that import ever throws in
+  // the offscreen document, it would fail those pure-signing ops too.
   type TransactionRequest = import('ethers').TransactionRequest;
   type TypedDataDomain    = import('ethers').TypedDataDomain;
   type TypedDataField     = import('ethers').TypedDataField;
@@ -172,6 +175,7 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
     switch (msg.type) {
       case 'sign.evm-tx': {
         const tx = msg.tx as TransactionRequest;
+        const sdk = await import('@thanos/sdk-core');
         const provider = sdk.getMakaluProvider();
         const connected = wallet.connect(provider);
         const sent = await connected.sendTransaction(tx);
@@ -183,8 +187,10 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
         return { ok: true, signed };
       }
       case 'sign.evm-personal': {
-        const message = msg.message as string | Uint8Array;
-        const signature = await wallet.signMessage(message);
+        // messageHex is a 0x hex string (survives sendMessage's JSON, unlike a
+        // Uint8Array). Decode to raw bytes so EIP-191 prefixes the correct bytes.
+        const bytes = getBytes(String(msg.messageHex ?? '0x'));
+        const signature = await wallet.signMessage(bytes);
         return { ok: true, signature };
       }
       case 'sign.evm-typed-data': {
@@ -204,6 +210,7 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
         const tokenAddress = String(msg.tokenAddress ?? '');
         const to           = String(msg.to ?? '');
         const amount       = String(msg.amount ?? '0');
+        const sdk = await import('@thanos/sdk-core');
         const provider = sdk.getMakaluProvider();
         const connected = wallet.connect(provider);
         const abi = ['function transfer(address to, uint256 amount) returns (bool)'];

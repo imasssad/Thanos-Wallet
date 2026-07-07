@@ -318,13 +318,16 @@ export default defineBackground(() => {
     }
 
     // 1) Direct RPC from content script.
+    //
+    // RETURN the promise (the webextension-polyfill's async pattern) rather than
+    // sendResponse(). The old `sendResponse(Promise.reject(err))` structured-
+    // cloned a Promise → {} , so EVERY error (incl. a rejected personal_sign)
+    // reached the dApp as an empty object instead of a real error. Returning the
+    // promise sends the resolved value (the signature string) on success and
+    // propagates rejections as genuine errors (content.ts turns them into an
+    // EIP-1193 error, injected.ts rejects the dApp's request()).
     if (m?.type === 'thanos-rpc') {
-      handleRpc(m).then(
-        (result) => sendResponse(result),
-        (err)    => sendResponse(Promise.reject(err)),
-      );
-      // Returning true tells the runtime we'll respond asynchronously.
-      return true;
+      return handleRpc(m);
     }
 
     // 2b) Popup posting back the signed result (or rejection) of a
