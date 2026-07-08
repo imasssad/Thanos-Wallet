@@ -18,27 +18,43 @@ lawyer.
 
 ### Information you provide
 
-- Email address and password, if you create an account on the Thanos
-  backend. Your password is hashed with Argon2id before storage and is
-  never readable by us.
-- Wallet name and address book contacts you choose to save and sync
-  across devices.
-- DNNS names you register or resolve through the wallet.
+- An email address and password, only if you choose to create the
+  **optional cloud account** offered in the web and mobile apps. The
+  wallet is fully functional without one — the account exists solely
+  to sync your address book and preferences across devices. Your
+  password is hashed with Argon2id before storage and is never
+  readable by us.
+- Address book contacts you choose to save. Without a cloud account
+  they stay on your device only. If you sign in, they sync to our
+  servers: contact names and notes are encrypted on your device before
+  upload (we cannot read them); the addresses themselves are stored so
+  sync can work.
+- DNNS (.litho) names you register or resolve through the wallet.
+  Registrations are submitted directly to the Lithosphere blockchain,
+  where they are public; name lookups may pass through and be cached
+  by our servers.
 
 ### Information collected automatically
 
 - On-chain data: wallet addresses, transaction hashes, token balances,
   and block events. This data is public on the blockchain by its
   nature.
-- Device session data: device type, platform (iOS, Android, web,
-  desktop, extension), and session tokens used to keep you logged in
-  securely.
-- Error and crash reports via Sentry, which may include the app
-  version, device OS, and stack trace. Crash reports do not include
-  your seed phrase, private keys, or wallet balances.
-- Basic usage metrics: which features are used and how frequently, to
-  help us improve the app. This data is aggregated and not tied to
-  your identity.
+- If you sign in to a cloud account: session records including your
+  IP address, your browser/device user-agent string, your platform
+  (iOS, Android, web, desktop, extension), and hashed session tokens
+  used to keep you signed in securely. Sign-in attempts — including
+  failed ones — are logged with IP address and user-agent for
+  security auditing.
+- If you enable push notifications in the mobile app: your device
+  push token (issued by Expo, Apple, or Google), your wallet address,
+  and your platform, stored on our servers so we can notify you about
+  wallet activity. The token is removed when you turn notifications
+  off.
+- Error and crash reports via Sentry in the **web and mobile apps**,
+  which may include the app version, device OS, and stack trace.
+  Crash reports do not include your seed phrase, private keys, or
+  wallet balances. The desktop app and browser extension do not send
+  crash reports.
 
 ### What we never collect
 
@@ -48,17 +64,21 @@ lawyer.
 - The contents of transactions you have not yet broadcast.
 - Your location.
 - Any data from websites you visit outside of the wallet.
+- Usage analytics or behavioural tracking of any kind. The apps
+  contain no analytics or advertising SDKs — we do not track which
+  features you use.
 
 ## 2. How We Use Your Information
 
 We use the information we collect to:
 
-- Run the wallet and keep it secure, including authenticating your
-  account, syncing contacts, and resolving names.
+- Run the wallet and keep it secure, including securing the optional
+  cloud account, syncing your address book, and resolving names.
 - Index token balances and transaction history from public blockchain
   data so your portfolio stays up to date.
+- Send you the push notifications you have enabled, such as
+  transaction confirmations and WalletConnect requests.
 - Detect and fix bugs using crash reports and error logs.
-- Improve the wallet based on aggregate usage patterns.
 - Communicate with you about important security updates if you have
   provided an email address.
 
@@ -78,9 +98,9 @@ Thanos Wallet is non-custodial. This means:
 - We cannot recover your seed phrase if you forget your password.
   There is no "forgot password" for the seed. Keep your seed phrase
   written down somewhere safe.
-- If you enable cloud sync, only encrypted vault data is synced. The
-  encryption key is derived from your password and is never sent to
-  our servers.
+- Your vault is never uploaded anywhere. There is no cloud backup of
+  your seed phrase or private keys — the optional cloud account syncs
+  only your address book and preferences, never wallet keys.
 
 ## 4. Third-Party Services
 
@@ -95,8 +115,10 @@ The wallet interacts with the following external services:
   your wallet address or identity.
 - **bridge.litho.ai**: used for cross-chain bridge operations.
   Transaction details are shared only when you initiate a bridge.
-- **Sentry**: used for crash reporting. See Section 1 for what is
-  included.
+- **Sentry**: used for crash reporting in the web and mobile apps.
+  See Section 1 for what is included.
+- **Expo, Apple (APNs), and Google (FCM) push services**: deliver the
+  push notifications you enable in the mobile app.
 - **WalletConnect** (Reown relay): used to connect the wallet to
   decentralised applications. Session metadata is relayed through
   Reown's infrastructure.
@@ -106,14 +128,15 @@ parties. We recommend reviewing their policies if you have concerns.
 
 ## 5. Data Retention
 
-- Account data (email, hashed password, device sessions): retained
-  while your account is active. You can delete your account at any
-  time from Settings, which removes all server-side data.
+- Cloud-account data (email, hashed password, session records):
+  retained while your account is active, and deleted on request — see
+  Section 7 (Data Deletion).
+- Push notification tokens: retained until you disable notifications
+  or request deletion.
 - Blockchain index data (balances, transaction history): retained to
   power your portfolio view. This data is derived from public
   blockchain records.
 - Crash reports: retained for 90 days.
-- Usage metrics: retained in aggregate for up to 12 months.
 
 ## 6. Your Rights
 
@@ -123,15 +146,15 @@ any of these rights, contact us at the address in Section 11.
 
 - **Access:** you can request a copy of the data we hold about your
   account.
-- **Correction:** you can update your email address from Settings at
-  any time.
+- **Correction:** to correct account data such as your email address,
+  contact support@thanos.fi.
 - **Deletion:** you can erase your wallet from the device and have
   all associated server-side data deleted — see Section 7 (Data
   Deletion) for exactly how.
-- **Portability:** you can export your address book and transaction
-  history from Settings.
-- **Objection:** you can opt out of usage metric collection from
-  Settings > Privacy.
+- **Portability:** you can request an export of your synced address
+  book by emailing support@thanos.fi.
+- **Objection:** we collect no usage analytics or behavioural data,
+  so there is no tracking to opt out of.
 
 ## 7. Data Deletion
 

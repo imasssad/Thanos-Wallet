@@ -82,11 +82,22 @@ export default function PrivacyPolicyPage() {
         <h3 style={h3}>Information you provide</h3>
         <ul>
           <li>
-            Email address and password, if you create an account on the Thanos backend. Your password is
-            hashed with Argon2id before storage and is never readable by us.
+            An email address and password, only if you choose to create the <strong>optional cloud
+            account</strong> offered in the web and mobile apps. The wallet is fully functional without
+            one — the account exists solely to sync your address book and preferences across devices.
+            Your password is hashed with Argon2id before storage and is never readable by us.
           </li>
-          <li>Wallet name and address book contacts you choose to save and sync across devices.</li>
-          <li>DNNS names you register or resolve through the wallet.</li>
+          <li>
+            Address book contacts you choose to save. Without a cloud account they stay on your device
+            only. If you sign in, they sync to our servers: contact names and notes are encrypted on
+            your device before upload (we cannot read them); the addresses themselves are stored so
+            sync can work.
+          </li>
+          <li>
+            DNNS (.litho) names you register or resolve through the wallet. Registrations are submitted
+            directly to the Lithosphere blockchain, where they are public; name lookups may pass through
+            and be cached by our servers.
+          </li>
         </ul>
 
         <h3 style={h3}>Information collected automatically</h3>
@@ -96,16 +107,22 @@ export default function PrivacyPolicyPage() {
             is public on the blockchain by its nature.
           </li>
           <li>
-            Device session data: device type, platform (iOS, Android, web, desktop, extension), and session
-            tokens used to keep you logged in securely.
+            If you sign in to a cloud account: session records including your IP address, your
+            browser/device user-agent string, your platform (iOS, Android, web, desktop, extension),
+            and hashed session tokens used to keep you signed in securely. Sign-in attempts — including
+            failed ones — are logged with IP address and user-agent for security auditing.
           </li>
           <li>
-            Error and crash reports via Sentry, which may include the app version, device OS, and stack
-            trace. Crash reports do not include your seed phrase, private keys, or wallet balances.
+            If you enable push notifications in the mobile app: your device push token (issued by
+            Expo, Apple, or Google), your wallet address, and your platform, stored on our servers so
+            we can notify you about wallet activity. The token is removed when you turn notifications
+            off.
           </li>
           <li>
-            Basic usage metrics: which features are used and how frequently, to help us improve the app.
-            This data is aggregated and not tied to your identity.
+            Error and crash reports via Sentry in the <strong>web and mobile apps</strong>, which may
+            include the app version, device OS, and stack trace. Crash reports do not include your seed
+            phrase, private keys, or wallet balances. The desktop app and browser extension do not send
+            crash reports.
           </li>
         </ul>
 
@@ -118,21 +135,25 @@ export default function PrivacyPolicyPage() {
           <li>The contents of transactions you have not yet broadcast.</li>
           <li>Your location.</li>
           <li>Any data from websites you visit outside of the wallet.</li>
+          <li>
+            Usage analytics or behavioural tracking of any kind. The apps contain no analytics or
+            advertising SDKs — we do not track which features you use.
+          </li>
         </ul>
 
         <h2 style={h2}>2. How We Use Your Information</h2>
         <p>We use the information we collect to:</p>
         <ul>
           <li>
-            Run the wallet and keep it secure, including authenticating your account, syncing contacts, and
-            resolving names.
+            Run the wallet and keep it secure, including securing the optional cloud account, syncing
+            your address book, and resolving names.
           </li>
           <li>
             Index token balances and transaction history from public blockchain data so your portfolio stays
             up to date.
           </li>
+          <li>Send you the push notifications you have enabled, such as transaction confirmations and WalletConnect requests.</li>
           <li>Detect and fix bugs using crash reports and error logs.</li>
-          <li>Improve the wallet based on aggregate usage patterns.</li>
           <li>Communicate with you about important security updates if you have provided an email address.</li>
         </ul>
         <p>
@@ -156,8 +177,9 @@ export default function PrivacyPolicyPage() {
             password&rdquo; for the seed. Keep your seed phrase written down somewhere safe.
           </li>
           <li>
-            If you enable cloud sync, only encrypted vault data is synced. The encryption key is derived
-            from your password and is never sent to our servers.
+            Your vault is never uploaded anywhere. There is no cloud backup of your seed phrase or
+            private keys — the optional cloud account syncs only your address book and preferences,
+            never wallet keys.
           </li>
         </ul>
 
@@ -179,7 +201,12 @@ export default function PrivacyPolicyPage() {
             are shared only when you initiate a bridge.
           </li>
           <li>
-            <strong>Sentry</strong>: used for crash reporting. See Section 1 for what is included.
+            <strong>Sentry</strong>: used for crash reporting in the web and mobile apps. See Section 1
+            for what is included.
+          </li>
+          <li>
+            <strong>Expo, Apple (APNs), and Google (FCM) push services</strong>: deliver the push
+            notifications you enable in the mobile app.
           </li>
           <li>
             <strong>WalletConnect</strong> (Reown relay): used to connect the wallet to decentralised
@@ -194,15 +221,18 @@ export default function PrivacyPolicyPage() {
         <h2 style={h2}>5. Data Retention</h2>
         <ul>
           <li>
-            Account data (email, hashed password, device sessions): retained while your account is active.
-            You can delete your account at any time from Settings, which removes all server-side data.
+            Cloud-account data (email, hashed password, session records): retained while your account is
+            active, and deleted on request — see{' '}
+            <a style={linkStyle} href="#data-deletion">Section 7: Data Deletion</a>.
+          </li>
+          <li>
+            Push notification tokens: retained until you disable notifications or request deletion.
           </li>
           <li>
             Blockchain index data (balances, transaction history): retained to power your portfolio view.
             This data is derived from public blockchain records.
           </li>
           <li>Crash reports: retained for 90 days.</li>
-          <li>Usage metrics: retained in aggregate for up to 12 months.</li>
         </ul>
 
         <h2 style={h2}>6. Your Rights</h2>
@@ -213,7 +243,8 @@ export default function PrivacyPolicyPage() {
         <ul>
           <li><strong>Access:</strong> you can request a copy of the data we hold about your account.</li>
           <li>
-            <strong>Correction:</strong> you can update your email address from Settings at any time.
+            <strong>Correction:</strong> to correct account data such as your email address, contact{' '}
+            <a style={linkStyle} href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
           </li>
           <li>
             <strong>Deletion:</strong> you can erase your wallet from the device and have all associated
@@ -221,11 +252,12 @@ export default function PrivacyPolicyPage() {
             <a style={linkStyle} href="#data-deletion">Section 7: Data Deletion</a> for exactly how.
           </li>
           <li>
-            <strong>Portability:</strong> you can export your address book and transaction history from
-            Settings.
+            <strong>Portability:</strong> you can request an export of your synced address book by
+            emailing <a style={linkStyle} href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
           </li>
           <li>
-            <strong>Objection:</strong> you can opt out of usage metric collection from Settings &gt; Privacy.
+            <strong>Objection:</strong> we collect no usage analytics or behavioural data, so there is
+            no tracking to opt out of.
           </li>
         </ul>
 
