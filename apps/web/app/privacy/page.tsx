@@ -208,7 +208,7 @@ export default function PrivacyPolicyPage() {
         <h2 style={h2}>6. Your Rights</h2>
         <p>
           Depending on where you live, you may have the right to access, correct, or delete the personal
-          data we hold about you. To exercise any of these rights, contact us at the address in Section 9.
+          data we hold about you. To exercise any of these rights, contact us at the address in Section 11.
         </p>
         <ul>
           <li><strong>Access:</strong> you can request a copy of the data we hold about your account.</li>
@@ -216,8 +216,9 @@ export default function PrivacyPolicyPage() {
             <strong>Correction:</strong> you can update your email address from Settings at any time.
           </li>
           <li>
-            <strong>Deletion:</strong> you can delete your account and all associated server-side data from
-            Settings. On-chain data is public and cannot be deleted.
+            <strong>Deletion:</strong> you can erase your wallet from the device and have all associated
+            server-side data deleted — see{' '}
+            <a style={linkStyle} href="#data-deletion">Section 7: Data Deletion</a> for exactly how.
           </li>
           <li>
             <strong>Portability:</strong> you can export your address book and transaction history from
@@ -228,7 +229,44 @@ export default function PrivacyPolicyPage() {
           </li>
         </ul>
 
-        <h2 style={h2}>7. Security</h2>
+        <h2 style={{ ...h2, scrollMarginTop: 24 }} id="data-deletion">7. Data Deletion</h2>
+        <p>
+          You can delete the data Thanos Wallet holds about you at any time. What can be deleted — and
+          how — depends on where the data lives:
+        </p>
+        <ul>
+          <li>
+            <strong>Local wallet vault (your device).</strong> Go to <strong>Settings → Reset
+            Wallet</strong> (also available as &ldquo;Forgot password? Reset wallet&rdquo; on the unlock
+            screen). This permanently erases the encrypted vault — your seed phrase, private keys, and
+            wallet settings — from the device. Uninstalling the app removes it too; on iOS, run Reset
+            Wallet before uninstalling for guaranteed removal, as Keychain entries can otherwise survive
+            a reinstall. Back up your seed phrase first: a reset is irreversible, and we cannot recover a
+            wallet without its seed.
+          </li>
+          <li>
+            <strong>Server-side data.</strong> Data associated with your wallet address on the Thanos
+            backend — synced address-book contacts, device sessions, push-notification tokens, and
+            WalletConnect session metadata — is deleted on request. Email{' '}
+            <a style={linkStyle} href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a> with the wallet
+            address you want removed; we complete deletion within 30 days and confirm by reply. Device
+            sessions also expire automatically.
+          </li>
+          <li>
+            <strong>On-chain data.</strong> Wallet addresses, balances, and transactions recorded on a
+            blockchain are public by design and cannot be deleted — by us or by anyone else. Resetting
+            your wallet removes your keys from the device but does not remove history already recorded
+            on-chain.
+          </li>
+          <li>
+            <strong>Manual requests.</strong> For deletion of any other personal data, or if you cannot
+            use the in-app option, email{' '}
+            <a style={linkStyle} href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. We respond to all
+            deletion requests within 30 days.
+          </li>
+        </ul>
+
+        <h2 style={h2}>8. Security</h2>
         <p>We take security seriously. Key measures include:</p>
         <ul>
           <li>All data in transit is encrypted with TLS 1.3.</li>
@@ -247,14 +285,14 @@ export default function PrivacyPolicyPage() {
           our security contact before disclosing it publicly.
         </p>
 
-        <h2 style={h2}>8. Children</h2>
+        <h2 style={h2}>9. Children</h2>
         <p>
           Thanos Wallet is not intended for use by anyone under the age of 18. We do not knowingly collect
           personal information from children. If you believe a child has provided us with personal
           information, please contact us and we will delete it promptly.
         </p>
 
-        <h2 style={h2}>9. Changes to This Policy</h2>
+        <h2 style={h2}>10. Changes to This Policy</h2>
         <p>
           We may update this policy from time to time. When we do, we will update the effective date at the
           top of this page and, for significant changes, notify users who have provided an email address.
@@ -262,7 +300,7 @@ export default function PrivacyPolicyPage() {
           policy.
         </p>
 
-        <h2 style={h2}>10. Contact</h2>
+        <h2 style={h2}>11. Contact</h2>
         <p>
           If you have questions about this policy or want to exercise your data rights, you can reach us
           at:

@@ -119,21 +119,50 @@ parties. We recommend reviewing their policies if you have concerns.
 
 Depending on where you live, you may have the right to access,
 correct, or delete the personal data we hold about you. To exercise
-any of these rights, contact us at the address in Section 9.
+any of these rights, contact us at the address in Section 11.
 
 - **Access:** you can request a copy of the data we hold about your
   account.
 - **Correction:** you can update your email address from Settings at
   any time.
-- **Deletion:** you can delete your account and all associated
-  server-side data from Settings. On-chain data is public and cannot
-  be deleted.
+- **Deletion:** you can erase your wallet from the device and have
+  all associated server-side data deleted — see Section 7 (Data
+  Deletion) for exactly how.
 - **Portability:** you can export your address book and transaction
   history from Settings.
 - **Objection:** you can opt out of usage metric collection from
   Settings > Privacy.
 
-## 7. Security
+## 7. Data Deletion
+
+You can delete the data Thanos Wallet holds about you at any time.
+What can be deleted — and how — depends on where the data lives:
+
+- **Local wallet vault (your device).** Go to **Settings → Reset
+  Wallet** (also available as "Forgot password? Reset wallet" on the
+  unlock screen). This permanently erases the encrypted vault — your
+  seed phrase, private keys, and wallet settings — from the device.
+  Uninstalling the app removes it too; on iOS, run Reset Wallet
+  before uninstalling for guaranteed removal, as Keychain entries can
+  otherwise survive a reinstall. Back up your seed phrase first: a
+  reset is irreversible, and we cannot recover a wallet without its
+  seed.
+- **Server-side data.** Data associated with your wallet address on
+  the Thanos backend — synced address-book contacts, device sessions,
+  push-notification tokens, and WalletConnect session metadata — is
+  deleted on request. Email support@thanos.fi with the wallet address
+  you want removed; we complete deletion within 30 days and confirm
+  by reply. Device sessions also expire automatically.
+- **On-chain data.** Wallet addresses, balances, and transactions
+  recorded on a blockchain are public by design and cannot be
+  deleted — by us or by anyone else. Resetting your wallet removes
+  your keys from the device but does not remove history already
+  recorded on-chain.
+- **Manual requests.** For deletion of any other personal data, or if
+  you cannot use the in-app option, email support@thanos.fi. We
+  respond to all deletion requests within 30 days.
+
+## 8. Security
 
 We take security seriously. Key measures include:
 
@@ -151,14 +180,14 @@ No system is perfectly secure. If you discover a vulnerability,
 please report it responsibly to our security contact before disclosing
 it publicly.
 
-## 8. Children
+## 9. Children
 
 Thanos Wallet is not intended for use by anyone under the age of 18.
 We do not knowingly collect personal information from children. If
 you believe a child has provided us with personal information, please
 contact us and we will delete it promptly.
 
-## 9. Changes to This Policy
+## 10. Changes to This Policy
 
 We may update this policy from time to time. When we do, we will
 update the effective date at the top of this page and, for
@@ -166,7 +195,7 @@ significant changes, notify users who have provided an email address.
 Continued use of the wallet after changes are posted constitutes
 acceptance of the updated policy.
 
-## 10. Contact
+## 11. Contact
 
 If you have questions about this policy or want to exercise your data
 rights, you can reach us at:
