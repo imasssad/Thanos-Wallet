@@ -38,13 +38,13 @@
       "ios": {
         "distribution": "store",
         "image": "latest",
-        "autoIncrement": true,
+        "autoIncrement": false,
         "resourceClass": "m-medium"
       },
       "android": {
         "buildType": "app-bundle",
         "image": "latest",
-        "autoIncrement": true
+        "autoIncrement": false
       }
     }
   },

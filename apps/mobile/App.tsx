@@ -1043,18 +1043,12 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         </Pressable>
       )}
 
-      {/* Shortcuts: Earn + History (SafePal-style home shortcuts) */}
+      {/* Shortcuts (SafePal-style). The Earn + NFTs tiles are hidden for the
+          store release — their screens (EarnScreen/NFTsScreen, still in the
+          codebase) are "coming soon" stubs, and store review rejects visible
+          non-functional features. Restore the tiles when staking / NFT
+          indexing actually ship. */}
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, marginBottom: 4 }}>
-        <Pressable
-          onPress={() => navigate('earn')}
-          style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}
-        >
-          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-            <Zap size={18} color={C.green}/>
-          </View>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Earn</Text>
-          <Text style={{ fontSize: 11, color: C.textMuted }}>Stake & earn yield</Text>
-        </Pressable>
         <Pressable
           onPress={() => navigate('activity')}
           style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}
@@ -1064,16 +1058,6 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           </View>
           <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>History</Text>
           <Text style={{ fontSize: 11, color: C.textMuted }}>Recent transactions</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => navigate('nfts')}
-          style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle }}
-        >
-          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-            <ImageIcon size={18} color={C.blue}/>
-          </View>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>NFTs</Text>
-          <Text style={{ fontSize: 11, color: C.textMuted }}>Collectibles</Text>
         </Pressable>
       </View>
 
@@ -3873,11 +3857,13 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
                 <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.ts ? new Date(t.ts).toLocaleDateString() : '—'}</Text>
               </View>
               <Text style={{ color: d.positive ? C.green : C.textSecondary, fontFamily: MONO, fontSize: 12 }}>
-                {/* Pending (local) rows already hold a human-readable amount — the
-                    indexer rows are raw smallest-unit, so only those get formatUnits. */}
+                {/* Local (pending) AND indexer rows both hold human-readable
+                    amounts — the indexer formats by token decimals server-side
+                    (lep100-sync buildSeedActivity). Render as-is; re-decoding
+                    here would divide an already-formatted "5" by 10^18. */}
                 {t.status === 'pending'
                   ? `-${String(t.amount).replace(/^[+-]/, '')}`
-                  : (() => { try { const n = parseFloat(formatUnits(t.amount, coin?.decimals ?? 18)); return `${d.positive ? '+' : '-'}${n.toLocaleString('en-US', { maximumFractionDigits: 6 })}`; } catch { return t.amount; } })()} {sym}
+                  : `${d.positive ? '+' : '-'}${String(t.amount).replace(/^[+-]/, '')}`} {sym}
               </Text>
             </View>
           );

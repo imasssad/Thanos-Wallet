@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "1.0.13",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
     "userInterfaceStyle": "dark",
@@ -34,7 +34,7 @@
     },
     "android": {
       "package": "ai.thanos.wallet",
-      "versionCode": 13,
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"
@@ -87,9 +87,12 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing."
+          "cameraPermission": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
+      "expo-notifications",
       [
         "expo-build-properties",
         {
