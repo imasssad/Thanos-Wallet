@@ -22,3 +22,10 @@ paths = [
   '''^\.github/workflows/''',
   '''apps/mobile/lib/biometric\.ts$''',
 ]
+# EVM addresses (0x + exactly 40 hex chars) are PUBLIC on-chain identifiers —
+# bridge/token contract addresses in bridge-meta.ts / multx-bridge.ts — not
+# credentials. A private key is 64 hex chars and does NOT match this anchored
+# pattern, so real key leaks still fail the scan.
+regexes = [
+  '''^0x[a-fA-F0-9]{40}$''',
+]

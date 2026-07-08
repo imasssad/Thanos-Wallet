@@ -161,8 +161,12 @@ probe litho "kamet primary"    "https://rpc-3.litho.ai"     POST "$RPC_BODY" 8 2
 
 # ─── Lithosphere services ────────────────────────────────────────────
 section "Lithosphere services"
-probe litho "bridge.litho.ai" "https://bridge.litho.ai/health"                    GET  "" 8 501 0
-probe litho "ignite.litho.ai (SPA)" "https://ignite.litho.ai/"                    GET  "" 8 200 0
+# /health used to 501 (unimplemented upstream); the Litho team fixed it and it
+# now returns 200 — expect the healthy status.
+probe litho "bridge.litho.ai" "https://bridge.litho.ai/health"                    GET  "" 8 200 0
+# ignite.litho.ai now 301-redirects to the live product domain (ignite.trade);
+# a 301 still proves DNS + TLS + server are alive.
+probe litho "ignite.litho.ai (redirect)" "https://ignite.litho.ai/"               GET  "" 8 301 0
 probe litho "ecosystem.litho.ai" "https://ecosystem.litho.ai/"                    GET  "" 8 200 0
 probe litho "lithosphere.network" "https://lithosphere.network/"                  GET  "" 8 200 0
 

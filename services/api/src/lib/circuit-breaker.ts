@@ -106,7 +106,7 @@ export class CircuitBreaker {
 }
 
 /* One shared breaker per named dependency, so all callers of e.g. 'coingecko'
- * trip/​recover together. */
+ * trip/recover together. */
 const registry = new Map<string, CircuitBreaker>();
 
 export function breaker(name: string, opts: BreakerOptions = {}): CircuitBreaker {

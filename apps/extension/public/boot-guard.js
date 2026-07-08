@@ -24,7 +24,7 @@
  *      error into #root, turning a silent hang into an on-screen diagnostic.
  */
 (function () {
-  var g = (typeof globalThis !== 'undefined') ? globalThis : (typeof self !== 'undefined' ? self : this);
+  const g = (typeof globalThis !== 'undefined') ? globalThis : (typeof self !== 'undefined' ? self : this);
 
   if (!g.global) { g.global = g; }
 
@@ -33,7 +33,7 @@
       env: {}, argv: [], browser: true, version: '', versions: {},
       platform: 'browser', title: 'browser',
       nextTick: function (fn) {
-        var args = Array.prototype.slice.call(arguments, 1);
+        const args = Array.prototype.slice.call(arguments, 1);
         Promise.resolve().then(function () { fn.apply(null, args); });
       },
       cwd: function () { return '/'; },
@@ -48,10 +48,10 @@
       return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;';
     });
   }
-  var ver = '';
+  let ver = '';
   try { ver = (g.chrome && chrome.runtime && chrome.runtime.getManifest().version) || ''; } catch (e) { /* noop */ }
 
-  var painted = false;
+  let painted = false;
   function paint(kind, msg, stack) {
     if (painted) return;
     // Only surface STARTUP failures. Once React has taken over #root the
@@ -60,7 +60,7 @@
     if (!document.getElementById('boot-fallback')) return;
     painted = true;
     try {
-      var root = document.getElementById('root');
+      const root = document.getElementById('root');
       if (!root) return;
       root.innerHTML =
         '<div style="display:flex;flex-direction:column;gap:8px;padding:16px;width:360px;' +
@@ -80,7 +80,7 @@
     paint('error', (e && e.message) || 'unknown error', e && e.error && e.error.stack);
   });
   g.addEventListener('unhandledrejection', function (e) {
-    var r = e && e.reason;
+    const r = e && e.reason;
     paint('unhandledrejection', (r && (r.message || r)) || 'unknown rejection', r && r.stack);
   });
 })();
