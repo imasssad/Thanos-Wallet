@@ -35,6 +35,11 @@ module.exports = ({ config }) => {
             ...(opts.android || {}),
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
+            // First production .aab (build cbf4c52b) failed minifyReleaseWithR8
+            // with exactly one missing class: java.awt.Component, referenced by
+            // JNA's desktop-only Native.getWindowHandle0. AWT doesn't exist on
+            // Android and that path never executes there — silence it.
+            extraProguardRules: '-dontwarn java.awt.**',
           },
         },
       ];
