@@ -39,6 +39,28 @@ const BUNDLED: Record<string, ImageSourcePropType> = {
   trx:    require('../assets/images/tokens/trx.png'),
   hype:   require('../assets/images/tokens/hype.png'),
   sol:    require('../assets/images/tokens/sol.png'),  // official solana.com brand logomark
+  // Copied from the desktop client's icon set (2026-07 icon pass) so the
+  // Receive sheets and token rows stop depending on the CoinGecko CDN —
+  // the remote USDT logo rendered poorly and offline showed letter circles.
+  usdt:   require('../assets/images/tokens/usdt.png'),
+  usdc:   require('../assets/images/tokens/usdc.png'),
+  bnb:    require('../assets/images/tokens/bnb.png'),
+  btc:    require('../assets/images/tokens/btc.png'),
+  litbtc: require('../assets/images/tokens/btc.png'),
+  avax:   require('../assets/images/tokens/avax.png'),
+  pol:    require('../assets/images/tokens/pol.png'),
+};
+
+/* LITHO wears a different mark per Lithosphere network so users can tell
+   WHICH chain's LITHO they hold. Mainnet will keep the current logo; the
+   client is supplying dedicated Makalu + Kamet marks — until those land,
+   Makalu keeps litho.png and Kamet reuses the Kamet-explorer mark (visually
+   distinct). Swap the requires below when the client assets arrive. */
+export const MAKALU_CHAIN_ID = 700777;
+export const KAMET_CHAIN_ID  = 900523;
+const LITHO_BY_CHAIN: Record<number, ImageSourcePropType> = {
+  [MAKALU_CHAIN_ID]: require('../assets/images/tokens/litho.png'),
+  [KAMET_CHAIN_ID]:  require('../assets/images/dapps/kamet-explorer.png'),
 };
 
 /* Remote — fallbacks for coins not yet bundled. `large/` variant —
@@ -55,12 +77,57 @@ const REMOTE: Record<string, string> = {
 };
 
 /** Resolve a token's icon. Returns null when neither a bundled asset
- *  nor a known remote logo exists — caller shows the colour avatar. */
-export function tokenIconSource(sym: string): ImageSourcePropType | null {
+ *  nor a known remote logo exists — caller shows the colour avatar.
+ *  Pass `chainId` where known: LITHO resolves to a per-network mark
+ *  (Makalu vs Kamet) so users can tell which chain's LITHO they hold. */
+export function tokenIconSource(sym: string, chainId?: number): ImageSourcePropType | null {
   const key = (sym || '').toLowerCase();
+  if ((key === 'litho' || key === 'wlitho') && chainId != null && LITHO_BY_CHAIN[chainId]) {
+    return LITHO_BY_CHAIN[chainId];
+  }
   if (BUNDLED[key]) return BUNDLED[key];
   if (REMOTE[key])  return { uri: REMOTE[key] };
   return null;
+}
+
+/* Network logos for chains whose native symbol doesn't identify them —
+   Base/Arbitrum/Optimism/Linea are all "ETH", so the Select-network sheet
+   rendered four identical Ethereum marks. Trust Wallet assets, bundled. */
+const NETWORK_ICONS: Record<string, ImageSourcePropType> = {
+  base:     require('../assets/images/networks/base.png'),
+  arbitrum: require('../assets/images/networks/arbitrum.png'),
+  optimism: require('../assets/images/networks/optimism.png'),
+  linea:    require('../assets/images/networks/linea.png'),
+};
+
+/** Icon for a network row (Receive flow's Select-network sheet). Returns
+ *  null when the network's native-coin logo already identifies it. */
+export function networkIconSource(id: string): ImageSourcePropType | null {
+  return NETWORK_ICONS[id] ?? null;
+}
+
+/* MetaMask-style corner chain badge on token icons: which chain a token
+   variant lives on (USDT on BNB vs Ethereum, MUSA BEP20 vs ERC20…).
+   Mirrors apps/web/components/TokenIcon.tsx CHAIN_BADGE, but every badge
+   is a bundled image here (the web L2 letter-circles are replaced by the
+   real network logos). Native coins and Lithosphere tokens stay badge-less
+   — same suppression rules as web. */
+const CHAIN_BADGES: Record<number, ImageSourcePropType> = {
+  1:     require('../assets/images/tokens/eth.png'),
+  56:    require('../assets/images/tokens/bnb.png'),
+  137:   require('../assets/images/tokens/pol.png'),
+  43114: require('../assets/images/tokens/avax.png'),
+  8453:  require('../assets/images/networks/base.png'),
+  42161: require('../assets/images/networks/arbitrum.png'),
+  10:    require('../assets/images/networks/optimism.png'),
+  59144: require('../assets/images/networks/linea.png'),
+};
+
+/** Badge image for a chainId, or null (unknown chain / Lithosphere). */
+export function chainBadgeSource(chainId?: number): ImageSourcePropType | null {
+  if (chainId == null) return null;
+  if (chainId === MAKALU_CHAIN_ID || chainId === KAMET_CHAIN_ID) return null;
+  return CHAIN_BADGES[chainId] ?? null;
 }
 
 /* Discover/dApp APP icons — deliberately separate from coin logos above

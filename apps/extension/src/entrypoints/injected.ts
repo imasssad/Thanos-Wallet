@@ -18,6 +18,8 @@
  * Signing methods (eth_sendTransaction / personal_sign / etc.) are wired
  * in the next slice once the unlocked-vault bridge is in place.
  */
+import { normalizeSignParams } from '../lib/bytes-normalize';
+
 export default defineUnlistedScript(() => {
   if ((window as any).thanos) return; // already injected
 
@@ -30,10 +32,15 @@ export default defineUnlistedScript(() => {
   }
 
   function sendRequest(method: string, params: unknown[] = []): Promise<unknown> {
+    // Normalize bytes-like sign params to 0x hex HERE — this is the last
+    // point where a dApp's Uint8Array is still real bytes. The next hop
+    // (content script → background) serializes as JSON, which mangles a
+    // Uint8Array into {0:…,1:…} and breaks signing downstream.
+    const safeParams = normalizeSignParams(method, params);
     return new Promise((resolve, reject) => {
       const id = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
       pending.set(id, { resolve, reject });
-      window.postMessage({ target: 'thanos-content', type: 'request', id, method, params }, '*');
+      window.postMessage({ target: 'thanos-content', type: 'request', id, method, params: safeParams }, '*');
     });
   }
 

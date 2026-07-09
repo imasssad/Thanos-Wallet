@@ -11,6 +11,7 @@
  * lookups) stay local — they don't need to sign anything.
  */
 import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic } from 'ethers';
+import { bytesLikeToHex } from '../../lib/bytes-normalize';
 import { getActiveAccountIndex } from '../../lib/vault';
 import {
   signAndBroadcastTx, signPersonalMessage, signTypedData,
@@ -37,9 +38,11 @@ export function summariseRequest(method: string, params: unknown): string {
   switch (method) {
     case 'personal_sign':
     case 'eth_sign': {
-      const arr = params as string[];
-      const hex = method === 'personal_sign' ? arr[0] : arr[1];
-      let text = hex ?? '';
+      const arr = params as unknown[];
+      const raw = method === 'personal_sign' ? arr?.[0] : arr?.[1];
+      // Heal a JSON-mangled Uint8Array ({0:…}) into hex before previewing —
+      // requests stored by a pre-fix background can still carry them.
+      let text = typeof raw === 'string' ? raw : (bytesLikeToHex(raw) ?? String(raw ?? ''));
       try { if (isHexString(text)) text = Buffer.from(text.slice(2), 'hex').toString('utf8'); }
       catch { /* leave hex */ }
       return `Sign message:\n"${text.slice(0, 200)}"`;
@@ -78,15 +81,21 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       return `0x${MAKALU_CHAIN_ID.toString(16)}`;
 
     case 'personal_sign': {
-      const raw = params[0] as string;
+      const raw = params[0];
       // Normalize to a 0x hex string for the JSON-serialized bridge to the
-      // offscreen signer (a Uint8Array would be mangled by sendMessage's JSON).
-      const messageHex = isHexString(raw) ? raw : hexlify(toUtf8Bytes(String(raw)));
+      // offscreen signer (a Uint8Array would be mangled by sendMessage's
+      // JSON). bytesLikeToHex also heals an ALREADY-mangled {0:…} object —
+      // dApps can pass Uint8Array messages (makalu.litho.ai signin does).
+      const messageHex = typeof raw === 'string' && isHexString(raw)
+        ? raw
+        : bytesLikeToHex(raw) ?? hexlify(toUtf8Bytes(String(raw)));
       return signPersonalMessage({ seed, hdPath: path, messageHex });
     }
     case 'eth_sign': {
-      const raw = params[1] as string;
-      const messageHex = isHexString(raw) ? raw : hexlify(toUtf8Bytes(String(raw)));
+      const raw = params[1];
+      const messageHex = typeof raw === 'string' && isHexString(raw)
+        ? raw
+        : bytesLikeToHex(raw) ?? hexlify(toUtf8Bytes(String(raw)));
       return signPersonalMessage({ seed, hdPath: path, messageHex });
     }
     case 'eth_signTypedData_v4': {

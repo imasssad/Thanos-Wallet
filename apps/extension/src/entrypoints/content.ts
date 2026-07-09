@@ -8,6 +8,8 @@
  *   background --tab.sendMessage--> content (here) --postMessage--> page
  */
 
+import { normalizeSignParams } from '../lib/bytes-normalize';
+
 export default defineContentScript({
   matches: ['http://*/*', 'https://*/*'],
   runAt: 'document_start',
@@ -35,7 +37,11 @@ export default defineContentScript({
         const result = await browser.runtime.sendMessage({
           type:   'thanos-rpc',
           method: msg.method,
-          params: msg.params ?? [],
+          // Second line of defence: runtime.sendMessage serializes as JSON,
+          // which mangles a Uint8Array into {0:…}. injected.ts already
+          // hex-normalizes sign params, but a page could postMessage to the
+          // bridge directly — normalize again while the bytes are intact.
+          params: normalizeSignParams(msg.method, msg.params ?? []),
           origin: window.location.origin,
         });
         window.postMessage({ target: 'thanos-page', type: 'response', id: msg.id, result }, '*');

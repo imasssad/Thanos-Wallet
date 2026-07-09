@@ -108,7 +108,8 @@ import {
 initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
-import { tokenIconSource } from './lib/token-icons';
+import { tokenIconSource, networkIconSource, chainBadgeSource } from './lib/token-icons';
+import type { ImageSourcePropType } from 'react-native';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { addLocalActivity, getLocalActivity, type LocalActivityItem } from './lib/local-activity';
 import {
@@ -471,8 +472,12 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             let bal = 0;
             try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
             const priceUsd = prices[a.symbol] ?? 0;
+            // Binance-style network label: show WHICH Lithosphere chain the
+            // asset lives on next to its name (client: distinguish Makalu vs
+            // Kamet holdings at a glance).
+            const netLabel = a.chainId === 900523 ? ' · Kamet' : a.chainId === 700777 ? ' · Makalu' : '';
             return {
-              sym: a.symbol, name: a.name, chainId: a.chainId,
+              sym: a.symbol, name: `${a.name}${netLabel}`, chainId: a.chainId,
               balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
               priceUsd, usdValue: bal * priceUsd,
               color: assetColor(a.symbol),
@@ -831,10 +836,23 @@ function RowSkeleton({ count = 4 }: { count?: number }) {
    brand-colour circle (same model as the web TokenIcon). Falls back to
    the colour + initial when no icon is available, and again if the
    <Image> errors at runtime (e.g. a remote CDN logo 404s). */
-function Avatar({ symbol, color, size = 36 }: { symbol: string; color: string; size?: number }) {
+function Avatar({ symbol, color, size = 36, chainId, native, icon }: {
+  symbol: string; color: string; size?: number;
+  /** Chain the asset lives on — switches per-network marks (LITHO Makalu vs
+   *  Kamet) and drives the MetaMask-style corner chain badge. */
+  chainId?: number;
+  /** Native coins never get a chain badge (the main icon IS the chain). */
+  native?: boolean;
+  /** Hard override — used by network rows whose native symbol doesn't
+   *  identify them (Base/Arbitrum/Optimism/Linea are all "ETH"). */
+  icon?: ImageSourcePropType;
+}) {
   const styles = useStyles();
+  const C = useColors();
   const [failed, setFailed] = useState(false);
-  const source = failed ? null : tokenIconSource(symbol);
+  const source = failed ? null : (icon ?? tokenIconSource(symbol, chainId));
+  const badge = native ? null : chainBadgeSource(chainId);
+  const badgeSize = Math.max(14, Math.round(size * 0.44));
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
       <Text style={[styles.avatarText, { fontSize: size * 0.36 }]}>{symbol.slice(0, 1)}</Text>
@@ -846,6 +864,17 @@ function Avatar({ symbol, color, size = 36 }: { symbol: string; color: string; s
           style={{
             position: 'absolute', width: size, height: size,
             borderRadius: size / 2,
+          }}
+        />
+      )}
+      {badge && (
+        <Image
+          source={badge}
+          resizeMode="cover"
+          style={{
+            position: 'absolute', right: -2, bottom: -2,
+            width: badgeSize, height: badgeSize, borderRadius: badgeSize / 2,
+            borderWidth: 2, borderColor: C.bgElevated, backgroundColor: C.bgElevated,
           }}
         />
       )}
@@ -1085,7 +1114,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           )}
           {assets.map((a, i) => (
             <Pressable key={`${a.sym}-${a.chainId}`} style={[styles.row, i < assets.length - 1 && styles.rowBorder]} onPress={() => onOpenToken(a.sym)}>
-              <Avatar symbol={a.sym} color={a.color} />
+              <Avatar symbol={a.sym} color={a.color} chainId={a.chainId} native={a.native} />
               <View style={styles.rowMid}>
                 <Text style={styles.rowSymbol}>{a.name}</Text>
                 <Text style={styles.rowSub}>{a.priceUsd > 0 ? formatUsd(a.priceUsd) : '—'}</Text>
@@ -1648,21 +1677,23 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
 type ReceiveChain =
   | 'lithosphere' | 'bitcoin' | 'solana' | 'cosmos'
   | 'ethereum' | 'bsc' | 'polygon' | 'base' | 'arbitrum' | 'linea' | 'optimism' | 'avalanche';
-const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string }> = [
-  { id: 'lithosphere', name: 'Lithosphere Makalu', sym: 'LITHO' },
+const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string; chainId?: number }> = [
+  { id: 'lithosphere', name: 'Lithosphere Makalu', sym: 'LITHO', chainId: 700777 },
   { id: 'bitcoin',     name: 'Bitcoin',            sym: 'BTC'   },
   { id: 'solana',      name: 'Solana',             sym: 'SOL'   },
   { id: 'cosmos',      name: 'Cosmos Hub',         sym: 'ATOM'  },
   // External EVM — all share the wallet's single 0x address. Listed
   // separately so a user withdrawing from an exchange picks the right network.
-  { id: 'ethereum',    name: 'Ethereum',           sym: 'ETH'   },
-  { id: 'bsc',         name: 'BNB Chain',          sym: 'BNB'   },
-  { id: 'polygon',     name: 'Polygon',            sym: 'POL'   },
-  { id: 'base',        name: 'Base',               sym: 'ETH'   },
-  { id: 'arbitrum',    name: 'Arbitrum',           sym: 'ETH'   },
-  { id: 'optimism',    name: 'Optimism',           sym: 'ETH'   },
-  { id: 'linea',       name: 'Linea',              sym: 'ETH'   },
-  { id: 'avalanche',   name: 'Avalanche',          sym: 'AVAX'  },
+  // chainId drives the corner chain badge on the Select-asset rows
+  // (USDT-on-BNB wears the BNB badge, MetaMask-style).
+  { id: 'ethereum',    name: 'Ethereum',           sym: 'ETH',  chainId: 1     },
+  { id: 'bsc',         name: 'BNB Chain',          sym: 'BNB',  chainId: 56    },
+  { id: 'polygon',     name: 'Polygon',            sym: 'POL',  chainId: 137   },
+  { id: 'base',        name: 'Base',               sym: 'ETH',  chainId: 8453  },
+  { id: 'arbitrum',    name: 'Arbitrum',           sym: 'ETH',  chainId: 42161 },
+  { id: 'optimism',    name: 'Optimism',           sym: 'ETH',  chainId: 10    },
+  { id: 'linea',       name: 'Linea',              sym: 'ETH',  chainId: 59144 },
+  { id: 'avalanche',   name: 'Avalanche',          sym: 'AVAX', chainId: 43114 },
 ];
 const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>> = {
   lithosphere: [
@@ -1805,7 +1836,8 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
             <Pressable key={n.id} onPress={() => { setChain(n.id); setShowAlt(false); setAsset(null); setStep('asset'); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
                        borderBottomWidth: i < RECEIVE_NETWORKS.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
-              <Avatar symbol={n.sym} color={ASSET_COLORS[n.sym.toUpperCase()] ?? C.blue} size={36}/>
+              <Avatar symbol={n.sym} color={ASSET_COLORS[n.sym.toUpperCase()] ?? C.blue} size={36}
+                icon={networkIconSource(n.id) ?? undefined}/>
               <Text style={{ flex: 1, color: C.textPrimary, fontWeight: '700', fontSize: 15 }}>{n.name}</Text>
               <ChevronRight size={18} color={C.textMuted}/>
             </Pressable>
@@ -1818,7 +1850,8 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   /* ── Step 2: pick asset on that network ── */
   if (step === 'asset') {
     const assets = RECEIVE_ASSETS[chain];
-    const netName = RECEIVE_NETWORKS.find(n => n.id === chain)?.name ?? '';
+    const net = RECEIVE_NETWORKS.find(n => n.id === chain);
+    const netName = net?.name ?? '';
     return (
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.screenHeader}>
@@ -1834,10 +1867,11 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
             <Pressable key={a.sym} onPress={() => { setAsset(a); setStep('qr'); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
                        borderBottomWidth: i < assets.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
-              <Avatar symbol={a.sym} color={ASSET_COLORS[a.sym.toUpperCase()] ?? C.blue} size={34}/>
+              <Avatar symbol={a.sym} color={ASSET_COLORS[a.sym.toUpperCase()] ?? C.blue} size={34}
+                chainId={net?.chainId} native={a.sym === net?.sym}/>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{a.sym}</Text>
-                <Text style={{ color: C.textMuted, fontSize: 11 }}>{a.name}</Text>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>{a.name} · {netName}</Text>
               </View>
               <ChevronRight size={18} color={C.textMuted}/>
             </Pressable>
@@ -3762,7 +3796,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
         <Pressable onPress={goBack} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: C.textPrimary, fontSize: 22 }}>‹</Text>
         </Pressable>
-        <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={26}/>
+        <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={26} chainId={coin?.chainId} native={coin?.native}/>
         <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 15, marginLeft: 8 }}>{coin?.name ?? sym} ({sym})</Text>
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
@@ -3808,7 +3842,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
 
         <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginBottom: 4 }}>Your balance</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, marginBottom: 8 }}>
-          <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={34}/>
+          <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={34} chainId={coin?.chainId} native={coin?.native}/>
           <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14, marginLeft: 10, flex: 1 }}>{coin?.name ?? sym}</Text>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{coin ? formatUsd(coin.usdValue) : '—'}</Text>
