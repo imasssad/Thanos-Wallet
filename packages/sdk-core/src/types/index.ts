@@ -73,6 +73,10 @@ export interface SendAssetRequest {
   /** Display label for the asset being sent (e.g. "USDC" or "LITHO").
    *  Used by the simulator to build a human-readable summary. */
   tokenSymbol?: string;
+  /** ERC-20 decimals for token sends — lets the simulator parse the
+   *  human amount without an extra decimals() RPC. Mind the outliers:
+   *  BSC-peg USDT/USDC are 18 while most other deployments are 6. */
+  tokenDecimals?: number;
 }
 
 export interface BitcoinSendRequest {

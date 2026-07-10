@@ -8,10 +8,11 @@
  *   - Free-form fee estimate
  *
  * The simulator only runs on chains the sdk-core network registry
- * knows about (Lithosphere primarily). For external EVM chains where
- * the registry has no entry, `simulateEvmSend()` returns null and the
- * UI silently degrades to fee-only display. That's deliberate — better
- * to show no simulation than to fail the modal with a registry miss.
+ * knows about — Lithosphere chains plus Ethereum (1) and BNB Chain (56).
+ * For external EVM chains with no registry entry (Polygon, Base, …),
+ * `simulateEvmSend()` returns null and the UI silently degrades to
+ * fee-only display. That's deliberate — better to show no simulation
+ * than to fail the modal with a registry miss.
  */
 import {
   TransactionSimulator,
@@ -34,8 +35,12 @@ export interface SimulateSendArgs {
   to:            string;
   /** Human-readable amount (ether-units), the same string the user typed. */
   amount:        string;
+  /** REQUIRED for ERC-20 sends. Without it the simulator treats the send
+   *  as native and compares the token amount against the native balance —
+   *  the "you have 0.000000001 and are trying to send 5" bug. */
   tokenAddress?: string;
   tokenSymbol?:  string;
+  tokenDecimals?: number;
 }
 
 /**

@@ -1291,6 +1291,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
           to:          toAddr,
           amount,
           tokenSymbol: coin.sym,
+          // Without the token identity the simulator treats a LEP100 send as
+          // native and compares the token amount against the LITHO balance.
+          tokenAddress:  coin.tokenAddress,
+          tokenDecimals: coin.decimals,
         });
         if (!cancelled) setSimReport(r);
       } catch { if (!cancelled) setSimReport(null); }

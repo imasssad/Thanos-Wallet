@@ -480,14 +480,22 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     // before the wallet resolves an EVM address from the active source.
     const senderAddr = (wallet?.addresses?.evm || '').trim();
     if (!senderAddr) { setSimReport(null); return; }
+    // Resolve the ERC-20 identity the same way the broadcast branch does —
+    // WITHOUT tokenAddress the simulator treats a USDT send as native BNB/ETH
+    // and blocks on the gas balance with a nonsense message.
+    const stableTok = isEvmSend && evmChainId
+      ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin) ?? null
+      : null;
     let cancelled = false;
     const t = setTimeout(async () => {
       const report = await simulateEvmSend({
-        chainId:      targetChainId,
-        from:         senderAddr,
-        to:           fromAddr || to.trim(),
+        chainId:       targetChainId,
+        from:          senderAddr,
+        to:            fromAddr || to.trim(),
         amount,
-        tokenSymbol:  coin,
+        tokenSymbol:   coin,
+        tokenAddress:  stableTok?.address,
+        tokenDecimals: stableTok?.decimals,
       });
       if (!cancelled) setSimReport(report);
     }, 450);

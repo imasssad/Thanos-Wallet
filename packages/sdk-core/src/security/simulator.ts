@@ -1,4 +1,4 @@
-import { formatUnits, parseUnits } from 'ethers';
+import { Interface, formatUnits, parseUnits } from 'ethers';
 import { getNetworkByChainId } from '../chains/networks';
 import type {
   LithicCallRequest, SendAssetRequest, SimulationIssue, SimulationReport,
@@ -40,21 +40,67 @@ export class TransactionSimulator {
     const provider = this.evm.getProvider(request.chainId);
     const issues:  SimulationIssue[] = [];
 
-    // Fan out the read-only RPC calls. Each is wrapped in catch so a
-    // single slow endpoint doesn't block the whole simulation — the
-    // approval sheet falls back to "estimate unavailable" rather than
-    // hanging the user on a spinner.
-    const [feeDataResult, codeResult, balanceResult] = await Promise.allSettled([
-      provider.getFeeData(),
-      provider.getCode(request.to),
+    const nativeSym = network.nativeCurrency?.symbol || 'the native coin';
+    const isToken   = !!request.tokenAddress;
+    const tokenDec  = request.tokenDecimals ?? 18;
+    const sendSym   = request.tokenSymbol ?? nativeSym;
+
+    // Parse the human amount up front: native transfers are 18 decimals;
+    // ERC-20 transfers use the token's own decimals (BSC-peg USDT is 18,
+    // most other USDT/USDC deployments are 6).
+    let amountUnits: bigint | null = null;
+    try { amountUnits = parseUnits(request.amount || '0', isToken ? tokenDec : 18); }
+    catch { /* malformed amount — the UI's own input validation handles it */ }
+
+    // ERC-20 iface for the token-balance read and a realistic gas estimate
+    // of the actual transfer() call.
+    const erc20 = new Interface([
+      'function transfer(address to, uint256 amount) returns (bool)',
+      'function balanceOf(address owner) view returns (uint256)',
+    ]);
+
+    // Fan out the read-only RPC calls. Each is wrapped so a single slow or
+    // missing endpoint (or a provider without the method) reduces fidelity
+    // instead of hanging or crashing the approval sheet. estimateGas
+    // rejects when the transfer would revert (e.g. not enough balance) —
+    // the gas fallback constants below keep the fee check alive.
+    const [feeDataResult, codeResult, balanceResult, tokenBalResult, gasResult] = await Promise.allSettled([
+      Promise.resolve().then(() => provider.getFeeData()),
+      Promise.resolve().then(() => provider.getCode(request.to)),
       request.from
-        ? provider.getBalance(request.from)
+        ? Promise.resolve().then(() => provider.getBalance(request.from!))
+        : Promise.resolve(null),
+      isToken && request.from
+        ? Promise.resolve().then(() => provider.call({
+            to:   request.tokenAddress!,
+            data: erc20.encodeFunctionData('balanceOf', [request.from!]),
+          }))
+        : Promise.resolve(null),
+      request.from && amountUnits !== null
+        ? Promise.resolve().then(() => provider.estimateGas(isToken
+            ? { from: request.from!, to: request.tokenAddress!,
+                data: erc20.encodeFunctionData('transfer', [request.to, amountUnits!]) }
+            : { from: request.from!, to: request.to, value: amountUnits! }))
         : Promise.resolve(null),
     ]);
 
     const feeData       = feeDataResult.status === 'fulfilled' ? feeDataResult.value : null;
     const recipientCode = codeResult.status    === 'fulfilled' ? codeResult.value    : '0x';
     const senderBalance = balanceResult.status === 'fulfilled' ? balanceResult.value : null;
+
+    let tokenBalance: bigint | null = null;
+    if (tokenBalResult.status === 'fulfilled' && typeof tokenBalResult.value === 'string' && tokenBalResult.value.length > 2) {
+      try { tokenBalance = BigInt(tokenBalResult.value); } catch { /* non-numeric eth_call result */ }
+    }
+
+    // Network fee ≈ gasLimit × maxFeePerGas. When estimateGas failed (dead
+    // RPC, or the transfer itself would revert) fall back to standard
+    // limits so the gas-sufficiency check still runs.
+    const gasLimit = gasResult.status === 'fulfilled' && gasResult.value != null
+      ? BigInt(gasResult.value.toString())
+      : (isToken ? 65_000n : 21_000n);
+    const gasPrice = feeData?.maxFeePerGas ?? feeData?.gasPrice ?? null;
+    const feeWei   = gasPrice != null ? gasLimit * BigInt(gasPrice.toString()) : null;
 
     // Recipient is a contract → warn. Sending native to a contract that
     // doesn't implement `receive()` will revert and burn gas; sending to
@@ -67,22 +113,38 @@ export class TransactionSimulator {
       });
     }
 
-    // Balance vs amount — only do the check when we have the sender
-    // address. parseUnits with 18 decimals is correct for native EVM
-    // transfers; for ERC-20 transfers the decimals would differ but the
-    // balance check here is for native gas + native value anyway.
-    if (senderBalance !== null && !request.tokenAddress) {
-      try {
-        const amountWei = parseUnits(request.amount || '0', 18);
-        if (senderBalance < amountWei) {
-          issues.push({
-            level:   'critical',
-            code:    'INSUFFICIENT_BALANCE',
-            message: `Not enough balance — you have ${formatUnits(senderBalance, 18)} and are trying to send ${request.amount}.`,
-          });
-        }
-      } catch {
-        /* parseUnits failed on a malformed amount — let the UI handle that. */
+    if (isToken) {
+      // Token send: (1) amount vs the TOKEN balance, (2) gas vs the NATIVE
+      // balance — two independent checks with distinct messages. Comparing
+      // the token amount against the native balance (the old behavior when
+      // callers forgot tokenAddress) produced nonsense like "you have
+      // 0.000000001 and are trying to send 5" for a user with plenty of
+      // USDT and dust BNB.
+      if (tokenBalance !== null && amountUnits !== null && tokenBalance < amountUnits) {
+        issues.push({
+          level:   'critical',
+          code:    'INSUFFICIENT_TOKEN_BALANCE',
+          message: `Not enough ${sendSym} — you have ${formatUnits(tokenBalance, tokenDec)} ${sendSym} and are trying to send ${request.amount}.`,
+        });
+      }
+      if (senderBalance !== null && feeWei !== null && senderBalance < feeWei) {
+        issues.push({
+          level:   'critical',
+          code:    'INSUFFICIENT_GAS',
+          message: `You don't have enough ${nativeSym} to cover network fees on ${network.name} — ${sendSym} transfers are paid for in ${nativeSym}. Deposit or buy ${nativeSym}, then try again.`,
+        });
+      }
+    } else if (senderBalance !== null && amountUnits !== null) {
+      // Native send: the balance must cover amount + network fee.
+      const required = amountUnits + (feeWei ?? 0n);
+      if (senderBalance < required) {
+        issues.push({
+          level:   'critical',
+          code:    'INSUFFICIENT_BALANCE',
+          message: feeWei !== null && senderBalance >= amountUnits
+            ? `You don't have enough ${nativeSym} to cover the amount plus network fees on ${network.name}. Reduce the amount or deposit more ${nativeSym}.`
+            : `Not enough ${nativeSym} — you have ${formatUnits(senderBalance, 18)} ${nativeSym} and are trying to send ${request.amount}.`,
+        });
       }
     }
 
