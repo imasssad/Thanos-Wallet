@@ -77,3 +77,8 @@ apps/mobile/credentials/*
 *.mobileprovision
 *-service-account*.json
 asc-api-key*.p8
+
+# apps/mobile is workspace-detached and npm-locked for EAS - a stray pnpm-lock.yaml
+# there makes EAS attempt (and fail) a pnpm install on every build before falling
+# back, and risks resolving deps from a stale lockfile.
+apps/mobile/pnpm-lock.yaml
