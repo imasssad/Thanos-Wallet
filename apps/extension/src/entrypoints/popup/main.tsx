@@ -2993,6 +2993,18 @@ function App() {
       const result = await executeWcRequest(seed, {
         request: { method: pendingRpc.method, params: pendingRpc.params },
       });
+      // Contract guard: signing/tx methods MUST resolve to a 0x-prefixed
+      // string (personal_sign/eth_sign/eth_signTypedData_v4 → 65-byte
+      // signature; eth_sendTransaction → tx hash). If the signer ever
+      // returned undefined or a non-string, posting it as `result` would
+      // reach the dApp as a successful-but-empty {} — the exact failure a
+      // SIWE integrator reported. Reject with a real error instead so the
+      // page's catch fires rather than silently resolving to nothing.
+      const SIGN_METHODS = ['personal_sign', 'eth_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'];
+      if (SIGN_METHODS.includes(pendingRpc.method) &&
+          !(typeof result === 'string' && result.startsWith('0x'))) {
+        throw new WcSignerError(-32603, `Signer returned no ${pendingRpc.method === 'eth_sendTransaction' ? 'transaction hash' : 'signature'}`);
+      }
       await browser.runtime.sendMessage({
         type:      'thanos-rpc-result',
         requestId: pendingRpc.id,
