@@ -34,7 +34,7 @@
     },
     "android": {
       "package": "ai.thanos.wallet",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"

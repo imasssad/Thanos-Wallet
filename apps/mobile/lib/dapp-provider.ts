@@ -21,12 +21,50 @@ export const INJECTED_PROVIDER_JS = `(function () {
   var cbs = {}, nextId = 1, listeners = {};
   var CHAIN_ID = '${MAKALU_CHAIN_HEX}';
 
+  // Bytes-like sign params must become 0x hex BEFORE JSON.stringify —
+  // a Uint8Array stringifies to {"0":105,…}, which the wallet side can't
+  // treat as the message the dApp meant (same class of bug as the
+  // extension's runtime.sendMessage boundary). NOTE: plain string, no
+  // backslash escapes — this source is embedded in a TS template literal.
+  function toHexBytes(v) {
+    var b = null, i;
+    if (typeof Uint8Array !== 'undefined' && v instanceof Uint8Array) b = v;
+    else if (typeof ArrayBuffer !== 'undefined' && v instanceof ArrayBuffer) b = new Uint8Array(v);
+    else if (Object.prototype.toString.call(v) === '[object Array]') b = v;
+    else if (v && typeof v === 'object') {
+      var ks = Object.keys(v), ok = ks.length > 0;
+      for (i = 0; i < ks.length; i++) if (!/^[0-9]+$/.test(ks[i])) { ok = false; break; }
+      if (ok) {
+        ks.sort(function (a, c) { return a - c; });
+        b = [];
+        for (i = 0; i < ks.length; i++) b.push(v[ks[i]]);
+      }
+    }
+    if (!b) return null;
+    var h = '0x', n;
+    for (i = 0; i < b.length; i++) {
+      n = b[i];
+      if (typeof n !== 'number' || n !== Math.floor(n) || n < 0 || n > 255) return null;
+      h += (n < 16 ? '0' : '') + n.toString(16);
+    }
+    return h;
+  }
+  function normSignParams(method, params) {
+    var idx = method === 'personal_sign' ? 0 : method === 'eth_sign' ? 1 : -1;
+    if (idx < 0 || !params || params.length <= idx) return params;
+    var hx = toHexBytes(params[idx]);
+    if (hx == null) return params;
+    var out = params.slice();
+    out[idx] = hx;
+    return out;
+  }
+
   function rpc(method, params) {
     return new Promise(function (resolve, reject) {
       var id = nextId++;
       cbs[id] = { resolve: resolve, reject: reject };
       window.ReactNativeWebView.postMessage(JSON.stringify({
-        __thanos: true, id: id, method: method, params: params || []
+        __thanos: true, id: id, method: method, params: normSignParams(method, params || [])
       }));
     });
   }

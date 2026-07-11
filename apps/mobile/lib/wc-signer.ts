@@ -20,6 +20,7 @@ import {
   HDNodeWallet, Mnemonic, JsonRpcProvider, FallbackProvider, Contract,
   getBytes, toUtf8Bytes, isHexString, parseUnits, type Provider,
 } from 'ethers';
+import { bytesLikeToHex } from './bytes-normalize';
 import { getActiveAccountIndex } from './accounts';
 
 /** HD path for the active EVM account. Read at sign time so a switch in
@@ -87,9 +88,11 @@ export function summariseRequest(method: string, params: unknown): string {
   switch (method) {
     case 'personal_sign':
     case 'eth_sign': {
-      const arr = params as string[];
-      const hex = method === 'personal_sign' ? arr[0] : arr[1];
-      let text = hex ?? '';
+      const arr = params as unknown[];
+      const raw = method === 'personal_sign' ? arr?.[0] : arr?.[1];
+      // Heal a JSON-mangled Uint8Array before previewing — a non-string
+      // here used to crash the approval sheet on .slice().
+      let text = typeof raw === 'string' ? raw : (bytesLikeToHex(raw) ?? String(raw ?? ''));
       try { if (isHexString(text)) text = Buffer.from(text.slice(2), 'hex').toString('utf8'); }
       catch { /* leave hex */ }
       return `Sign message:\n"${text.slice(0, 140)}"`;
@@ -129,14 +132,19 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       return `0x${MAKALU_CHAIN_ID.toString(16)}`;
 
     case 'personal_sign': {
-      const hexMsg = params[0] as string;
-      const bytes: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
+      const raw = params[0];
+      // Heal a JSON-mangled Uint8Array ({0:105,…} through the WebView /
+      // WalletConnect JSON boundary) before decoding — the old
+      // String(raw) fallback silently signed "[object Object]".
+      const hexMsg = typeof raw === 'string' ? raw : bytesLikeToHex(raw) ?? String(raw);
+      const bytes: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(hexMsg);
       return signer.signPersonalMessage(path, bytes);
     }
 
     case 'eth_sign': {
-      const hexMsg = params[1] as string;
-      const bytes: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
+      const raw = params[1];
+      const hexMsg = typeof raw === 'string' ? raw : bytesLikeToHex(raw) ?? String(raw);
+      const bytes: Uint8Array = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(hexMsg);
       return signer.signPersonalMessage(path, bytes);
     }
 
