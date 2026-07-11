@@ -11,7 +11,7 @@
     },
     "preview": {
       "distribution": "internal",
-      "node": "20.11.0",
+      "node": "20.19.4",
       "env": {
         "EAS_NO_VCS": "1",
         "EXPO_PUBLIC_ENV": "production",
@@ -30,7 +30,7 @@
       "ios": { "simulator": true }
     },
     "production": {
-      "node": "20.11.0",
+      "node": "20.19.4",
       "env": {
         "EXPO_PUBLIC_ENV": "production",
         "NODE_ENV": "production"

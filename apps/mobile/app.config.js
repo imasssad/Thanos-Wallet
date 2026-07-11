@@ -1,51 +1,20 @@
 /**
  * Dynamic config layer over the static app.json.
  *
- * app.json is the base and keeps R8/ProGuard minification OFF — required so
- * the sideload/test APK (eas profile "production-apk" / "preview") builds
- * reliably (aggressive R8 was failing the Gradle phase).
+ * 2026-07-12: store-profile ProGuard/resource-shrinking is DISABLED again —
+ * this is now a passthrough. The v1.0.1 vc5 Play build crashed on launch;
+ * the decisive pattern: every binary users ever ran successfully (all
+ * sideload tester APKs, v1.05→v1.13) was UNMINIFIED, while every store
+ * .aab (vc1–vc5) was the only variant with R8 + shrinkResources enabled —
+ * and none was ever device-tested. Minification was worth ~30% size, not
+ * a launch-crash risk on top of the SDK 53 upgrade. 16 KB page-size
+ * compliance is unaffected (it comes from RN 0.79's prebuilt libs, not
+ * from R8).
  *
- * ONLY for the Play Store bundle (eas profile "production" → .aab) do we
- * re-enable ProGuard + resource shrinking for a smaller, obfuscated binary.
- * We deliberately do NOT re-add the previous `buildTypes.release` override
- * that pulled in proguard-android-OPTIMIZE.txt — that aggressive variant was
- * the likely cause of the failure; Expo's standard proguard is conservative.
- *
- * EAS sets process.env.EAS_BUILD_PROFILE during a build. When it's unset
- * (local dev, `expo config`, or any non-store profile) we return app.json
- * unchanged, so the APK/test path can never regress.
- *
- * NOTE: store minification here is best-effort and unverified until the
- * first `production` (.aab) build runs. If that Gradle build fails, grab the
- * "Run gradlew" log and we add the precise -keep rule(s).
+ * If store minification is wanted again later: re-enable
+ * enableProguardInReleaseBuilds/enableShrinkResourcesInReleaseBuilds for
+ * EAS_BUILD_PROFILE === 'production' (keep `-dontwarn java.awt.**` — JNA
+ * references desktop-only AWT), and REQUIRE a device smoke test of that
+ * exact .aab via bundletool or the Play internal track before rollout.
  */
-module.exports = ({ config }) => {
-  if (process.env.EAS_BUILD_PROFILE !== 'production') {
-    return config; // APK / preview / local — leave app.json as-is (minify off)
-  }
-
-  const plugins = (config.plugins || []).map((p) => {
-    if (Array.isArray(p) && p[0] === 'expo-build-properties') {
-      const opts = p[1] || {};
-      return [
-        'expo-build-properties',
-        {
-          ...opts,
-          android: {
-            ...(opts.android || {}),
-            enableProguardInReleaseBuilds: true,
-            enableShrinkResourcesInReleaseBuilds: true,
-            // First production .aab (build cbf4c52b) failed minifyReleaseWithR8
-            // with exactly one missing class: java.awt.Component, referenced by
-            // JNA's desktop-only Native.getWindowHandle0. AWT doesn't exist on
-            // Android and that path never executes there — silence it.
-            extraProguardRules: '-dontwarn java.awt.**',
-          },
-        },
-      ];
-    }
-    return p;
-  });
-
-  return { ...config, plugins };
-};
+module.exports = ({ config }) => config;
