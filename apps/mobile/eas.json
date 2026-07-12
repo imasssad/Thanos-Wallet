@@ -21,7 +21,8 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease",
         "image": "latest",
-        "cache": { "disabled": false }
+        "cache": { "disabled": false },
+        "credentialsSource": "local"
       }
     },
     "production-apk": { "extends": "preview" },
@@ -44,7 +45,8 @@
       "android": {
         "buildType": "app-bundle",
         "image": "latest",
-        "autoIncrement": false
+        "autoIncrement": false,
+        "credentialsSource": "local"
       }
     }
   },
