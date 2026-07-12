@@ -5308,6 +5308,11 @@ function App() {
   }, []);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   const [hasVault, setHasVault] = useState<boolean | null>(null);
+  // Boot must never dead-end: if the SecureStore read fails (rare keystore
+  // hiccup right after install/restore), we show a retryable error instead
+  // of sitting on the splash with hasVault stuck at null.
+  const [bootError, setBootError]     = useState<string | null>(null);
+  const [bootAttempt, setBootAttempt] = useState(0);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   // Multi-account state — same pattern as web/desktop/extension, but the
   // store is AsyncStorage so we hydrate once on app start.
@@ -5410,8 +5415,20 @@ function App() {
       } else {
         clearSessionKey();
       }
-    })().catch(() => { /* fall through to onboarding */ });
-  }, []);
+    })().catch(async (e) => {
+      // The migration or SecureStore read threw. Retry the vault check once
+      // (keystore reads can fail transiently on a fresh install), and if it
+      // still fails surface a retryable error — never leave hasVault at null
+      // (that used to strand the user on the boot splash forever).
+      try {
+        const vault = await loadVault();
+        setHasVault(!!vault);
+        setBootError(null);
+      } catch {
+        setBootError((e as Error)?.message || 'Could not read secure storage.');
+      }
+    });
+  }, [bootAttempt]);
 
   const colors = isDark ? DARK : LIGHT;
   const styles = useMemo(() => makeStyles(colors), [isDark]);
@@ -5469,7 +5486,22 @@ function App() {
         <StylesCtx.Provider value={styles}>
           <SafeAreaView style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase}/>
-            <BootSplash tint={colors.blue}/>
+            {bootError ? (
+              <View style={{ alignItems: 'center', paddingHorizontal: 32, gap: 12 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '700' }}>Couldn't start the wallet</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
+                  Secure storage couldn't be read. Your wallet data is not lost — this is usually temporary.
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, textAlign: 'center' }}>{bootError}</Text>
+                <Pressable
+                  onPress={() => { setBootError(null); setBootAttempt(a => a + 1); }}
+                  style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.blue }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Try again</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <BootSplash tint={colors.blue}/>
+            )}
           </SafeAreaView>
         </StylesCtx.Provider>
       </ThemeCtx.Provider>
