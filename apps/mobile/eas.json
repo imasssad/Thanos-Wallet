@@ -55,7 +55,7 @@
       "ios": {
         "appleId":            "$ASC_APPLE_ID",
         "ascAppId":           "$ASC_APP_ID",
-        "appleTeamId":        "$APPLE_TEAM_ID",
+        "appleTeamId":        "JEYAFQ92YG",
         "ascApiKeyId":        "$ASC_API_KEY_ID",
         "ascApiKeyIssuerId":  "$ASC_API_KEY_ISSUER_ID",
         "ascApiKeyPath":      "./credentials/asc-api-key.p8"
