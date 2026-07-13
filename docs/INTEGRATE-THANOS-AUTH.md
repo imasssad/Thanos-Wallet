@@ -252,23 +252,61 @@ user took — same signature format, same message, same SIWE library.
 
 ### Chains Thanos can sign on
 
-| Chain | Chain ID | EIP-155 namespace |
-|-------|---------:|-------------------|
-| **Lithosphere Makalu** | 700777 | `eip155:700777` |
-| **Lithosphere Kamet** | 900523 | `eip155:900523` |
-| Ethereum mainnet | 1 | `eip155:1` |
-| BSC | 56 | `eip155:56` |
-| Polygon | 137 | `eip155:137` |
-| Base | 8453 | `eip155:8453` |
-| Arbitrum | 42161 | `eip155:42161` |
-| Optimism | 10 | `eip155:10` |
-| Avalanche C-Chain | 43114 | `eip155:43114` |
-| Linea | 59144 | `eip155:59144` |
+> **Important distinction for dApp integrators (corrected 2026-07-13):**
+> the table below lists chains the wallet can sign on **inside its own UI**
+> (the Send/Swap flows). The **dApp-facing surface — the injected EIP-1193
+> provider and WalletConnect sessions — is currently pinned to Lithosphere
+> Makalu (`eip155:700777`) only.** `wallet_switchEthereumChain` to any other
+> chain returns error `4902`, and sign/broadcast requests execute on Makalu.
+> If your dApp requires chain 1 / 56 / etc. from the connected wallet, Thanos
+> cannot satisfy that today — instead, accept Makalu as a payment/interaction
+> network (parameters below). Multi-chain dApp support is on the roadmap.
+
+| Chain | Chain ID | EIP-155 namespace | dApp provider | In-wallet UI |
+|-------|---------:|-------------------|:---:|:---:|
+| **Lithosphere Makalu** | 700777 | `eip155:700777` | ✅ | ✅ |
+| **Lithosphere Kamet** | 900523 | `eip155:900523` | — | ✅ (bridge) |
+| Ethereum mainnet | 1 | `eip155:1` | — | ✅ |
+| BSC | 56 | `eip155:56` | — | ✅ |
+| Polygon | 137 | `eip155:137` | — | ✅ |
+| Base | 8453 | `eip155:8453` | — | ✅ |
+| Arbitrum | 42161 | `eip155:42161` | — | ✅ |
+| Optimism | 10 | `eip155:10` | — | ✅ |
+| Avalanche C-Chain | 43114 | `eip155:43114` | — | ✅ |
+| Linea | 59144 | `eip155:59144` | — | ✅ |
 
 Non-EVM chains (Bitcoin, Solana, Cosmos Hub) are signed in-wallet but
 not exposed through the EIP-1193 provider — they're not part of the
 EIP-155 namespace. Integrations that need BTC/SOL/ATOM signing should
 use WalletConnect's `cip-x`/`bip122:*`/`cosmos:*` namespaces.
+
+### Accepting Makalu (700777) as a payment network
+
+Ecosystem dApps that take deposits/payments (presales, checkouts, faucets)
+should accept Lithosphere Makalu so Thanos users can pay **natively in
+LITHO** — no bridging to Ethereum mainnet. Canonical EIP-3085 parameters
+(also lets MetaMask users add Makalu with one click):
+
+```js
+await provider.request({
+  method: 'wallet_addEthereumChain',
+  params: [{
+    chainId: '0xab169',                       // 700777
+    chainName: 'Lithosphere Makalu',
+    nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+    rpcUrls: ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'],
+    blockExplorerUrls: ['https://makalu.litho.ai'],
+  }],
+});
+```
+
+Notes for payment flows:
+- In Thanos, `wallet_addEthereumChain` / `wallet_switchEthereumChain` for
+  `0xab169` succeed as no-ops (the chain is built in); other chainIds error.
+- Detect Thanos via EIP-6963 (`rdns: 'fi.thanos.wallet'`) and skip the
+  add-chain prompt — it's already on Makalu.
+- Native LITHO transfers are ordinary EVM value transfers (18 decimals);
+  LEP-100 tokens are ERC-20-compatible.
 
 ### EIP-1193 methods supported
 
@@ -276,9 +314,9 @@ use WalletConnect's `cip-x`/`bip122:*`/`cosmos:*` namespaces.
 |--------|-----------|
 | `eth_requestAccounts` | Opens connect approval. Returns `[address]`. |
 | `eth_accounts` | Returns connected accounts without prompting. |
-| `eth_chainId` | Returns `0xab169` (Makalu default) or active chain. |
-| `wallet_switchEthereumChain` | Switches the active chain. Prompts if untrusted. |
-| `wallet_addEthereumChain` | Adds a chain to the wallet's known list. |
+| `eth_chainId` | Returns `0xab169` (Makalu). |
+| `wallet_switchEthereumChain` | `0xab169` → success (no-op). Any other chain → error `4902`. |
+| `wallet_addEthereumChain` | Makalu → success (built in). Any other chain → error `4001`. |
 | `eth_sendTransaction` | Opens tx approval with simulator + risk score. |
 | `eth_signTransaction` | Returns a signed tx without broadcasting. |
 | `personal_sign` | EIP-191 message signing. Use for SIWT. |
