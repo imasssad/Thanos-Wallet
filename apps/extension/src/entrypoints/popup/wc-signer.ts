@@ -93,7 +93,10 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       return [deriveAddress(seed)];
 
     case 'eth_chainId':
-      return `0x${MAKALU_CHAIN_ID.toString(16)}`;
+      // The ACTIVE chain, not a hardcoded Makalu — otherwise a switch to
+      // Ethereum "succeeds" but every subsequent chain read still reports
+      // 700777, so the dApp bounces back to "wrong network".
+      return toChainHex((await activeChain()).chainId);
 
     case 'personal_sign': {
       const raw = params[0];

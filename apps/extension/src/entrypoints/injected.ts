@@ -100,9 +100,18 @@ export default defineUnlistedScript(() => {
 
   // Sync the cached chainId to the wallet's ACTUAL active chain on load — the
   // wallet can now switch across EVM networks, so the 0xab169 default is only
-  // a hint until this resolves (dApps that read provider.chainId directly).
+  // a hint until this resolves. If it differs, EMIT chainChanged too: wagmi
+  // and other libs cache the chain on connect from provider.chainId, so
+  // without this a dApp reconnecting while the wallet is on (say) Ethereum
+  // would keep thinking it's on Makalu.
   sendRequest('eth_chainId')
-    .then((id) => { if (typeof id === 'string' && id) provider.chainId = id; })
+    .then((id) => {
+      if (typeof id === 'string' && id && id !== provider.chainId) {
+        provider.chainId = id;
+        provider.networkVersion = String(parseInt(id, 16));
+        emit('chainChanged', id);
+      }
+    })
     .catch(() => { /* not connected / background asleep — keep the default */ });
 
   // EIP-6963: announce the provider so dApps can discover it without stomping
