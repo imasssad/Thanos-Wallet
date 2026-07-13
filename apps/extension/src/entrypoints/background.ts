@@ -206,30 +206,37 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
       return null;
     }
 
-    /* ─ Signing + network switch — popup approval, local sign ────── */
+    /* wallet_switchEthereumChain: switch IMMEDIATELY in the background, no
+       popup. Routing it through the approval popup proved unreliable — Chrome
+       gates action.openPopup() and the switch would silently fail to persist,
+       so the dApp bounced back to "wrong network". A network switch moves no
+       funds; the real safety gate is the per-transaction approval, which
+       shows the chain name. Persist chain_id_hex, emit chainChanged, done.
+       (Per-tx approval still shows "Network: Ethereum" before any spend.) */
+    case 'wallet_switchEthereumChain': {
+      const conns = await getConnections();
+      if (!conns[origin]) throw rpcError(4100, 'Unauthorized — call eth_requestAccounts first');
+      const target = ((params?.[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
+      const chain = dappChainByHex(target);
+      if (!chain) throw rpcError(4902, 'Unrecognized chain. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.');
+      const hex = toChainHex(chain.chainId);
+      await browser.storage.local.set({ chain_id_hex: hex });
+      broadcastEvent('chainChanged', hex);
+      return null;
+    }
 
-    case 'wallet_switchEthereumChain':
+    /* ─ Signing — popup approval, local sign ─────────────────────── */
+
     case 'eth_sendTransaction':
     case 'personal_sign':
     case 'eth_signTypedData_v4':
     case 'eth_sign': {
       const conns = await getConnections();
       const conn = conns[origin];
-      // Strict: only connected origins can ask for signatures / switches.
-      // Otherwise a malicious page could enqueue prompts without ever asking
-      // the user to connect first.
+      // Strict: only connected origins can ask for signatures. Otherwise a
+      // malicious page could enqueue prompts without ever asking the user to
+      // connect first.
       if (!conn) throw rpcError(4100, 'Unauthorized — call eth_requestAccounts first');
-
-      // Network switch: reject unknown chains up front (4902); if we're
-      // already on the requested chain, succeed silently with no prompt.
-      // Otherwise fall through to the approval flow (user chose auto-switch
-      // WITH a prompt); the popup's executeWcRequest performs the switch.
-      if (method === 'wallet_switchEthereumChain') {
-        const target = ((params?.[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
-        const chain = dappChainByHex(target);
-        if (!chain) throw rpcError(4902, 'Unrecognized chain. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.');
-        if ((await getChainIdHex()).toLowerCase() === toChainHex(chain.chainId)) return null;
-      }
 
       // For sendTransaction, the `from` field (if set) must match the
       // connected address. dApps sometimes pre-populate this; if it's
@@ -253,9 +260,7 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
         pending_rpc_request: { id, origin, method, params, address: conn.address, tabId, pageId } as PendingRpcRequest,
       });
       notifyRequest(
-        method === 'eth_sendTransaction' ? 'Transaction request'
-          : method === 'wallet_switchEthereumChain' ? 'Network switch request'
-          : 'Signature request',
+        method === 'eth_sendTransaction' ? 'Transaction request' : 'Signature request',
         `${hostOf(origin)} is requesting your approval.`,
       );
       try { await browser.action.openPopup(); }
