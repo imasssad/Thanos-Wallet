@@ -3352,6 +3352,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 999px;
   white-space: nowrap;
+  text-decoration: none;
   background: rgba(255,255,255,0.03);
   margin-top: auto;
   transition: border-color 0.18s, background 0.18s, color 0.18s, gap 0.18s;
@@ -3364,6 +3365,31 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   border-color: var(--tile-tint);
   background: var(--tile-tint);
   color: #fff;
+  gap: 10px;
+}
+/* Two stacked CTAs on one tile (Android: Google Play + direct APK) — each is
+   its OWN pill and highlights only on its own hover, not on row hover (the
+   row-hover rule above would otherwise fill both simultaneously and they read
+   as one blob button — client feedback 13/07). */
+.lp-dl-cta-stack {
+  margin-top: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.lp-dl-cta-stack .lp-dl-cta { margin-top: 0; }
+.lp-dl-row.is-live:hover .lp-dl-cta-stack .lp-dl-cta {
+  border-color: rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-primary);
+  gap: 6px;
+}
+[data-theme="light"] .lp-dl-row.is-live:hover .lp-dl-cta-stack .lp-dl-cta {
+  border-color: rgba(15,15,20,0.10);
+  background: #ffffff;
+}
+.lp-dl-cta-stack .lp-dl-cta:hover {
+  border-color: var(--tile-tint) !important;
+  background: var(--tile-tint) !important;
+  color: #fff !important;
   gap: 10px;
 }
 .lp-dl-row.is-soon .lp-dl-cta {

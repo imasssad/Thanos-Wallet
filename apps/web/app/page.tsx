@@ -484,11 +484,11 @@ function PlatformSection() {
                     <div className="lp-dl-name">{name}</div>
                     <div className="lp-dl-sub">{sub}</div>
                   </div>
-                  <div className="lp-dl-cta" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                    <a href={href} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'inherit' }}>
+                  <div className="lp-dl-cta-stack">
+                    <a className="lp-dl-cta" href={href} target="_blank" rel="noreferrer">
                       {cta} <ArrowRight size={13}/>
                     </a>
-                    <a href={apk} download style={{ fontSize: 12, opacity: 0.65, color: 'inherit' }}>
+                    <a className="lp-dl-cta" href={apk} download>
                       Download .apk
                     </a>
                   </div>
