@@ -53,12 +53,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId":            "$ASC_APPLE_ID",
-        "ascAppId":           "$ASC_APP_ID",
-        "appleTeamId":        "JEYAFQ92YG",
-        "ascApiKeyId":        "$ASC_API_KEY_ID",
-        "ascApiKeyIssuerId":  "$ASC_API_KEY_ISSUER_ID",
-        "ascApiKeyPath":      "./credentials/asc-api-key.p8"
+        "appleId":     "imasssadk@gmail.com",
+        "ascAppId":    "6738206983",
+        "appleTeamId": "JEYAFQ92YG"
       },
       "android": {
         "serviceAccountKeyPath": "./credentials/play-service-account.json",
