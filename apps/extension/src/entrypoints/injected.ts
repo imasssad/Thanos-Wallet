@@ -98,6 +98,13 @@ export default defineUnlistedScript(() => {
 
   Object.defineProperty(window, 'thanos', { value: provider, writable: false, configurable: false });
 
+  // Sync the cached chainId to the wallet's ACTUAL active chain on load — the
+  // wallet can now switch across EVM networks, so the 0xab169 default is only
+  // a hint until this resolves (dApps that read provider.chainId directly).
+  sendRequest('eth_chainId')
+    .then((id) => { if (typeof id === 'string' && id) provider.chainId = id; })
+    .catch(() => { /* not connected / background asleep — keep the default */ });
+
   // EIP-6963: announce the provider so dApps can discover it without stomping
   // on window.ethereum. The standard pattern for multi-wallet support.
   const info = {

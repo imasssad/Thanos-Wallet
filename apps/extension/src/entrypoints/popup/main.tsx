@@ -41,7 +41,8 @@ import {
   fetchEcosystemPrices,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
-import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
+import { executeWcRequest, summariseRequest, WcSignerError, activeChain } from './wc-signer';
+import { dappChainByHex } from '../../lib/dapp-chains';
 import {
   loadContacts, addContact, deleteContact,
   syncContactsFromServer, onContactsChanged,
@@ -2784,6 +2785,21 @@ function App() {
   const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
   const [rpcBusy, setRpcBusy]       = useState(false);
   const [rpcErr, setRpcErr]         = useState<string | null>(null);
+  // Which network the pending request executes on — shown on the approval so
+  // a mainnet tx can't be mistaken for a Makalu one. Switch shows its TARGET
+  // chain; sign/tx show the wallet's ACTIVE chain (the one the tx broadcasts on).
+  const [rpcChainName, setRpcChainName] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    if (!pendingRpc) { setRpcChainName(''); return; }
+    if (pendingRpc.method === 'wallet_switchEthereumChain') {
+      const target = ((pendingRpc.params?.[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
+      setRpcChainName(dappChainByHex(target)?.name ?? 'Unknown network');
+      return;
+    }
+    activeChain().then((c) => { if (!cancelled) setRpcChainName(c.name); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [pendingRpc]);
   // Pre-sign simulation — populated when a pending eth_sendTransaction
   // arrives. Other methods (personal_sign, eth_signTypedData_v4) don't
   // touch on-chain state so we skip the simulator for them.
@@ -3069,6 +3085,17 @@ function App() {
           }}>
             {host}
           </div>
+          {rpcChainName && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
+              fontSize: 12, fontWeight: 700, color: 'var(--text-primary)',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              borderRadius: 999, padding: '4px 12px',
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--blue)' }}/>
+              {pendingRpc.method === 'wallet_switchEthereumChain' ? 'Switch to ' : 'Network: '}{rpcChainName}
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ padding: 14, gap: 8, display: 'flex', flexDirection: 'column' }}>

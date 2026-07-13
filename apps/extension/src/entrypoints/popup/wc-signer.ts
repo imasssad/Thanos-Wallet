@@ -13,6 +13,7 @@
 import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic } from 'ethers';
 import { bytesLikeToHex } from '../../lib/bytes-normalize';
 import { getActiveAccountIndex } from '../../lib/vault';
+import { dappChainByHex, dappChainById, toChainHex, MAKALU_CHAIN_ID, type DappChain } from '../../lib/dapp-chains';
 import {
   signAndBroadcastTx, signPersonalMessage, signTypedData,
 } from './offscreen-sign';
@@ -20,7 +21,16 @@ import {
 function hdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
-const MAKALU_CHAIN_ID = 700777;
+
+/** The wallet's currently-selected dApp chain (default Makalu). */
+export async function activeChain(): Promise<DappChain> {
+  try {
+    const { chain_id_hex } = await browser.storage.local.get('chain_id_hex');
+    const c = dappChainByHex(String(chain_id_hex ?? ''));
+    if (c) return c;
+  } catch { /* storage unavailable — fall back to Makalu */ }
+  return dappChainById(MAKALU_CHAIN_ID)!;
+}
 
 export class WcSignerError extends Error {
   constructor(public readonly code: number, message: string) {
@@ -54,8 +64,13 @@ export function summariseRequest(method: string, params: unknown): string {
       return `Send transaction to ${tx.to ?? '—'}`;
     }
     case 'wallet_addEthereumChain':
-    case 'wallet_switchEthereumChain':
-      return 'Use the Lithosphere Makalu network (700777).';
+    case 'wallet_switchEthereumChain': {
+      const target = ((params as Array<{ chainId?: string }>)?.[0]?.chainId ?? '').toLowerCase();
+      const chain = dappChainByHex(target);
+      return chain
+        ? `Switch this site's network to ${chain.name}.`
+        : `Switch network (${target || 'unknown'}) — not supported.`;
+    }
     default:
       return method;
   }
@@ -115,6 +130,11 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         gas?: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       };
+      // Broadcast on the wallet's ACTIVE chain — the same chain the approval
+      // sheet shows. Makalu routes through the sdk provider (rpcUrl ''); the
+      // 8 external EVM chains route through their own RPC with a pinned
+      // chainId so a mainnet tx can never land on Makalu (or vice-versa).
+      const chain = await activeChain();
       try {
         return await signAndBroadcastTx({
           seed, hdPath: path,
@@ -125,27 +145,33 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
             gas:      tx.gas ?? tx.gasLimit,
             gasPrice: undefined,
           },
+          chainId: chain.chainId,
+          rpcUrl:  chain.rpcUrl || undefined,
         });
       } catch (e) {
         const msg = (e as Error).message || 'Broadcast failed';
-        if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance');
+        if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, `Insufficient ${chain.nativeSymbol} for amount + gas`);
         throw new WcSignerError(-32603, msg);
       }
     }
-    /* EIP-3085/3326 — advertised in the offscreen session namespace, so
-       the relay delivers them. The chain is built in: succeed as a no-op
-       for Makalu, reject other chains honestly. Add-refusal uses 4001
-       (user/wallet declined to add) not 4902 (which means "switch needs
-       an add first" and would loop a standard switch().catch(add) flow). */
+    /* EIP-3085/3326 network switching. Reached after the user approves the
+       switch prompt (background routes switch to the approval flow). Persist
+       the active chain + tell background to emit chainChanged to every tab.
+       add-refusal uses 4001, switch-refusal 4902 (which means "unknown
+       chain"), matching the standard switch().catch(add) dApp pattern. */
     case 'wallet_addEthereumChain':
     case 'wallet_switchEthereumChain': {
       const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
-      if (target !== `0x${MAKALU_CHAIN_ID.toString(16)}`) {
+      const chain = dappChainByHex(target);
+      if (!chain) {
         throw new WcSignerError(
           method === 'wallet_switchEthereumChain' ? 4902 : 4001,
-          'Only Lithosphere Makalu (700777) is supported.',
+          'Unsupported network. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.',
         );
       }
+      await browser.storage.local.set({ chain_id_hex: toChainHex(chain.chainId) });
+      try { await browser.runtime.sendMessage({ type: 'thanos-set-chain', chainHex: toChainHex(chain.chainId) }); }
+      catch { /* background is async; storage write above is the source of truth */ }
       return null;
     }
 

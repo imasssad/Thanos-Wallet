@@ -30,14 +30,11 @@ import { WalletKit, type IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
 
 const MAKALU = 700777;
-// SAFETY: advertise ONLY the chains the signing path actually honours.
-// Every request handler in this client broadcasts via the MAKALU
-// provider regardless of the namespace the dApp asked on - advertising
-// mainnet/Polygon/etc. let a dApp think it was getting an eip155:1 tx
-// while the wallet broadcast on 700777 (chain-mismatch hazard, flagged
-// by the 2026-06 security audit). Re-add ids here ONLY together with
-// per-chain provider routing in the request handler.
-const SUPPORTED_EVM = [MAKALU];
+// 2026-07: the signing path now routes per-chain (sign.evm-tx honours the
+// caller's chainId+rpcUrl and pins tx.chainId), so it's safe to advertise the
+// full switchable set the 2026-06 audit required routing for. Keep this in
+// sync with lib/dapp-chains.ts DAPP_CHAINS.
+const SUPPORTED_EVM = [MAKALU, 1, 56, 137, 8453, 42161, 59144, 10, 43114];
 const NS_CHAINS = SUPPORTED_EVM.map((c) => `eip155:${c}`);
 const METHODS = [
   'eth_sendTransaction', 'eth_signTransaction', 'eth_sign',
@@ -174,9 +171,21 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
   try {
     switch (msg.type) {
       case 'sign.evm-tx': {
-        const tx = msg.tx as TransactionRequest;
-        const sdk = await import('@thanos/sdk-core');
-        const provider = sdk.getMakaluProvider();
+        const tx = { ...(msg.tx as TransactionRequest) };
+        // Per-chain routing (2026-07): route through the RPC that matches the
+        // requested chain and PIN tx.chainId, so the tx can only broadcast on
+        // the chain the user approved. rpcUrl empty ⇒ Makalu (sdk provider).
+        const chainId = typeof msg.chainId === 'number' ? msg.chainId : undefined;
+        const rpcUrl  = typeof msg.rpcUrl === 'string' ? msg.rpcUrl : '';
+        let provider;
+        if (rpcUrl && chainId) {
+          const { JsonRpcProvider } = await import('ethers');
+          provider = new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
+          tx.chainId = chainId;
+        } else {
+          const sdk = await import('@thanos/sdk-core');
+          provider = sdk.getMakaluProvider();
+        }
         const connected = wallet.connect(provider);
         const sent = await connected.sendTransaction(tx);
         return { ok: true, hash: sent.hash };
@@ -210,8 +219,16 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
         const tokenAddress = String(msg.tokenAddress ?? '');
         const to           = String(msg.to ?? '');
         const amount       = String(msg.amount ?? '0');
-        const sdk = await import('@thanos/sdk-core');
-        const provider = sdk.getMakaluProvider();
+        const chainId = typeof msg.chainId === 'number' ? msg.chainId : undefined;
+        const rpcUrl  = typeof msg.rpcUrl === 'string' ? msg.rpcUrl : '';
+        let provider;
+        if (rpcUrl && chainId) {
+          const { JsonRpcProvider } = await import('ethers');
+          provider = new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
+        } else {
+          const sdk = await import('@thanos/sdk-core');
+          provider = sdk.getMakaluProvider();
+        }
         const connected = wallet.connect(provider);
         const abi = ['function transfer(address to, uint256 amount) returns (bool)'];
         const c = new Contract(tokenAddress, abi, connected);

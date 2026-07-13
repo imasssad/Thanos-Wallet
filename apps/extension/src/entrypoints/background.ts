@@ -11,6 +11,7 @@
  * Pending approval requests live in chrome.storage.session (cleared on
  * browser close) — the popup picks them up when it opens.
  */
+import { dappChainByHex, toChainHex } from '../lib/dapp-chains';
 
 interface Connection {
   address:     string;
@@ -191,48 +192,44 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
       });
     }
 
-    /* ─ Chain switching ──────────────────────────────────────────── */
+    /* ─ Chain switching (EIP-3085/3326) ──────────────────────────── */
 
-    case 'wallet_switchEthereumChain': {
-      const target = (params?.[0] as { chainId?: string })?.chainId;
-      if (!target) throw rpcError(-32602, 'Invalid params');
-      // Only Makalu supported today.
-      if (target.toLowerCase() !== MAKALU_CHAIN_ID_HEX) {
-        throw rpcError(4902, 'Unrecognized chain. Only Makalu (700777) is supported.');
-      }
-      await browser.storage.local.set({ chain_id_hex: MAKALU_CHAIN_ID_HEX });
-      broadcastEvent('chainChanged', target);
-      return null;
-    }
-
-    /* EIP-3085. Ecosystem dApps (via @thanos/connect ensureMakaluNetwork)
-       prompt EVERY wallet to add Makalu on sign-in. For this wallet the
-       chain is built in, so adding Makalu succeeds as a friendly no-op
-       instead of the "method not supported" error that made the prompt
-       look broken. Anything else is honestly unsupported. */
+    /* wallet_addEthereumChain: a known chain = friendly no-op (per EIP-3085,
+       null = success); an unknown chain = 4001. Adding does NOT change the
+       active chain — the dApp follows with switch, which is the prompt. */
     case 'wallet_addEthereumChain': {
       const spec = params?.[0] as { chainId?: string } | undefined;
       if (!spec?.chainId) throw rpcError(-32602, 'Invalid params');
-      if (spec.chainId.toLowerCase() !== MAKALU_CHAIN_ID_HEX) {
-        // 4001 (declined to add), not 4902 ("add it first" — that's a
-        // switch-only code and would loop a switch().catch(add) flow).
-        throw rpcError(4001, 'Only Lithosphere Makalu (700777) can be added in this wallet.');
+      if (!dappChainByHex(spec.chainId.toLowerCase())) {
+        throw rpcError(4001, 'Unsupported network. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.');
       }
-      return null; // already built in — per EIP-3085, null = success
+      return null;
     }
 
-    /* ─ Signing — popup approval + local sign ────────────────────── */
+    /* ─ Signing + network switch — popup approval, local sign ────── */
 
+    case 'wallet_switchEthereumChain':
     case 'eth_sendTransaction':
     case 'personal_sign':
     case 'eth_signTypedData_v4':
     case 'eth_sign': {
       const conns = await getConnections();
       const conn = conns[origin];
-      // Strict: only connected origins can ask for signatures. Otherwise
-      // a malicious page could enqueue prompts without ever asking the
-      // user to connect first.
+      // Strict: only connected origins can ask for signatures / switches.
+      // Otherwise a malicious page could enqueue prompts without ever asking
+      // the user to connect first.
       if (!conn) throw rpcError(4100, 'Unauthorized — call eth_requestAccounts first');
+
+      // Network switch: reject unknown chains up front (4902); if we're
+      // already on the requested chain, succeed silently with no prompt.
+      // Otherwise fall through to the approval flow (user chose auto-switch
+      // WITH a prompt); the popup's executeWcRequest performs the switch.
+      if (method === 'wallet_switchEthereumChain') {
+        const target = ((params?.[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
+        const chain = dappChainByHex(target);
+        if (!chain) throw rpcError(4902, 'Unrecognized chain. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.');
+        if ((await getChainIdHex()).toLowerCase() === toChainHex(chain.chainId)) return null;
+      }
 
       // For sendTransaction, the `from` field (if set) must match the
       // connected address. dApps sometimes pre-populate this; if it's
@@ -256,7 +253,9 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
         pending_rpc_request: { id, origin, method, params, address: conn.address, tabId, pageId } as PendingRpcRequest,
       });
       notifyRequest(
-        method === 'eth_sendTransaction' ? 'Transaction request' : 'Signature request',
+        method === 'eth_sendTransaction' ? 'Transaction request'
+          : method === 'wallet_switchEthereumChain' ? 'Network switch request'
+          : 'Signature request',
         `${hostOf(origin)} is requesting your approval.`,
       );
       try { await browser.action.openPopup(); }
@@ -427,6 +426,17 @@ export default defineBackground(() => {
     if (m?.type === 'thanos-lock') {
       browser.storage.local.set({ active_address: null });
       broadcastEvent('accountsChanged', []);
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    // Popup switched the active dApp chain (after the user approved a
+    // wallet_switchEthereumChain prompt) — persist it and emit chainChanged
+    // to every connected tab so dApps see the new network.
+    const chainMsg = m as { type?: string; chainHex?: string };
+    if (chainMsg.type === 'thanos-set-chain' && typeof chainMsg.chainHex === 'string' && dappChainByHex(chainMsg.chainHex)) {
+      browser.storage.local.set({ chain_id_hex: chainMsg.chainHex.toLowerCase() });
+      broadcastEvent('chainChanged', chainMsg.chainHex.toLowerCase());
       sendResponse({ ok: true });
       return false;
     }

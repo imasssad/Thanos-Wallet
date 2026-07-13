@@ -34,12 +34,18 @@ export interface TxParams {
 
 export async function signAndBroadcastTx(args: {
   seed: string[]; hdPath?: string; tx: TxParams;
+  /** Target chain. Omit (or rpcUrl='') to broadcast on Makalu via the sdk
+   *  provider; set both to route an external EVM chain (chainId is pinned
+   *  onto the tx in the offscreen signer). */
+  chainId?: number; rpcUrl?: string;
 }): Promise<string> {
   const r = await send<BridgeOk & { hash: string }>({
-    type:   'sign.evm-tx',
-    seed:   args.seed.join(' '),
-    hdPath: args.hdPath ?? "m/44'/60'/0'/0/0",
-    tx:     args.tx,
+    type:    'sign.evm-tx',
+    seed:    args.seed.join(' '),
+    hdPath:  args.hdPath ?? "m/44'/60'/0'/0/0",
+    tx:      args.tx,
+    chainId: args.chainId,
+    rpcUrl:  args.rpcUrl,
   });
   return r.hash;
 }
