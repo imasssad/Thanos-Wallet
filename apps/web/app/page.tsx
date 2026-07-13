@@ -431,7 +431,7 @@ const DOWNLOADS: DL[] = [
   { n: '01', name: 'Web',       sub: 'Any modern browser · runs at thanos.fi',            cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
   { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
   { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
-  { n: '04', name: 'Android',   sub: 'Phone · Tablet · APK (Play Store soon)',            cta: 'Download .apk', href: '/download', ready: true, dl: true, Icon: IconAndroid },
+  { n: '04', name: 'Android',   sub: 'Phone · Tablet · Google Play · direct APK at /download', cta: 'Google Play', href: 'https://play.google.com/store/apps/details?id=ai.thanos.wallet', ready: true, ext: true, Icon: IconAndroid },
   { n: '05', name: 'Extension', sub: 'Chrome · Brave · Edge · dApp signer for window.thanos', cta: 'Chrome Store', href: 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj', ready: true, ext: true, Icon: IconExtension },
 ];
 

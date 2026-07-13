@@ -7,7 +7,8 @@ import { Puzzle, X, Smartphone, Download } from 'lucide-react';
  * Platform-aware install prompt for thanos.fi visitors.
  *
  * Rules:
- *  - Android phone/tablet → "Download the Android app" → /download (the APK).
+ *  - Android phone/tablet → "Get it on Google Play" (store listing), with the
+ *                           direct APK at /download as a secondary link.
  *  - Desktop browser      → "Get the extension" → Chrome Web Store / AMO,
  *                           hidden once the Thanos extension is detected
  *                           (window.thanos.isThanos + EIP-6963 handshake).
@@ -19,7 +20,13 @@ import { Puzzle, X, Smartphone, Download } from 'lucide-react';
  */
 
 const DISMISS_EXT = 'thanos_ext_prompt_dismissed';
-const DISMISS_APK = 'thanos_apk_prompt_dismissed';
+// New key (was thanos_apk_prompt_dismissed): the prompt changed from "download
+// the APK" to "get it on Google Play" — users who dismissed the old banner
+// should see the new store CTA once.
+const DISMISS_APK = 'thanos_play_prompt_dismissed';
+
+/** Play Store listing — same package the /download APK installs (ai.thanos.wallet). */
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=ai.thanos.wallet';
 
 // The Chrome Web Store listing is LIVE, so the desktop "Get the extension"
 // prompt links straight to it. Brave/Edge/Opera install from the same Chrome
@@ -114,21 +121,26 @@ export function ExtensionPrompt() {
 
   if (!show || !platform || platform === 'ios') return null;
 
-  // ── Android → download the APK ──────────────────────────────────────────
+  // ── Android → Google Play (APK stays available as the small fallback) ────
   if (platform === 'android') {
     const dismiss = () => {
       try { localStorage.setItem(DISMISS_APK, '1'); } catch { /* ignore */ }
       setShow(false);
     };
     return (
-      <div className="lp-ext-prompt" role="dialog" aria-label="Download the Thanos Wallet Android app">
+      <div className="lp-ext-prompt" role="dialog" aria-label="Get the Thanos Wallet app on Google Play">
         <div className="lp-ext-prompt-icon"><Smartphone size={20} /></div>
         <div className="lp-ext-prompt-text">
           <strong>Get the Thanos Wallet app</strong>
-          <span>Install the Android app for the full wallet on your phone.</span>
+          <span>
+            On Google Play for your phone —{' '}
+            <a href="/download" download style={{ color: 'inherit', textDecoration: 'underline' }}>
+              or grab the APK
+            </a>.
+          </span>
         </div>
-        <a className="lp-ext-prompt-cta" href="/download" download>
-          <Download size={15} style={{ marginRight: 6, verticalAlign: '-2px' }} />Download
+        <a className="lp-ext-prompt-cta" href={PLAY_STORE_URL} target="_blank" rel="noreferrer">
+          <Download size={15} style={{ marginRight: 6, verticalAlign: '-2px' }} />Google Play
         </a>
         <button className="lp-ext-prompt-close" onClick={dismiss} aria-label="Dismiss">
           <X size={16} />
