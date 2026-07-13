@@ -23,7 +23,8 @@ interface PendingApproval {
   origin:   string;
   method:   string;
   params:   unknown[];
-  // Used by the bg's resolver maps below — not persisted.
+  tabId?:   number;   // originating tab — for durable result delivery (see below)
+  pageId?:  string;   // the page-side request id the content script correlates on
 }
 
 /* A direct EIP-1193 sign/tx request — for `window.ethereum.request`
@@ -36,12 +37,35 @@ interface PendingRpcRequest {
   method:  string;
   params:  unknown[];
   address: string;   // expected `from` address (the origin's connected wallet)
+  tabId?:  number;   // originating tab — for durable result delivery
+  pageId?: string;   // the page-side request id the content script correlates on
 }
 
-/* In-memory resolver tables. The background SW can stay alive long enough
-   for these to round-trip in most flows; if it dies, the popup falls back
-   to broadcasting the result via runtime.sendMessage. */
+/* In-memory resolver tables — the FAST path: when the SW survives the whole
+   round-trip, these resolve the still-open thanos-rpc message channel.
+   They are NOT the durable path. MV3 evicts an idle SW (~30s, hard cap
+   ~5min), and a user reading a SIWE message routinely exceeds that. On
+   eviction this Map is wiped, so the DURABLE path is a direct push to the
+   originating tab (browser.tabs.sendMessage → content 'thanos-rpc-push'),
+   keyed by the tabId/pageId persisted in storage.session — which survives
+   SW restarts. Without this, an evicted SW dropped the approved signature
+   and the polyfill resolved the dApp's request() to `undefined` (surfaced
+   as {}): the personal_sign / SIWE bug. */
 const pendingResolvers = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
+
+/** Durable delivery: push a finished RPC result/ error straight to the tab
+ *  that made the request, so a freshly-restarted SW is never in the path.
+ *  content.ts correlates by pageId and resolves the page's provider.request(). */
+function pushResultToTab(
+  tabId: number | undefined,
+  pageId: string | undefined,
+  payload: { result: unknown } | { error: { code: number; message: string } },
+): void {
+  if (tabId == null || !pageId) return;
+  browser.tabs.sendMessage(tabId, { type: 'thanos-rpc-push', pageId, ...payload }).catch(() => {
+    /* tab closed/navigated — nothing to deliver to */
+  });
+}
 
 // 700777 decimal = 0xab169. The previous value here ('0xab09f9' =
 // 11,209,209) was a hex-conversion typo that made every dApp see a
@@ -120,10 +144,13 @@ interface RpcMessage {
   method: string;
   params: unknown[];
   origin: string;
+  pageId?: string;   // page-side request id (content script sets it for durable delivery)
 }
 
-async function handleRpc(req: RpcMessage): Promise<unknown> {
+async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): Promise<unknown> {
   const { method, params, origin } = req;
+  const tabId  = sender?.tab?.id;
+  const pageId = req.pageId;
 
   switch (method) {
     /* ─ Read methods (no popup) ──────────────────────────────────── */
@@ -150,7 +177,7 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
       // Need user approval. Stash a pending approval and open the popup.
       const id = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
       await browser.storage.session.set({
-        pending_approval: { id, origin, method, params } as PendingApproval,
+        pending_approval: { id, origin, method, params, tabId, pageId } as PendingApproval,
       });
       notifyRequest('Connection request', `${hostOf(origin)} wants to connect to Thanos Wallet.`);
       try { await browser.action.openPopup(); }
@@ -226,7 +253,7 @@ async function handleRpc(req: RpcMessage): Promise<unknown> {
 
       const id = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
       await browser.storage.session.set({
-        pending_rpc_request: { id, origin, method, params, address: conn.address } as PendingRpcRequest,
+        pending_rpc_request: { id, origin, method, params, address: conn.address, tabId, pageId } as PendingRpcRequest,
       });
       notifyRequest(
         method === 'eth_sendTransaction' ? 'Transaction request' : 'Signature request',
@@ -271,7 +298,7 @@ export default defineBackground(() => {
   // a session_proposal can land before the user opens the popup.
   void ensureOffscreen();
 
-  browser.runtime.onMessage.addListener(((msg: unknown, _sender: unknown, sendResponse: (resp: unknown) => void) => {
+  browser.runtime.onMessage.addListener(((msg: unknown, sender: { tab?: { id?: number } }, sendResponse: (resp: unknown) => void) => {
     const m = msg as RpcMessage & { type?: string; approvalId?: string; approved?: boolean; address?: string };
 
     // 0a) A signing request fired in the offscreen kit — try to bring
@@ -327,22 +354,33 @@ export default defineBackground(() => {
     // propagates rejections as genuine errors (content.ts turns them into an
     // EIP-1193 error, injected.ts rejects the dApp's request()).
     if (m?.type === 'thanos-rpc') {
-      return handleRpc(m);
+      return handleRpc(m, sender);
     }
 
     // 2b) Popup posting back the signed result (or rejection) of a
     //     pending EIP-1193 sign/tx request.
     const sigMsg = m as { type?: string; requestId?: string; result?: unknown; error?: { code: number; message: string } };
     if (sigMsg.type === 'thanos-rpc-result' && sigMsg.requestId) {
+      // FAST path: resolve the still-open thanos-rpc channel if the SW that
+      // parked it is still alive.
       const pending = pendingResolvers.get(sigMsg.requestId);
       if (pending) {
         pendingResolvers.delete(sigMsg.requestId);
-        (async () => {
-          await browser.storage.session.remove('pending_rpc_request');
-          if (sigMsg.error) pending.reject(rpcError(sigMsg.error.code, sigMsg.error.message));
-          else              pending.resolve(sigMsg.result);
-        })();
+        if (sigMsg.error) pending.reject(rpcError(sigMsg.error.code, sigMsg.error.message));
+        else              pending.resolve(sigMsg.result);
       }
+      // DURABLE path (runs even on a freshly-restarted SW where `pending` is
+      // gone): read the tab/page ids from storage.session and push the result
+      // straight to the originating tab. This is what fixes the personal_sign
+      // "{}" bug when the SW was evicted during the approval wait.
+      (async () => {
+        const stored = (await browser.storage.session.get('pending_rpc_request')) as { pending_rpc_request?: PendingRpcRequest };
+        const p = stored.pending_rpc_request;
+        if (p && p.id === sigMsg.requestId) {
+          await browser.storage.session.remove('pending_rpc_request');
+          pushResultToTab(p.tabId, p.pageId, sigMsg.error ? { error: sigMsg.error } : { result: sigMsg.result });
+        }
+      })();
       sendResponse({ ok: true });
       return false;
     }
@@ -350,30 +388,31 @@ export default defineBackground(() => {
     // 2) Popup posting back the user's approval / rejection.
     if (m?.type === 'thanos-approval-result' && m.approvalId) {
       const pending = pendingResolvers.get(m.approvalId);
-      if (pending) {
-        pendingResolvers.delete(m.approvalId);
+      pendingResolvers.delete(m.approvalId);
+      // Same fast + durable split as the sign path: resolve the in-memory
+      // channel if alive, and ALSO push [address]/error to the originating
+      // tab so a connect approval survives SW eviction too.
+      (async () => {
+        const stored = (await browser.storage.session.get('pending_approval')) as { pending_approval?: PendingApproval };
+        const appr = stored.pending_approval;
         if (m.approved && m.address) {
-          // Persist the connection.
-          (async () => {
+          const origin = appr?.origin;
+          if (origin) {
             const conns = await getConnections();
-            const stored = await browser.storage.session.get('pending_approval') as { pending_approval?: { origin?: string } };
-            const origin = stored.pending_approval?.origin;
-            if (origin) {
-              conns[origin] = { address: m.address!, connectedAt: Date.now() };
-              await setConnections(conns);
-              await browser.storage.local.set({ active_address: m.address });
-              broadcastEvent('accountsChanged', [m.address]);
-            }
-            await browser.storage.session.remove('pending_approval');
-            pending.resolve([m.address]);
-          })();
+            conns[origin] = { address: m.address!, connectedAt: Date.now() };
+            await setConnections(conns);
+            await browser.storage.local.set({ active_address: m.address });
+            broadcastEvent('accountsChanged', [m.address]);
+          }
+          await browser.storage.session.remove('pending_approval');
+          pending?.resolve([m.address]);
+          pushResultToTab(appr?.tabId, appr?.pageId, { result: [m.address] });
         } else {
-          (async () => {
-            await browser.storage.session.remove('pending_approval');
-            pending.reject(rpcError(4001, 'User rejected the request'));
-          })();
+          await browser.storage.session.remove('pending_approval');
+          pending?.reject(rpcError(4001, 'User rejected the request'));
+          pushResultToTab(appr?.tabId, appr?.pageId, { error: { code: 4001, message: 'User rejected the request' } });
         }
-      }
+      })();
       sendResponse({ ok: true });
       return false;
     }
