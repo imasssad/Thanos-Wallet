@@ -578,7 +578,7 @@ function Footer() {
         <div className="lp-footer-links">
           <a href="https://t.me/ThanosWallet" target="_blank" rel="noreferrer" aria-label="Telegram"><IconTelegram size={16}/></a>
           <a href="https://discord.gg/khEm4nArFy" target="_blank" rel="noreferrer" aria-label="Discord"><IconDiscord size={16}/></a>
-          <a href="https://x.com/lithospherenet" target="_blank" rel="noreferrer" aria-label="X"><IconX size={16}/></a>
+          <a href="https://x.com/thanoswallets" target="_blank" rel="noreferrer" aria-label="X"><IconX size={16}/></a>
           <a href="https://github.com/imasssad/Thanos-Wallet" target="_blank" rel="noreferrer" aria-label="GitHub"><IconGithub size={16}/></a>
         </div>
         <div className="lp-footer-meta">
