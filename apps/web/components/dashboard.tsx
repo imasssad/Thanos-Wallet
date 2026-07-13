@@ -1147,7 +1147,7 @@ export function Dashboard() {
                     <div style={{ fontSize: 16, fontWeight: 700 }}>
                       {balanceHidden ? '••••'
                         : c.sym === 'LITHO'
-                          ? <><LithoSym/> {c.bal}</>
+                          ? <><LithoSym/>{c.bal}</>
                           : `${c.bal} ${c.sym}`}
                     </div>
                     <div style={{

@@ -20,6 +20,13 @@ const IconTelegram = (p: { size?: number }) => (
     <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
   </svg>
 );
+const IconInstagram = (p: { size?: number }) => (
+  <svg width={p.size ?? 16} height={p.size ?? 16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+  </svg>
+);
 const IconDiscord = (p: { size?: number }) => (
   <svg width={p.size ?? 16} height={p.size ?? 16} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
     <path d="M20.317 4.3698a19.7913 19.7913 0 0 0-4.8851-1.5152.0741.0741 0 0 0-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 0 0-.0785-.037 19.7363 19.7363 0 0 0-4.8852 1.515.0699.0699 0 0 0-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 0 0 .0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 0 0 .0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 0 0-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 0 1-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 0 1 .0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 0 1 .0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 0 1-.0066.1276 12.2986 12.2986 0 0 1-1.873.8914.0766.0766 0 0 0-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 0 0 .0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 0 0 .0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 0 0-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/>
@@ -424,6 +431,9 @@ type DL = {
   /** True for an external link (e.g. the Chrome Web Store) — plain <a> that
    *  opens in a new tab. */
   ext?: boolean;
+  /** Secondary direct-APK download shown beneath the primary CTA (Android:
+   *  Google Play as the main button, the raw APK as a fallback link). */
+  apk?: string;
   Icon: React.FC<{ size?: number }>;
 };
 
@@ -431,7 +441,7 @@ const DOWNLOADS: DL[] = [
   { n: '01', name: 'Web',       sub: 'Any modern browser · runs at thanos.fi',            cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
   { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
   { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
-  { n: '04', name: 'Android',   sub: 'Phone · Tablet · Google Play · direct APK at /download', cta: 'Google Play', href: 'https://play.google.com/store/apps/details?id=ai.thanos.wallet', ready: true, ext: true, Icon: IconAndroid },
+  { n: '04', name: 'Android',   sub: 'Phone · Tablet · Google Play or direct APK', cta: 'Google Play', href: 'https://play.google.com/store/apps/details?id=ai.thanos.wallet', ready: true, ext: true, apk: '/download', Icon: IconAndroid },
   { n: '05', name: 'Extension', sub: 'Chrome · Brave · Edge · dApp signer for window.thanos', cta: 'Chrome Store', href: 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj', ready: true, ext: true, Icon: IconExtension },
 ];
 
@@ -450,12 +460,42 @@ function PlatformSection() {
         </p>
 
         <div className="lp-dl-list">
-          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, dl, ext, Icon }, idx) => {
+          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, dl, ext, apk, Icon }, idx) => {
             // External links (Chrome store) + real downloads (APK) use a plain
             // <a>; live in-app routes use Next <Link> for client-side nav.
             const Tag = ready && !dl && !ext ? Link : 'a';
             // Web/Desktop = Thanos blue. iOS muted, Android green, Extension cyan.
             const tints = ['#3b7af7', '#06b6d4', '#9ca3af', '#10b981', '#22d3ee'];
+
+            // Android offers BOTH: Google Play (primary) + a direct .apk link
+            // beneath it. Two separate links can't nest inside one <a> tile, so
+            // this variant renders the tile as a plain container.
+            if (apk) {
+              return (
+                <div
+                  key={n}
+                  className="lp-dl-row is-live"
+                  style={{ ['--tile-tint' as any]: tints[idx % tints.length] }}
+                >
+                  <div className="lp-dl-corner" aria-hidden/>
+                  <div className="lp-dl-status"><span className="lp-dl-status-dot"/> Available</div>
+                  <div className="lp-dl-icon"><Icon size={26}/></div>
+                  <div className="lp-dl-info">
+                    <div className="lp-dl-name">{name}</div>
+                    <div className="lp-dl-sub">{sub}</div>
+                  </div>
+                  <div className="lp-dl-cta" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                    <a href={href} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'inherit' }}>
+                      {cta} <ArrowRight size={13}/>
+                    </a>
+                    <a href={apk} download style={{ fontSize: 12, opacity: 0.65, color: 'inherit' }}>
+                      Download .apk
+                    </a>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <Tag
                 key={n}
@@ -569,8 +609,10 @@ function Footer() {
             surface by App Store + Google Play submission reviewers,
             and the basic-decency move for any wallet. */}
         <nav className="lp-footer-nav" aria-label="Legal and transparency">
+          <a href="https://docs.thanos.fi/" target="_blank" rel="noreferrer">Docs</a>
           <a href="/docs">Developers</a>
           <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
           <a href="/.well-known/security.txt">Security</a>
           <a href="https://github.com/imasssad/Thanos-Wallet/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a>
           <a href="mailto:devs@thanos.fi">Contact</a>
@@ -579,6 +621,7 @@ function Footer() {
           <a href="https://t.me/ThanosWallet" target="_blank" rel="noreferrer" aria-label="Telegram"><IconTelegram size={16}/></a>
           <a href="https://discord.gg/khEm4nArFy" target="_blank" rel="noreferrer" aria-label="Discord"><IconDiscord size={16}/></a>
           <a href="https://x.com/thanoswallets" target="_blank" rel="noreferrer" aria-label="X"><IconX size={16}/></a>
+          <a href="https://www.instagram.com/thanoswallet/" target="_blank" rel="noreferrer" aria-label="Instagram"><IconInstagram size={16}/></a>
           <a href="https://github.com/imasssad/Thanos-Wallet" target="_blank" rel="noreferrer" aria-label="GitHub"><IconGithub size={16}/></a>
         </div>
         <div className="lp-footer-meta">
