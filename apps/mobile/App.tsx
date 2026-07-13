@@ -150,7 +150,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v1.11';
+const APP_VERSION = 'thanos-v1.12';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -893,7 +893,10 @@ function SectionTitle({ children }: { children: string }) {
    prefix on LITHO amounts. */
 const LITHO_SYMBOL = '\u{1D543}';
 function LithoSym({ size, color }: { size?: number; color?: string }) {
-  return <Text style={{ fontFamily: 'LithoSym', fontSize: size, color }}>{LITHO_SYMBOL}</Text>;
+  // marginRight: a hairline gap so the amount reads like "$100.11" — the
+  // bundled glyph has no right bearing, so with a plain JSX space the gap
+  // was too wide and with nothing it collided (client feedback 13/07).
+  return <Text style={{ fontFamily: 'LithoSym', fontSize: size, color, marginRight: 1.5 }}>{LITHO_SYMBOL}</Text>;
 }
 
 /* ─────────────────────────── Screens ─────────────────────────── */
@@ -1122,7 +1125,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
               <View style={styles.rowRight}>
                 <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
                 <Text style={styles.rowBal}>
-                  {a.sym === 'LITHO' ? <><LithoSym/> {a.balanceText}</> : `${a.balanceText} ${a.sym}`}
+                  {a.sym === 'LITHO' ? <><LithoSym/>{a.balanceText}</> : `${a.balanceText} ${a.sym}`}
                 </Text>
               </View>
             </Pressable>

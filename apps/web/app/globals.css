@@ -16,10 +16,11 @@
   font-display: swap;
   unicode-range: U+1D543;
 }
-/* margin-right gives the Ł a consistent gap before the amount, matching how
+/* margin-right gives the Ł a hairline gap before the amount, matching how
    "$100.11" reads — the bundled glyph has almost no right bearing, so without
-   this the symbol collides with the first digit (client feedback 13/07). */
-.litho-sym { font-family: 'LithoSym', 'Geist', sans-serif; margin-right: 0.14em; }
+   this the symbol collides with the first digit, and a full space (the old
+   rendering) read too wide (client feedback + screenshot 13/07). */
+.litho-sym { font-family: 'LithoSym', 'Geist', sans-serif; margin-right: 0.08em; }
 
 *, *::before, *::after {
   box-sizing: border-box;
