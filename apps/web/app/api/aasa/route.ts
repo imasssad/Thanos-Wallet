@@ -6,7 +6,7 @@
  * maps the canonical path `/.well-known/apple-app-site-association` here, so it's
  * delivered as application/json with NO redirect — both Apple requirements.
  *
- * The appID is `<APPLE_TEAM_ID>.ai.thanos.wallet`. The team id defaults to
+ * The appID is `<APPLE_TEAM_ID>.litho.thanos.wallet`. The team id defaults to
  * KaJ Labs LLC's Apple Developer Program team (JEYAFQ92YG, provided 2026-07-13);
  * the APPLE_TEAM_ID env var still overrides it if the account ever changes.
  * Team IDs are public by design (every AASA file on the internet exposes one).
@@ -16,7 +16,7 @@
 // on the VPS takes effect without a rebuild.
 export const dynamic = 'force-dynamic';
 
-const IOS_BUNDLE_ID = 'ai.thanos.wallet';
+const IOS_BUNDLE_ID = 'litho.thanos.wallet';
 const DEFAULT_TEAM_ID = 'JEYAFQ92YG'; // KaJ Labs LLC — Apple Developer Program (Organization)
 
 export function GET() {

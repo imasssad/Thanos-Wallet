@@ -71,6 +71,12 @@ Thanos_Wallet_Pack/
 apps/mobile/credentials/*
 !apps/mobile/credentials/.gitignore
 !apps/mobile/credentials/README.md
+# EAS local credentials manifest (keystore paths + passwords) — never commit.
+apps/mobile/credentials.json
+# Downloaded build artifacts parked in the tree.
+*.apk
+*.aab
+*.ipa
 *.p8
 *.jks
 *.keystore

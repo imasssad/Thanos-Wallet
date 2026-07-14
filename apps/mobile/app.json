@@ -15,9 +15,9 @@
       "backgroundColor": "#080809"
     },
     "ios": {
-      "bundleIdentifier": "ai.thanos.wallet",
+      "bundleIdentifier": "litho.thanos.wallet",
       "supportsTablet": true,
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
         "NSFaceIDUsageDescription": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely.",
@@ -36,7 +36,7 @@
     },
     "android": {
       "package": "ai.thanos.wallet",
-      "versionCode": 9,
+      "versionCode": 10,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"
@@ -66,7 +66,6 @@
         }
       ]
     },
-    "jsEngine": "hermes",
     "plugins": [
       "expo-secure-store",
       [
@@ -103,13 +102,14 @@
             "targetSdkVersion": 35,
             "enableProguardInReleaseBuilds": false,
             "enableShrinkResourcesInReleaseBuilds": false,
-            "enableBundleCompression": true,
+            "enableBundleCompression": false,
             "extraMavenRepos": [
               "https://jitpack.io"
             ]
           }
         }
-      ]
+      ],
+      "./plugins/withFmtConstevalFix"
     ],
     "extra": {
       "eas": {

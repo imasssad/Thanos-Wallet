@@ -38,7 +38,7 @@
       },
       "ios": {
         "distribution": "store",
-        "image": "sdk-52",
+        "image": "latest",
         "autoIncrement": false,
         "resourceClass": "m-medium"
       },
