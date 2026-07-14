@@ -39,7 +39,7 @@
       "ios": {
         "distribution": "store",
         "image": "latest",
-        "autoIncrement": false,
+        "autoIncrement": true,
         "resourceClass": "m-medium"
       },
       "android": {
