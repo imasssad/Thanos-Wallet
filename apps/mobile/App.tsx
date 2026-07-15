@@ -618,6 +618,25 @@ function relativeTime(iso?: string): string {
   return d === 1 ? 'yesterday' : `${d} days ago`;
 }
 
+/** Map raw broadcast errors (ethers internals, RPC strings) to actionable
+ *  copy. Users must never see internals like FallbackProvider's
+ *  "no runners?!" (= every Makalu RPC endpoint was unreachable). */
+function humanSendError(e: unknown): string {
+  const raw  = (e as Error)?.message || '';
+  const code = String((e as { code?: unknown })?.code ?? '');
+  const s = `${code} ${raw}`.toLowerCase();
+  if (s.includes('no runners') || code === 'NETWORK_ERROR' || code === 'TIMEOUT'
+      || s.includes('failed to detect network') || s.includes('could not detect network')
+      || s.includes('network error') || s.includes('timeout') || s.includes('abort'))
+    return "Couldn't reach the network. Check your internet connection and try again — nothing left your wallet.";
+  if (code === 'INSUFFICIENT_FUNDS' || s.includes('insufficient funds'))
+    return 'Not enough balance to cover the amount plus the network fee.';
+  if (code === 'NONCE_EXPIRED' || code === 'REPLACEMENT_UNDERPRICED' || s.includes('nonce'))
+    return 'A previous transaction is still settling — wait a few seconds and try again.';
+  if (code === 'ACTION_REJECTED') return 'Transaction cancelled.';
+  return raw || 'Could not broadcast the transaction.';
+}
+
 /** Map an indexer activity type to a display label + direction. */
 function txDisplay(type: string): { label: string; positive: boolean } {
   switch (type) {
@@ -1385,7 +1404,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
       setSentInfo({ hash, sym, amount: amt, network, explorerUrl: txExplorerUrl(chain, hash) });
     } catch (e) {
       setSending(false);
-      Alert.alert('Send failed', (e as Error)?.message || 'Could not broadcast the transaction.');
+      Alert.alert('Send failed', humanSendError(e));
     }
   };
 
@@ -1523,6 +1542,21 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
             autoCapitalize="none"
             autoCorrect={false}
           />
+          <Pressable
+            onPress={async () => {
+              try {
+                const s = (await Clipboard.getStringAsync())?.trim();
+                // Same normalizer as the QR path — accepts bare 0x / litho1 /
+                // bc1 / base58 or a chain-prefixed URI and extracts the address.
+                if (s) setTo(parseScannedAddress(s));
+              } catch { /* clipboard unavailable — nothing to paste */ }
+            }}
+            hitSlop={12}
+            style={styles.scanBtn}
+            accessibilityLabel="Paste address from clipboard"
+          >
+            <Text style={{ color: C.blue, fontSize: 13, fontWeight: '700' }}>Paste</Text>
+          </Pressable>
           <Pressable
             onPress={() => setScanOpen(true)}
             hitSlop={12}
