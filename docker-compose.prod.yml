@@ -10,6 +10,10 @@ services:
   api:
     environment:
       NODE_ENV: production
+      # Shared secret gating the internal /push/notify endpoint (indexer →
+      # api). Push delivery to devices is DISABLED until this is set in the
+      # VPS .env (generate: openssl rand -hex 32).
+      PUSH_INTERNAL_SECRET: ${PUSH_INTERNAL_SECRET:-}
     # Remove dev volume mount — use built image only
     volumes: []
     # Expose only on localhost; use nginx reverse proxy in front for SSL
@@ -20,6 +24,11 @@ services:
   indexer:
     environment:
       NODE_ENV: production
+      # Same secret as the api service — the indexer's notifyReceive() is a
+      # silent no-op without it (that's why incoming-funds pushes never fired).
+      PUSH_INTERNAL_SECRET: ${PUSH_INTERNAL_SECRET:-}
+      # Internal Docker-network URL the indexer calls to fan out pushes.
+      PUSH_API_URL: http://api:4000
     # Published on localhost only — nginx proxies /indexer/ to it, and
     # the web app calls /indexer for portfolio / token data.
     ports:
