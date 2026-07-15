@@ -76,6 +76,18 @@ const REMOTE: Record<string, string> = {
   avax:  'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png',
 };
 
+/** Presentation hints for marks that are NOT full-bleed circles. The
+ *  Avatar cover-crops icons into its circle by default, which butchers
+ *  transparent, non-square art — Solana's official three-bar logomark
+ *  ended up edge-cropped with the avatar's fallback colour bleeding
+ *  through the gaps. Such marks render CONTAINED, inset, over their
+ *  brand backdrop (Solana brand: the mark on black). */
+export function tokenIconPresentation(sym: string): { inset: number; backdrop: string } | null {
+  const key = (sym || '').toLowerCase();
+  if (key === 'sol') return { inset: 0.24, backdrop: '#000000' };
+  return null;
+}
+
 /** Resolve a token's icon. Returns null when neither a bundled asset
  *  nor a known remote logo exists — caller shows the colour avatar.
  *  Pass `chainId` where known: LITHO resolves to a per-network mark

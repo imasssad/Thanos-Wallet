@@ -108,7 +108,7 @@ import {
 initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
-import { tokenIconSource, networkIconSource, chainBadgeSource } from './lib/token-icons';
+import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
 import type { ImageSourcePropType } from 'react-native';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { addLocalActivity, getLocalActivity, type LocalActivityItem } from './lib/local-activity';
@@ -872,17 +872,23 @@ function Avatar({ symbol, color, size = 36, chainId, native, icon }: {
   const source = failed ? null : (icon ?? tokenIconSource(symbol, chainId));
   const badge = native ? null : chainBadgeSource(chainId);
   const badgeSize = Math.max(14, Math.round(size * 0.44));
+  // Non-full-bleed marks (e.g. Solana's official three-bar logo) render
+  // contained + inset over their brand backdrop instead of cover-cropped.
+  const pres = source ? tokenIconPresentation(symbol) : null;
+  const insetPx = pres ? Math.round(size * pres.inset) : 0;
   return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: color }]}>
+    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: pres ? pres.backdrop : color }]}>
       <Text style={[styles.avatarText, { fontSize: size * 0.36 }]}>{symbol.slice(0, 1)}</Text>
       {source && (
         <Image
           source={source}
           onError={() => setFailed(true)}
-          resizeMode="cover"
+          resizeMode={pres ? 'contain' : 'cover'}
           style={{
-            position: 'absolute', width: size, height: size,
-            borderRadius: size / 2,
+            position: 'absolute',
+            top: insetPx, left: insetPx,
+            width: size - insetPx * 2, height: size - insetPx * 2,
+            borderRadius: pres ? 0 : size / 2,
           }}
         />
       )}
