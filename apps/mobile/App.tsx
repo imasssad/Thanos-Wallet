@@ -109,6 +109,7 @@ initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
+import { fetchNativeLithoActivity, mergeActivityFeeds } from './lib/makalu-explorer';
 import type { ImageSourcePropType } from 'react-native';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { addLocalActivity, getLocalActivity, type LocalActivityItem } from './lib/local-activity';
@@ -745,16 +746,29 @@ function useActivity(address: string): ActivityState {
     if (!address) { setItems([]); setLoading(false); setOffline(false); return; }
     let cancelled = false;
     setLoading(true); setOffline(false);
-    getActivity(address)
-      .then((list) => {
+    // Two feeds, fetched in parallel and merged (deduped by tx hash):
+    //   indexer  → LEP100 token transfers (MUSA, JOT, …)
+    //   explorer → NATIVE LITHO transfers, which emit no logs and therefore
+    //              never reach the indexer (this is why "received 70,000
+    //              LITHO" showed no activity row).
+    // The indexer stays the primary for the offline flag; the explorer feed
+    // is best-effort extra coverage.
+    Promise.allSettled([getActivity(address), fetchNativeLithoActivity(address)])
+      .then(([idx, nat]) => {
         if (cancelled) return;
-        setItems(list); setLoading(false);
+        const idxItems = idx.status === 'fulfilled' ? idx.value : null;
+        const natItems = nat.status === 'fulfilled' ? nat.value : [];
+        if (idxItems === null && natItems.length === 0) {
+          // PRESERVE offline contract: keep whatever items we have, flag offline.
+          setLoading(false); setOffline(true);
+          return;
+        }
+        const merged = mergeActivityFeeds(idxItems ?? [], natItems);
+        setItems(merged); setLoading(false); setOffline(idxItems === null);
         // Persist the successful fetch (guarded: empty lists are not written so a
         // good snapshot is never clobbered by an empty/transient result).
-        void setActivitySnapshot(address, list);
-      })
-      // PRESERVE offline contract: keep whatever items we have, flag offline.
-      .catch(()    => { if (!cancelled) { setLoading(false); setOffline(true); } });
+        if (merged.length) void setActivitySnapshot(address, merged);
+      });
     return () => { cancelled = true; };
   }, [address, nonce]);
 
