@@ -14,7 +14,7 @@ import { getEvmProvider } from './evm-chains';
 
 export interface EvmToken {
   chainId:  number;
-  symbol:   'USDT' | 'USDC';
+  symbol:   string;
   name:     string;
   address:  string;
   decimals: number;
@@ -42,6 +42,18 @@ export const EVM_TOKENS: readonly EvmToken[] = [
   // Avalanche (43114)
   { chainId: 43114, symbol: 'USDT', name: 'Tether USD', address: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', decimals: 6,  coingeckoId: 'tether' },
   { chainId: 43114, symbol: 'USDC', name: 'USD Coin',   address: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', decimals: 6,  coingeckoId: 'usd-coin' },
+  // ─── LITHO-ecosystem tokens on external chains (client request 2026-07-15).
+  // Addresses from the projects' CoinGecko listings, independently verified
+  // on-chain (symbol/decimals/name) before inclusion — same entries as
+  // apps/mobile/lib/evm-external.ts (keep in sync). LITHO/FGPT/JOT/LAX external
+  // deployments are unverifiable today — add only with team-confirmed addresses.
+  { chainId: 56,    symbol: 'MUSA',  name: 'Mansa AI',       address: '0x528605856a9eb9567688b0e912ed6961522a74d4', decimals: 18, coingeckoId: 'mansa-ai' },
+  { chainId: 1,     symbol: 'MUSA',  name: 'Mansa AI',       address: '0x528605856a9eb9567688b0e912ed6961522a74d4', decimals: 18, coingeckoId: 'mansa-ai' },
+  { chainId: 56,    symbol: 'AGII',  name: 'AGII',           address: '0x328fd053c4bb968875afd9ad0af36fcf4a0bdda9', decimals: 18, coingeckoId: 'agii' },
+  { chainId: 1,     symbol: 'AGII',  name: 'AGII',           address: '0x75d86078625d1e2f612de2627d34c7bc411c18b8', decimals: 18, coingeckoId: 'agii' },
+  { chainId: 1,     symbol: 'IMAGE', name: 'Imagen Network', address: '0x1c3547dfa9ce7acd9c54ae49244575fa65bc75e2', decimals: 18, coingeckoId: 'imagen-ai' },
+  { chainId: 1,     symbol: 'COLLE', name: 'Colle AI',       address: '0xc36983d3d9d379ddfb306dfb919099cb6730e355', decimals: 18, coingeckoId: 'colle-ai' },
+  { chainId: 56,    symbol: 'COLLE', name: 'Colle AI',       address: '0xaeb63742f2c7dd1538bbe2285b6789017a06b58b', decimals: 18, coingeckoId: 'colle-ai' },
 ];
 
 /** Stablecoins available on a given chain (for the Receive asset list). */

@@ -24,6 +24,8 @@ export const COINGECKO_IDS: Record<string, string> = {
   // No FGPT mapping — the CoinGecko id 'furgpt' no longer exists.
   IMAGE:  'imagen-ai',
   COLLE:  'colle-ai',
+  AGII:   'agii',       // AGII — CoinGecko-confirmed 2026-07-15
+
   MUSA:   'mansa-ai',   // Mansa AI ($MUSA) — CoinGecko search-confirmed 2026-06-17
   SOL:    'solana',
   BTC:    'bitcoin',

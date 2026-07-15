@@ -41,13 +41,15 @@ export function getExtEvmChain(chainId: number): ExtEvmChain | undefined {
 
 export interface ExtEvmToken {
   chainId:  number;
-  symbol:   'USDT' | 'USDC';
+  symbol:   string;
   name:     string;
   address:  string;
   decimals: number;
 }
 
-/** USDT/USDC catalog — addresses VERIFIED on-chain 2026-06-20 (same as web). */
+/** External-chain token catalog — every address VERIFIED on-chain via
+ *  symbol()/decimals()/name() before inclusion (USDT/USDC 2026-06-20;
+ *  ecosystem tokens 2026-07-15). Keep in sync with apps/web/lib/evm-tokens.ts. */
 export const EXT_EVM_TOKENS: readonly ExtEvmToken[] = [
   { chainId: 1,     symbol: 'USDT', name: 'Tether USD', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6  },
   { chainId: 1,     symbol: 'USDC', name: 'USD Coin',   address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6  },
@@ -62,6 +64,19 @@ export const EXT_EVM_TOKENS: readonly ExtEvmToken[] = [
   { chainId: 10,    symbol: 'USDC', name: 'USD Coin',   address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', decimals: 6  },
   { chainId: 43114, symbol: 'USDT', name: 'Tether USD', address: '0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7', decimals: 6  },
   { chainId: 43114, symbol: 'USDC', name: 'USD Coin',   address: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E', decimals: 6  },
+  // ─── LITHO-ecosystem tokens on external chains (client request 2026-07-15:
+  // "wrapped tokens on BNB and other chains are missing"). Addresses from the
+  // projects' CoinGecko listings, then INDEPENDENTLY verified on-chain
+  // (symbol/decimals/name read via each chain's RPC) before inclusion.
+  // LITHO / FGPT / JOT / LAX external deployments are NOT listed anywhere
+  // verifiable — add only with team-confirmed addresses, never from memory.
+  { chainId: 56,    symbol: 'MUSA',  name: 'Mansa AI',       address: '0x528605856a9eb9567688b0e912ed6961522a74d4', decimals: 18 },
+  { chainId: 1,     symbol: 'MUSA',  name: 'Mansa AI',       address: '0x528605856a9eb9567688b0e912ed6961522a74d4', decimals: 18 },
+  { chainId: 56,    symbol: 'AGII',  name: 'AGII',           address: '0x328fd053c4bb968875afd9ad0af36fcf4a0bdda9', decimals: 18 },
+  { chainId: 1,     symbol: 'AGII',  name: 'AGII',           address: '0x75d86078625d1e2f612de2627d34c7bc411c18b8', decimals: 18 },
+  { chainId: 1,     symbol: 'IMAGE', name: 'Imagen Network', address: '0x1c3547dfa9ce7acd9c54ae49244575fa65bc75e2', decimals: 18 },
+  { chainId: 1,     symbol: 'COLLE', name: 'Colle AI',       address: '0xc36983d3d9d379ddfb306dfb919099cb6730e355', decimals: 18 },
+  { chainId: 56,    symbol: 'COLLE', name: 'Colle AI',       address: '0xaeb63742f2c7dd1538bbe2285b6789017a06b58b', decimals: 18 },
 ];
 
 export function extEvmTokensForChain(chainId: number): ExtEvmToken[] {
