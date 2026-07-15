@@ -421,7 +421,6 @@ const HOME_LOAD_NATIVE_CHAINS = false;
 function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce]   = useState(0);
   const [assets, setAssets] = useState<DisplayAsset[]>([]);
-  const [totalUsd, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   // Cached-first: true once we've painted a persisted snapshot for the current
@@ -443,7 +442,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     // show account A's balances under account B. (Within one address the fetch
     // effect below still keeps last-known on failure — the offline contract.)
     if (prevAddrRef.current !== null && prevAddrRef.current !== address) {
-      setAssets([]); setTotal(0);
+      setAssets([]);
     }
     prevAddrRef.current = address;
     if (!address) return;
@@ -451,14 +450,13 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
       const snap = await getPortfolioSnapshot(address);
       if (cancelled || !snap) return;
       setAssets(snap.assets as DisplayAsset[]);
-      setTotal(snap.totalUsd);
       setHydrated(true);
     })();
     return () => { cancelled = true; };
   }, [address]);
 
   useEffect(() => {
-    if (!address) { setAssets([]); setTotal(0); setLoading(false); setOffline(false); return; }
+    if (!address) { setAssets([]); setLoading(false); setOffline(false); return; }
     let cancelled = false;
     setLoading(true); setOffline(false);
     (async () => {
@@ -491,15 +489,20 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
               tokenAddress: a.tokenAddress, native: !!a.native,
             };
           });
-          // Render the LITHO/EVM rows immediately so the home is usable the
-          // instant the wallet unlocks.
-          setAssets(evmRows);
-          setTotal(evmRows.reduce((s, a) => s + a.usdValue, 0));
+          // UPSERT the Lithosphere rows, don't replace the whole list: keeping
+          // the previously-shown cross-chain + external rows while this fresh
+          // Makalu fetch lands is what stops a refresh from visibly shrinking
+          // the list (the "4 assets / 2 networks → 12 / 10" counter pop).
+          // The later phases replace their own scopes the same way.
+          setAssets(prev => {
+            const merged = [...evmRows, ...prev.filter(a => a.chainId !== 700777 && a.chainId !== 900523)];
+            // Persist this SUCCESSFUL fetch as the new snapshot (public data
+            // only). Guarded inside setPortfolioSnapshot: empty arrays are
+            // ignored so a bad/empty result never poisons a good snapshot.
+            void setPortfolioSnapshot(address, merged, merged.reduce((s, a) => s + a.usdValue, 0));
+            return merged;
+          });
           setOffline(false);
-          // Persist this SUCCESSFUL fetch as the new snapshot (public data only).
-          // Guarded inside setPortfolioSnapshot: empty arrays are ignored so a
-          // bad/empty result never poisons a good snapshot.
-          void setPortfolioSnapshot(address, evmRows, evmRows.reduce((s, a) => s + a.usdValue, 0));
         } else {
           // Indexer down — keep the last-known assets/total, just flag offline.
           setOffline(true);
@@ -549,8 +552,9 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
                 decimals: n.decimals, priceUsd, usdValue: bal * priceUsd,
                 color: assetColor(n.sym), native: true,
               };
-              setAssets(prev => [...prev, row]);
-              setTotal(prev => prev + row.usdValue);
+              // Upsert by (chainId 0, sym) — a kept row from the previous
+              // cycle may already be present; never append a duplicate.
+              setAssets(prev => [...prev.filter(p => !(p.chainId === 0 && p.sym === row.sym)), row]);
             }
 
             // External EVM (Ethereum / BNB / Polygon / Base / Arbitrum /
@@ -594,12 +598,15 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
               ];
               if (!cancelled && extRows.length) {
                 setAssets(prev => {
-                  const merged = [...prev, ...extRows];
+                  // Replace the external-chain scope wholesale (keep Lithosphere
+                  // + chainId-0 rows) — kept stale ext rows from the previous
+                  // cycle are superseded, never duplicated.
+                  const keep = prev.filter(p => p.chainId === 700777 || p.chainId === 900523 || p.chainId === 0);
+                  const merged = [...keep, ...extRows];
                   // Re-save the fuller snapshot (native + cross-chain + external).
                   void setPortfolioSnapshot(address, merged, merged.reduce((s, r) => s + r.usdValue, 0));
                   return merged;
                 });
-                setTotal(prev => prev + extRows.reduce((s, r) => s + r.usdValue, 0));
               }
             } catch { /* best-effort */ }
           })();
@@ -624,6 +631,11 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     if (af !== bf) return af - bf;
     return af === 0 ? b.usdValue - a.usdValue : 0;
   }), [assets]);
+
+  // Total derived from the list itself — the old separately-tracked total
+  // state drifted during phased loads (reset + increments); deriving makes
+  // it impossible for the number and the rows to disagree.
+  const totalUsd = useMemo(() => assets.reduce((s, a) => s + a.usdValue, 0), [assets]);
 
   return { assets: displayAssets, totalUsd, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
 }
