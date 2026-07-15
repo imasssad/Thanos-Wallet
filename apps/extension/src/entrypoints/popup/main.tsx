@@ -1355,8 +1355,14 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
   const { coins, activity } = usePortfolioCtx();
   const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
-  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
-  const network = coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' : coin?.sym === 'ATOM' ? 'Cosmos Hub' : 'Lithosphere Makalu';
+  // Same fix as mobile/desktop: external-EVM coins must show their REAL chain
+  // and must not offer the Makalu-only swap (Makalu rows carry no chainId).
+  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress && (coin.chainId == null || coin.chainId === 700777);
+  const network = coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' : coin?.sym === 'ATOM' ? 'Cosmos Hub'
+    : coin?.chainId === 900523 ? 'Lithosphere Kamet'
+    : coin?.chainId != null && coin.chainId !== 700777 && EXT_EVM_CHAIN_NAME[coin.chainId]
+      ? EXT_EVM_CHAIN_NAME[coin.chainId]
+      : 'Lithosphere Makalu';
   const [range, setRange] = useState<TokenRange>('1d');
   const [hist, setHist] = useState<TokenHistory | null>(null);
   const [histLoading, setHistLoading] = useState(true);

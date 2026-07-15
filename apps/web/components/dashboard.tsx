@@ -93,8 +93,14 @@ function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
 function pricesToPath(prices: Array<[number, number]>, w: number, h: number): { line: string; area: string } | null {
   if (prices.length < 2) return null;
   const ys = prices.map(p => p[1]);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  let minY = Math.min(...ys);
+  let maxY = Math.max(...ys);
+  // Honest Y-scaling (same rule as mobile): never let the domain be narrower
+  // than ±1% of the mid value — auto-fitting min/max blew a stablecoin's
+  // ±0.05% jitter up into full-height mountains ("$1.00 pumping 2x").
+  const midY = (minY + maxY) / 2;
+  const minSpan = midY * 0.02;
+  if (midY > 0 && maxY - minY < minSpan) { minY = midY - minSpan / 2; maxY = midY + minSpan / 2; }
   const range = (maxY - minY) || 1;
   const stepX = w / (prices.length - 1);
   const points = prices.map((p, i) => [i * stepX, h - ((p[1] - minY) / range) * h * 0.85 - h * 0.075] as const);

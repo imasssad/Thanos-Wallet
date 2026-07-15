@@ -1041,11 +1041,18 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
   const { coins, activity } = usePortfolioCtx();
   const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
-  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
-  const isLitho = !!coin && (coin.native ? !['BTC', 'SOL', 'ATOM'].includes(coin.sym) : true);
+  // Swap is Makalu-only — a token must actually LIVE on Makalu (external-EVM
+  // coins carry their chainId; Makalu rows carry none/700777). Same fix as
+  // mobile: USDT-on-BNB must neither claim Makalu nor offer the Makalu swap.
+  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress && (coin.chainId == null || coin.chainId === 700777);
+  const isLitho = !!coin && (coin.native ? !['BTC', 'SOL', 'ATOM'].includes(coin.sym) : true) && (coin.chainId == null || coin.chainId === 700777 || coin.chainId === 900523);
   const network =
     coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' :
-    coin?.sym === 'ATOM' ? 'Cosmos Hub' : 'Lithosphere Makalu';
+    coin?.sym === 'ATOM' ? 'Cosmos Hub'
+    : coin?.chainId === 900523 ? 'Lithosphere Kamet'
+    : coin?.chainId != null && coin.chainId !== 700777
+      ? (EXT_EVM_CHAINS.find(c => c.chainId === coin.chainId)?.name ?? `Chain ${coin.chainId}`)
+      : 'Lithosphere Makalu';
 
   const [range, setRange] = useState<TokenRange>('1d');
   const [hist, setHist] = useState<TokenHistory | null>(null);
