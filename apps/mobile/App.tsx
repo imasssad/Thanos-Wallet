@@ -3832,8 +3832,21 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
   const { items, loading: actLoading, offline: actOffline } = useActivity(addr);
   const coin = assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
-  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress;
-  const network = coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' : coin?.sym === 'ATOM' ? 'Cosmos Hub' : 'Lithosphere Makalu';
+  // Gates the Swap action — the MultX/Ignite swap flow is Makalu-only, so a
+  // token must actually LIVE on Makalu (not merely be any contract token:
+  // USDT-on-BNB was wrongly getting a Swap button before the chainId check).
+  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress && coin.chainId === 700777;
+  // Network from the asset's ACTUAL chainId (USDT-on-BNB must say BNB Chain,
+  // not the old hardcoded Makalu default). RECEIVE_NETWORKS is the single
+  // chainId -> display-name source; non-EVM rows carry chainId 0 and resolve
+  // by symbol; Kamet + unknown EVM chains get explicit fallbacks.
+  const network =
+      coin?.sym === 'BTC'  ? 'Bitcoin'
+    : coin?.sym === 'SOL'  ? 'Solana'
+    : coin?.sym === 'ATOM' ? 'Cosmos Hub'
+    : coin?.chainId === 900523 ? 'Lithosphere Kamet'
+    : (coin?.chainId != null && RECEIVE_NETWORKS.find(n => n.chainId === coin.chainId)?.name)
+      || (coin?.chainId && coin.chainId !== 700777 ? `Chain ${coin.chainId}` : 'Lithosphere Makalu');
   const [range, setRange] = useState<TokenRange>('1d');
   const [hist, setHist] = useState<TokenHistory | null>(null);
   const [histLoading, setHistLoading] = useState(true);
