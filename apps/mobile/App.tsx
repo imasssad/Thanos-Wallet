@@ -1348,10 +1348,16 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   // Send modal's success stage: ✓ icon, hash → explorer link, Done).
   const [sentInfo, setSentInfo] = useState<{ hash: string; sym: string; amount: string; network: string; explorerUrl: string } | null>(null);
 
+  // The EVM pill covers Makalu + all 8 external EVM chains — but ONLY EVM
+  // rows may appear in its FROM picker. The portfolio now also carries
+  // BTC/SOL/ATOM rows (chainId 0, all-networks display); picking one here
+  // would mis-route a send, so they're excluded — those chains have their
+  // own pills with fixed native assets.
+  const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0), [assets]);
   const coin =
-    (selectedKey ? assets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
-    ?? (initialSym ? assets.find((a) => a.sym === initialSym) : undefined)
-    ?? assets[0] ?? null;
+    (selectedKey ? evmAssets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
+    ?? (initialSym ? evmAssets.find((a) => a.sym === initialSym) : undefined)
+    ?? evmAssets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
   const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
@@ -1532,7 +1538,9 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
               }}
             >
               <Text style={{ color: selected ? '#fff' : C.textSecondary, fontWeight: '700', fontSize: 11 }}>
-                {CHAIN_META[c].sym}
+                {/* 'EVM' not 'LITHO': this pill covers Makalu + all 8 external
+                    EVM networks (pick the network via the FROM selector). */}
+                {c === 'evm' ? 'EVM' : CHAIN_META[c].sym}
               </Text>
             </Pressable>
           );
@@ -1690,21 +1698,39 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
             style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 }}
             onPress={() => {}}
           >
-            <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>SELECT ASSET</Text>
-            {assets.map((a, i) => (
-              <Pressable
-                key={`${a.sym}-${a.chainId}`}
-                style={[styles.row, i < assets.length - 1 && styles.rowBorder]}
-                onPress={() => { setSelectedKey(assetKeyOf(a)); setAmt(''); setPickerOpen(false); }}
-              >
-                <Avatar symbol={a.sym} color={a.color} size={36}/>
-                <View style={styles.rowMid}>
-                  <Text style={styles.rowSymbol}>{a.name}</Text>
-                  <Text style={styles.rowSub}>{a.balanceText} {a.sym}</Text>
+            <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>SELECT NETWORK &amp; ASSET</Text>
+            {/* Grouped by network — same mental model as the Receive screen's
+                Select-network list, so Send and Receive read identically. */}
+            {(() => {
+              const groups: Array<{ name: string; items: typeof evmAssets }> = [];
+              for (const a of evmAssets) {
+                const name =
+                    a.chainId === 700777 ? 'Lithosphere Makalu'
+                  : a.chainId === 900523 ? 'Lithosphere Kamet'
+                  : RECEIVE_NETWORKS.find((n) => n.chainId === a.chainId)?.name ?? `Chain ${a.chainId}`;
+                const g = groups.find((x) => x.name === name);
+                if (g) g.items.push(a); else groups.push({ name, items: [a] });
+              }
+              return groups.map((g) => (
+                <View key={g.name}>
+                  <Text style={[styles.fieldLabel, { marginTop: 12, marginBottom: 2, fontSize: 10 }]}>{g.name.toUpperCase()}</Text>
+                  {g.items.map((a, i) => (
+                    <Pressable
+                      key={`${a.sym}-${a.chainId}`}
+                      style={[styles.row, i < g.items.length - 1 && styles.rowBorder]}
+                      onPress={() => { setSelectedKey(assetKeyOf(a)); setAmt(''); setPickerOpen(false); }}
+                    >
+                      <Avatar symbol={a.sym} color={a.color} size={36} chainId={a.chainId} native={a.native}/>
+                      <View style={styles.rowMid}>
+                        <Text style={styles.rowSymbol}>{a.name}</Text>
+                        <Text style={styles.rowSub}>{a.balanceText} {a.sym}</Text>
+                      </View>
+                      <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
+                    </Pressable>
+                  ))}
                 </View>
-                <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
-              </Pressable>
-            ))}
+              ));
+            })()}
           </Pressable>
         </Pressable>
       </Modal>
