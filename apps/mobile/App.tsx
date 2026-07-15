@@ -946,7 +946,14 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
   const stroke = up ? '#10b981' : '#f87171';
   let svg = '';
   if (pts.length >= 2) {
-    const min = Math.min(...pts), max = Math.max(...pts), span = (max - min) || 1, dx = W / (pts.length - 1);
+    // Same honest Y-scaling as the token chart: a domain floor of ±1% of the
+    // mid value keeps flat portfolios (e.g. all-stablecoin) from rendering
+    // their noise as full-height swings.
+    let min = Math.min(...pts), max = Math.max(...pts);
+    const mid = (min + max) / 2;
+    const minSpan = mid * 0.02;
+    if (mid > 0 && max - min < minSpan) { min = mid - minSpan / 2; max = mid + minSpan / 2; }
+    const span = (max - min) || 1, dx = W / (pts.length - 1);
     const coords = pts.map((p, i) => [i * dx, H - 4 - ((p - min) / span) * (H - 8)] as const);
     const line = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
     const area = `${line} L${W},${H} L0,${H} Z`;
@@ -3812,7 +3819,15 @@ function tdCompactQty(n: number | null): string {
 function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, stroke: string): string | null {
   if (prices.length < 2) return null;
   const vals = prices.map(p => p[1]);
-  const min = Math.min(...vals), max = Math.max(...vals), span = max - min;
+  let min = Math.min(...vals), max = Math.max(...vals);
+  // Honest Y-scaling: auto-fitting the domain to the data's min/max blew a
+  // stablecoin's ±0.05% jitter up into full-height mountains ("$1.00 pumping
+  // 2x"). Enforce a minimum domain of ±1% around the mid price — real moves
+  // beyond that still fill the chart; sub-1% noise renders honestly flat.
+  const mid = (min + max) / 2;
+  const minSpan = mid * 0.02;
+  if (mid > 0 && max - min < minSpan) { min = mid - minSpan / 2; max = mid + minSpan / 2; }
+  const span = max - min;
   const dx = w / (prices.length - 1);
   const pts = vals.map((v, i) => `${(i * dx).toFixed(1)},${(span === 0 ? h / 2 : h - 6 - ((v - min) / span) * (h - 12)).toFixed(1)}`);
   const line = `M${pts.join(' L')}`;
