@@ -5730,10 +5730,9 @@ function App() {
                   <Text style={styles.acctAddr}>{shortLitho || shortAddr}</Text>
                 </View>
               </Pressable>
+              {/* Theme toggle intentionally lives ONLY in Settings → General →
+                  Theme (client request 2026-07-14) — no top-bar shortcut. */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Pressable onPress={toggle} style={styles.themeBtn}>
-                  <Text style={{ fontSize: 16 }}>{isDark ? '☀' : '🌙'}</Text>
-                </Pressable>
                 <View style={styles.netPill}>
                   <View style={styles.netDot}/>
                   <Text style={styles.netText}>Makalu</Text>
