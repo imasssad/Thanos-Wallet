@@ -1053,6 +1053,10 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
     [assets],
   );
 
+  // Hide/show balances — mirrors web's dashboard eye toggle (session-only,
+  // same as web): total shows •••••• and per-asset values show ••••.
+  const [balanceHidden, setBalanceHidden] = useState(false);
+
   const QuickAction = ({ Icon, label, onPress }: { Icon: any; label: string; onPress?: () => void }) => (
     <Pressable style={({ pressed }) => [styles.qaBtn, pressed && { opacity: 0.6 }]} onPress={onPress}>
       <View style={styles.qaIcon}><Icon size={20} color={C.blue} strokeWidth={2.4}/></View>
@@ -1081,8 +1085,18 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
       {showSkeleton ? <BalanceSkeleton/> : (
       <View style={styles.balanceCard}>
         <View style={styles.balanceCardOverlay}/>
-        <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
-        <Text style={styles.balanceAmt}>{(loading && !hydrated) ? '···' : formatUsd(totalUsd)}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
+          <Pressable
+            hitSlop={12}
+            onPress={() => setBalanceHidden(v => !v)}
+            accessibilityLabel={balanceHidden ? 'Show balance' : 'Hide balance'}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          >
+            {balanceHidden ? <EyeOff size={16} color={C.textMuted}/> : <Eye size={16} color={C.textMuted}/>}
+          </Pressable>
+        </View>
+        <Text style={styles.balanceAmt}>{(loading && !hydrated) ? '···' : balanceHidden ? '••••••' : formatUsd(totalUsd)}</Text>
         <View style={styles.balanceDivider}/>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <View>
@@ -1187,9 +1201,9 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
                 <Text style={styles.rowSub}>{a.priceUsd > 0 ? formatUsd(a.priceUsd) : '—'}</Text>
               </View>
               <View style={styles.rowRight}>
-                <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
+                <Text style={styles.rowAmt}>{balanceHidden ? '••••' : formatUsd(a.usdValue)}</Text>
                 <Text style={styles.rowBal}>
-                  {a.sym === 'LITHO' ? <><LithoSym/>{a.balanceText}</> : `${a.balanceText} ${a.sym}`}
+                  {balanceHidden ? '••••' : a.sym === 'LITHO' ? <><LithoSym/>{a.balanceText}</> : `${a.balanceText} ${a.sym}`}
                 </Text>
               </View>
             </Pressable>
