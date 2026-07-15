@@ -227,10 +227,14 @@ type Colors = typeof DARK;
 const ThemeCtx   = createContext<Colors>(DARK);
 const ToggleCtx  = createContext<() => void>(() => {});
 const StylesCtx  = createContext(makeStyles(DARK));
+/* Opens the rename-account dialog for an account index. Provided by the
+   root shell so any screen (Settings card, account sheet) can trigger it. */
+const RenameAcctCtx = createContext<(idx: number) => void>(() => {});
 
 function useColors()  { return useContext(ThemeCtx); }
 function useToggle()  { return useContext(ToggleCtx); }
 function useStyles()  { return useContext(StylesCtx); }
+function useRenameAccount() { return useContext(RenameAcctCtx); }
 
 /* ─── Page-transition wrapper ─────────────────────────────────────
    Plays a fade + small slide-up animation whenever `keyName` changes.
@@ -2863,6 +2867,7 @@ function SettingsScreen() {
   const [bioReady, setBioReady] = useState(false);
   const [bioOn, setBioOn]       = useState(false);
   const [copiedFmt, setCopiedFmt] = useState<'litho' | 'evm' | null>(null);
+  const openRenameAcct = useRenameAccount();
   const [wcOpen, setWcOpen]     = useState(false);
   const [notifOn, setNotifOn]   = useState(false);
 
@@ -3049,7 +3054,19 @@ function SettingsScreen() {
           resizeMode="contain"
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.acctHeaderName} numberOfLines={1}>{getAccountName(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[styles.acctHeaderName, { flexShrink: 1 }]} numberOfLines={1}>
+              {getAccountName(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0)}
+            </Text>
+            <Pressable
+              hitSlop={10}
+              onPress={() => openRenameAcct(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0)}
+              style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+              accessibilityLabel="Rename account"
+            >
+              <Pencil size={14} color={C.textMuted} strokeWidth={2.2}/>
+            </Pressable>
+          </View>
           {!!lithoAddr && (
             <Pressable style={styles.addrRow} onPress={() => copyAddrFmt('litho')} hitSlop={6}>
               <Text style={styles.addrFmtTag}>LITHO</Text>
@@ -5496,6 +5513,25 @@ function App() {
   // Rename-account dialog (cross-platform — Alert.prompt is iOS-only).
   const [renameIdx, setRenameIdx]     = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  // iOS cannot present two Modals at once: opening the rename dialog while
+  // the account sheet is still up silently fails (the pencil "did nothing").
+  // So: stash the index, dismiss the sheet, and present the dialog from the
+  // sheet Modal's onDismiss (iOS fires it after dismissal completes; Android
+  // has no onDismiss but stacks Modals fine, so it opens immediately).
+  const pendingRenameRef = useRef<number | null>(null);
+  const openRename = (idx: number) => {
+    setRenameDraft(getCustomAccountName(idx) ?? '');
+    if (acctSheetOpen) {
+      pendingRenameRef.current = idx;
+      setAcctSheetOpen(false);
+      if (Platform.OS !== 'ios') {
+        pendingRenameRef.current = null;
+        setRenameIdx(idx);
+      }
+    } else {
+      setRenameIdx(idx);
+    }
+  };
   useEffect(() => {
     void loadAccountsFromStorage().then(() => {
       setActiveIdx(getActiveAccountIndex());
@@ -5725,6 +5761,7 @@ function App() {
     <ThemeCtx.Provider value={colors}>
       <StylesCtx.Provider value={styles}>
         <ToggleCtx.Provider value={toggle}>
+        <RenameAcctCtx.Provider value={openRename}>
         <WalletAddrCtx.Provider value={walletAddr}>
         <WalletSeedCtx.Provider value={walletSeed}>
         <BrowserCtx.Provider value={setBrowserUrl}>
@@ -5761,6 +5798,12 @@ function App() {
               animationType="slide"
               statusBarTranslucent
               onRequestClose={() => setAcctSheetOpen(false)}
+              onDismiss={() => {
+                // iOS-only: present the rename dialog only after this sheet
+                // has fully dismissed (two Modals can't be up at once).
+                const idx = pendingRenameRef.current;
+                if (idx !== null) { pendingRenameRef.current = null; setRenameIdx(idx); }
+              }}
             >
               <Pressable
                 style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}
@@ -5813,7 +5856,7 @@ function App() {
                         </View>
                         <Pressable
                           hitSlop={10}
-                          onPress={() => { setRenameDraft(getCustomAccountName(i) ?? ''); setRenameIdx(i); }}
+                          onPress={() => openRename(i)}
                           style={({ pressed }) => [{ padding: 6 }, pressed && { opacity: 0.6 }]}
                           accessibilityLabel={`Rename ${getAccountName(i)}`}
                         >
@@ -5985,6 +6028,7 @@ function App() {
         </BrowserCtx.Provider>
         </WalletSeedCtx.Provider>
         </WalletAddrCtx.Provider>
+        </RenameAcctCtx.Provider>
         </ToggleCtx.Provider>
       </StylesCtx.Provider>
     </ThemeCtx.Provider>
