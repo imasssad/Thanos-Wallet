@@ -86,7 +86,9 @@ import {
   loadAccountsFromStorage,
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount,       setAccountCount,
-  MAX_ACCOUNTS,
+  getAccountName,        setAccountName,
+  getCustomAccountName,
+  MAX_ACCOUNTS, MAX_ACCOUNT_NAME_LEN,
 } from './lib/accounts';
 import { discoverFundedAccountCount, deriveAccountAddresses } from './lib/account-discovery';
 import {
@@ -136,7 +138,7 @@ import {
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
-  Check, CreditCard, Sparkles,
+  Check, CreditCard, Sparkles, Pencil,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -3018,7 +3020,7 @@ function SettingsScreen() {
           resizeMode="contain"
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.acctHeaderName}>Account {(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0) + 1}</Text>
+          <Text style={styles.acctHeaderName} numberOfLines={1}>{getAccountName(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0)}</Text>
           {!!lithoAddr && (
             <Pressable style={styles.addrRow} onPress={() => copyAddrFmt('litho')} hitSlop={6}>
               <Text style={styles.addrFmtTag}>LITHO</Text>
@@ -5462,6 +5464,9 @@ function App() {
   const [activeIdx, setActiveIdx]            = useState(0);
   const [accountCount, setAccountCountState] = useState(1);
   const [acctSheetOpen, setAcctSheetOpen]    = useState(false);
+  // Rename-account dialog (cross-platform — Alert.prompt is iOS-only).
+  const [renameIdx, setRenameIdx]     = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   useEffect(() => {
     void loadAccountsFromStorage().then(() => {
       setActiveIdx(getActiveAccountIndex());
@@ -5745,7 +5750,7 @@ function App() {
                   <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: colors.borderDefault, alignSelf: 'center', marginBottom: 16 }}/>
                   <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: '800', letterSpacing: -0.4 }}>Account</Text>
                   <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 2, marginBottom: 16 }}>
-                    {`Active · Account ${(isPrivateKeyWallet(walletSeed) ? 0 : activeIdx) + 1}`}
+                    {`Active · ${getAccountName(isPrivateKeyWallet(walletSeed) ? 0 : activeIdx)}`}
                   </Text>
 
                   {Array.from({ length: isPrivateKeyWallet(walletSeed) ? 1 : accountCount }, (_, i) => {
@@ -5770,13 +5775,21 @@ function App() {
                           <Text style={{ color: active ? '#fff' : colors.textSecondary, fontSize: 15, fontWeight: '800' }}>{i + 1}</Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '700' }}>{`Account ${i + 1}`}</Text>
+                          <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>{getAccountName(i)}</Text>
                           {(lithoShort || tag) ? (
                             <Text style={{ color: colors.textMuted, fontSize: 12, fontFamily: MONO, marginTop: 1 }} numberOfLines={1}>
                               {lithoShort ? `${lithoShort} · ${tag}` : tag}
                             </Text>
                           ) : null}
                         </View>
+                        <Pressable
+                          hitSlop={10}
+                          onPress={() => { setRenameDraft(getCustomAccountName(i) ?? ''); setRenameIdx(i); }}
+                          style={({ pressed }) => [{ padding: 6 }, pressed && { opacity: 0.6 }]}
+                          accessibilityLabel={`Rename ${getAccountName(i)}`}
+                        >
+                          <Pencil size={16} color={active ? colors.blue : colors.textMuted} strokeWidth={2.2}/>
+                        </Pressable>
                         {active ? <Check size={20} color={colors.blue} strokeWidth={2.8}/> : null}
                       </Pressable>
                     );
@@ -5803,6 +5816,55 @@ function App() {
               </Pressable>
             </Modal>
 
+            {/* Rename-account dialog — themed Modal because Alert.prompt is
+                iOS-only. Empty input resets to the "Account N" default. */}
+            <Modal
+              visible={renameIdx !== null}
+              transparent
+              animationType="fade"
+              statusBarTranslucent
+              onRequestClose={() => setRenameIdx(null)}
+            >
+              <Pressable
+                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 28 }}
+                onPress={() => setRenameIdx(null)}
+              >
+                <Pressable
+                  onPress={() => {}}
+                  style={{ backgroundColor: colors.bgSurface, borderRadius: 18, borderWidth: 1, borderColor: colors.borderSubtle, padding: 20 }}
+                >
+                  <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: '800' }}>Rename account</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2, marginBottom: 12 }}>
+                    {`Shown in place of "Account ${(renameIdx ?? 0) + 1}". Leave empty to reset.`}
+                  </Text>
+                  <TextInput
+                    value={renameDraft}
+                    onChangeText={setRenameDraft}
+                    placeholder={`Account ${(renameIdx ?? 0) + 1}`}
+                    placeholderTextColor={colors.textMuted}
+                    maxLength={MAX_ACCOUNT_NAME_LEN}
+                    autoFocus
+                    autoCorrect={false}
+                    style={{ backgroundColor: colors.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: colors.borderDefault, paddingVertical: 10, paddingHorizontal: 12, color: colors.textPrimary, fontSize: 15 }}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                    <Pressable
+                      onPress={() => setRenameIdx(null)}
+                      style={({ pressed }) => [{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.borderSubtle, alignItems: 'center' }, pressed && { opacity: 0.85 }]}
+                    >
+                      <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => { if (renameIdx !== null) setAccountName(renameIdx, renameDraft); setRenameIdx(null); }}
+                      style={({ pressed }) => [{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.blue, alignItems: 'center' }, pressed && { opacity: 0.85 }]}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>Save</Text>
+                    </Pressable>
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Modal>
+
             {/* Top header */}
             <View style={styles.topbar}>
               <Pressable
@@ -5825,7 +5887,7 @@ function App() {
               >
                 <View style={styles.acctAvatar}><Text style={styles.acctAvatarText}>○</Text></View>
                 <View>
-                  <Text style={styles.acctName}>{`Account ${walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx + 1 : 1}`}</Text>
+                  <Text style={styles.acctName} numberOfLines={1}>{getAccountName(walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx : 0)}</Text>
                   <Text style={styles.acctAddr}>{shortLitho || shortAddr}</Text>
                 </View>
               </Pressable>
