@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "126709812401",
+    "project_id": "android-app-32e9e",
+    "storage_bucket": "android-app-32e9e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:126709812401:android:48f8773820032c2998e690",
+        "android_client_info": {
+          "package_name": "ai.thanos.wallet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQDuz1uLi_myYNh6N7Im3jRf71Cdnbt2Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
