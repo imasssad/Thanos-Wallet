@@ -462,10 +462,8 @@ function PortfolioList() {
 }
 
 /* Quantt Agents — the AI assistant the card routes to (opens in the in-app
-   browser). TODO(team): set the real Quantt Agents product URL; defaults to the
-   ecosystem hub so the card never opens an unverified destination in the wallet
-   browser until it's confirmed. */
-const QUANTT_AGENTS_URL = 'https://ecosystem.litho.ai';
+   browser). Points at the live Quantt product site. */
+const QUANTT_AGENTS_URL = 'https://quantts.ai';
 
 function AIAssistant() {
   const open = useOpenDapp();

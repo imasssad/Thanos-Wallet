@@ -961,10 +961,9 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
 /* LAX virtual card + Quantt Agents — same offer the web/desktop/extension
    clients show. Native LAX issuance is gated on the partner API, so "Get
    Started" opens the LAX application (lax.money) in the device browser.
-   QUANTT_AGENTS_URL defaults to the ecosystem hub until the real Quantt
-   product URL is confirmed. */
+   QUANTT_AGENTS_URL points at the live Quantt product site. */
 const LAX_APPLY_URL = 'https://lax.money';
-const QUANTT_AGENTS_URL = 'https://ecosystem.litho.ai';
+const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
   'Unlimited top-ups with 0 fees',
