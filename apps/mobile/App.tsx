@@ -509,37 +509,38 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
         // memory, appending whatever has a balance. Best-effort per chain.
         if (!seedKey) return;
         const phrase = seedKey;
-        type XRow = { sym: string; name: string; chainId: number; balance: number; decimals: number };
-        const derivers: Array<() => Promise<XRow>> = !HOME_LOAD_NATIVE_CHAINS ? [] : [
-          async () => {
+        // Every supported network gets a VISIBLE row even at zero balance
+        // (client request 2026-07-15: "show all supported networks") — but
+        // BTC/SOL/ATOM balances are only FETCHED when HOME_LOAD_NATIVE_CHAINS
+        // allows it (the heavy-lib memory caution above). Zero rows are pure
+        // metadata; Send/Receive still load live balances on demand.
+        const NATIVE_CHAIN_ROWS: Array<{ sym: string; name: string; decimals: number; fetchBal?: () => Promise<number> }> = [
+          { sym: 'BTC', name: 'Bitcoin', decimals: 8, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
             const m = await import('./lib/bitcoin');
-            const bal = parseFloat(await m.getBitcoinBalance(m.getBitcoinAddress(phrase))) || 0;
-            return { sym: 'BTC', name: 'Bitcoin', chainId: 0, balance: bal, decimals: 8 };
-          },
-          async () => {
+            return parseFloat(await m.getBitcoinBalance(m.getBitcoinAddress(phrase))) || 0;
+          } },
+          { sym: 'SOL', name: 'Solana', decimals: 9, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
             const m = await import('./lib/solana');
-            const bal = parseFloat(await m.getSolanaBalance(m.getSolanaAddress(phrase))) || 0;
-            return { sym: 'SOL', name: 'Solana', chainId: 0, balance: bal, decimals: 9 };
-          },
-          async () => {
+            return parseFloat(await m.getSolanaBalance(m.getSolanaAddress(phrase))) || 0;
+          } },
+          { sym: 'ATOM', name: 'Cosmos Hub', decimals: 6, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
             const m = await import('./lib/cosmos');
-            const bal = parseFloat(await m.getCosmosBalance(await m.getCosmosAddress(phrase))) || 0;
-            return { sym: 'ATOM', name: 'Cosmos Hub', chainId: 0, balance: bal, decimals: 6 };
-          },
+            return parseFloat(await m.getCosmosBalance(await m.getCosmosAddress(phrase))) || 0;
+          } },
         ];
         InteractionManager.runAfterInteractions(() => {
           void (async () => {
-            for (const derive of derivers) {
+            for (const n of NATIVE_CHAIN_ROWS) {
               if (cancelled) return;
-              let r: XRow | null = null;
-              try { r = await derive(); } catch { r = null; }
-              if (cancelled || !r || r.balance <= 0) continue; // skip empty positions
-              const priceUsd = prices[r.sym] ?? 0;
+              let bal = 0;
+              if (n.fetchBal) { try { bal = await n.fetchBal(); } catch { bal = 0; } }
+              if (cancelled) return;
+              const priceUsd = prices[n.sym] ?? 0;
               const row: DisplayAsset = {
-                sym: r.sym, name: r.name, chainId: r.chainId,
-                balance: r.balance, balanceText: formatAmount(r.balance),
-                decimals: r.decimals, priceUsd, usdValue: r.balance * priceUsd,
-                color: assetColor(r.sym), native: true,
+                sym: n.sym, name: n.name, chainId: 0,
+                balance: bal, balanceText: formatAmount(bal),
+                decimals: n.decimals, priceUsd, usdValue: bal * priceUsd,
+                color: assetColor(n.sym), native: true,
               };
               setAssets(prev => [...prev, row]);
               setTotal(prev => prev + row.usdValue);
@@ -557,14 +558,21 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
                 m.getAllExtEvmTokenBalances(address),
               ]);
               if (cancelled) return;
+              // Row for EVERY supported external chain — fetched (non-zero)
+              // balances merge in; the rest render as zero-balance rows so
+              // users can see the wallet supports the network.
+              const balByChain = new Map(natives.map((n) => [n.chain.chainId, n.balance]));
               const extRows: DisplayAsset[] = [
-                ...natives.map(({ chain, balance }) => ({
-                  sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
-                  balance, balanceText: formatAmount(balance), decimals: 18,
-                  priceUsd: prices[chain.nativeSymbol] ?? 0,
-                  usdValue: balance * (prices[chain.nativeSymbol] ?? 0),
-                  color: chain.color, native: true,
-                })),
+                ...m.EXT_EVM_CHAINS.map((chain) => {
+                  const balance = balByChain.get(chain.chainId) ?? 0;
+                  return {
+                    sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
+                    balance, balanceText: formatAmount(balance), decimals: 18,
+                    priceUsd: prices[chain.nativeSymbol] ?? 0,
+                    usdValue: balance * (prices[chain.nativeSymbol] ?? 0),
+                    color: chain.color, native: true,
+                  };
+                }),
                 ...tokens.map(({ token, balance }) => {
                   const price = prices[token.symbol] ?? 1; // stablecoins ≈ $1
                   return {
@@ -601,7 +609,16 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     return () => { cancelled = true; };
   }, [address, nonce, seedKey]);
 
-  return { assets, totalUsd, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
+  // Funded assets first (largest USD on top); zero-balance supported-network
+  // rows trail in their insertion order — "what I own" above "what I could hold".
+  const displayAssets = useMemo(() => [...assets].sort((a, b) => {
+    const af = a.balance > 0 ? 0 : 1;
+    const bf = b.balance > 0 ? 0 : 1;
+    if (af !== bf) return af - bf;
+    return af === 0 ? b.usdValue - a.usdValue : 0;
+  }), [assets]);
+
+  return { assets: displayAssets, totalUsd, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
 }
 
 /** Relative "x min ago" label from an ISO timestamp. */
