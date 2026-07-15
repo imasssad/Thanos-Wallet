@@ -2745,7 +2745,7 @@ function SettingsScreen() {
   const [bioKind, setBioKind]   = useState<BiometricKind>('none');
   const [bioReady, setBioReady] = useState(false);
   const [bioOn, setBioOn]       = useState(false);
-  const [copied, setCopied]     = useState(false);
+  const [copiedFmt, setCopiedFmt] = useState<'litho' | 'evm' | null>(null);
   const [wcOpen, setWcOpen]     = useState(false);
   const [notifOn, setNotifOn]   = useState(false);
 
@@ -2807,11 +2807,17 @@ function SettingsScreen() {
     await refreshBio();
   };
 
-  const copyAddr = async () => {
-    if (!walletAddr) return;
-    try { await Clipboard.setStringAsync(walletAddr); } catch {}
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  // One keypair, two encodings: litho1 (Makalu-native, shown first) and 0x.
+  const lithoAddr = useMemo(() => {
+    try { return walletAddr ? evmToLitho(walletAddr) : ''; } catch { return ''; }
+  }, [walletAddr]);
+
+  const copyAddrFmt = async (fmt: 'litho' | 'evm') => {
+    const v = fmt === 'litho' ? lithoAddr : walletAddr;
+    if (!v) return;
+    try { await Clipboard.setStringAsync(v); } catch {}
+    setCopiedFmt(fmt);
+    setTimeout(() => setCopiedFmt(null), 1500);
   };
 
   type SettingItem = {
@@ -2917,7 +2923,8 @@ function SettingsScreen() {
         <Text style={styles.setHeroSub}>Manage your wallet preferences, security, and account details.</Text>
       </View>
 
-      {/* Account header card */}
+      {/* Account header card — litho1 (Makalu-native) leads, 0x follows.
+          Same keypair, two encodings; each row copies its own format. */}
       <View style={styles.acctHeaderCard}>
         <Image
           source={require('./assets/images/Thanos_Logo_Transparent.png')}
@@ -2926,13 +2933,23 @@ function SettingsScreen() {
         />
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={styles.acctHeaderName}>Account {(seed.length > 0 && !isPrivateKeyWallet(seed) ? getActiveAccountIndex() : 0) + 1}</Text>
-          <Text style={styles.acctHeaderAddr} numberOfLines={1} ellipsizeMode="middle">
-            {walletAddr || '—'}
-          </Text>
+          {!!lithoAddr && (
+            <Pressable style={styles.addrRow} onPress={() => copyAddrFmt('litho')} hitSlop={6}>
+              <Text style={styles.addrFmtTag}>LITHO</Text>
+              <Text style={[styles.acctHeaderAddr, styles.addrRowText]} numberOfLines={1} ellipsizeMode="middle">
+                {lithoAddr}
+              </Text>
+              <Text style={styles.addrCopyMini}>{copiedFmt === 'litho' ? '✓' : 'Copy'}</Text>
+            </Pressable>
+          )}
+          <Pressable style={styles.addrRow} onPress={() => copyAddrFmt('evm')} hitSlop={6}>
+            <Text style={styles.addrFmtTag}>EVM</Text>
+            <Text style={[styles.acctHeaderAddr, styles.addrRowText]} numberOfLines={1} ellipsizeMode="middle">
+              {walletAddr || '—'}
+            </Text>
+            <Text style={styles.addrCopyMini}>{copiedFmt === 'evm' ? '✓' : 'Copy'}</Text>
+          </Pressable>
         </View>
-        <Pressable style={styles.copyChip} onPress={copyAddr}>
-          <Text style={styles.copyChipText}>{copied ? '✓' : 'Copy'}</Text>
-        </Pressable>
       </View>
 
       <Section Icon={Globe} title="General" sub="Display, language, and locale" items={[
@@ -5480,7 +5497,14 @@ function App() {
     // (in OnboardingScreen) wipes it.
   };
 
-  const shortAddr = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
+  // Chain-native (Makalu) bech32 form of the same keypair — litho1 is the
+  // identity users see on-chain, so it leads wherever an address is shown;
+  // the 0x form stays one tap away (Settings, Receive toggle).
+  const lithoAddr = useMemo(() => {
+    try { return walletAddr ? evmToLitho(walletAddr) : ''; } catch { return ''; }
+  }, [walletAddr]);
+  const shortAddr  = walletAddr.length > 12 ? `${walletAddr.slice(0,6)}…${walletAddr.slice(-4)}` : walletAddr;
+  const shortLitho = lithoAddr ? `${lithoAddr.slice(0, 9)}…${lithoAddr.slice(-4)}` : '';
 
   // Wait for storage check before deciding which screen to show
   if (hasVault === null) {
@@ -5604,6 +5628,9 @@ function App() {
                   {Array.from({ length: isPrivateKeyWallet(walletSeed) ? 1 : accountCount }, (_, i) => {
                     const a = accountAddresses[i];
                     const tag = a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
+                    // litho1 leads, 0x follows — same key, both encodings visible.
+                    let lithoShort = '';
+                    try { lithoShort = a ? `${evmToLitho(a).slice(0, 9)}…${evmToLitho(a).slice(-4)}` : ''; } catch {}
                     const active = i === (isPrivateKeyWallet(walletSeed) ? 0 : activeIdx);
                     return (
                       <Pressable
@@ -5621,7 +5648,11 @@ function App() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '700' }}>{`Account ${i + 1}`}</Text>
-                          {tag ? <Text style={{ color: colors.textMuted, fontSize: 12, fontFamily: MONO, marginTop: 1 }}>{tag}</Text> : null}
+                          {(lithoShort || tag) ? (
+                            <Text style={{ color: colors.textMuted, fontSize: 12, fontFamily: MONO, marginTop: 1 }} numberOfLines={1}>
+                              {lithoShort ? `${lithoShort} · ${tag}` : tag}
+                            </Text>
+                          ) : null}
                         </View>
                         {active ? <Check size={20} color={colors.blue} strokeWidth={2.8}/> : null}
                       </Pressable>
@@ -5672,7 +5703,7 @@ function App() {
                 <View style={styles.acctAvatar}><Text style={styles.acctAvatarText}>○</Text></View>
                 <View>
                   <Text style={styles.acctName}>{`Account ${walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx + 1 : 1}`}</Text>
-                  <Text style={styles.acctAddr}>{shortAddr}</Text>
+                  <Text style={styles.acctAddr}>{shortLitho || shortAddr}</Text>
                 </View>
               </Pressable>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -6114,6 +6145,10 @@ function makeStyles(C: Colors) {
     },
     acctHeaderName: { color: C.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: -0.3 },
     acctHeaderAddr: { color: C.textMuted, fontSize: 11, fontFamily: MONO, marginTop: 2 },
+    addrRow:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+    addrRowText:    { flex: 1, marginTop: 0 },
+    addrFmtTag:     { color: C.textMuted, fontSize: 8.5, fontWeight: '800', letterSpacing: 0.6, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1, overflow: 'hidden' },
+    addrCopyMini:   { color: C.blue, fontSize: 11, fontWeight: '700' },
     copyChip: {
       paddingHorizontal: 12, paddingVertical: 6,
       backgroundColor: C.blueDim,
