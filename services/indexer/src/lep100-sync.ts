@@ -492,8 +492,14 @@ export async function buildSeedActivity(walletAddress: string) {
       id: String(r.id),
       chainId: MAKALU_CHAIN_ID,
       kind: isReceive ? 'receive' : 'send',
+      // Canonical field name in the clients' IndexerActivityItem contract —
+      // `kind` is kept for anything still reading the old shape.
+      type: isReceive ? 'receive' : 'send',
       status: 'confirmed',
       title: `${isReceive ? 'Received' : 'Sent'} ${r.symbol}`,
+      // The other party of the transfer — lets clients render the specifics
+      // ("From 0xabc…" / "To 0xdef…") instead of a bare label.
+      counterparty: isReceive ? r.from_address : r.to_address,
       // Human-readable amount (raw / 10^decimals). Every client renders this
       // string as-is; the web client's own formatUnits re-decode is removed in
       // the same deploy so it doesn't double-format. `decimals` is included for
@@ -503,6 +509,8 @@ export async function buildSeedActivity(walletAddress: string) {
       decimals: r.decimals,
       txHash: r.tx_hash,
       createdAt: r.occurred_at,
+      // Canonical timestamp field in the client contract (mirror of createdAt).
+      ts: r.occurred_at,
     };
   });
 }

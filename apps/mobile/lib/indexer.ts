@@ -41,6 +41,29 @@ export interface IndexerActivityItem {
   blockNumber?:  number;
   ts?:           string;
   status?:       'pending' | 'confirmed' | 'failed' | string;
+  /** Indexer-authored display label, e.g. "Received MUSA" (optional). */
+  title?:        string;
+}
+
+/** The indexer's live rows are shaped slightly differently from this client
+ *  contract (`kind` for type, `createdAt` for ts — see services/indexer
+ *  buildSeedActivity). Normalize both shapes so rows never degrade to the
+ *  generic "Activity / confirmed" fallback, whichever server version is
+ *  deployed. */
+function normalizeActivityItem(raw: IndexerActivityItem & { kind?: string; createdAt?: string }): IndexerActivityItem {
+  const r = raw;
+  return {
+    id:           String(r.id ?? r.txHash ?? ''),
+    type:         r.type ?? r.kind ?? '',
+    symbol:       r.symbol ?? '',
+    amount:       r.amount ?? '',
+    counterparty: r.counterparty,
+    txHash:       r.txHash,
+    blockNumber:  r.blockNumber,
+    ts:           r.ts ?? r.createdAt,
+    status:       r.status,
+    title:        r.title,
+  };
 }
 
 export interface IndexerPortfolio {
@@ -78,7 +101,8 @@ async function getJson<T>(path: string, timeoutMs = 8_000): Promise<T> {
 
 /** Full portfolio — native LITHO + LEP100 balances + recent activity. */
 export async function getPortfolio(walletAddress: string): Promise<IndexerPortfolio> {
-  return getJson<IndexerPortfolio>(`/portfolio/${encodeURIComponent(walletAddress)}`);
+  const p = await getJson<IndexerPortfolio>(`/portfolio/${encodeURIComponent(walletAddress)}`);
+  return { ...p, activity: (p.activity ?? []).map(normalizeActivityItem) };
 }
 
 /** Recent on-chain activity for a wallet. */
@@ -86,7 +110,7 @@ export async function getActivity(walletAddress: string): Promise<IndexerActivit
   const data = await getJson<{ items: IndexerActivityItem[] }>(
     `/activity/${encodeURIComponent(walletAddress)}`,
   );
-  return data.items ?? [];
+  return (data.items ?? []).map(normalizeActivityItem);
 }
 
 /** Liveness probe — for a "Connected / Offline" badge. */

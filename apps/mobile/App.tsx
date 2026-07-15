@@ -2079,6 +2079,13 @@ function ActivityScreen() {
                        : d.label === 'Received' ? ArrowDownLeft
                        : Repeat;
           const amount = String(t.amount ?? '').replace(/^[+-]/, '');
+          // Specifics line: direction + counterparty + when.
+          // "To 0x2c2b…72e4 · 3 min ago" / "From litho1…" — falls back
+          // gracefully when the indexer doesn't send a counterparty.
+          const cp = (t.counterparty ?? '').trim();
+          const cpShort = cp.length > 12 ? `${cp.slice(0, 6)}…${cp.slice(-4)}` : cp;
+          const cpLine = cp ? `${d.label === 'Received' ? 'From' : 'To'} ${cpShort}` : '';
+          const when = relativeTime(t.ts) || (t.status ?? '');
           return (
             <Pressable key={t.id || `${i}`} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
               <View style={[styles.txIcon, { backgroundColor: d.positive ? C.greenDim : C.blueDim }]}>
@@ -2086,10 +2093,12 @@ function ActivityScreen() {
               </View>
               <View style={styles.rowMid}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.rowSymbol}>{d.label} {t.symbol}</Text>
+                  <Text style={styles.rowSymbol}>{t.title || `${d.label} ${t.symbol}`}</Text>
                   {t.status === 'pending' ? <PendingBadge/> : null}
                 </View>
-                <Text style={styles.rowSub}>{relativeTime(t.ts) || (t.status ?? '')}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>
+                  {cpLine ? `${cpLine}${when ? ` · ${when}` : ''}` : when}
+                </Text>
               </View>
               <View style={styles.rowRight}>
                 <Text style={[styles.rowAmt, { color: d.positive ? C.green : C.textPrimary }]}>
