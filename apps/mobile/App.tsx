@@ -1204,14 +1204,29 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           <CreditCard size={15} color={C.blue}/>
           <Text style={{ color: C.textSecondary, fontSize: 12, fontWeight: '700' }}>Virtual Card</Text>
         </View>
+        {/* Card art — mirrors web's LaxCardArt (radial-gradient body, faded
+            LAX emblem centered, wordmark + VISA) so the card reads the same
+            across web / desktop / extension / mobile. */}
         <View style={{
           width: '100%', aspectRatio: 1.586, borderRadius: 14, overflow: 'hidden',
-          backgroundColor: '#0a0d18', borderWidth: 1, borderColor: 'rgba(59,122,247,0.30)',
+          backgroundColor: '#0a0d18', borderWidth: 1, borderColor: 'rgba(59,122,247,0.28)',
           padding: 15, justifyContent: 'space-between',
         }}>
-          <Text style={{ color: '#7ea0ff', fontSize: 22, fontWeight: '800', letterSpacing: 6 }}>LAX</Text>
+          <SvgXml
+            xml={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 317 200" preserveAspectRatio="none"><defs><radialGradient id="g" cx="50%" cy="-10%" r="130%"><stop offset="0%" stop-color="#141a2e"/><stop offset="55%" stop-color="#0a0d18"/><stop offset="100%" stop-color="#05070f"/></radialGradient></defs><rect width="317" height="200" fill="url(#g)"/></svg>'}
+            width="100%" height="100%"
+            style={StyleSheet.absoluteFill}
+          />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', left: '4%' }]}>
+            <Image
+              source={require('./assets/images/tokens/lax.png')}
+              style={{ width: '42%', aspectRatio: 1, opacity: 0.45 }}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={{ color: '#7da3ff', fontSize: 22, fontWeight: '800', letterSpacing: 7 }}>LAX</Text>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ color: '#3b7af7', fontSize: 26, fontWeight: '800', fontStyle: 'italic' }}>VISA</Text>
+            <Text style={{ color: '#2a5de6', fontSize: 26, fontWeight: '800', fontStyle: 'italic' }}>VISA</Text>
             <Text style={{ color: '#5b8cff', fontSize: 11, fontWeight: '500', marginTop: 1 }}>Algorithmic</Text>
           </View>
         </View>

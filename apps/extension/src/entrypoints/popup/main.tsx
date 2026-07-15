@@ -656,6 +656,11 @@ function LaxCardArt() {
       background: 'radial-gradient(130% 130% at 50% -10%, #141a2e 0%, #0a0d18 55%, #05070f 100%)',
       border: '1px solid rgba(59,122,247,0.28)', boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
     }}>
+      {/* faded emblem — same centre art as web's LaxCardArt */}
+      <img src="/images/tokens/lax.png" alt="" aria-hidden style={{
+        position: 'absolute', top: '50%', left: '52%', transform: 'translate(-50%,-50%)',
+        width: '42%', opacity: 0.45, filter: 'drop-shadow(0 0 26px rgba(59,122,247,0.45))',
+      }}/>
       <div style={{
         position: 'absolute', top: '9%', left: '7%', fontSize: 20, fontWeight: 800, letterSpacing: '0.32em',
         background: 'linear-gradient(90deg,#5b8cff,#9bb0ff)', WebkitBackgroundClip: 'text',
