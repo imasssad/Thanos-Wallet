@@ -4340,7 +4340,7 @@ function OnboardingScreen({
 
   /* Biometric path — reads the OS-protected stash of the derived AES
      key, then decrypts the vault with it. No Argon2id round-trip. */
-  const tryBiometricUnlock = async () => {
+  const tryBiometricUnlock = async (opts?: { silentCancel?: boolean }) => {
     if (busy) return;
     setBusy(true);
     setUnlockErr('');
@@ -4349,7 +4349,9 @@ function OnboardingScreen({
       if (!vault) { setUnlockErr('No wallet on this device.'); return; }
       const key = await readProtectedKey();
       if (!key) {
-        setUnlockErr('Biometric unlock cancelled.');
+        // Auto-prompted attempts fail quietly — the user simply lands on the
+        // password field; only a tapped attempt announces the cancel.
+        if (!opts?.silentCancel) setUnlockErr('Biometric unlock cancelled.');
         return;
       }
       const mnemonic = await openVaultWithKey(vault, key);
@@ -4361,6 +4363,20 @@ function OnboardingScreen({
       onComplete(mnemonic.split(' '));
     } finally { setBusy(false); }
   };
+
+  /* Auto-prompt Face ID / fingerprint as soon as the unlock screen shows —
+     standard wallet UX; the button remains as a manual retry. Fires once per
+     mount (per lock), only after the capability probe confirms biometric
+     unlock is enabled, and waits a beat so the OS sheet doesn't race the
+     mount animation. */
+  const autoBioFired = useRef(false);
+  useEffect(() => {
+    if (step !== 'unlock' || !bioAvail.on || busy || autoBioFired.current) return;
+    autoBioFired.current = true;
+    const t = setTimeout(() => { void tryBiometricUnlock({ silentCancel: true }); }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, bioAvail.on, busy]);
 
   const resetWallet = async () => {
     await clearVaultStore();
@@ -4423,7 +4439,7 @@ function OnboardingScreen({
                 <Btn
                   style={[styles.obBio, { opacity: busy ? 0.6 : 1 }]}
                   disabled={busy}
-                  onPress={tryBiometricUnlock}
+                  onPress={() => { void tryBiometricUnlock(); }}
                   ripple="rgba(59,122,247,0.18)"
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
