@@ -112,6 +112,10 @@ import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
 import { fetchNativeLithoActivity, mergeActivityFeeds } from './lib/makalu-explorer';
+import {
+  formatFiat, initDisplayCurrency, applyDisplayCurrency, persistDisplayCurrency,
+  CURRENCY_OPTS as FX_CURRENCY_OPTS, type DisplayCurrency,
+} from './lib/fx';
 import type { ImageSourcePropType } from 'react-native';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
 import { addLocalActivity, getLocalActivity, type LocalActivityItem } from './lib/local-activity';
@@ -230,6 +234,10 @@ const StylesCtx  = createContext(makeStyles(DARK));
 /* Opens the rename-account dialog for an account index. Provided by the
    root shell so any screen (Settings card, account sheet) can trigger it. */
 const RenameAcctCtx = createContext<(idx: number) => void>(() => {});
+/* Display currency — root-held so a change re-renders the whole tree
+   (every formatUsd call picks up the new rate), same pattern as theme. */
+const FiatCtx = createContext<{ code: DisplayCurrency; set: (c: DisplayCurrency) => void }>({ code: 'USD', set: () => {} });
+function useFiat() { return useContext(FiatCtx); }
 
 function useColors()  { return useContext(ThemeCtx); }
 function useToggle()  { return useContext(ToggleCtx); }
@@ -382,11 +390,11 @@ function formatAmount(n: number): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: n >= 1 ? 4 : 8 });
 }
 
-/** USD format — $1,234.56 */
+/** Format a USD amount in the user's display currency (Settings →
+ *  Currency). Conversion happens at format time via lib/fx; the value
+ *  pipeline stays USD throughout. Falls back to plain $ until rates load. */
 function formatUsd(n: number): string {
-  return '$' + (isFinite(n) ? n : 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  });
+  return formatFiat(n);
 }
 
 interface DisplayAsset {
@@ -2881,17 +2889,17 @@ function SettingsScreen() {
   const [dnnsOpen, setDnnsOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
-  const [currency, setCurrency]         = useState('USD');
   const [language, setLanguage]         = useState('English');
   useEffect(() => {
     AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0));
-    AsyncStorage.getItem(PREF_CURRENCY).then(v => { if (v) setCurrency(v); });
     AsyncStorage.getItem(PREF_LANGUAGE).then(v => { if (v) setLanguage(v); });
   }, []);
 
-  // Display preferences — persisted picker, matches web's General section.
-  const pickCurrency = () => Alert.alert('Display currency', 'Prices stream in USD; FX conversion arrives in a later update.', [
-    ...CURRENCY_OPTS.map(c => ({ text: `${c === currency ? '✓ ' : ''}${c}`, onPress: () => { setCurrency(c); AsyncStorage.setItem(PREF_CURRENCY, c).catch(() => {}); } })),
+  // Display currency — LIVE: the pick reformats every price in the app via
+  // lib/fx (root-held state, so the whole tree re-renders on change).
+  const fiat = useFiat();
+  const pickCurrency = () => Alert.alert('Display currency', 'Prices are converted from live USD rates.', [
+    ...FX_CURRENCY_OPTS.map(c => ({ text: `${c === fiat.code ? '✓ ' : ''}${c}`, onPress: () => fiat.set(c) })),
     { text: 'Cancel', style: 'cancel' as const },
   ]);
   const pickLanguage = () => Alert.alert('Interface language', 'Full translations arrive in a later update.', [
@@ -3125,7 +3133,7 @@ function SettingsScreen() {
       </View>
 
       <Section Icon={Globe} title="General" sub="Display, language, and locale" items={[
-        { label: 'Currency', desc: `Display prices in ${currency}`, Icon: TrendingUp, onPress: pickCurrency },
+        { label: 'Currency', desc: `Display prices in ${fiat.code}`, Icon: TrendingUp, onPress: pickCurrency },
         { label: 'Language', desc: `Interface language — ${language}`, Icon: Globe, onPress: pickLanguage },
         { label: 'Theme', desc: isDark ? 'Dark' : 'Light', Icon: isDark ? Moon : Sun, onPress: toggle },
       ]}/>
@@ -5556,6 +5564,18 @@ function App() {
   // So: stash the index, dismiss the sheet, and present the dialog from the
   // sheet Modal's onDismiss (iOS fires it after dismissal completes; Android
   // has no onDismiss but stacks Modals fine, so it opens immediately).
+  // Display currency — restore the persisted pick on boot; changing it
+  // re-renders the shell so every price reformats immediately.
+  const [fiatCode, setFiatCode] = useState<DisplayCurrency>('USD');
+  useEffect(() => { void initDisplayCurrency().then(setFiatCode); }, []);
+  const fiatCtxValue = useMemo(() => ({
+    code: fiatCode,
+    set: (c: DisplayCurrency) => {
+      void persistDisplayCurrency(c);
+      void applyDisplayCurrency(c).then(setFiatCode);
+    },
+  }), [fiatCode]);
+
   const pendingRenameRef = useRef<number | null>(null);
   const openRename = (idx: number) => {
     setRenameDraft(getCustomAccountName(idx) ?? '');
@@ -5799,6 +5819,7 @@ function App() {
     <ThemeCtx.Provider value={colors}>
       <StylesCtx.Provider value={styles}>
         <ToggleCtx.Provider value={toggle}>
+        <FiatCtx.Provider value={fiatCtxValue}>
         <RenameAcctCtx.Provider value={openRename}>
         <WalletAddrCtx.Provider value={walletAddr}>
         <WalletSeedCtx.Provider value={walletSeed}>
@@ -6067,6 +6088,7 @@ function App() {
         </WalletSeedCtx.Provider>
         </WalletAddrCtx.Provider>
         </RenameAcctCtx.Provider>
+        </FiatCtx.Provider>
         </ToggleCtx.Provider>
       </StylesCtx.Provider>
     </ThemeCtx.Provider>
