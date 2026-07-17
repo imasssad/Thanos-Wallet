@@ -15,6 +15,7 @@ import {
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { DappBrowserOverlay } from './components/DappBrowserOverlay';
+import { DappRequestHost } from './DappRequestHost';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, type DisplayCoin } from './portfolio';
 import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain } from './evm-external-meta';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
@@ -122,6 +123,11 @@ declare global {
           canGoBack?: boolean; canGoForward?: boolean;
           code?: number; description?: string;
         }) => void): () => void;
+        /** Post-approval signing bridge for the in-app browser's injected
+         *  provider. Main shows the approval dialog, then asks the renderer
+         *  to sign (renderer owns seed + active account). */
+        onExec(cb: (req: { id: number; method: string; params: unknown[] }) => void): () => void;
+        execRespond(id: number, result: unknown, error?: { code: number; message: string }): void;
       };
     };
   }
@@ -3772,6 +3778,10 @@ function App() {
 
       {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
       <MakaluWelcomeModal/>
+
+      {/* Non-visual: signs in-app-browser dApp requests (e.g. Quantt's
+          Sign in with Thanos) after main approves them. */}
+      <DappRequestHost seed={walletSeed}/>
 
       {/* Auto-update banner — mounts above the topnav so it's seen first
           but never blocks app interaction. Renders null when there's

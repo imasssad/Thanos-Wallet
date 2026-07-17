@@ -65,6 +65,19 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
       ipcRenderer.on('dapp:event', handler);
       return () => ipcRenderer.off('dapp:event', handler);
     },
+
+    /* Post-approval signing bridge for the in-app browser's injected
+       provider. Main owns the approval dialog (the only surface that draws
+       above the WebContentsView); once approved, main asks the renderer to
+       sign here — the renderer holds the seed + active account and reuses the
+       WalletConnect signer. See dapp-browser.ts + DappRequestHost.tsx. */
+    onExec: (cb: (req: { id: number; method: string; params: unknown[] }) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, req: { id: number; method: string; params: unknown[] }) => cb(req);
+      ipcRenderer.on('dapp:exec', handler);
+      return () => ipcRenderer.off('dapp:exec', handler);
+    },
+    execRespond: (id: number, result: unknown, error?: { code: number; message: string }) =>
+      ipcRenderer.send('dapp:exec-response', { id, result, error }),
   },
 
   /* ─── Isolated signer ────────────────────────────────────────────────

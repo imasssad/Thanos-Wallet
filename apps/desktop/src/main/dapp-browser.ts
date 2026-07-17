@@ -23,7 +23,9 @@
  *   - HTTP-only URLs are upgraded to https on navigate to defeat
  *     transparent downgrades.
  */
-const { WebContentsView, shell, BrowserWindow, ipcMain } = require('electron') as typeof import('electron');
+const { WebContentsView, shell, BrowserWindow, ipcMain, dialog } = require('electron') as typeof import('electron');
+const path = require('path') as typeof import('path');
+const { JsonRpcProvider } = require('ethers') as typeof import('ethers');
 
 interface ViewBounds { x: number; y: number; width: number; height: number }
 
@@ -35,6 +37,88 @@ interface DappOpenPayload {
 let view: import('electron').WebContentsView | null = null;
 let host: import('electron').BrowserWindow | null = null;
 let currentUrl = '';
+
+const CHAIN_HEX = '0xab169'; // Makalu 700777
+
+// Per-open connection state — reset when the browser view is destroyed.
+let connected = false;
+let connectedAddress = '';
+
+// Post-approval signing round-trips to the wallet renderer are correlated by
+// id (main owns the approval dialog; the renderer owns the seed + signer).
+interface PendingExec { resolve: (v: { result?: unknown; error?: { code: number; message: string } }) => void }
+const pendingExec = new Map<number, PendingExec>();
+let execSeq = 0;
+
+function rejectAllExec(): void {
+  for (const [, p] of pendingExec) p.resolve({ error: { code: 4900, message: 'Wallet disconnected' } });
+  pendingExec.clear();
+}
+
+/** Ask the wallet renderer to sign an already-approved request. */
+function execViaRenderer(method: string, params: unknown[]): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+  if (!host) return Promise.resolve({ error: { code: 4900, message: 'Wallet disconnected' } });
+  const id = ++execSeq;
+  return new Promise((resolve) => {
+    pendingExec.set(id, { resolve });
+    host!.webContents.send('dapp:exec', { id, method, params });
+  });
+}
+
+// Read-only JSON-RPC (eth_call, eth_getBalance, …) is answered straight from
+// Makalu — no seed, no approval needed.
+let readProvider: import('ethers').JsonRpcProvider | null = null;
+function makaluRead(): import('ethers').JsonRpcProvider {
+  if (!readProvider) readProvider = new JsonRpcProvider('https://rpc.litho.ai', 700777, { staticNetwork: true });
+  return readProvider;
+}
+
+/** Native approval dialog — the only surface that reliably draws ABOVE the
+ *  dApp WebContentsView. Returns true if the user approved. */
+async function approveViaDialog(kind: 'connect' | 'sign' | 'tx', originHost: string, detail: string): Promise<boolean> {
+  if (!host) return false;
+  const site = originHost || 'this site';
+  const confirmLabel = kind === 'connect' ? 'Connect' : kind === 'tx' ? 'Approve & Send' : 'Sign';
+  const message =
+    kind === 'connect' ? `Connect to ${site}?`
+    : kind === 'tx'    ? `Approve transaction from ${site}?`
+    :                    `Signature request from ${site}`;
+  const { response } = await dialog.showMessageBox(host, {
+    type: 'question',
+    buttons: ['Cancel', confirmLabel],
+    defaultId: 1,
+    cancelId: 0,
+    noLink: true,
+    title: 'Thanos Wallet',
+    message,
+    detail,
+  });
+  return response === 1;
+}
+
+/** Human-readable detail for the approval dialog. */
+function describeForApproval(method: string, params: unknown[]): string {
+  try {
+    if (method === 'personal_sign' || method === 'eth_sign') {
+      const raw = method === 'personal_sign' ? params[0] : params[1];
+      let text = typeof raw === 'string' ? raw : '';
+      if (/^0x[0-9a-fA-F]*$/.test(text)) {
+        try { text = Buffer.from(text.slice(2), 'hex').toString('utf8'); } catch { /* keep hex */ }
+      }
+      return `Message:\n${text.slice(0, 300)}`;
+    }
+    if (method === 'eth_signTypedData_v4') {
+      const typed = JSON.parse(params[1] as string) as { domain?: { name?: string }; primaryType?: string };
+      const bits = [typed.domain?.name, typed.primaryType].filter(Boolean).join(' · ');
+      return `Typed data (EIP-712)${bits ? `\n${bits}` : ''}`;
+    }
+    if (method === 'eth_sendTransaction') {
+      const tx = (params[0] as { to?: string; value?: string }) ?? {};
+      return `To: ${tx.to ?? '—'}${tx.value ? `\nValue (wei): ${tx.value}` : ''}`;
+    }
+  } catch { /* fall through to the bare method name */ }
+  return method;
+}
 
 /** Send a navigation/title event back to the renderer chrome. */
 function emit(kind: string, data: Record<string, unknown> = {}): void {
@@ -60,6 +144,9 @@ function destroy(): void {
   try { view.webContents.close(); } catch { /* already closed */ }
   view = null;
   currentUrl = '';
+  connected = false;
+  connectedAddress = '';
+  rejectAllExec();
 }
 
 function createView(): import('electron').WebContentsView {
@@ -76,8 +163,12 @@ function createView(): import('electron').WebContentsView {
       // dApp logins across app restarts while staying fully separate
       // from the wallet's session (cookies, storage, permissions).
       partition: 'persist:dapp-browser',
-      // No preload — dApps get no privileged bridge. Wallet connection
-      // happens via WalletConnect QR, just like any external browser.
+      // Provider bridge preload: injects window.ethereum / window.thanos and
+      // forwards EIP-1193 requests to main (dapp:rpc), which handles approval
+      // (native dialog) + signing (wallet renderer). The seed NEVER enters
+      // this sandboxed view — the page can only ask; the user approves each
+      // connect/sign explicitly. (WalletConnect QR still works too.)
+      preload: path.join(__dirname, 'dapp-provider-preload.js'),
     },
   });
 
@@ -187,6 +278,75 @@ function attachIpc(): void {
     canGoBack:    view?.webContents.navigationHistory.canGoBack()    ?? false,
     canGoForward: view?.webContents.navigationHistory.canGoForward() ?? false,
   }));
+
+  // ─── dApp → wallet RPC bridge ────────────────────────────────────────
+  // The dApp view's injected provider (dapp-provider-preload.ts) forwards
+  // every EIP-1193 request here. Reads are answered directly; connect / sign /
+  // tx go through a native approval dialog, then to the renderer to sign.
+  ipcMain.handle('dapp:rpc', async (e, req: { method: string; params?: unknown[] }) => {
+    // Only the dApp view may drive this — never the wallet renderer or a
+    // stray frame in some other webContents.
+    if (!view || e.sender !== view.webContents || !host) {
+      return { __thanosError: true, code: 4900, message: 'Wallet disconnected' };
+    }
+    const method = req.method;
+    const params = (req.params ?? []) as unknown[];
+    const originHost = (() => { try { return new URL(currentUrl).host; } catch { return ''; } })();
+
+    // Trivially-known / already-authorised reads — no prompt.
+    if (method === 'eth_chainId')  return CHAIN_HEX;
+    if (method === 'net_version')  return '700777';
+    if (method === 'eth_accounts') return connected && connectedAddress ? [connectedAddress] : [];
+    if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
+      const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
+      if (target === CHAIN_HEX) return null;
+      return { __thanosError: true, code: method === 'wallet_switchEthereumChain' ? 4902 : 4001, message: 'Only Makalu (Lithosphere) is supported in-app.' };
+    }
+
+    // Connect — approve, then read the address back from the renderer.
+    if (method === 'eth_requestAccounts') {
+      if (connected && connectedAddress) return [connectedAddress];
+      const ok = await approveViaDialog('connect', originHost,
+        `${originHost || 'This site'} will see your wallet address and can request signatures. Each signature still needs your approval.`);
+      if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the connection request.' };
+      const out = await execViaRenderer('eth_requestAccounts', params);
+      if (out.error) return { __thanosError: true, code: out.error.code, message: out.error.message };
+      const accts = out.result as string[];
+      if (Array.isArray(accts) && accts.length) {
+        connected = true;
+        connectedAddress = accts[0];
+        view.webContents.send('dapp:emit', { event: 'accountsChanged', data: accts });
+      }
+      return out.result;
+    }
+
+    // Signing / transactions — approve, then sign in the renderer.
+    if (method === 'personal_sign' || method === 'eth_sign' || method === 'eth_signTypedData_v4' || method === 'eth_sendTransaction') {
+      const kind = method === 'eth_sendTransaction' ? 'tx' : 'sign';
+      const ok = await approveViaDialog(kind, originHost, describeForApproval(method, params));
+      if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the request.' };
+      const out = await execViaRenderer(method, params);
+      if (out.error) return { __thanosError: true, code: out.error.code, message: out.error.message };
+      return out.result;
+    }
+
+    // Anything else is a read — proxy to Makalu.
+    try {
+      return await makaluRead().send(method, params);
+    } catch (err) {
+      return { __thanosError: true, code: -32603, message: (err as Error)?.message || 'RPC error' };
+    }
+  });
+
+  // The renderer's verdict for an approved signing request (DappRequestHost)
+  // resolves the matching execViaRenderer promise.
+  ipcMain.on('dapp:exec-response', (e, res: { id: number; result?: unknown; error?: { code: number; message: string } }) => {
+    if (!host || e.sender !== host.webContents) return;
+    const p = pendingExec.get(res.id);
+    if (!p) return;
+    pendingExec.delete(res.id);
+    p.resolve({ result: res.result, error: res.error });
+  });
 }
 
 /** Wire the in-app browser to a host BrowserWindow. Idempotent. */
