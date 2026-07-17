@@ -24,17 +24,30 @@ import { detectPlatform, useExtensionInstalled, CHROME_STORE_URL, PLAY_STORE_URL
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const APP_DEEP_LINK = `thanoswallet://open?url=${encodeURIComponent(QUANTT_AGENTS_URL)}`;
 
+/** Chromium desktop browsers — the only ones the Thanos extension installs on
+ *  (Firefox AMO isn't published; Safari has no build). Used to decide whether
+ *  the "install the extension" CTA is actually actionable. */
+function isChromiumDesktop(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /Chrome\/|Edg\/|OPR\//.test(ua) && !/Firefox\//.test(ua);
+}
+
 export function QuanttCard() {
   const installed = useExtensionInstalled();
   const [platform, setPlatform] = useState<Platform | null>(null);
+  const [chromium, setChromium] = useState(false);
   // Phone path: true after a deep-link attempt visibly failed (app not
   // installed) — flips on the fallback row below the card.
   const [showFallback, setShowFallback] = useState(false);
-  const fallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Single teardown for the current phone-handoff attempt's timer + listener,
+  // so repeated clicks never accumulate listeners.
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setPlatform(detectPlatform());
-    return () => { if (fallbackTimer.current) clearTimeout(fallbackTimer.current); };
+    setChromium(isChromiumDesktop());
+    return () => { cleanupRef.current?.(); };
   }, []);
 
   const isPhone = platform === 'android' || platform === 'ios';
@@ -46,16 +59,19 @@ export function QuanttCard() {
       window.open(QUANTT_AGENTS_URL, '_blank', 'noopener,noreferrer');
       return;
     }
-    // Phone: try the native app. If it takes over, this page hides and the
-    // timer is cleared; if nothing handles the scheme, reveal the fallback
-    // row (no auto-navigation — popup blockers eat delayed window.open).
-    if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-    fallbackTimer.current = setTimeout(() => {
-      if (!document.hidden) setShowFallback(true);
-    }, 1600);
-    const clear = () => { if (fallbackTimer.current) clearTimeout(fallbackTimer.current); };
-    window.addEventListener('pagehide', clear, { once: true });
-    document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); }, { once: true });
+    // Phone: try the native app. If it takes over, the tab hides and we tear
+    // down; if nothing handles the scheme, reveal the fallback row (no
+    // auto-navigation — popup blockers eat a delayed window.open).
+    cleanupRef.current?.();
+    const timer = setTimeout(() => { if (!document.hidden) setShowFallback(true); }, 1600);
+    const onHide = () => { if (document.hidden) cleanup(); };
+    const cleanup = () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onHide);
+      cleanupRef.current = null;
+    };
+    cleanupRef.current = cleanup;
+    document.addEventListener('visibilitychange', onHide);
     window.location.href = APP_DEEP_LINK;
   };
 
@@ -87,35 +103,50 @@ export function QuanttCard() {
         </div>
       </div>
 
-      {/* Desktop without the extension: sign-in on quantts.ai has no wallet
-          to talk to — surface the install CTA rather than let it fail cold. */}
+      {/* Desktop without the extension: sign-in on quantts.ai has no wallet to
+          talk to. On Chromium, the Chrome-store CTA is actionable; on Firefox/
+          Safari the extension isn't available, so say so honestly (no dead
+          store link) and point at a working path. */}
       {platform === 'desktop' && !installed && (
-        <a
-          href={CHROME_STORE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          style={{ display: 'inline-block', marginTop: 12, color: 'var(--blue)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none' }}
-        >
-          Install the Thanos extension to sign in ›
-        </a>
+        chromium ? (
+          <a
+            href={CHROME_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: 'inline-block', marginTop: 12, color: 'var(--blue)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none' }}
+          >
+            Install the Thanos extension to sign in ›
+          </a>
+        ) : (
+          <span style={{ display: 'block', marginTop: 12, color: 'var(--text-muted)', fontSize: 12.5 }}>
+            Sign-in needs the Thanos extension — use a Chromium browser (Chrome, Brave, Edge) or the desktop app.
+          </span>
+        )
       )}
 
-      {/* Phone fallback — the deep link went unhandled (app not installed). */}
+      {/* Phone fallback — the deep link went unhandled (app not installed). A
+          phone browser can't sign in on quantts.ai (no extension, no injected
+          provider), so direct to the app rather than a dead "continue" — iOS
+          has no App Store build yet, so send those users to desktop. */}
       {showFallback && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, fontSize: 12.5 }}>
-          <span style={{ color: 'var(--text-muted)' }}>
-            Sign-in works inside the Thanos app.
-          </span>
-          {platform === 'android' && (
-            <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-               style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
-              Get the app on Google Play ›
-            </a>
+          {platform === 'ios' ? (
+            <span style={{ color: 'var(--text-muted)' }}>
+              Thanos for iOS is coming soon — for now, sign in from a desktop browser with the Thanos extension.
+            </span>
+          ) : (
+            <>
+              <span style={{ color: 'var(--text-muted)' }}>Sign-in runs inside the Thanos app.</span>
+              <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                 style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
+                Get the app on Google Play ›
+              </a>
+            </>
           )}
           <a href={QUANTT_AGENTS_URL} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-             style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
-            Continue to quantts.ai anyway ›
+             style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>
+            Open quantts.ai in the browser ›
           </a>
         </div>
       )}

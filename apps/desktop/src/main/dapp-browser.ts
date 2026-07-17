@@ -41,8 +41,13 @@ let currentUrl = '';
 const CHAIN_HEX = '0xab169'; // Makalu 700777
 
 // Per-open connection state — reset when the browser view is destroyed.
+// connectedOrigin scopes the grant to the host that was approved: navigating
+// the same in-app browser to a DIFFERENT site must not inherit the address
+// (each origin re-approves), so every check below compares it to the request's
+// current origin.
 let connected = false;
 let connectedAddress = '';
+let connectedOrigin = '';
 
 // Post-approval signing round-trips to the wallet renderer are correlated by
 // id (main owns the approval dialog; the renderer owns the seed + signer).
@@ -55,12 +60,17 @@ function rejectAllExec(): void {
   pendingExec.clear();
 }
 
-/** Ask the wallet renderer to sign an already-approved request. */
+/** Ask the wallet renderer to sign an already-approved request. Times out so a
+ *  renderer that reloads/crashes mid-signing can't hang the dApp's promise
+ *  forever (render-process-gone also rejects all pending — see below). */
 function execViaRenderer(method: string, params: unknown[]): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
   if (!host) return Promise.resolve({ error: { code: 4900, message: 'Wallet disconnected' } });
   const id = ++execSeq;
   return new Promise((resolve) => {
-    pendingExec.set(id, { resolve });
+    const timer = setTimeout(() => {
+      if (pendingExec.delete(id)) resolve({ error: { code: -32603, message: 'Signing timed out' } });
+    }, 120_000);
+    pendingExec.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); } });
     host!.webContents.send('dapp:exec', { id, method, params });
   });
 }
@@ -86,7 +96,8 @@ async function approveViaDialog(kind: 'connect' | 'sign' | 'tx', originHost: str
   const { response } = await dialog.showMessageBox(host, {
     type: 'question',
     buttons: ['Cancel', confirmLabel],
-    defaultId: 1,
+    // Default to Cancel: a stray Enter must never approve a signature or tx.
+    defaultId: 0,
     cancelId: 0,
     noLink: true,
     title: 'Thanos Wallet',
@@ -146,6 +157,7 @@ function destroy(): void {
   currentUrl = '';
   connected = false;
   connectedAddress = '';
+  connectedOrigin = '';
   rejectAllExec();
 }
 
@@ -296,7 +308,7 @@ function attachIpc(): void {
     // Trivially-known / already-authorised reads — no prompt.
     if (method === 'eth_chainId')  return CHAIN_HEX;
     if (method === 'net_version')  return '700777';
-    if (method === 'eth_accounts') return connected && connectedAddress ? [connectedAddress] : [];
+    if (method === 'eth_accounts') return connected && connectedAddress && connectedOrigin === originHost ? [connectedAddress] : [];
     if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
       const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
       if (target === CHAIN_HEX) return null;
@@ -305,7 +317,7 @@ function attachIpc(): void {
 
     // Connect — approve, then read the address back from the renderer.
     if (method === 'eth_requestAccounts') {
-      if (connected && connectedAddress) return [connectedAddress];
+      if (connected && connectedAddress && connectedOrigin === originHost) return [connectedAddress];
       const ok = await approveViaDialog('connect', originHost,
         `${originHost || 'This site'} will see your wallet address and can request signatures. Each signature still needs your approval.`);
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the connection request.' };
@@ -315,6 +327,7 @@ function attachIpc(): void {
       if (Array.isArray(accts) && accts.length) {
         connected = true;
         connectedAddress = accts[0];
+        connectedOrigin = originHost;
         view.webContents.send('dapp:emit', { event: 'accountsChanged', data: accts });
       }
       return out.result;
@@ -353,6 +366,10 @@ function attachIpc(): void {
 export function installDappBrowser(win: import('electron').BrowserWindow): void {
   host = win;
   attachIpc();
+  // If the wallet renderer dies mid-signing, resolve any in-flight exec
+  // promises with an error instead of leaving the dApp hanging (the 120s
+  // per-request timeout is the backstop; this is the prompt path).
+  win.webContents.on('render-process-gone', () => rejectAllExec());
   // Tear down the view if the main window goes away, otherwise its
   // webContents leaks past quit and electron-builder dumps a warning.
   win.on('closed', () => { destroy(); host = null; });

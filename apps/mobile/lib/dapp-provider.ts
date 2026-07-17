@@ -117,6 +117,9 @@ export const INJECTED_PROVIDER_JS = `(function () {
   };
 
   window.ethereum = provider;
+  // Also expose window.thanos — Quantt's discoverThanosProvider falls back to
+  // it when the EIP-6963 announce race is lost (docs/INTEGRATE-THANOS-AUTH.md).
+  window.thanos = provider;
   try { window.dispatchEvent(new Event('ethereum#initialized')); } catch (e) {}
 
   // EIP-6963: announce the provider so dApps that discover wallets the modern

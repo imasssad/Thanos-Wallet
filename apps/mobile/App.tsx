@@ -5026,7 +5026,11 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState<DappRequest | null>(null);
-  const address = useMemo(() => (seed.length ? deriveEvmAddress(seed) : ''), [seed]);
+  // MUST derive at the ACTIVE account index — executeWcRequest signs with the
+  // active hdPath, so an index-0 address here would make eth_accounts / the
+  // already-connected reply disagree with the signer (a multi-account user's
+  // Quantt /typed-verify would then reject the recovered address).
+  const address = useMemo(() => (seed.length ? deriveEvmAddress(seed, getActiveAccountIndex()) : ''), [seed]);
   let host = current;
   try { host = new URL(current).host; } catch { /* keep raw */ }
 
