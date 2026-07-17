@@ -12,10 +12,9 @@
       a self-updater is an automatic MAS rejection.
   Both are compile-time forks (MAS_BUILD flag), not entitlement tweaks.
 
-  IDENTIFIERS below assume the desktop app ships under the existing "Thanos
-  Wallet" record's macOS platform (bundle id litho.thanos.wallet, team
-  JEYAFQ92YG). If the client decides on a SEPARATE record for the desktop app,
-  swap the bundle id in all three <string>s here + electron-builder.yml appId.
+  IDENTIFIERS: the desktop app ships under its OWN record, bundle id
+  ai.thanos.wallet (team JEYAFQ92YG) — matching electron-builder.yml appId. The
+  MAS provisioning profile (step 4) must be created for ai.thanos.wallet.
 
   These entitlements are a validated STARTING POINT — the exact sandbox set is
   finalized against real App Store review on a Mac (see
@@ -30,19 +29,29 @@
   <key>com.apple.security.network.client</key>
   <true/>
 
+  <!-- USB — ATTEMPT to keep Ledger/Trezor working under the sandbox. This is
+       the entitlement that MIGHT permit it, but sandboxed WebHID/WebUSB in a
+       MAS Electron app is unreliable AND draws extra App Review scrutiny; treat
+       hardware-wallet support in the Store build as UNPROVEN until tested on a
+       Mac with a real device. Kept here so the test is meaningful. -->
+  <key>com.apple.security.device.usb</key>
+  <true/>
+
   <!-- Import/export a recovery phrase or keystore file via the OS file picker. -->
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
 
   <!-- Required for MAS: the app + team identity, and a keychain access group so
-       keytar can store the encrypted vault key under the sandbox. -->
+       keytar can store the encrypted vault key under the sandbox. Bundle id is
+       ai.thanos.wallet (the desktop app's own record — matches
+       electron-builder.yml appId and the MAS provisioning profile). -->
   <key>com.apple.application-identifier</key>
-  <string>JEYAFQ92YG.litho.thanos.wallet</string>
+  <string>JEYAFQ92YG.ai.thanos.wallet</string>
   <key>com.apple.developer.team-identifier</key>
   <string>JEYAFQ92YG</string>
   <key>keychain-access-groups</key>
   <array>
-    <string>JEYAFQ92YG.litho.thanos.wallet</string>
+    <string>JEYAFQ92YG.ai.thanos.wallet</string>
   </array>
 </dict>
 </plist>

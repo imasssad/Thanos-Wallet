@@ -23,19 +23,13 @@ Both are gated by a compile-time `MAS_BUILD=1` flag (wire in `main.tsx`:
 `if (!process.env.MAS_BUILD) initAutoUpdater()`, and hide HW-wallet UI when the
 renderer sees the flag via a build-time define).
 
-## Bundle-ID decision (client to confirm)
+## Bundle-ID decision — DECIDED: `ai.thanos.wallet` (separate desktop record)
 
-The "Thanos Wallet" ASC record already has a **macOS platform slot** (bundle id
-`litho.thanos.wallet`, team `JEYAFQ92YG`). Two options:
-
-- **A — fill that slot** (one unified listing, iOS + macOS): build the Electron
-  app with appId `litho.thanos.wallet`. Requires flipping `electron-builder.yml`
-  `appId` from `ai.thanos.wallet` → `litho.thanos.wallet` for the MAS build, and
-  the entitlements already assume this.
-- **B — separate record** for the desktop app (its own bundle id, e.g.
-  `ai.thanos.wallet`): cleaner separation, but a second listing/metadata set.
-
-Recommendation: **A** — it uses the slot the client already created.
+The desktop app ships under its **own** ASC record, bundle id
+`ai.thanos.wallet` (team `JEYAFQ92YG`) — matching `electron-builder.yml` appId.
+The MAS provisioning profile (below) must be created for `ai.thanos.wallet`.
+(The empty macOS slot on the iOS "Thanos Wallet" record is unrelated and can be
+removed — that was for the abandoned Catalyst path.)
 
 ## What the client must obtain from Apple (only they can)
 
