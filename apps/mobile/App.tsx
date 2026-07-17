@@ -1054,7 +1054,13 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
    clients show. Native LAX issuance is gated on the partner API, so "Get
    Started" opens the LAX application (lax.money) in the device browser.
    QUANTT_AGENTS_URL points at the live Quantt product site. */
-const LAX_APPLY_URL = 'https://lax.money';
+/** LAX application deep-link — the dashboard accepts the user's wallet
+ *  address as a query param, so the LAX account is bound to their Thanos
+ *  wallet from the first screen (LAX integration, 2026-07-17). */
+const laxApplyUrl = (address?: string) =>
+  address
+    ? `https://dashboard.lax.money/register?address=${address}#individual`
+    : 'https://dashboard.lax.money/register#individual';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
@@ -1281,7 +1287,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           </View>
         ))}
         <Pressable
-          onPress={() => Linking.openURL(LAX_APPLY_URL).catch(() => {})}
+          onPress={() => Linking.openURL(laxApplyUrl(addr)).catch(() => {})}
           style={({ pressed }) => [{
             marginTop: 14, height: 46, borderRadius: 12, backgroundColor: C.blue,
             alignItems: 'center', justifyContent: 'center',

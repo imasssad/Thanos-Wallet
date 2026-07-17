@@ -493,7 +493,9 @@ function AIAssistant() {
    balance is gated on the LAX partner API; until that lands "Get Started"
    opens the LAX application (lax.money) in the in-app browser. Mirrors the
    web app's LaxCardPromo so all clients show the same offer. */
-const LAX_APPLY_URL = 'https://lax.money';
+// LAX application page (dashboard register — supports ?address=<0x…> prefill;
+// address plumbing to this card is a queued follow-up).
+const LAX_APPLY_URL = 'https://dashboard.lax.money/register#individual';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
   'Unlimited top-ups with 0 fees',

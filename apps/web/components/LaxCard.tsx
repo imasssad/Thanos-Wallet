@@ -16,7 +16,9 @@ import { Check } from 'lucide-react';
  * lax.money. Repoint `LAX_APPLY_URL` (or wire the native flow) when ready.
  */
 
-const LAX_APPLY_URL = 'https://lax.money';
+// LAX application page (dashboard register — supports ?address=<0x…> prefill;
+// address plumbing to this card is a queued follow-up).
+const LAX_APPLY_URL = 'https://dashboard.lax.money/register#individual';
 
 const BENEFITS = [
   'Get a LAX Debit Card for free',

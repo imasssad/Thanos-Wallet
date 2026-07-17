@@ -641,7 +641,9 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
    Native LAX issuance is gated on the partner API, so "Get Started" opens the
    LAX application (lax.money) in a real tab. QUANTT_AGENTS_URL points at the
    live Quantt product site. */
-const LAX_APPLY_URL = 'https://lax.money';
+// LAX application page (dashboard register — supports ?address=<0x…> prefill;
+// address plumbing to this card is a queued follow-up).
+const LAX_APPLY_URL = 'https://dashboard.lax.money/register#individual';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
