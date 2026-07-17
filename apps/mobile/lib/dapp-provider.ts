@@ -118,6 +118,28 @@ export const INJECTED_PROVIDER_JS = `(function () {
 
   window.ethereum = provider;
   try { window.dispatchEvent(new Event('ethereum#initialized')); } catch (e) {}
+
+  // EIP-6963: announce the provider so dApps that discover wallets the modern
+  // way (Quantt's discoverThanosProvider, wagmi, RainbowKit) find it inside the
+  // WebView — the legacy window.ethereum probe alone misses an EIP-6963-only
+  // integration. Info block mirrors the extension (entrypoints/injected.ts):
+  // same rdns 'fi.thanos.wallet' so a partner keyed on rdns resolves us
+  // identically on mobile and in the browser extension.
+  var t6963_info = {
+    uuid: (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('thanos-' + Date.now() + '-' + Math.floor(Math.random() * 1e9)),
+    name: 'Thanos Wallet',
+    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0NSIgZmlsbD0iIzNiN2FmNyIvPjwvc3ZnPg==',
+    rdns: 'fi.thanos.wallet'
+  };
+  function t6963_announce() {
+    try {
+      window.dispatchEvent(new CustomEvent('eip6963:announceProvider', {
+        detail: Object.freeze({ info: t6963_info, provider: provider })
+      }));
+    } catch (e) {}
+  }
+  t6963_announce();
+  window.addEventListener('eip6963:requestProvider', t6963_announce);
 })();
 true;`;
 

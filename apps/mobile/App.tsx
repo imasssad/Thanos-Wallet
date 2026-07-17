@@ -1297,9 +1297,12 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         </Pressable>
       </View>
 
-      {/* Quantt Agents — AI assistant card (mirrors desktop) */}
+      {/* Quantt Agents — AI assistant card (mirrors desktop). Opens INSIDE the
+          wallet's in-app browser (not the OS browser) so Quantt's EIP-712
+          "Sign in with Thanos" flow runs against the injected provider and the
+          user authenticates without leaving the app. */}
       <Pressable
-        onPress={() => Linking.openURL(QUANTT_AGENTS_URL).catch(() => {})}
+        onPress={() => openBrowser(QUANTT_AGENTS_URL)}
         style={({ pressed }) => [styles.card, { padding: 16, marginTop: 12 }, pressed && { opacity: 0.85 }]}
       >
         <Text style={{ color: C.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 11 }}>AI Assistant</Text>
