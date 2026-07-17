@@ -1,0 +1,65 @@
+# Desktop macOS build — the Electron app compiled, signed, and notarized on
+# GitHub's macOS runners (macOS Electron builds are impossible from the
+# Windows dev machine; this workflow IS the project's Mac build machine).
+#
+# Trigger: manually (Actions tab -> "Desktop macOS build" -> Run workflow) or
+# by pushing a tag like desktop-v0.2.18.
+#
+# Signing/notarization is OPTIONAL and driven by repo secrets — with no
+# secrets set, the build completes UNSIGNED (Gatekeeper: right-click -> Open),
+# which is fine for internal testing. For public distribution add:
+#   CSC_LINK                       base64 of the Developer ID Application .p12
+#   CSC_KEY_PASSWORD               password for that .p12
+#   APPLE_ID                       Apple ID email (notarization)
+#   APPLE_APP_SPECIFIC_PASSWORD    app-specific password (appleid.apple.com)
+#   APPLE_TEAM_ID                  JEYAFQ92YG
+# electron-builder.yml already gates hardened-runtime + notarization on these.
+name: Desktop macOS build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['desktop-v*']
+
+jobs:
+  build-mac:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build renderer + main process
+        working-directory: apps/desktop
+        run: pnpm build
+
+      # Builds BOTH architectures: Apple Silicon (arm64) + Intel (x64).
+      # --publish never: artifacts are uploaded to the run, not to a release.
+      - name: Package .dmg + .zip
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: thanos-desktop-macos
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+          if-no-files-found: error
+          retention-days: 14
