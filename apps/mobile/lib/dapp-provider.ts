@@ -90,11 +90,20 @@ export const INJECTED_PROVIDER_JS = `(function () {
     request: function (args) {
       var method = args && args.method, params = args && args.params;
       return rpc(method, params).then(function (res) {
+        // EIP-1193: accountsChanged / chainChanged must fire ONLY on a real
+        // change. dApps (wagmi/ethers) poll eth_accounts + eth_chainId, so
+        // emitting every call streamed spurious same-value events and drove
+        // reconnect churn — emit only when the value actually differs.
         if ((method === 'eth_requestAccounts' || method === 'eth_accounts') && res && res.length) {
-          provider.selectedAddress = res[0];
-          window.__thanos_emit('accountsChanged', res);
+          if (provider.selectedAddress !== res[0]) {
+            provider.selectedAddress = res[0];
+            window.__thanos_emit('accountsChanged', res);
+          }
         }
-        if (method === 'eth_chainId') { provider.chainId = res; window.__thanos_emit('chainChanged', res); }
+        if (method === 'eth_chainId' && res !== provider.chainId) {
+          provider.chainId = res;
+          window.__thanos_emit('chainChanged', res);
+        }
         return res;
       });
     },

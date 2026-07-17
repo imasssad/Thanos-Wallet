@@ -301,6 +301,13 @@ function attachIpc(): void {
     if (!view || e.sender !== view.webContents || !host) {
       return { __thanosError: true, code: 4900, message: 'Wallet disconnected' };
     }
+    // Only the TOP frame may drive the wallet. With nodeIntegrationInSubFrames
+    // unset the preload doesn't even load in subframes, but don't rely on that
+    // — a cross-origin iframe must never reach the signer under the top site's
+    // origin. (parent === null ⇔ main frame.)
+    if (e.senderFrame && e.senderFrame.parent !== null) {
+      return { __thanosError: true, code: 4900, message: 'Wallet disconnected' };
+    }
     const method = req.method;
     const params = (req.params ?? []) as unknown[];
     const originHost = (() => { try { return new URL(currentUrl).host; } catch { return ''; } })();
@@ -308,7 +315,7 @@ function attachIpc(): void {
     // Trivially-known / already-authorised reads — no prompt.
     if (method === 'eth_chainId')  return CHAIN_HEX;
     if (method === 'net_version')  return '700777';
-    if (method === 'eth_accounts') return connected && connectedAddress && connectedOrigin === originHost ? [connectedAddress] : [];
+    if (method === 'eth_accounts') return connected && connectedAddress && connectedOrigin && connectedOrigin === originHost ? [connectedAddress] : [];
     if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
       const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
       if (target === CHAIN_HEX) return null;
@@ -317,7 +324,10 @@ function attachIpc(): void {
 
     // Connect — approve, then read the address back from the renderer.
     if (method === 'eth_requestAccounts') {
-      if (connected && connectedAddress && connectedOrigin === originHost) return [connectedAddress];
+      // Never grant on an opaque origin (data:/about:blank → host ''), which
+      // would otherwise store connectedOrigin '' and wildcard-match later.
+      if (!originHost) return { __thanosError: true, code: 4100, message: 'Cannot connect on this page.' };
+      if (connected && connectedAddress && connectedOrigin && connectedOrigin === originHost) return [connectedAddress];
       const ok = await approveViaDialog('connect', originHost,
         `${originHost || 'This site'} will see your wallet address and can request signatures. Each signature still needs your approval.`);
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the connection request.' };
@@ -333,8 +343,14 @@ function attachIpc(): void {
       return out.result;
     }
 
-    // Signing / transactions — approve, then sign in the renderer.
+    // Signing / transactions — require an active connection to THIS origin
+    // first (matches the account paths + the file invariant: enforces
+    // connect-before-sign and can't attribute a signature to a site the user
+    // never connected to). Then approve, then sign in the renderer.
     if (method === 'personal_sign' || method === 'eth_sign' || method === 'eth_signTypedData_v4' || method === 'eth_sendTransaction') {
+      if (!connected || !connectedOrigin || connectedOrigin !== originHost) {
+        return { __thanosError: true, code: 4100, message: 'Unauthorized — connect the wallet to this site first.' };
+      }
       const kind = method === 'eth_sendTransaction' ? 'tx' : 'sign';
       const ok = await approveViaDialog(kind, originHost, describeForApproval(method, params));
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the request.' };

@@ -5025,6 +5025,12 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   const [current, setCurrent] = useState(url);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
+  // Host the connect grant was given on. The WebView can navigate anywhere
+  // (no origin whitelist) and re-injects the provider on every document, so a
+  // redirect from an allowlisted site to attacker.com would otherwise inherit
+  // the grant — scope eth_accounts / silent re-connect to this host only
+  // (mirrors the desktop connectedOrigin gate).
+  const [connectedHost, setConnectedHost] = useState('');
   const [pending, setPending] = useState<DappRequest | null>(null);
   // MUST derive at the ACTIVE account index — executeWcRequest signs with the
   // active hdPath, so an index-0 address here would make eth_accounts / the
@@ -5040,7 +5046,7 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   const run = async (req: DappRequest) => {
     try {
       const result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
-      if (req.method === 'eth_requestAccounts') setConnected(true);
+      if (req.method === 'eth_requestAccounts') { setConnected(true); setConnectedHost(host); }
       send(resolveJs(req.id, result));
     } catch (e) {
       const code = e instanceof WcSignerError ? e.code : -32603;
@@ -5057,12 +5063,15 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
     // Read-only / already-authorised methods resolve immediately.
     if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${(700777).toString(16)}`)); return; }
     if (req.method === 'net_version')  { send(resolveJs(req.id, '700777')); return; }
+    // Address is disclosed ONLY to the host that was granted the connection —
+    // a page the WebView later navigated to (redirect/link) must re-prompt.
+    const grantedHere = connected && !!address && !!connectedHost && connectedHost === host;
     if (req.method === 'eth_accounts') {
-      send(resolveJs(req.id, connected && address ? [address] : []));
+      send(resolveJs(req.id, grantedHere ? [address] : []));
       return;
     }
-    // Connecting while already connected? No need to re-prompt.
-    if (req.method === 'eth_requestAccounts' && connected && address) {
+    // Connecting while already connected on THIS host? No need to re-prompt.
+    if (req.method === 'eth_requestAccounts' && grantedHere) {
       send(resolveJs(req.id, [address]));
       return;
     }

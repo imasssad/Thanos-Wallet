@@ -59,7 +59,14 @@ export function QuanttCard() {
       window.open(QUANTT_AGENTS_URL, '_blank', 'noopener,noreferrer');
       return;
     }
-    // Phone: try the native app. If it takes over, the tab hides and we tear
+    if (platform === 'ios') {
+      // No iOS app exists yet to register thanoswallet:// — firing it would
+      // surface a native "Cannot Open Page" error. Go straight to the
+      // (desktop-directing) fallback instead.
+      setShowFallback(true);
+      return;
+    }
+    // Android: try the native app. If it takes over, the tab hides and we tear
     // down; if nothing handles the scheme, reveal the fallback row (no
     // auto-navigation — popup blockers eat a delayed window.open).
     cleanupRef.current?.();
