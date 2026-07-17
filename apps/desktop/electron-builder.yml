@@ -44,6 +44,23 @@ mac:
     - dmg
     - zip
 
+# ─── Mac App Store (MAS) ──────────────────────────────────────────────────────
+# Separate sandboxed target — built ONLY by the desktop-macos-appstore workflow
+# (needs Mac App Distribution + Mac Installer Distribution certs + a MAS
+# provisioning profile). App Sandbox is ON here (Store requirement), which is
+# why hardware-wallet + auto-update are compiled out of the MAS build. The
+# provisioning profile is supplied at build time from the MAS_PROVISION_PROFILE
+# secret (written to build/thanos-mas.provisionprofile in CI).
+# See docs/DESKTOP-MACOS-APP-STORE.md.
+mas:
+  category: public.app-category.finance
+  hardenedRuntime: false
+  entitlements: build/entitlements.mas.plist
+  entitlementsInherit: build/entitlements.mas.inherit.plist
+  provisioningProfile: build/thanos-mas.provisionprofile
+  target:
+    - pkg
+
 # ─── Windows ─────────────────────────────────────────────────────────────────
 # Code signing uses the EV cert delivered out-of-band (HSM-resident). In CI we
 # point CSC_LINK at the .pfx file and CSC_KEY_PASSWORD at its passphrase.

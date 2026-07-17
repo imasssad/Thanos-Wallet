@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mac App Store (MAS) entitlements — the SANDBOXED variant.
+
+  Distinct from entitlements.mac.plist (Developer ID / direct download), which
+  deliberately keeps app-sandbox OFF. The Mac App Store REQUIRES app-sandbox
+  = true, which forces two product changes in the MAS build:
+    • hardware-wallet (Ledger/Trezor over USB/HID) is DISABLED — sandboxed MAS
+      apps can't get the raw USB/HID access those transports need.
+    • electron-updater auto-update is DISABLED — the App Store handles updates;
+      a self-updater is an automatic MAS rejection.
+  Both are compile-time forks (MAS_BUILD flag), not entitlement tweaks.
+
+  IDENTIFIERS below assume the desktop app ships under the existing "Thanos
+  Wallet" record's macOS platform (bundle id litho.thanos.wallet, team
+  JEYAFQ92YG). If the client decides on a SEPARATE record for the desktop app,
+  swap the bundle id in all three <string>s here + electron-builder.yml appId.
+
+  These entitlements are a validated STARTING POINT — the exact sandbox set is
+  finalized against real App Store review on a Mac (see
+  docs/DESKTOP-MACOS-APP-STORE.md).
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+
+  <!-- Wallet talks to RPCs / indexer / MultX / price APIs (outbound only). -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+
+  <!-- Import/export a recovery phrase or keystore file via the OS file picker. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Required for MAS: the app + team identity, and a keychain access group so
+       keytar can store the encrypted vault key under the sandbox. -->
+  <key>com.apple.application-identifier</key>
+  <string>JEYAFQ92YG.litho.thanos.wallet</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>JEYAFQ92YG</string>
+  <key>keychain-access-groups</key>
+  <array>
+    <string>JEYAFQ92YG.litho.thanos.wallet</string>
+  </array>
+</dict>
+</plist>

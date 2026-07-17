@@ -1,0 +1,73 @@
+# Desktop Mac App Store build — the SANDBOXED .pkg for App Store submission.
+# Separate from desktop-macos.yml (that one makes the direct-download .dmg).
+#
+# This CANNOT run until the App Store credentials exist as repo secrets — a MAS
+# build is signed-or-nothing (unlike the .dmg, which builds unsigned). Required
+# secrets:
+#   MAS_CSC_LINK              base64 of a .p12 bundling BOTH the "Apple
+#                            Distribution / Mac App Distribution" and "Mac
+#                            Installer Distribution" certs
+#   MAS_CSC_KEY_PASSWORD      password for that .p12
+#   MAS_PROVISION_PROFILE     base64 of the MAS provisioning profile
+#                            (.provisionprofile for the app's bundle id)
+#   APPLE_TEAM_ID             JEYAFQ92YG
+#
+# Output: apps/desktop/release/*.pkg — upload to App Store Connect with
+# Transporter (or `xcrun altool`/`notarytool`) on a Mac. See
+# docs/DESKTOP-MACOS-APP-STORE.md for the whole procedure.
+name: Desktop Mac App Store build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-mas:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Fail fast if MAS secrets are missing
+        env:
+          MAS_CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
+          MAS_PROVISION_PROFILE: ${{ secrets.MAS_PROVISION_PROFILE }}
+        run: |
+          if [ -z "$MAS_CSC_LINK" ] || [ -z "$MAS_PROVISION_PROFILE" ]; then
+            echo "::error::MAS_CSC_LINK / MAS_PROVISION_PROFILE not set — add the App Store certs + profile as repo secrets first (see docs/DESKTOP-MACOS-APP-STORE.md)."
+            exit 1
+          fi
+
+      - name: Materialize provisioning profile
+        env:
+          MAS_PROVISION_PROFILE: ${{ secrets.MAS_PROVISION_PROFILE }}
+        run: echo "$MAS_PROVISION_PROFILE" | base64 --decode > apps/desktop/build/thanos-mas.provisionprofile
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build renderer + main process (MAS flavor)
+        working-directory: apps/desktop
+        env:
+          MAS_BUILD: '1' # compile-time flag: no auto-updater, no HW-wallet
+        run: pnpm build
+
+      - name: Package .pkg for the App Store
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac mas --publish never
+
+      - name: Upload .pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: thanos-desktop-mas-pkg
+          path: apps/desktop/release/*.pkg
+          if-no-files-found: error
+          retention-days: 14
