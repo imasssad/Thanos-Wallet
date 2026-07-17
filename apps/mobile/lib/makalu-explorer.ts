@@ -19,7 +19,10 @@
 import { formatUnits } from 'ethers';
 import type { IndexerActivityItem } from './indexer';
 
-const EXPLORER_API = 'https://makalu.litho.ai/api';
+const MAKALU_API = 'https://makalu.litho.ai/api';
+// Kamet runs the SAME explorer codebase — identical /api/txs shape
+// (verified live 2026-07-17), so both chains share one fetcher.
+const KAMET_API  = 'https://kamet.litho.ai/api';
 
 interface ExplorerTx {
   hash?: string;
@@ -34,14 +37,30 @@ interface ExplorerTx {
   evmToAddr?: string;
 }
 
-/** Recent native-LITHO transfers involving `address`, newest first. */
-export async function fetchNativeLithoActivity(address: string, timeoutMs = 8_000): Promise<IndexerActivityItem[]> {
+/** Recent native-LITHO transfers involving `address` on MAKALU, newest first. */
+export function fetchNativeLithoActivity(address: string, timeoutMs = 8_000): Promise<IndexerActivityItem[]> {
+  return fetchExplorerNativeActivity(MAKALU_API, '', 'makalu', address, timeoutMs);
+}
+
+/** Recent native-LITHO transfers involving `address` on KAMET, newest first.
+ *  Labeled "(Kamet)" so rows are distinguishable from Makalu LITHO moves. */
+export function fetchKametNativeActivity(address: string, timeoutMs = 8_000): Promise<IndexerActivityItem[]> {
+  return fetchExplorerNativeActivity(KAMET_API, ' (Kamet)', 'kamet', address, timeoutMs);
+}
+
+async function fetchExplorerNativeActivity(
+  api: string,
+  labelSuffix: string,
+  idPrefix: string,
+  address: string,
+  timeoutMs: number,
+): Promise<IndexerActivityItem[]> {
   if (!address) return [];
   const me = address.toLowerCase();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${EXPLORER_API}/txs?address=${encodeURIComponent(address)}`, { signal: ctrl.signal });
+    const res = await fetch(`${api}/txs?address=${encodeURIComponent(address)}`, { signal: ctrl.signal });
     if (!res.ok) return [];
     const json = (await res.json()) as { txs?: ExplorerTx[] } | null;
     const out: IndexerActivityItem[] = [];
@@ -62,7 +81,7 @@ export async function fetchNativeLithoActivity(address: string, timeoutMs = 8_00
       const txHash = t.evmHash || t.hash || '';
       if (!txHash) continue;
       out.push({
-        id:           `native:${txHash}`,
+        id:           `${idPrefix}:${txHash}`,
         type:         isReceive ? 'receive' : 'send',
         symbol:       'LITHO',
         amount:       formatUnits(wei, 18),
@@ -71,7 +90,7 @@ export async function fetchNativeLithoActivity(address: string, timeoutMs = 8_00
         blockNumber:  t.blockHeight,
         ts:           t.timestamp,
         status:       t.success === false ? 'failed' : 'confirmed',
-        title:        `${isReceive ? 'Received' : 'Sent'} LITHO`,
+        title:        `${isReceive ? 'Received' : 'Sent'} LITHO${labelSuffix}`,
       });
     }
     return out.slice(0, 50);

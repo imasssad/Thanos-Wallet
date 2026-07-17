@@ -111,7 +111,7 @@ initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
-import { fetchNativeLithoActivity, mergeActivityFeeds } from './lib/makalu-explorer';
+import { fetchNativeLithoActivity, fetchKametNativeActivity, mergeActivityFeeds } from './lib/makalu-explorer';
 import {
   formatFiat, initDisplayCurrency, applyDisplayCurrency, persistDisplayCurrency,
   CURRENCY_OPTS as FX_CURRENCY_OPTS, type DisplayCurrency,
@@ -772,18 +772,21 @@ function useActivity(address: string): ActivityState {
     if (!address) { setItems([]); setLoading(false); setOffline(false); return; }
     let cancelled = false;
     setLoading(true); setOffline(false);
-    // Two feeds, fetched in parallel and merged (deduped by tx hash):
-    //   indexer  → LEP100 token transfers (MUSA, JOT, …)
-    //   explorer → NATIVE LITHO transfers, which emit no logs and therefore
-    //              never reach the indexer (this is why "received 70,000
-    //              LITHO" showed no activity row).
+    // Three feeds, fetched in parallel and merged (deduped by tx hash):
+    //   indexer         → LEP100 token transfers on Makalu (MUSA, JOT, …)
+    //   Makalu explorer → NATIVE LITHO transfers (no logs → never reach the
+    //                     indexer; the "received 70,000 LITHO, no row" bug)
+    //   Kamet explorer  → native LITHO on Kamet (same explorer codebase)
     // The indexer stays the primary for the offline flag; the explorer feed
     // is best-effort extra coverage.
-    Promise.allSettled([getActivity(address), fetchNativeLithoActivity(address)])
-      .then(([idx, nat]) => {
+    Promise.allSettled([getActivity(address), fetchNativeLithoActivity(address), fetchKametNativeActivity(address)])
+      .then(([idx, nat, kam]) => {
         if (cancelled) return;
         const idxItems = idx.status === 'fulfilled' ? idx.value : null;
-        const natItems = nat.status === 'fulfilled' ? nat.value : [];
+        const natItems = [
+          ...(nat.status === 'fulfilled' ? nat.value : []),
+          ...(kam.status === 'fulfilled' ? kam.value : []),
+        ];
         if (idxItems === null && natItems.length === 0) {
           // PRESERVE offline contract: keep whatever items we have, flag offline.
           setLoading(false); setOffline(true);
