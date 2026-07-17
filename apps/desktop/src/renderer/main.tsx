@@ -27,6 +27,8 @@ import {
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
   fetchTokenHistory, fetchTokenMarketDetails,
   type TokenHistory, type TokenMarketDetails, type TokenRange,
+  initDisplayCurrency, applyDisplayCurrency, getDisplayCurrency,
+  subscribeFx, FX_CURRENCIES, type DisplayCurrency,
 } from '@thanos/sdk-core';
 import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
@@ -2432,7 +2434,9 @@ function StakingView() {
 
 /* ──────────────────────── Settings view ──────────────────────── */
 function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme: () => void; isDark: boolean; walletAddr: string; onLock: () => void }) {
-  const [currency, setCurrency] = useState('USD');
+  // LIVE display currency — the pick reformats every price in the app via
+  // the shared sdk-core fx engine (falls back to USD if a rate is missing).
+  const [currency, setCurrency] = useState<DisplayCurrency>(getDisplayCurrency());
   const [autoLock, setAutoLock] = useState('5');
   const [rpc, setRpc]           = useState('https://rpc.litho.ai');
   const [hwOpen, setHwOpen]     = useState(false);
@@ -2479,8 +2483,18 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme
 
         <Section icon={Globe} title="General" sub="Display, language, and theme">
           <Row label="Currency" sub="Display prices in">
-            <select className="settings-select" value={currency} onChange={e => setCurrency(e.target.value)}>
-              {['USD','EUR','GBP','JPY','BTC'].map(c => <option key={c}>{c}</option>)}
+            <select
+              className="settings-select"
+              value={currency}
+              onChange={e => {
+                const pick = e.target.value as DisplayCurrency;
+                setCurrency(pick);
+                // applyDisplayCurrency resolves to what ACTUALLY took effect
+                // (USD fallback when the rate is unavailable) — reflect that.
+                void applyDisplayCurrency(pick).then(actual => setCurrency(actual));
+              }}
+            >
+              {FX_CURRENCIES.map(c => <option key={c}>{c}</option>)}
             </select>
           </Row>
           <Row label="Appearance" sub={isDark ? 'Dark theme' : 'Light theme'}>
@@ -3611,6 +3625,14 @@ type Modal = 'send' | 'receive' | 'swap' | null;
 function App() {
   const [view, setView]     = useState<View>('dashboard');
   const [isDark, setIsDark] = useState(true);
+  // Display currency — restore the persisted pick on boot; the fx engine
+  // notifies on change and this tick re-renders the whole tree so every
+  // formatUsd() call picks up the new rate.
+  const [, setFxTick] = useState(0);
+  useEffect(() => {
+    void initDisplayCurrency().then(() => setFxTick(t => t + 1));
+    return subscribeFx(() => setFxTick(t => t + 1));
+  }, []);
   const [modal, setModal]   = useState<Modal>(null);
   /** Token-detail modal — opened by tapping any token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);

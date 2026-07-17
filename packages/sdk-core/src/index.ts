@@ -67,4 +67,5 @@ export * from './utils/litho-address';
 export * from './imports/token-importer';
 export * from './desktop/keyvault';
 export * from './ecosystem';
+export * from './fx';
 export * from './types';

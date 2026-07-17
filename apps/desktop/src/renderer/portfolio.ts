@@ -12,7 +12,7 @@
  * the real /portfolio response instead.
  */
 import { createContext, useContext, useEffect, useState } from 'react';
-import { fetchEcosystemPrices } from '@thanos/sdk-core';
+import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
 import { getLocalActivity } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
@@ -62,10 +62,11 @@ export function coinColor(sym: string): string {
   return COIN_COLORS[(sym || '').toUpperCase()] ?? '#8b7df7';
 }
 
+/** Format a USD amount in the user's display currency (Settings →
+ *  Currency). Conversion happens at format time via the shared sdk-core fx
+ *  engine; the value pipeline stays USD. Falls back to $ until rates load. */
 export function formatUsd(n: number): string {
-  return '$' + (isFinite(n) ? n : 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  });
+  return formatFiat(n);
 }
 
 export function formatAmount(n: number): string {

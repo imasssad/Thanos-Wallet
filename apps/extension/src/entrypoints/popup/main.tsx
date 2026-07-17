@@ -39,6 +39,8 @@ import {
   fetchTokenHistory, fetchTokenMarketDetails,
   type TokenHistory, type TokenMarketDetails, type TokenRange,
   fetchEcosystemPrices,
+  initDisplayCurrency, applyDisplayCurrency, getDisplayCurrency,
+  subscribeFx, FX_CURRENCIES, type DisplayCurrency,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError, activeChain } from './wc-signer';
@@ -1085,6 +1087,9 @@ function SettingsScreen({
   onOpenChangePassword: () => void;
   onOpenRecoveryPhrase: () => void;
 }) {
+  // LIVE display currency — the pick reformats every price in the popup via
+  // the shared sdk-core fx engine (falls back to USD if a rate is missing).
+  const [fiat, setFiat] = useState<DisplayCurrency>(getDisplayCurrency());
   const [copiedAddr, setCopiedAddr] = useState(false);
   const copyAddr = async () => {
     if (!address) return;
@@ -1129,6 +1134,31 @@ function SettingsScreen({
           <div className="acct-header-addr">{address ? `${address.slice(0, 8)}…${address.slice(-5)}` : '—'}</div>
         </div>
         <button className="copy-chip" onClick={copyAddr} disabled={!address}>{copiedAddr ? 'Copied' : 'Copy'}</button>
+      </div>
+
+      <SectionHead Icon={Globe} title="General" sub="Display and locale"/>
+      <div className="card list">
+        <div className="set-row">
+          <div className="set-icon"><Globe size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Currency</div>
+            <div className="set-sub">Display prices in</div>
+          </div>
+          <select
+            className="set-select"
+            value={fiat}
+            onChange={(e) => {
+              const pick = e.target.value as DisplayCurrency;
+              setFiat(pick);
+              // Resolves to what ACTUALLY took effect (USD fallback when the
+              // rate is unavailable) — reflect that in the control.
+              void applyDisplayCurrency(pick).then(setFiat);
+            }}
+            style={{ background: 'var(--bg-elev, #1a1a1f)', color: 'var(--text-primary)', border: '1px solid var(--border, #2a2a30)', borderRadius: 8, padding: '5px 8px', fontSize: 12 }}
+          >
+            {FX_CURRENCIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
       </div>
 
       <SectionHead Icon={Shield} title="Security" sub="Protect access to your wallet"/>
@@ -2784,6 +2814,14 @@ interface PendingRpcRequest {
 function App() {
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
+  // Display currency — restore the persisted pick on boot; the fx engine
+  // notifies on change and this tick re-renders the popup so every
+  // formatUsd() call picks up the new rate.
+  const [, setFxTick] = useState(0);
+  useEffect(() => {
+    void initDisplayCurrency().then(() => setFxTick(t => t + 1));
+    return subscribeFx(() => setFxTick(t => t + 1));
+  }, []);
   const [seed, setSeed] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>('home');
   const [modal, setModal] = useState<Modal>(null);
