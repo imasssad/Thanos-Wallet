@@ -5531,6 +5531,34 @@ function extractWcUri(url: string): string | null {
   return null;
 }
 
+/** Hosts the `thanoswallet://open?url=` deep link may open in the in-app
+ *  browser. MUST stay an allowlist: the in-app browser injects the wallet
+ *  provider next to the unlocked seed, so an arbitrary-URL deep link would
+ *  hand any external app/site a provider-armed WebView (phishing surface).
+ *  Partner sign-in surfaces + the Discover directory only. */
+const BROWSE_ALLOWED_HOSTS: Set<string> = new Set([
+  'quantts.ai', 'www.quantts.ai',                       // Quantt Agents in-app sign-in
+  'lax.money', 'www.lax.money', 'dashboard.lax.money',  // LAX application
+  ...ECOSYSTEM_APPS.map(a => { try { return new URL(a.url).host.toLowerCase(); } catch { return ''; } }).filter(Boolean),
+]);
+
+/** Extract an in-app-browser target from a `thanoswallet://open?url=<enc https URL>`
+ *  deep link — the web wallet's hand-off (e.g. its Quantt card on a phone
+ *  browser, where no extension can exist). Only https URLs whose host is on
+ *  BROWSE_ALLOWED_HOSTS pass; anything else returns null and is dropped. */
+function extractBrowseUrl(url: string): string | null {
+  if (!url) return null;
+  if (!/^thanoswallet:\/\/open([/?]|$)/i.test(url)) return null;
+  const m = url.match(/[?&]url=([^&]+)/);
+  if (!m) return null;
+  try {
+    const decoded = decodeURIComponent(m[1]);
+    if (!/^https:\/\//i.test(decoded)) return null;
+    const host = new URL(decoded).host.toLowerCase();
+    return BROWSE_ALLOWED_HOSTS.has(host) ? decoded : null;
+  } catch { return null; }
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
@@ -5549,7 +5577,12 @@ function App() {
   useEffect(() => {
     const handle = (url: string | null) => {
       const wc = url ? extractWcUri(url) : null;
-      if (wc) setPendingWcUri(wc);
+      if (wc) { setPendingWcUri(wc); return; }
+      // thanoswallet://open?url=… → allowlisted partner site in the in-app
+      // browser (web-wallet hand-off, e.g. Quantt sign-in from a phone
+      // browser). Stashed in browserUrl; the overlay mounts after unlock.
+      const browse = url ? extractBrowseUrl(url) : null;
+      if (browse) setBrowserUrl(browse);
     };
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', (e) => handle(e.url));

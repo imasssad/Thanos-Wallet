@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { LaxCardPromo, LaxCardModal } from './LaxCard';
+import { QuanttCard } from './QuanttCard';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
@@ -1174,6 +1175,10 @@ export function Dashboard() {
         {tab === 'cards' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <LaxCardPromo onGetStarted={() => setModal('laxcard')}/>
+            {/* Quantt Agents — same AI-assistant offer the desktop/extension/
+                mobile clients show; on web it routes sign-in via the extension
+                (desktop) or the native app deep link (phones). */}
+            <QuanttCard/>
           </div>
         )}
 

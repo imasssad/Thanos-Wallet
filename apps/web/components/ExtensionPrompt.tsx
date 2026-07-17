@@ -26,7 +26,7 @@ const DISMISS_EXT = 'thanos_ext_prompt_dismissed';
 const DISMISS_APK = 'thanos_play_prompt_dismissed';
 
 /** Play Store listing — same package the /download APK installs (ai.thanos.wallet). */
-const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=ai.thanos.wallet';
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=ai.thanos.wallet';
 
 // The Chrome Web Store listing is LIVE, so the desktop "Get the extension"
 // prompt links straight to it. Brave/Edge/Opera install from the same Chrome
@@ -34,7 +34,7 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=ai.thanos.
 // browsers below so Firefox users don't get a dead link.
 const EXTENSION_PUBLISHED = true;
 
-const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj';
+export const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj';
 
 const STORE_URL: Record<'chrome' | 'firefox', string> = {
   chrome:  CHROME_STORE_URL,
@@ -42,9 +42,9 @@ const STORE_URL: Record<'chrome' | 'firefox', string> = {
   firefox: 'https://addons.mozilla.org/firefox/search/?q=Thanos%20Wallet',
 };
 
-type Platform = 'android' | 'ios' | 'desktop';
+export type Platform = 'android' | 'ios' | 'desktop';
 
-function detectPlatform(): Platform {
+export function detectPlatform(): Platform {
   const ua = navigator.userAgent;
   if (/Android/i.test(ua)) return 'android';
   // iPadOS 13+ masquerades as desktop Safari/Mac — treat touch Macs as iOS too,
@@ -65,7 +65,7 @@ function detectBrowser(): { storeKey: 'chrome' | 'firefox'; label: string } {
 }
 
 /** True once the Thanos extension is detected on the page (desktop only). */
-function useExtensionInstalled(): boolean {
+export function useExtensionInstalled(): boolean {
   const [installed, setInstalled] = useState(false);
   useEffect(() => {
     let cancelled = false;
