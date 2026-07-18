@@ -71,8 +71,8 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
        above the WebContentsView); once approved, main asks the renderer to
        sign here — the renderer holds the seed + active account and reuses the
        WalletConnect signer. See dapp-browser.ts + DappRequestHost.tsx. */
-    onExec: (cb: (req: { id: number; method: string; params: unknown[] }) => void): (() => void) => {
-      const handler = (_e: IpcRendererEvent, req: { id: number; method: string; params: unknown[] }) => cb(req);
+    onExec: (cb: (req: { id: number; method: string; params: unknown[]; chainId?: number }) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, req: { id: number; method: string; params: unknown[]; chainId?: number }) => cb(req);
       ipcRenderer.on('dapp:exec', handler);
       return () => ipcRenderer.off('dapp:exec', handler);
     },

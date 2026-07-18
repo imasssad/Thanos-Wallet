@@ -59,7 +59,14 @@ function makaluProvider(): Provider {
 /** Proxy a read-only JSON-RPC call (eth_call, eth_getBalance,
  *  eth_estimateGas, eth_blockNumber, …) straight to Makalu. Used by the
  *  in-app dApp browser for methods the wallet doesn't sign. */
-export async function rpcProxy(method: string, params: unknown[]): Promise<unknown> {
+export async function rpcProxy(method: string, params: unknown[], chainId: number = MAKALU_CHAIN_ID): Promise<unknown> {
+  // Route reads to the chain the in-app browser is currently on — a dApp on
+  // BNB/ETH/etc. must read that chain's state, not Makalu's.
+  if (chainId !== MAKALU_CHAIN_ID) {
+    const { getExtEvmProvider } = await import('./evm-external');
+    // getExtEvmProvider returns a JsonRpcProvider (typed as the base Provider).
+    return (getExtEvmProvider(chainId) as JsonRpcProvider).send(method, (params ?? []) as unknown[]);
+  }
   const p = new JsonRpcProvider(rpcUrls()[0], MAKALU_CHAIN_ID);
   return p.send(method, (params ?? []) as unknown[]);
 }

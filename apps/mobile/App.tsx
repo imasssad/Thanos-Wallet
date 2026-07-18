@@ -5019,6 +5019,15 @@ function OnboardingScreen({
 /* ─────────────────── In-app browser (WebView overlay) ─────────────────── */
 interface DappRequest { id: number; method: string; params: unknown[] }
 
+const MAKALU_CHAIN_ID_NUM = 700777;
+/** EVM chains the in-app browser will switch to — the wallet's KNOWN set only
+ *  (Makalu + the external EVM chains it already transacts on: ETH, BNB, Polygon,
+ *  Base, Arbitrum, Linea, Optimism, Avalanche). Deliberately NO arbitrary
+ *  wallet_addEthereumChain — adding a dApp-supplied chain would let it point the
+ *  wallet at a malicious RPC. This is what unblocks dApps on other chains (e.g.
+ *  the Ignite TGE on BNB) while keeping the wallet on known-good RPCs. */
+const BROWSER_EVM_CHAIN_IDS = new Set<number>([MAKALU_CHAIN_ID_NUM, 1, 56, 137, 8453, 42161, 59144, 10, 43114]);
+
 function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void; seed: string[] }) {
   const C = useColors();
   const ref = useRef<WebView>(null);
@@ -5032,6 +5041,10 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   // (mirrors the desktop connectedOrigin gate).
   const [connectedHost, setConnectedHost] = useState('');
   const [pending, setPending] = useState<DappRequest | null>(null);
+  // The EVM chain the dApp is currently on. Starts on Makalu; a dApp can
+  // wallet_switchEthereumChain to any BROWSER_EVM_CHAIN_IDS member, which
+  // routes eth_sendTransaction + reads to that chain.
+  const [currentChainId, setCurrentChainId] = useState(MAKALU_CHAIN_ID_NUM);
   // MUST derive at the ACTIVE account index — executeWcRequest signs with the
   // active hdPath, so an index-0 address here would make eth_accounts / the
   // already-connected reply disagree with the signer (a multi-account user's
@@ -5045,7 +5058,21 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   // Run a request against the wallet signer and post the result back.
   const run = async (req: DappRequest) => {
     try {
-      const result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
+      let result: unknown;
+      // eth_sendTransaction on a non-Makalu chain → broadcast on THAT chain
+      // (dApp contract calls carry `data`, so route through the raw sender).
+      // Signatures (personal_sign / eth_signTypedData_v4) are chain-independent
+      // and go through executeWcRequest regardless of the current chain.
+      if (req.method === 'eth_sendTransaction' && currentChainId !== MAKALU_CHAIN_ID_NUM) {
+        const tx = (req.params[0] ?? {}) as {
+          to?: string; value?: string; data?: string; gas?: string; gasLimit?: string;
+          maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+        };
+        const extm = await import('./lib/evm-external');
+        result = await extm.sendExtEvmRaw({ seed, accountIdx: getActiveAccountIndex(), chainId: currentChainId, tx });
+      } else {
+        result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
+      }
       if (req.method === 'eth_requestAccounts') { setConnected(true); setConnectedHost(host); }
       send(resolveJs(req.id, result));
     } catch (e) {
@@ -5061,8 +5088,8 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
     const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [] };
 
     // Read-only / already-authorised methods resolve immediately.
-    if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${(700777).toString(16)}`)); return; }
-    if (req.method === 'net_version')  { send(resolveJs(req.id, '700777')); return; }
+    if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${currentChainId.toString(16)}`)); return; }
+    if (req.method === 'net_version')  { send(resolveJs(req.id, String(currentChainId))); return; }
     // Address is disclosed ONLY to the host that was granted the connection —
     // a page the WebView later navigated to (redirect/link) must re-prompt.
     const grantedHere = connected && !!address && !!connectedHost && connectedHost === host;
@@ -5075,26 +5102,27 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
       send(resolveJs(req.id, [address]));
       return;
     }
-    // Chain management — we only support Makalu (Lithosphere).
-    if (req.method === 'wallet_switchEthereumChain') {
-      const target = (req.params?.[0] as { chainId?: string })?.chainId?.toLowerCase();
-      if (target === `0x${(700777).toString(16)}`) send(resolveJs(req.id, null));
-      else send(rejectJs(req.id, 4902, 'Only Makalu (Lithosphere) is supported in-app'));
-      return;
-    }
-    if (req.method === 'wallet_addEthereumChain') {
-      // Gate on Makalu, same as switch above — blanket-approving any chain
-      // let a dApp add e.g. BSC, get success, then 4902 on the follow-up
-      // switch (and diverged from the WC handler in lib/wc-signer.ts).
-      const target = (req.params?.[0] as { chainId?: string })?.chainId?.toLowerCase();
-      if (target === `0x${(700777).toString(16)}`) send(resolveJs(req.id, null));
-      else send(rejectJs(req.id, 4001, 'Only Makalu (Lithosphere) can be added in-app'));
+    // Chain management — switch to any of the wallet's KNOWN chains
+    // (BROWSER_EVM_CHAIN_IDS). switch + add behave the same: a known chain
+    // succeeds and becomes current; an unknown one is refused (no arbitrary
+    // dApp-supplied RPC). On success, sync the injected provider's chainId and
+    // emit chainChanged so the dApp re-reads the new chain.
+    if (req.method === 'wallet_switchEthereumChain' || req.method === 'wallet_addEthereumChain') {
+      const target = Number((req.params?.[0] as { chainId?: string })?.chainId ?? NaN);
+      if (BROWSER_EVM_CHAIN_IDS.has(target)) {
+        setCurrentChainId(target);
+        send(resolveJs(req.id, null));
+        const hex = `0x${target.toString(16)}`;
+        send(`(function(){try{if(window.ethereum){window.ethereum.chainId='${hex}';window.ethereum.networkVersion='${target}';}window.__thanos_emit&&window.__thanos_emit('chainChanged','${hex}');}catch(e){}})();true;`);
+      } else {
+        send(rejectJs(req.id, req.method === 'wallet_switchEthereumChain' ? 4902 : 4001, 'Unsupported network — Thanos supports Lithosphere and major EVM chains'));
+      }
       return;
     }
     if (APPROVAL_METHODS.has(req.method)) { setPending(req); return; }
     // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
     // read — proxy straight to the Makalu RPC.
-    rpcProxy(req.method, req.params)
+    rpcProxy(req.method, req.params, currentChainId)
       .then(r => send(resolveJs(req.id, r)))
       .catch(e => send(rejectJs(req.id, -32603, (e as Error)?.message || 'RPC error')));
   };

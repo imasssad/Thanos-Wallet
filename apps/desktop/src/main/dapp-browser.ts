@@ -38,7 +38,26 @@ let view: import('electron').WebContentsView | null = null;
 let host: import('electron').BrowserWindow | null = null;
 let currentUrl = '';
 
-const CHAIN_HEX = '0xab169'; // Makalu 700777
+const MAKALU_CHAIN_ID = 700777;
+// Known EVM chains the in-app browser will switch to (chainId → read RPC).
+// Mirrors the renderer's EXT_EVM_CHAINS; duplicated here because the main
+// process can't import renderer code. NO arbitrary wallet_addEthereumChain —
+// known-good RPCs only, so a dApp can't point the wallet at a malicious node.
+const BROWSER_CHAINS: Record<number, string> = {
+  700777: 'https://rpc.litho.ai',
+  1:      'https://ethereum.publicnode.com',
+  56:     'https://bsc-dataseed.binance.org',
+  137:    'https://polygon-bor-rpc.publicnode.com',
+  8453:   'https://mainnet.base.org',
+  42161:  'https://arb1.arbitrum.io/rpc',
+  59144:  'https://rpc.linea.build',
+  10:     'https://mainnet.optimism.io',
+  43114:  'https://api.avax.network/ext/bc/C/rpc',
+};
+
+// The EVM chain the dApp is currently on — starts on Makalu; a dApp can
+// wallet_switchEthereumChain to any BROWSER_CHAINS member. Reset on destroy.
+let currentChainId = MAKALU_CHAIN_ID;
 
 // Per-open connection state — reset when the browser view is destroyed.
 // connectedOrigin scopes the grant to the host that was approved: navigating
@@ -63,7 +82,7 @@ function rejectAllExec(): void {
 /** Ask the wallet renderer to sign an already-approved request. Times out so a
  *  renderer that reloads/crashes mid-signing can't hang the dApp's promise
  *  forever (render-process-gone also rejects all pending — see below). */
-function execViaRenderer(method: string, params: unknown[]): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+function execViaRenderer(method: string, params: unknown[], chainId: number): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
   if (!host) return Promise.resolve({ error: { code: 4900, message: 'Wallet disconnected' } });
   const id = ++execSeq;
   return new Promise((resolve) => {
@@ -71,16 +90,23 @@ function execViaRenderer(method: string, params: unknown[]): Promise<{ result?: 
       if (pendingExec.delete(id)) resolve({ error: { code: -32603, message: 'Signing timed out' } });
     }, 120_000);
     pendingExec.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); } });
-    host!.webContents.send('dapp:exec', { id, method, params });
+    // chainId lets the renderer broadcast eth_sendTransaction on the chain the
+    // dApp switched to (not always Makalu).
+    host!.webContents.send('dapp:exec', { id, method, params, chainId });
   });
 }
 
 // Read-only JSON-RPC (eth_call, eth_getBalance, …) is answered straight from
 // Makalu — no seed, no approval needed.
-let readProvider: import('ethers').JsonRpcProvider | null = null;
-function makaluRead(): import('ethers').JsonRpcProvider {
-  if (!readProvider) readProvider = new JsonRpcProvider('https://rpc.litho.ai', 700777, { staticNetwork: true });
-  return readProvider;
+const readProviders = new Map<number, import('ethers').JsonRpcProvider>();
+function chainRead(chainId: number): import('ethers').JsonRpcProvider {
+  let p = readProviders.get(chainId);
+  if (!p) {
+    const rpc = BROWSER_CHAINS[chainId] ?? BROWSER_CHAINS[MAKALU_CHAIN_ID];
+    p = new JsonRpcProvider(rpc, chainId, { staticNetwork: true });
+    readProviders.set(chainId, p);
+  }
+  return p;
 }
 
 /** Native approval dialog — the only surface that reliably draws ABOVE the
@@ -158,6 +184,7 @@ function destroy(): void {
   connected = false;
   connectedAddress = '';
   connectedOrigin = '';
+  currentChainId = MAKALU_CHAIN_ID;
   rejectAllExec();
 }
 
@@ -313,13 +340,19 @@ function attachIpc(): void {
     const originHost = (() => { try { return new URL(currentUrl).host; } catch { return ''; } })();
 
     // Trivially-known / already-authorised reads — no prompt.
-    if (method === 'eth_chainId')  return CHAIN_HEX;
-    if (method === 'net_version')  return '700777';
+    if (method === 'eth_chainId')  return `0x${currentChainId.toString(16)}`;
+    if (method === 'net_version')  return String(currentChainId);
     if (method === 'eth_accounts') return connected && connectedAddress && connectedOrigin && connectedOrigin === originHost ? [connectedAddress] : [];
+    // switch + add behave the same: a KNOWN chain becomes current (and the dApp
+    // is told via chainChanged); an unknown one is refused (no arbitrary RPC).
     if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
-      const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
-      if (target === CHAIN_HEX) return null;
-      return { __thanosError: true, code: method === 'wallet_switchEthereumChain' ? 4902 : 4001, message: 'Only Makalu (Lithosphere) is supported in-app.' };
+      const target = Number((params[0] as { chainId?: string })?.chainId ?? NaN);
+      if (BROWSER_CHAINS[target]) {
+        currentChainId = target;
+        view.webContents.send('dapp:emit', { event: 'chainChanged', data: `0x${target.toString(16)}` });
+        return null;
+      }
+      return { __thanosError: true, code: method === 'wallet_switchEthereumChain' ? 4902 : 4001, message: 'Unsupported network — Thanos supports Lithosphere and major EVM chains.' };
     }
 
     // Connect — approve, then read the address back from the renderer.
@@ -331,7 +364,7 @@ function attachIpc(): void {
       const ok = await approveViaDialog('connect', originHost,
         `${originHost || 'This site'} will see your wallet address and can request signatures. Each signature still needs your approval.`);
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the connection request.' };
-      const out = await execViaRenderer('eth_requestAccounts', params);
+      const out = await execViaRenderer('eth_requestAccounts', params, currentChainId);
       if (out.error) return { __thanosError: true, code: out.error.code, message: out.error.message };
       const accts = out.result as string[];
       if (Array.isArray(accts) && accts.length) {
@@ -354,14 +387,14 @@ function attachIpc(): void {
       const kind = method === 'eth_sendTransaction' ? 'tx' : 'sign';
       const ok = await approveViaDialog(kind, originHost, describeForApproval(method, params));
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the request.' };
-      const out = await execViaRenderer(method, params);
+      const out = await execViaRenderer(method, params, currentChainId);
       if (out.error) return { __thanosError: true, code: out.error.code, message: out.error.message };
       return out.result;
     }
 
-    // Anything else is a read — proxy to Makalu.
+    // Anything else is a read — proxy to the current chain's RPC.
     try {
-      return await makaluRead().send(method, params);
+      return await chainRead(currentChainId).send(method, params);
     } catch (err) {
       return { __thanosError: true, code: -32603, message: (err as Error)?.message || 'RPC error' };
     }

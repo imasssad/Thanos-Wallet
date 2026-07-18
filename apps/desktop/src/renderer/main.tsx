@@ -126,7 +126,7 @@ declare global {
         /** Post-approval signing bridge for the in-app browser's injected
          *  provider. Main shows the approval dialog, then asks the renderer
          *  to sign (renderer owns seed + active account). */
-        onExec(cb: (req: { id: number; method: string; params: unknown[] }) => void): () => void;
+        onExec(cb: (req: { id: number; method: string; params: unknown[]; chainId?: number }) => void): () => void;
         execRespond(id: number, result: unknown, error?: { code: number; message: string }): void;
       };
     };

@@ -124,3 +124,43 @@ export async function sendExtEvm(args: {
     throw new ExtEvmSendError('rpc_error', msg);
   }
 }
+
+/**
+ * Sign + broadcast an ARBITRARY transaction (incl. contract calls carrying
+ * `data`) on an external EVM chain — the in-app dApp browser's
+ * eth_sendTransaction path once the user has switched off Makalu (e.g. the
+ * Ignite TGE on BNB Chain). Distinct from sendExtEvm (structured native/ERC-20
+ * transfers only). ethers accepts the dApp's hex-string fields directly and
+ * stamps the correct EIP-155 chainId from the chain-bound provider.
+ */
+export async function sendExtEvmRaw(args: {
+  seed: string[];
+  accountIdx: number;
+  chainId: number;
+  tx: {
+    to?: string; value?: string; data?: string;
+    gas?: string; gasLimit?: string;
+    maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+  };
+}): Promise<string> {
+  const chain = getExtEvmChain(args.chainId);
+  if (!chain) throw new ExtEvmSendError('invalid_chain', `Unsupported chain ${args.chainId}`);
+  const provider = getExtEvmProvider(args.chainId);
+  const wallet   = walletFor(args.seed, args.accountIdx, provider);
+  const t = args.tx;
+  try {
+    const sent = await wallet.sendTransaction({
+      to:                   t.to,
+      value:                t.value,
+      data:                 t.data,
+      gasLimit:             t.gas ?? t.gasLimit,
+      maxFeePerGas:         t.maxFeePerGas,
+      maxPriorityFeePerGas: t.maxPriorityFeePerGas,
+    });
+    return sent.hash;
+  } catch (e) {
+    const msg = (e as Error)?.message || 'Broadcast failed';
+    if (/insufficient funds/i.test(msg)) throw new ExtEvmSendError('insufficient', `Insufficient ${chain.nativeSymbol} for amount + gas`);
+    throw new ExtEvmSendError('rpc_error', msg);
+  }
+}
