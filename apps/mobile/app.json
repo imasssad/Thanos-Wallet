@@ -17,7 +17,7 @@
     "ios": {
       "bundleIdentifier": "litho.thanos.wallet",
       "supportsTablet": true,
-      "buildNumber": "9",
+      "buildNumber": "10",
       "infoPlist": {
         "NSCameraUsageDescription": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
         "NSFaceIDUsageDescription": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely.",
