@@ -19,9 +19,22 @@ the **MAS build only** (the direct-download `.dmg` keeps them):
    automatic MAS rejection; the App Store delivers updates. The MAS build must
    not initialize the updater.
 
-Both are gated by a compile-time `MAS_BUILD=1` flag (wire in `main.tsx`:
-`if (!process.env.MAS_BUILD) initAutoUpdater()`, and hide HW-wallet UI when the
-renderer sees the flag via a build-time define).
+Both are gated and WIRED (2026-07-18):
+- **Auto-updater** — `startAutoUpdater()` (`src/main/updater.ts`) early-returns
+  when `process.mas` is true. `process.mas` is Electron's runtime flag, set only
+  in a Mac App Store build — so this needs no build env var and leaves the
+  direct-download `.dmg`/`.exe` build untouched.
+- **Hardware-wallet UI** — a Vite `define` (`vite.config.ts`) exposes
+  `__MAS_BUILD__` (from `MAS_BUILD=1`) to the renderer; `globals.d.ts` types it.
+  The Settings "Hardware wallet" row, the Send "Sign with" Ledger/Trezor
+  selector, and the `HardwareModal` mount are all gated `{!__MAS_BUILD__ && …}`,
+  so `MAS_BUILD=1 pnpm build` dead-code-eliminates them and tree-shakes the
+  eager `@ledgerhq/hw-transport-webhid` import out of the bundle. (The lazy
+  `vendor-hardware` chunk still exists but is never loaded under MAS — its only
+  entry points are the hidden selector buttons.)
+
+Verified: `MAS_BUILD=1 pnpm build` produces a bundle with no HW-wallet UI
+strings and no eager WebHID import; a normal build keeps them.
 
 ## Bundle-ID decision — DECIDED: `ai.thanos.wallet` (separate desktop record)
 
@@ -77,7 +90,7 @@ one-shot approval.
 - [ ] Client: confirm bundle-ID option (A vs B)
 - [ ] Client: create + export the 2 certs, App ID, provisioning profile
 - [ ] Client: add the 4 repo secrets
-- [ ] Us: `MAS_BUILD` flag — disable auto-updater + HW-wallet UI
+- [x] Us: `MAS_BUILD` flag — disable auto-updater + HW-wallet UI (done 2026-07-18)
 - [ ] Us: run the MAS workflow → get the `.pkg`
 - [ ] Client (on a Mac): Transporter upload → ASC macOS slot
 - [ ] Iterate on review feedback until approved

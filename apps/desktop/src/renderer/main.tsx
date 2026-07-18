@@ -1598,8 +1598,10 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
 
         {/* Signer choice: software wallet vs Ledger vs Trezor.
             EVM: all three. BTC: seed / Ledger / Trezor. SOL: seed / Ledger.
-            Cosmos: seed only (Ledger Cosmos app integration is a follow-up). */}
-        {chain !== 'cosmos' && (
+            Cosmos: seed only (Ledger Cosmos app integration is a follow-up).
+            Hidden entirely in the MAS build — the sandbox blocks USB/HID, so
+            software (seed) signing is the only path; no selector needed. */}
+        {!__MAS_BUILD__ && chain !== 'cosmos' && (
         <div style={{
           marginTop: 16, padding: 12, borderRadius: 10,
           background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
@@ -2532,9 +2534,13 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme
           <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
             <button className="settings-btn settings-btn-danger" onClick={() => setExportSeedOpen(true)}><Download2 size={14}/> Export</button>
           </Row>
+          {/* Hidden in the Mac App Store build — the sandbox blocks the USB/HID
+              access Ledger/Trezor need, so there's no working device path. */}
+          {!__MAS_BUILD__ && (
           <Row label="Hardware wallet" sub="Connect a Ledger via USB (Trezor support is wired through the same vendor allowlist)">
             <button className="settings-btn" onClick={() => setHwOpen(true)}><KeyIcon size={14}/> Connect</button>
           </Row>
+          )}
           <Row label="Lock wallet now" sub="Sign out on this device">
             <button className="settings-btn" onClick={onLock}><Lock2 size={14}/> Lock</button>
           </Row>
@@ -2554,7 +2560,9 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme
           </Row>
         </Section>
 
-        {hwOpen && <HardwareModal onClose={() => setHwOpen(false)} isDark={isDark}/>}
+        {/* !__MAS_BUILD__ first so esbuild tree-shakes HardwareModal (and its
+            eager @ledgerhq/hw-transport-webhid import) out of the MAS bundle. */}
+        {!__MAS_BUILD__ && hwOpen && <HardwareModal onClose={() => setHwOpen(false)} isDark={isDark}/>}
         {wcOpen && <WalletConnectModal evmAddress={walletAddr} onClose={() => setWcOpen(false)}/>}
         {changePwdOpen && <ChangePasswordModal onClose={() => setChangePwdOpen(false)}/>}
         {exportSeedOpen && <ExportSeedModal onClose={() => setExportSeedOpen(false)}/>}

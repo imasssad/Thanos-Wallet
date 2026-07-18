@@ -14,6 +14,13 @@ export default defineConfig({
   // and no icons. Relative base makes Vite emit './assets/…' so everything
   // resolves against dist/. Still correct in dev (Vite serves it fine).
   base: './',
+  // Compile-time flag for the Mac App Store build (`MAS_BUILD=1 pnpm build`):
+  // the sandbox blocks USB/HID, so the hardware-wallet UI is stripped, and the
+  // self-updater is banned. Replaced literally, so the gated UI is dead-code-
+  // eliminated in the MAS bundle (and left intact in the direct-download build).
+  define: {
+    __MAS_BUILD__: JSON.stringify(process.env.MAS_BUILD === '1'),
+  },
   plugins: [
     react(),
     // Electron 33 SANDBOXES the renderer (no Node globals) and Vite externalizes

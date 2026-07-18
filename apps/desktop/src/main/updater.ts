@@ -53,6 +53,14 @@ function emit(ev: UpdateEvent): void {
 /** Hook up the renderer-bound IPC handlers + autoUpdater event stream
  *  + the periodic check. Idempotent — safe to call repeatedly. */
 export function startAutoUpdater(window: BrowserWindow): void {
+  // Mac App Store builds MUST NOT ship a self-updater — electron-updater is an
+  // automatic App Review rejection (the Store delivers updates). process.mas is
+  // true ONLY in a MAS build, so the direct-download (.dmg/.exe) build is
+  // untouched. Return before touching electron-updater at all.
+  if ((process as unknown as { mas?: boolean }).mas) {
+    electronLog.info('updater: disabled (Mac App Store build)');
+    return;
+  }
   _window = window;
   if (_started) return;
   _started = true;
