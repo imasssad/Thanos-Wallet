@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "1.0.3",
+    "version": "1.1.0",
     "jsEngine": "hermes",
     "newArchEnabled": false,
     "orientation": "portrait",
@@ -39,7 +39,7 @@
     "android": {
       "package": "ai.thanos.wallet",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 11,
+      "versionCode": 12,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"
