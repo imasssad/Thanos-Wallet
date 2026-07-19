@@ -12,7 +12,7 @@ import {
   FX_CURRENCIES, type DisplayCurrency,
 } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
-import { loadVault, openVault, setSeedBackedUp } from '../lib/vault';
+import { loadVault, openVault, setSeedBackedUp, isSeedBackedUp, clearVault } from '../lib/vault';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
@@ -1209,6 +1209,23 @@ export function SettingsView() {
   // blocked/offline) — otherwise the engine's USD fallback is invisible and
   // looks like the picker is simply broken.
   const [fxNote, setFxNote] = useState<string | null>(null);
+
+  /* Delete wallet — two-step confirm, mirroring onboarding's resetWallet so
+     the most destructive action in the app never rides on a single click. */
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const seedBackedUp = typeof window !== 'undefined' ? isSeedBackedUp() : true;
+  const deleteWallet = () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 5_000);
+      return;
+    }
+    setConfirmDelete(false);
+    clearVault();
+    // Full reload so the wallet gate re-evaluates and lands on onboarding —
+    // no stale unlocked state left in memory.
+    window.location.href = '/app';
+  };
   const [language, setLanguage] = useState('English');
   const [autoLock, setAutoLock] = useState('5 minutes');
   const [hwModal,  setHwModal]  = useState<'ledger' | 'trezor' | null>(null);
@@ -1326,6 +1343,30 @@ export function SettingsView() {
           <Row label="Lock wallet now" sub="Sign out on this device">
             <button className="settings-btn">
               <Lock size={14}/> Lock
+            </button>
+          </Row>
+        </Section>
+
+        {/* Danger zone — the only irreversible action in Settings. "Reset
+            wallet" already existed on the unlock screen; users reasonably
+            expect it here too, while unlocked. Two-step confirm (same pattern
+            as onboarding), and when the recovery phrase has NOT been backed up
+            the copy says plainly that the funds become unrecoverable. */}
+        <Section icon={AlertTriangle} title="Danger zone" sub="Irreversible — read before you tap">
+          <Row
+            label="Delete wallet"
+            sub={
+              seedBackedUp
+                ? 'Erases this wallet from this device. You can restore it with your recovery phrase.'
+                : 'You have NOT backed up your recovery phrase. Deleting now loses access to these funds permanently.'
+            }
+          >
+            <button
+              className="settings-btn settings-btn-danger"
+              onClick={deleteWallet}
+              title={seedBackedUp ? 'Delete this wallet from this device' : 'Back up your recovery phrase first'}
+            >
+              <Trash2 size={14}/> {confirmDelete ? 'Click again to erase' : 'Delete wallet'}
             </button>
           </Row>
         </Section>
