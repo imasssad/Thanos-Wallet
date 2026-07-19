@@ -29,13 +29,11 @@
   <key>com.apple.security.network.client</key>
   <true/>
 
-  <!-- USB — ATTEMPT to keep Ledger/Trezor working under the sandbox. This is
-       the entitlement that MIGHT permit it, but sandboxed WebHID/WebUSB in a
-       MAS Electron app is unreliable AND draws extra App Review scrutiny; treat
-       hardware-wallet support in the Store build as UNPROVEN until tested on a
-       Mac with a real device. Kept here so the test is meaningful. -->
-  <key>com.apple.security.device.usb</key>
-  <true/>
+  <!-- (Removed com.apple.security.device.usb: the MAS build disables the
+       hardware-wallet flow via MAS_BUILD, so USB is never used. Declaring an
+       unused entitlement is a common App Review rejection, so it's dropped.
+       Ledger/Trezor stay in the direct-download .dmg build, which keeps its
+       own non-sandboxed entitlements.) -->
 
   <!-- Import/export a recovery phrase or keystore file via the OS file picker. -->
   <key>com.apple.security.files.user-selected.read-write</key>
