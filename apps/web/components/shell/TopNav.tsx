@@ -176,9 +176,11 @@ export function TopNav({
                     <div className="menu-divider"/>
                     {getVisibleAccountIndices().map((i) => {
                       const a = accountAddresses[i];
-                      // Removal needs at least two accounts left — a wallet
-                      // must always keep one.
-                      const canDelete = !!onDeleteAccount && getVisibleAccountIndices().length > 1;
+                      // A wallet must always keep one account, so the last one
+                      // can't be removed. Render the control DISABLED rather
+                      // than hiding it — hiding made the feature look absent
+                      // to anyone with a single account.
+                      const lastAccount = getVisibleAccountIndices().length <= 1;
                       return (
                         <div
                           key={i}
@@ -214,12 +216,25 @@ export function TopNav({
                               <Pencil size={13}/>
                             </button>
                           )}
-                          {canDelete && (
+                          {onDeleteAccount && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); onDeleteAccount?.(i); setAccountMenu(false); }}
-                              title="Delete account"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (lastAccount) return;
+                                onDeleteAccount(i);
+                                setAccountMenu(false);
+                              }}
+                              disabled={lastAccount}
+                              title={lastAccount
+                                ? 'Your wallet must keep at least one account — add another to delete this one'
+                                : 'Delete account'}
                               aria-label={`Delete ${getAccountName(i)}`}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red, #f87171)', padding: 4, display: 'flex' }}
+                              style={{
+                                background: 'none', border: 'none', padding: 4, display: 'flex',
+                                cursor: lastAccount ? 'not-allowed' : 'pointer',
+                                color: lastAccount ? 'var(--text-muted)' : 'var(--red, #f87171)',
+                                opacity: lastAccount ? 0.45 : 1,
+                              }}
                             >
                               <Trash2 size={13}/>
                             </button>
