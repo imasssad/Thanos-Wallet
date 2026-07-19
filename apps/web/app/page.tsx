@@ -434,6 +434,10 @@ type DL = {
   /** Secondary direct-APK download shown beneath the primary CTA (Android:
    *  Google Play as the main button, the raw APK as a fallback link). */
   apk?: string;
+  /** Per-OS override for the desktop build. When the Mac app ships, flip ONLY
+   *  the `mac` entry — Windows/Linux visitors then still see their own build
+   *  (or "coming soon"), and are never offered the Mac binary. */
+  byOs?: Partial<Record<'mac' | 'windows' | 'linux', { cta?: string; href?: string; ready?: boolean; sub?: string }>>;
   Icon: React.FC<{ size?: number }>;
 };
 
@@ -443,9 +447,34 @@ type DL = {
  *  build they're getting before downloading. */
 const ANDROID_APK_VERSION = '1.1.0';
 
+/** The visitor's device, at OS granularity — drives which install options we
+ *  offer. A phone can't run the browser extension or the desktop app, so those
+ *  must never be prompted on mobile; and the desktop build resolves per-OS so
+ *  (e.g.) a Windows user is never handed the Mac binary. */
+type DevicePlatform = 'android' | 'ios' | 'mac' | 'windows' | 'linux';
+
+function detectDevice(): DevicePlatform {
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return 'android';
+  // iPadOS 13+ reports itself as desktop Safari on Mac — a touch-capable
+  // "Macintosh" is really an iPad, so this MUST be tested before 'mac'.
+  if (/iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document)) return 'ios';
+  if (/Macintosh|Mac OS X/i.test(ua)) return 'mac';
+  if (/Windows/i.test(ua)) return 'windows';
+  return 'linux';
+}
+
 const DOWNLOADS: DL[] = [
   { n: '01', name: 'Web',       sub: 'Any modern browser · runs at thanos.fi',            cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
-  { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
+  // Desktop resolves per-OS via `byOs` below — a visitor is only ever offered
+  // the build for the machine they're on. When the Mac .dmg/.pkg ships, set
+  // ready+href on the `mac` entry ONLY; Windows/Linux stay untouched.
+  { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop,
+    byOs: {
+      mac:     { sub: 'macOS · native Electron build',   cta: 'Download for Mac',     ready: false },
+      windows: { sub: 'Windows · native Electron build', cta: 'Download for Windows', ready: false },
+      linux:   { sub: 'Linux · AppImage / .deb',         cta: 'Download for Linux',   ready: false },
+    } },
   { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
   { n: '04', name: 'Android',   sub: 'Phone · Tablet · Google Play or direct APK', cta: 'Google Play', href: 'https://play.google.com/store/apps/details?id=ai.thanos.wallet', ready: true, ext: true, apk: '/download', Icon: IconAndroid },
   { n: '05', name: 'Extension', sub: 'Chrome · Brave · Edge · dApp signer for window.thanos', cta: 'Chrome Store', href: 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj', ready: true, ext: true, Icon: IconExtension },
@@ -453,6 +482,44 @@ const DOWNLOADS: DL[] = [
 
 function PlatformSection() {
   const { ref, shown } = useReveal<HTMLElement>();
+  // Detected after mount (navigator isn't available during SSR). Until then we
+  // render every tile, which keeps the server HTML complete for SEO and avoids
+  // a hydration mismatch; the section sits below the fold, so the narrowing
+  // lands well before a visitor scrolls to it.
+  const [device, setDevice] = useState<DevicePlatform | null>(null);
+  useEffect(() => { setDevice(detectDevice()); }, []);
+  const isMobile = device === 'android' || device === 'ios';
+
+  const tiles = DOWNLOADS
+    .filter((d) => {
+      if (!device) return true;
+      if (isMobile) {
+        // A phone can't install a browser extension or a desktop binary —
+        // never prompt for either (this was the reported issue).
+        if (d.name === 'Extension' || d.name === 'Desktop') return false;
+        // Only the visitor's own phone OS; hide the other one.
+        if (d.name === 'iOS')     return device === 'ios';
+        if (d.name === 'Android') return device === 'android';
+        // Web stays reachable but is ranked last below — it is NOT the prompt,
+        // and on iOS it's the only usable option until the App Store build ships.
+        return true;
+      }
+      return true;
+    })
+    // Lead with the native app for this device; Web falls to the end on mobile.
+    .sort((a, b) => nativeRank(a) - nativeRank(b))
+    // Offer only the desktop build matching the visitor's OS.
+    .map((d) => {
+      if (d.name !== 'Desktop' || !device || isMobile) return d;
+      const os = d.byOs?.[device as 'mac' | 'windows' | 'linux'];
+      return os ? { ...d, ...os } : d;
+    });
+
+  function nativeRank(d: DL): number {
+    if (!device || !isMobile) return 0;
+    return (device === 'android' && d.name === 'Android') || (device === 'ios' && d.name === 'iOS') ? 0 : 1;
+  }
+
   return (
     <section id="download" ref={ref} className={`lp-section lp-section-tight ${shown ? 'is-shown' : ''}`}>
       <div className="lp-container">
@@ -466,7 +533,7 @@ function PlatformSection() {
         </p>
 
         <div className="lp-dl-list">
-          {DOWNLOADS.map(({ n, name, sub, cta, href, ready, dl, ext, apk, Icon }, idx) => {
+          {tiles.map(({ n, name, sub, cta, href, ready, dl, ext, apk, Icon }, idx) => {
             // External links (Chrome store) + real downloads (APK) use a plain
             // <a>; live in-app routes use Next <Link> for client-side nav.
             const Tag = ready && !dl && !ext ? Link : 'a';
