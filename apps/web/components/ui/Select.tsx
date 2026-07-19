@@ -1,15 +1,21 @@
 'use client';
 /**
- * Generic Radix-based Select.
+ * Simple value dropdown (currency, language, lock-timeout, …).
  *
- * For non-token dropdowns (currency, language, lock-timeout, etc.) where
- * we want the same dark-themed dropdown styling as TokenSelect without the
- * TokenIcon. Built on the same primitive shadcn's Select uses, with our
- * custom inline styling.
+ * NATIVE <select> on purpose. This was a Radix portal-based dropdown, but the
+ * app renders under `body { zoom: 1.25 }` on desktop (globals.css — a
+ * deliberate 125% UI scale). Radix portals its panel into <body> and positions
+ * it with floating-ui, which reads the trigger via getBoundingClientRect()
+ * (already-zoomed pixels) and writes that back as an inline `left`/`top` — the
+ * browser then multiplies those by the zoom AGAIN, so the panel drifted right
+ * and down, further the closer the trigger sat to the right edge. A native
+ * select's popup is rendered by the browser/OS, so it is immune to that math
+ * (this is also what the desktop app uses, which is why it never had the bug).
+ *
+ * The `.settings-select` class was written for a native select all along —
+ * `appearance: none` plus a CSS-drawn chevron and matching right padding.
  */
 import React from 'react';
-import * as RSelect from '@radix-ui/react-select';
-import { Check, ChevronDown } from 'lucide-react';
 
 export interface SelectOption {
   /** Stored value */
@@ -34,89 +40,20 @@ function normalize(opt: string | SelectOption): SelectOption {
 
 export function Select({ value, onChange, options, ariaLabel, width }: Props) {
   const opts = options.map(normalize);
-  const selected = opts.find(o => o.value === value);
 
   return (
-    <RSelect.Root value={value} onValueChange={onChange}>
-      <RSelect.Trigger
-        aria-label={ariaLabel ?? 'Select option'}
-        className="settings-select"
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          gap:            8,
-          width:          width ?? '100%',
-          cursor:         'pointer',
-          textAlign:      'left',
-          appearance:     'none',
-          backgroundImage:'none',
-        }}
-      >
-        <RSelect.Value asChild>
-          <span style={{ flex: 1, fontWeight: 500 }}>
-            {selected?.label ?? selected?.value ?? value}
-          </span>
-        </RSelect.Value>
-        <RSelect.Icon asChild>
-          <ChevronDown size={14} strokeWidth={2} style={{ color: 'var(--text-muted)' }}/>
-        </RSelect.Icon>
-      </RSelect.Trigger>
-
-      <RSelect.Portal>
-        <RSelect.Content
-          position="popper"
-          sideOffset={6}
-          // Keep the panel off the viewport edges when the trigger sits low or
-          // far right, so it can't render half off-screen.
-          collisionPadding={8}
-          style={{
-            zIndex:       100,
-            background:   'var(--bg-elevated)',
-            border:       '1px solid var(--border-default)',
-            borderRadius: 10,
-            padding:      4,
-            minWidth:     'var(--radix-select-trigger-width)',
-            maxHeight:    'min(300px, var(--radix-select-content-available-height))',
-            boxShadow:    '0 10px 28px rgba(0,0,0,0.24)',
-            overflow:     'hidden',
-          }}
-        >
-          {/* MUST scroll: Content is overflow:hidden with a maxHeight capped by
-              the available viewport height, so when the trigger sits low on the
-              page the list gets clipped — without this the last options (JPY /
-              BTC) were simply unreachable. */}
-          <RSelect.Viewport style={{ padding: 2, overflowY: 'auto', maxHeight: 'inherit' }}>
-            {opts.map(o => (
-              <RSelect.Item
-                key={o.value}
-                value={o.value}
-                style={{
-                  display:        'flex',
-                  alignItems:     'center',
-                  gap:            8,
-                  padding:        '8px 10px',
-                  borderRadius:   6,
-                  cursor:         'pointer',
-                  outline:        'none',
-                  userSelect:     'none',
-                  fontSize:       13,
-                  fontWeight:     500,
-                  color:          'var(--text-primary)',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <RSelect.ItemText asChild>
-                  <span style={{ flex: 1 }}>{o.label ?? o.value}</span>
-                </RSelect.ItemText>
-                <RSelect.ItemIndicator>
-                  <Check size={13} strokeWidth={2.5} style={{ color: 'var(--blue)' }}/>
-                </RSelect.ItemIndicator>
-              </RSelect.Item>
-            ))}
-          </RSelect.Viewport>
-        </RSelect.Content>
-      </RSelect.Portal>
-    </RSelect.Root>
+    <select
+      className="settings-select"
+      aria-label={ariaLabel ?? 'Select option'}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ width: width ?? '100%', textAlign: 'left' }}
+    >
+      {opts.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label ?? o.value}
+        </option>
+      ))}
+    </select>
   );
 }

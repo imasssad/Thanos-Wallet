@@ -11,6 +11,7 @@ import {
   applyDisplayCurrency, getDisplayCurrency, convertFromUsd, currencySymbol,
   FX_CURRENCIES, type DisplayCurrency,
 } from '@thanos/sdk-core';
+import { useDisplayCurrency } from '../lib/use-fx';
 import { loadVault, openVault, setSeedBackedUp } from '../lib/vault';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
@@ -134,6 +135,7 @@ function useMainstreamMarkets(): MarketRow[] | null {
 }
 
 export function MarketView() {
+  useDisplayCurrency();
   const [search, setSearch] = useState('');
   const quotes       = useQuotes();
   /** Token-detail screen — opened by tapping any market row. Carries the
@@ -247,6 +249,7 @@ export function MarketView() {
 }
 
 export function PortfolioView() {
+  useDisplayCurrency();
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices = usePrices();
@@ -461,6 +464,7 @@ function activityToRow(item: IndexerActivityItem) {
 }
 
 export function TransactionsView() {
+  useDisplayCurrency();
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const [filter, setFilter] = useState<'All'|'Send'|'Receive'|'Swap'>('All');
@@ -652,6 +656,7 @@ export function TransactionsView() {
  *  position-query endpoint land, this view becomes a real list. Until
  *  then it's an honest "Coming soon" instead of a Solstice mock. */
 export function StakingView() {
+  useDisplayCurrency();
   return (
     <div className="main-area" style={{ width: '100%' }}>
       <div className="page-wrap">
@@ -1195,6 +1200,7 @@ function DnnsSection({ Section }: {
 }
 
 export function SettingsView() {
+  useDisplayCurrency();
   const wallet = useWallet();
   const [revealOpen, setRevealOpen] = useState(false);
   // Bound to the shared FX engine (same one desktop/extension use) — reads the

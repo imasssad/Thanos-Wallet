@@ -12,6 +12,7 @@ import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { LaxCardPromo, LaxCardModal } from './LaxCard';
 import { QuanttCard } from './QuanttCard';
 import { formatFiat, convertFromUsd, currencySymbol } from '@thanos/sdk-core';
+import { useDisplayCurrency } from '../lib/use-fx';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
@@ -530,6 +531,9 @@ function ActivityRowsSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 export function Dashboard() {
+  // Re-render when the display currency changes. AppShell can't do this for us
+  // — it holds the page as {children}, so its state never re-renders this tree.
+  useDisplayCurrency();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modal, setModal] = useState<ModalKind>(null);

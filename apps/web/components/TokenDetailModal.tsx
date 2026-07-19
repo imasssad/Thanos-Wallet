@@ -29,6 +29,7 @@ import {
 } from '@thanos/sdk-core';
 import { TOKENS, explorerUrl, type Token } from '../lib/tokens';
 import { convertFromUsd, currencySymbol } from '@thanos/sdk-core';
+import { useDisplayCurrency } from '../lib/use-fx';
 import { EVM_CHAINS } from '../lib/evm-chains';
 import { useQuotes } from '../lib/usePrices';
 import { getPortfolio, getActivity, type IndexerActivityItem } from '../lib/indexer';
@@ -121,6 +122,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 type SubModal = 'send' | 'swap' | 'receive' | null;
 type BalState = { state: 'loading' } | { state: 'offline' } | { state: 'ok'; qty: string; qtyNum: number };
 
+/* Re-renders on display-currency change — see lib/use-fx.ts. */
 export function TokenDetailModal({ sym, chainId, onClose }: {
   sym: string;
   /** For EVM-native rows (ETH/BNB/…) the dashboard passes the chain id so
@@ -128,6 +130,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   chainId?: number;
   onClose: () => void;
 }) {
+  useDisplayCurrency();
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const quotes = useQuotes();
