@@ -437,6 +437,12 @@ type DL = {
   Icon: React.FC<{ size?: number }>;
 };
 
+/** Android APK version shown on the direct-download button. Keep in sync with
+ *  apps/mobile/app.json `version` and APK_VERSION in app/download/route.ts —
+ *  the route serves the artifact, this just labels it so users can see which
+ *  build they're getting before downloading. */
+const ANDROID_APK_VERSION = '1.1.0';
+
 const DOWNLOADS: DL[] = [
   { n: '01', name: 'Web',       sub: 'Any modern browser · runs at thanos.fi',            cta: 'Launch wallet', href: '/app', ready: true,  Icon: IconWeb },
   { n: '02', name: 'Desktop',   sub: 'macOS · Windows · Linux · native Electron build',   cta: 'Download',      href: '#',    ready: false, Icon: IconDesktop },
@@ -489,7 +495,7 @@ function PlatformSection() {
                       {cta} <ArrowRight size={13}/>
                     </a>
                     <a className="lp-dl-cta" href={apk} download>
-                      Download .apk
+                      Download .apk (v{ANDROID_APK_VERSION})
                     </a>
                   </div>
                 </div>

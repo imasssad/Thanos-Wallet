@@ -11,10 +11,21 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — VERSION "thanos-v1.13" (2026-07-07, build
-// 758268d5, account imasssadkh). Shows its version in Settings (bottom) so
-// testers can confirm the installed build at a glance.
-// NEW in v1.13: WalletConnect deep-link handoff (thanoswallet://wc?uri=… auto-
+// Latest production-apk build — app version 1.1.0 (versionCode 12), EAS build
+// 538a26cc, 2026-07-18. First APK carrying the multi-chain in-app browser.
+// NEW in 1.1.0: multi-chain in-app dApp browser — the browser was locked to
+// Makalu and REJECTED wallet_switchEthereumChain, so dApps on other chains
+// dead-ended on "wrong network — need chain 56" (this is the Ignite TGE on BNB
+// failure). It now switches across Makalu + 8 EVM chains (ETH, BNB, Polygon,
+// Base, Arbitrum, Optimism, Avalanche, Linea), known-good RPCs only. Quantt
+// "Sign in with Thanos" now runs INSIDE the wallet. Plus two rounds of security
+// hardening: the wallet address is no longer disclosed to a site the user never
+// connected to, signing is gated to the connected origin, and a multi-account
+// bug that reported the index-0 address while signing with the active one.
+// CAVEAT: the in-app Settings tag still reads "thanos-v1.12" — App.tsx's
+// APP_VERSION is a hardcoded string that drifted from app.json. Until that's
+// wired to the real version, confirm the build by the downloaded FILENAME.
+// From v1.13: WalletConnect deep-link handoff (thanoswallet://wc?uri=… auto-
 // pairs) + raw wc:// on iOS; activity notifications (WC requests, tx confirm/
 // fail, bridge/swap); themed send-success modal; TGE quick action opens
 // tge.ignite.trade in the in-app browser. Also formats activity token amounts
@@ -43,10 +54,12 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/o_mg-6klL710Q88Jqsy2EaXvr3z5Q-XDosSm4aTC_6M.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/JVRKh3n7GL4w6Ka6N_ENqy3C5URGiDO5FfutPM2uYXI.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
-const APK_VERSION = 'thanos-v1.13';
+// Now tracks the REAL app version (app.json) instead of the old internal
+// v1.xx counter, so the filename matches what Play / the App Store report.
+const APK_VERSION = 'thanos-v1.1.0';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
