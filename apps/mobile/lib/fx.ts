@@ -31,7 +31,9 @@ const META: Record<DisplayCurrency, CcyMeta> = {
   GBP: { symbol: '£',  decimals: 2 },
   JPY: { symbol: '¥',  decimals: 0 },
   BTC: { symbol: '₿',  decimals: 6 },
-  LAX: { symbol: '',   suffix: ' LAX', decimals: 2 },
+  // Ⱡ (U+2C60) — client-specified glyph, prefixed like every other currency:
+  // "Ⱡ617,409.88", not "617,409.88 LAX".
+  LAX: { symbol: 'Ⱡ',  decimals: 2 },
 };
 
 /* Module state read by formatUsd() on every render. */
