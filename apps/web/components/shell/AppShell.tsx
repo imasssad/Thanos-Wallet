@@ -13,7 +13,11 @@ import { setContactEncryptionKey } from '../../lib/contact-crypto';
 import {
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount, setAccountCount, MAX_ACCOUNTS,
+  getCustomAccountName, setAccountName, hideAccount,
 } from '../../lib/vault';
+import { accountUsdValue, DELETE_MAX_USD } from '../../lib/account-balance';
+import { usePrices } from '../../lib/usePrices';
+import { formatFiat } from '@thanos/sdk-core';
 import { discoverFundedAccountCount, deriveAccountAddresses } from '../../lib/account-discovery';
 import { setSignerAccountIndex } from '../../lib/signer-client';
 import { initDisplayCurrency, subscribeFx } from '@thanos/sdk-core';
@@ -120,6 +124,57 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setActiveIdx(next);
   };
 
+  /* ─── Rename / delete account ─────────────────────────────────────────
+     Rename is a small inline dialog (no native prompt — it'd break the dark
+     UI). Delete is guarded: an account holding more than DELETE_MAX_USD
+     can't be removed, and if the balance can't be VERIFIED we refuse too
+     rather than risk hiding funds. Removal hides the HD index (see
+     lib/vault.ts hideAccount) — indices never shift, so no address moves. */
+  const [renameIdx, setRenameIdx]   = useState<number | null>(null);
+  const [renameVal, setRenameVal]   = useState('');
+  const [acctBusy,  setAcctBusy]    = useState(false);
+  const [acctError, setAcctError]   = useState<string | null>(null);
+  const [nameTick,  setNameTick]    = useState(0); // re-render the switcher after a rename
+  const prices = usePrices();
+
+  const openRename = (idx: number) => {
+    setRenameIdx(idx);
+    setRenameVal(getCustomAccountName(idx) ?? '');
+    setAcctError(null);
+  };
+  const commitRename = () => {
+    if (renameIdx == null) return;
+    setAccountName(renameIdx, renameVal);
+    setRenameIdx(null);
+    setNameTick(t => t + 1);
+  };
+
+  const deleteAccount = async (idx: number) => {
+    setAcctError(null);
+    const addr = accountAddresses[idx];
+    if (!addr) { setAcctError('Could not resolve that account — try again.'); return; }
+    setAcctBusy(true);
+    try {
+      const usd = await accountUsdValue(addr, prices ?? {});
+      if (usd == null) {
+        setAcctError("Couldn't verify this account's balance — it wasn't deleted. Try again when you're back online.");
+        return;
+      }
+      if (usd > DELETE_MAX_USD) {
+        setAcctError(`This account holds ${formatFiat(usd)}. Move the funds out before deleting it.`);
+        return;
+      }
+      if (!hideAccount(idx)) {
+        setAcctError('That account can\'t be removed — a wallet must keep at least one.');
+        return;
+      }
+      setActiveIdx(getActiveAccountIndex());
+      setNameTick(t => t + 1);
+    } finally {
+      setAcctBusy(false);
+    }
+  };
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
@@ -166,17 +221,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           "Discover page sometimes can't scroll" bug. */}
       <div className="app-shell" style={{ display: 'flex', flexDirection: 'column' }}>
         <TopNav
+          key={nameTick}
           onLock={lock}
           activeIdx={activeIdx}
           accountCount={isMnemonicWallet ? accountCount : 1}
           accountAddresses={accountAddresses}
           onSwitchAccount={isMnemonicWallet ? switchAccount  : undefined}
           onAddAccount={isMnemonicWallet ? addAccount : undefined}
+          onRenameAccount={isMnemonicWallet ? openRename : undefined}
+          onDeleteAccount={isMnemonicWallet ? (i) => { void deleteAccount(i); } : undefined}
         />
         <main style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
           {children}
         </main>
         <BottomNav/>
+
+        {/* Rename dialog */}
+        {renameIdx != null && (
+          <div className="modal-backdrop" onClick={() => setRenameIdx(null)}>
+            <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Rename account</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Leave blank to restore the default name.
+              </div>
+              <input
+                className="settings-select"
+                style={{ width: '100%', minWidth: 0 }}
+                autoFocus
+                value={renameVal}
+                maxLength={24}
+                placeholder={`Account ${renameIdx + 1}`}
+                onChange={e => setRenameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenameIdx(null); }}
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setRenameIdx(null)}>Cancel</button>
+                <button className="btn-primary"   style={{ flex: 1 }} onClick={commitRename}>Save</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete-guard feedback — why an account could not be removed. */}
+        {(acctError || acctBusy) && (
+          <div
+            role="status"
+            style={{
+              position: 'fixed', left: '50%', bottom: 88, transform: 'translateX(-50%)',
+              maxWidth: 420, padding: '10px 14px', borderRadius: 10, zIndex: 9999,
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+              color: acctError ? 'var(--red, #f87171)' : 'var(--text-secondary)', fontSize: 12.5,
+              boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+            }}
+            onClick={() => setAcctError(null)}
+          >
+            {acctBusy ? 'Checking account balance…' : acctError}
+          </div>
+        )}
       </div>
     </WalletContext.Provider>
   );

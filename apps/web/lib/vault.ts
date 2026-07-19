@@ -262,6 +262,100 @@ export function setAccountCount(n: number): void {
   localStorage.setItem(STORAGE_KEY_ACCT_COUNT, String(n));
 }
 
+/* ─── Account names (rename) ─────────────────────────────────────────────
+   Same storage key + semantics as apps/mobile/lib/accounts.ts so a name set
+   on one client reads identically on another. */
+const STORAGE_KEY_ACCT_NAMES = 'thanos.account_names';
+export const MAX_ACCOUNT_NAME_LEN = 24;
+
+function readNames(): Record<number, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ACCT_NAMES);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const clean: Record<number, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      const i = Number.parseInt(k, 10);
+      if (Number.isInteger(i) && i >= 0 && i < MAX_ACCOUNTS && typeof v === 'string' && v.trim()) {
+        clean[i] = v.trim().slice(0, MAX_ACCOUNT_NAME_LEN);
+      }
+    }
+    return clean;
+  } catch { return {}; }
+}
+
+/** Display name — the user's custom name, else "Account N". */
+export function getAccountName(idx: number): string {
+  return readNames()[idx]?.trim() || `Account ${idx + 1}`;
+}
+
+/** The custom name only (null when the account uses the default). */
+export function getCustomAccountName(idx: number): string | null {
+  return readNames()[idx] ?? null;
+}
+
+/** Set (or clear, with an empty string) an account's custom name. */
+export function setAccountName(idx: number, name: string): void {
+  if (typeof window === 'undefined') return;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_ACCOUNTS) return;
+  const names = readNames();
+  const trimmed = name.trim().slice(0, MAX_ACCOUNT_NAME_LEN);
+  if (trimmed) names[idx] = trimmed;
+  else delete names[idx];
+  localStorage.setItem(STORAGE_KEY_ACCT_NAMES, JSON.stringify(names));
+}
+
+/* ─── Account removal ────────────────────────────────────────────────────
+   Accounts are HD-path indices, so an account CANNOT be spliced out: removing
+   index 1 of 0..2 would slide index 2 down and silently change that account's
+   address — funds would look like they vanished. Instead a removed account is
+   recorded in a HIDDEN set; every index keeps deriving the same address
+   forever, and the account simply stops being listed. Re-addable later. */
+const STORAGE_KEY_ACCT_HIDDEN = 'thanos.account_hidden';
+
+export function getHiddenAccounts(): number[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_ACCT_HIDDEN);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as unknown[];
+    return arr.filter((n): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < MAX_ACCOUNTS);
+  } catch { return []; }
+}
+
+export function isAccountHidden(idx: number): boolean {
+  return getHiddenAccounts().includes(idx);
+}
+
+/** Indices the UI should list, in order. Never empty: index 0 is the wallet's
+ *  root account and is not removable. */
+export function getVisibleAccountIndices(): number[] {
+  const hidden = new Set(getHiddenAccounts());
+  const out: number[] = [];
+  for (let i = 0; i < getAccountCount(); i++) if (!hidden.has(i)) out.push(i);
+  return out.length ? out : [0];
+}
+
+/** Hide (delete) an account. Refuses to remove the last visible one — a
+ *  wallet must always have at least one account. Balance checks live in the
+ *  UI, which is the only layer that can look up what the account holds. */
+export function hideAccount(idx: number): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_ACCOUNTS) return false;
+  const visible = getVisibleAccountIndices();
+  if (visible.length <= 1 || !visible.includes(idx)) return false;
+  const hidden = getHiddenAccounts();
+  if (!hidden.includes(idx)) hidden.push(idx);
+  localStorage.setItem(STORAGE_KEY_ACCT_HIDDEN, JSON.stringify(hidden));
+  // Never leave the wallet pointing at a removed account.
+  if (getActiveAccountIndex() === idx) {
+    const next = getVisibleAccountIndices()[0] ?? 0;
+    setActiveAccountIndex(next);
+  }
+  return true;
+}
+
 /* ─── Session key cache (refresh persistence, NOT cold-open) ────────────── */
 export function cacheSessionKey(key: Uint8Array): void {
   if (typeof window === 'undefined') return;

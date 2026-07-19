@@ -6,7 +6,9 @@ import { useWallet } from './AppShell';
 import { Addr } from '../Addr';
 import {
   Search, Bell, ChevronDown, Sun, Moon, User, Copy, Settings as SettingsIcon, Lock, Menu, KeyRound,
+  Pencil, Trash2,
 } from 'lucide-react';
+import { getAccountName, getVisibleAccountIndices } from '../../lib/vault';
 
 const ACCOUNT_NAME = 'RobbyWallet';
 
@@ -32,6 +34,8 @@ export function TopNav({
   accountAddresses = [],
   onSwitchAccount,
   onAddAccount,
+  onRenameAccount,
+  onDeleteAccount,
 }: {
   onLock?:          () => void;
   /** Current HD-derivation account (mnemonic wallets only). */
@@ -43,6 +47,9 @@ export function TopNav({
   /** When set, the menu shows an Account-N switcher + "+ Add account". */
   onSwitchAccount?: (idx: number) => void;
   onAddAccount?:    () => void;
+  /** Rename / remove an account. Removal is guarded by balance in AppShell. */
+  onRenameAccount?: (idx: number) => void;
+  onDeleteAccount?: (idx: number) => void;
 }) {
   const router    = useRouter();
   const pathname  = usePathname();
@@ -167,26 +174,57 @@ export function TopNav({
                 {showSwitcher && (
                   <>
                     <div className="menu-divider"/>
-                    {Array.from({ length: accountCount }, (_, i) => {
+                    {getVisibleAccountIndices().map((i) => {
                       const a = accountAddresses[i];
+                      // Removal needs at least two accounts left — a wallet
+                      // must always keep one.
+                      const canDelete = !!onDeleteAccount && getVisibleAccountIndices().length > 1;
                       return (
-                        <button
+                        <div
                           key={i}
                           className="menu-item"
-                          onClick={() => { onSwitchAccount?.(i); setAccountMenu(false); }}
-                          style={{ alignItems: 'center', ...(i === activeIdx ? { fontWeight: 700 } : {}) }}
+                          style={{ alignItems: 'center', display: 'flex', gap: 8, ...(i === activeIdx ? { fontWeight: 700 } : {}) }}
                         >
-                          <User size={16}/>
-                          <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
-                            <span>Account {i + 1}</span>
-                            {a && (
-                              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', fontWeight: 400 }}>
-                                {a.slice(0, 6)}…{a.slice(-4)}
-                              </span>
-                            )}
-                          </span>
-                          {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
-                        </button>
+                          <button
+                            onClick={() => { onSwitchAccount?.(i); setAccountMenu(false); }}
+                            style={{
+                              flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
+                              background: 'none', border: 'none', color: 'inherit', font: 'inherit',
+                              cursor: 'pointer', padding: 0, textAlign: 'left',
+                            }}
+                          >
+                            <User size={16}/>
+                            <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
+                              <span>{getAccountName(i)}</span>
+                              {a && (
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', fontWeight: 400 }}>
+                                  {a.slice(0, 6)}…{a.slice(-4)}
+                                </span>
+                              )}
+                            </span>
+                            {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                          </button>
+                          {onRenameAccount && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onRenameAccount(i); setAccountMenu(false); }}
+                              title="Rename account"
+                              aria-label={`Rename ${getAccountName(i)}`}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}
+                            >
+                              <Pencil size={13}/>
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onDeleteAccount?.(i); setAccountMenu(false); }}
+                              title="Delete account"
+                              aria-label={`Delete ${getAccountName(i)}`}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red, #f87171)', padding: 4, display: 'flex' }}
+                            >
+                              <Trash2 size={13}/>
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                     {onAddAccount && accountCount < 10 && (
