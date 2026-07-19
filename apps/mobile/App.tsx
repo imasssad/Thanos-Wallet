@@ -87,6 +87,7 @@ import {
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount,       setAccountCount,
   getAccountName,        setAccountName,
+  getVisibleAccountIndices, hideAccount,
   getCustomAccountName,
   MAX_ACCOUNTS, MAX_ACCOUNT_NAME_LEN,
 } from './lib/accounts';
@@ -5738,6 +5739,63 @@ function App() {
     setAccountCountState(next + 1);
     setActiveAccountIndex(next);
     setActiveIdx(next);
+    setVisibleAccounts(getVisibleAccountIndices());
+  };
+
+  /* ─── Delete account ──────────────────────────────────────────────────
+     Removal hides the HD index (accounts.ts hideAccount) so no address ever
+     shifts. Guarded: an account holding more than DELETE_MAX_USD can't go,
+     and if the balance can't be VERIFIED we refuse rather than risk hiding
+     funds the user can't recover from the UI. */
+  const [visibleAccounts, setVisibleAccounts] = useState<number[]>([0]);
+  const [acctBusy, setAcctBusy] = useState(false);
+  useEffect(() => { setVisibleAccounts(getVisibleAccountIndices()); }, [accountCount, activeIdx]);
+
+  const confirmDeleteAccount = async (idx: number) => {
+    if (acctBusy) return;
+    if (getVisibleAccountIndices().length <= 1) {
+      Alert.alert('Can’t delete', 'Your wallet must keep at least one account. Add another account first.');
+      return;
+    }
+    const addr = accountAddresses[idx];
+    if (!addr) { Alert.alert('Can’t delete', 'Could not resolve that account — try again.'); return; }
+
+    setAcctBusy(true);
+    let usd: number | null = null;
+    try {
+      const m = await import('./lib/account-balance');
+      usd = await m.accountUsdValue(addr);
+      if (usd == null) {
+        Alert.alert('Can’t verify balance', 'We couldn’t check what this account holds, so it wasn’t deleted. Try again when you’re back online.');
+        return;
+      }
+      if (usd > 1) {
+        Alert.alert('Account not empty', `${getAccountName(idx)} holds about $${usd.toFixed(2)}. Move the funds out before deleting it.`);
+        return;
+      }
+    } finally {
+      setAcctBusy(false);
+    }
+
+    Alert.alert(
+      `Delete ${getAccountName(idx)}?`,
+      'This removes the account from your wallet. The same recovery phrase can restore it later.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: () => {
+            if (!hideAccount(idx)) {
+              Alert.alert('Can’t delete', 'Your wallet must keep at least one account.');
+              return;
+            }
+            setActiveIdx(getActiveAccountIndex());
+            setVisibleAccounts(getVisibleAccountIndices());
+            setAcctSheetOpen(false);
+          },
+        },
+      ],
+    );
   };
 
   useEffect(() => {
@@ -5970,7 +6028,7 @@ function App() {
                     {`Active · ${getAccountName(isPrivateKeyWallet(walletSeed) ? 0 : activeIdx)}`}
                   </Text>
 
-                  {Array.from({ length: isPrivateKeyWallet(walletSeed) ? 1 : accountCount }, (_, i) => {
+                  {(isPrivateKeyWallet(walletSeed) ? [0] : visibleAccounts).map((i) => {
                     const a = accountAddresses[i];
                     const tag = a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
                     // litho1 leads, 0x follows — same key, both encodings visible.
@@ -6007,6 +6065,23 @@ function App() {
                         >
                           <Pencil size={16} color={active ? colors.blue : colors.textMuted} strokeWidth={2.2}/>
                         </Pressable>
+                        {/* Delete — always rendered so the feature is visible;
+                            disabled on the last remaining account (a wallet
+                            must keep one) with the reason in the alert. */}
+                        {!isPrivateKeyWallet(walletSeed) && (
+                          <Pressable
+                            hitSlop={10}
+                            onPress={() => void confirmDeleteAccount(i)}
+                            disabled={acctBusy}
+                            style={({ pressed }) => [
+                              { padding: 6, opacity: visibleAccounts.length <= 1 ? 0.4 : 1 },
+                              pressed && { opacity: 0.6 },
+                            ]}
+                            accessibilityLabel={`Delete ${getAccountName(i)}`}
+                          >
+                            <Trash2 size={16} color={visibleAccounts.length <= 1 ? colors.textMuted : '#f87171'} strokeWidth={2.2}/>
+                          </Pressable>
+                        )}
                         {active ? <Check size={20} color={colors.blue} strokeWidth={2.8}/> : null}
                       </Pressable>
                     );
