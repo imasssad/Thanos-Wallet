@@ -11,7 +11,7 @@ import {
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { LaxCardPromo, LaxCardModal } from './LaxCard';
 import { QuanttCard } from './QuanttCard';
-import { formatFiat, convertFromUsd, currencySymbol } from '@thanos/sdk-core';
+import { formatFiat, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
@@ -83,7 +83,7 @@ function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
     sym:    item.symbol,
     name:   canon?.name ?? item.symbol,
     date:   item.ts ? new Date(item.ts).toLocaleDateString() : '—',
-    price:  canon ? `${currencySymbol()}${convertFromUsd(canon.priceUsd).toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
+    price:  canon ? withCurrencyAffix(convertFromUsd(canon.priceUsd).toLocaleString('en-US', { maximumFractionDigits: 4 })) : '—',
     status: item.status === 'pending' ? 'Pending' : item.status === 'failed' ? 'Failed' : 'Completed',
     amount: `${isOut ? '-' : '+'}${amountStr} ${item.symbol}`,
     pos:    !isOut,
@@ -741,7 +741,7 @@ export function Dashboard() {
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
-      usd: c.priceKnown ? `${currencySymbol()}${convertFromUsd(c.usdNum).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—',
+      usd: c.priceKnown ? withCurrencyAffix(convertFromUsd(c.usdNum).toLocaleString('en-US', { maximumFractionDigits: 2 })) : '—',
       priceKnown: c.priceKnown,
       chg: c.chg, color: c.color,
       chainId: c.chainId, native: c.native,

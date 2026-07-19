@@ -14,20 +14,29 @@
  * than showing wrong math.
  */
 
-export const FX_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'BTC'] as const;
+export const FX_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'BTC', 'LAX'] as const;
 export type DisplayCurrency = (typeof FX_CURRENCIES)[number];
+
+/** LAX is a FIXED-PEG display unit, not an FX-market currency: 1 LAX = $1.001
+ *  (confirmed by the client, 2026-07-19). It is resolved locally — never
+ *  fetched — so it works offline and can never silently fall back to USD. */
+const LAX_USD = 1.001;
 
 const PREF_KEY  = 'thanos.pref.currency';
 const CACHE_KEY = 'thanos.fx.rates.v1';
 const TTL_MS    = 60 * 60_000;
 
-interface CcyMeta { symbol: string; decimals: number }
+/** `suffix` renders AFTER the number ("99.90 LAX"); `symbol` renders before
+ *  ("$99.90"). Mirrors apps/mobile/lib/fx.ts so every client reads the same. */
+interface CcyMeta { symbol: string; suffix?: string; decimals: number }
 const META: Record<DisplayCurrency, CcyMeta> = {
   USD: { symbol: '$', decimals: 2 },
   EUR: { symbol: '€', decimals: 2 },
   GBP: { symbol: '£', decimals: 2 },
   JPY: { symbol: '¥', decimals: 0 },
   BTC: { symbol: '₿', decimals: 6 },
+  // No currency glyph — renders as a trailing unit, same as mobile.
+  LAX: { symbol: '', suffix: ' LAX', decimals: 2 },
 };
 
 let _code: DisplayCurrency = 'USD';
@@ -54,19 +63,30 @@ export function convertFromUsd(nUsd: number): number {
   return (isFinite(nUsd) ? nUsd : 0) * _rate;
 }
 
-/** Currency symbol for the active display currency (pairs with convertFromUsd). */
+/** Currency symbol for the active display currency (pairs with convertFromUsd).
+ *  Prefer withCurrencyAffix() — this returns '' for suffix currencies (LAX). */
 export function currencySymbol(): string {
   return META[_code].symbol;
+}
+
+/** Wrap an already-formatted number with the active currency's affix, on the
+ *  correct side — "$1,234.00" but "1,234.00 LAX". Use this wherever the caller
+ *  needs its own precision (sub-dollar prices, compact 1.2B forms) and so can't
+ *  go through formatFiat(). */
+export function withCurrencyAffix(formatted: string): string {
+  const meta = META[_code];
+  return meta.suffix ? `${formatted}${meta.suffix}` : `${meta.symbol}${formatted}`;
 }
 
 /** Format a USD amount in the active display currency. */
 export function formatFiat(nUsd: number): string {
   const meta = META[_code];
   const v = (isFinite(nUsd) ? nUsd : 0) * _rate;
-  return meta.symbol + v.toLocaleString('en-US', {
+  const s = v.toLocaleString('en-US', {
     minimumFractionDigits: meta.decimals,
     maximumFractionDigits: meta.decimals,
   });
+  return meta.suffix ? `${s}${meta.suffix}` : `${meta.symbol}${s}`;
 }
 
 async function fetchRates(): Promise<Record<string, number> | null> {
@@ -108,6 +128,8 @@ function staleRates(): Record<string, number> | null {
  *  (falls back to USD when the rate can't be resolved — never fake math). */
 export async function applyDisplayCurrency(code: DisplayCurrency): Promise<DisplayCurrency> {
   if (code === 'USD') { _code = 'USD'; _rate = 1; }
+  // Fixed peg — resolved locally, before the network path.
+  else if (code === 'LAX') { _code = 'LAX'; _rate = 1 / LAX_USD; }
   else {
     const rate = (await fetchRates())?.[code];
     if (isFinite(rate as number) && (rate as number) > 0) { _code = code; _rate = rate as number; }

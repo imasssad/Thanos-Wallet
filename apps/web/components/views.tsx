@@ -8,7 +8,7 @@ import { LedgerModal } from './LedgerModal';
 import { TrezorModal } from './TrezorModal';
 import { useWallet } from './shell/AppShell';
 import {
-  applyDisplayCurrency, getDisplayCurrency, convertFromUsd, currencySymbol,
+  applyDisplayCurrency, getDisplayCurrency, convertFromUsd, withCurrencyAffix,
   FX_CURRENCIES, type DisplayCurrency,
 } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
@@ -75,27 +75,25 @@ interface CGMarket {
 // Converts into the ACTIVE display currency and keeps the caller's precision
 // (formatFiat's fixed 2-dp would flatten sub-dollar token prices to "0.00").
 function fmtUsd(n: number, fractionDigits = 4): string {
-  return `${currencySymbol()}${convertFromUsd(n).toLocaleString('en-US', { maximumFractionDigits: fractionDigits })}`;
+  return withCurrencyAffix(convertFromUsd(n).toLocaleString('en-US', { maximumFractionDigits: fractionDigits }));
 }
 /** Price formatter that keeps precision on sub-dollar assets (IMAGE etc.)
  *  instead of rounding them to "$0", while showing clean 2-decimal
  *  figures for mainstream coins (SOL/BTC/ETH). */
 function fmtPriceUsd(nUsd: number): string {
   if (!isFinite(nUsd)) return '—';
-  const s = currencySymbol();
   const n = convertFromUsd(nUsd);
-  if (n > 0 && n < 0.01) return `${s}${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
-  if (n < 1)            return `${s}${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-  return `${s}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (n > 0 && n < 0.01) return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 8 }));
+  if (n < 1)            return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 4 }));
+  return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 function fmtCompactUsd(nUsd: number | undefined | null): string {
   if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
-  const s = currencySymbol();
   const n = convertFromUsd(nUsd);
-  if (n >= 1e9) return `${s}${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `${s}${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `${s}${(n / 1e3).toFixed(2)}K`;
-  return `${s}${n.toFixed(2)}`;
+  if (n >= 1e9) return withCurrencyAffix(`${(n / 1e9).toFixed(2)}B`);
+  if (n >= 1e6) return withCurrencyAffix(`${(n / 1e6).toFixed(2)}M`);
+  if (n >= 1e3) return withCurrencyAffix(`${(n / 1e3).toFixed(2)}K`);
+  return withCurrencyAffix(n.toFixed(2));
 }
 
 /** Top mainstream markets — live from CoinGecko. We deliberately exclude
