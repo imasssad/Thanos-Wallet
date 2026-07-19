@@ -404,7 +404,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
                 {bal.state === 'loading' ? '…'
                  : bal.state === 'offline' ? '—'
                  : balUsd == null ? '—'
-                 : balUsd > 0 && balUsd < 0.01 ? '<$0.01'
+                 : balUsd > 0 && convertFromUsd(balUsd) < 0.01 ? '<' + withCurrencyAffix((0.01).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
                  : fmtUsd(balUsd)}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>

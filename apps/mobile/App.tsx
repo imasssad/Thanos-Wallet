@@ -1650,7 +1650,7 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
         />
         <Text style={[styles.amountUsdSub, overBalance && { color: C.red }]}>
           {chain === 'evm'
-            ? (overBalance ? 'Amount exceeds balance' : `≈ ${formatUsd(usd)} USD`)
+            ? (overBalance ? 'Amount exceeds balance' : `≈ ${formatUsd(usd)}`)
             : `${CHAIN_META[chain].sym}`}
         </Text>
       </View>
@@ -5828,7 +5828,7 @@ function App() {
         return;
       }
       if (usd > 1) {
-        Alert.alert('Account not empty', `${getAccountName(idx)} holds about $${usd.toFixed(2)}. Move the funds out before deleting it.`);
+        Alert.alert('Account not empty', `${getAccountName(idx)} holds about ${formatUsd(usd)}. Move the funds out before deleting it.`);
         return;
       }
     } finally {

@@ -1118,10 +1118,10 @@ export function Dashboard() {
                 const priceTxt = !c.priceKnown
                   ? '—'
                   : price > 0
-                  ? '$' + price.toLocaleString('en-US', {
-                      minimumFractionDigits: price >= 1 ? 2 : 4,
-                      maximumFractionDigits: price >= 1 ? 2 : 6,
-                    })
+                  ? withCurrencyAffix(convertFromUsd(price).toLocaleString('en-US', {
+                      minimumFractionDigits: convertFromUsd(price) >= 1 ? 2 : 4,
+                      maximumFractionDigits: convertFromUsd(price) >= 1 ? 2 : 6,
+                    }))
                   : '';
                 return (
                 <div

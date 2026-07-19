@@ -1046,11 +1046,13 @@ function tdFmtQty(n: number | null): string {
 /* Precision-aware USD price — the dashboard formatUsd floors to 2 dp, so
    sub-cent ecosystem tokens (e.g. IMAGE ~$0.0000115) would show "$0.00".
    Used only for the per-unit price hero + ATH/ATL, not dollar totals. */
-function tdFmtUsdPrice(n: number): string {
-  if (!isFinite(n)) return '—';
-  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
-  if (n < 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Per-unit price (hero + ATH/ATL) in the active display currency (input USD).
+function tdFmtUsdPrice(nUsd: number): string {
+  if (!isFinite(nUsd)) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n > 0 && n < 0.01) return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 8 }));
+  if (n < 1) return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 4 }));
+  return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
 function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
@@ -3766,7 +3768,7 @@ function App() {
       return;
     }
     if (usd > m.DELETE_MAX_USD) {
-      setAcctMsg(`That account holds about $${usd.toFixed(2)}. Move the funds out first.`);
+      setAcctMsg(`That account holds about ${withCurrencyAffix(convertFromUsd(usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}. Move the funds out first.`);
       return;
     }
     if (!window.confirm(`Delete ${getAccountName(idx)}? The same recovery phrase can restore it later.`)) {

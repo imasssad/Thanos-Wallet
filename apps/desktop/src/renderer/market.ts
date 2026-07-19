@@ -6,7 +6,7 @@
  * the MARKET mock.
  */
 import { useEffect, useState } from 'react';
-import { getMakaluLep100Tokens, fetchEcosystemPrices } from '@thanos/sdk-core';
+import { getMakaluLep100Tokens, fetchEcosystemPrices, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import { coinColor } from './portfolio';
 
 /* The Market lists ONLY the Lithosphere ecosystem (per Esha) — LITHO + the
@@ -32,21 +32,23 @@ export interface MarketState {
   reload:  () => void;
 }
 
-/** $1,234.56 for >= $1, more precision for sub-dollar prices. */
-export function formatMarketPrice(n: number): string {
-  if (!isFinite(n) || n === 0) return '$0.00';
-  if (n >= 1) return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 6 });
+/** Per-unit price in the active display currency (input is USD). */
+export function formatMarketPrice(nUsd: number): string {
+  if (!isFinite(nUsd) || nUsd === 0) return withCurrencyAffix((0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const n = convertFromUsd(nUsd);
+  if (n >= 1) return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 6 }));
 }
 
-/** Compact magnitude: $1.2T / $62.1B / $24.5M / $980.0K. */
-export function formatCompact(n: number): string {
-  if (!isFinite(n) || n === 0) return '—';
-  if (n >= 1e12) return '$' + (n / 1e12).toFixed(2) + 'T';
-  if (n >= 1e9)  return '$' + (n / 1e9).toFixed(1) + 'B';
-  if (n >= 1e6)  return '$' + (n / 1e6).toFixed(1) + 'M';
-  if (n >= 1e3)  return '$' + (n / 1e3).toFixed(1) + 'K';
-  return '$' + n.toFixed(0);
+/** Compact magnitude (market cap / volume) in the active display currency. */
+export function formatCompact(nUsd: number): string {
+  if (!isFinite(nUsd) || nUsd === 0) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e12) return withCurrencyAffix((n / 1e12).toFixed(2) + 'T');
+  if (n >= 1e9)  return withCurrencyAffix((n / 1e9).toFixed(1) + 'B');
+  if (n >= 1e6)  return withCurrencyAffix((n / 1e6).toFixed(1) + 'M');
+  if (n >= 1e3)  return withCurrencyAffix((n / 1e3).toFixed(1) + 'K');
+  return withCurrencyAffix(n.toFixed(0));
 }
 
 /** Live prices for the Lithosphere ecosystem tokens. Refetch via reload(). */

@@ -63,7 +63,7 @@ import { classifyRecipient } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
 import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
 import { SimulationPanel, hasCriticalIssue } from './SimulationPanel';
-import { bridgePollBackoffMs } from '@thanos/sdk-core';
+import { bridgePollBackoffMs, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import * as RadixSelect from '@radix-ui/react-select';
 import { QrCode, Check, ChevronDown } from 'lucide-react';
 
@@ -1080,8 +1080,8 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   const amountNum = parseFloat(amount || '0') || 0;
   const tokenPrice = TOKENS.find(t => t.sym === coin)?.priceUsd ?? 0;
   const usdEquivalent = amountNum > 0 && tokenPrice > 0
-    ? `$${(amountNum * tokenPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
-    : '$0.00';
+    ? withCurrencyAffix(convertFromUsd(amountNum * tokenPrice).toLocaleString('en-US', { maximumFractionDigits: 2 }))
+    : withCurrencyAffix((0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
   const currentNet = SEND_NETWORKS.find(n => n.id === network);
 
@@ -2060,7 +2060,7 @@ function CrossChainSwap({ bridge }: { bridge: boolean }) {
 
   const swapSides = () => { setFromId(toId); setToId(fromId); setFromTok(toTok); setToTok(fromTok); };
 
-  const usd = (n: number) => `≈ $${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  const usd = (n: number) => `≈ ${withCurrencyAffix(convertFromUsd(n).toLocaleString('en-US', { maximumFractionDigits: 2 }))}`;
 
   return (
     <>

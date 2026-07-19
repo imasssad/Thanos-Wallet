@@ -368,7 +368,7 @@ export function PortfolioView() {
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total</div>
                 <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.04em' }}>
-                  ${_total.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  {withCurrencyAffix(convertFromUsd(_total).toLocaleString('en-US', { maximumFractionDigits: 0 }))}
                 </div>
               </div>
             </div>
@@ -411,7 +411,7 @@ export function PortfolioView() {
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 14 }}>{c.price}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 14 }}>{c.bal} {c.sym}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 15 }}>{c.priceKnown ? `$${c.usd.toLocaleString()}` : '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: 15 }}>{c.priceKnown ? withCurrencyAffix(convertFromUsd(c.usd).toLocaleString('en-US')) : '—'}</td>
                     <td style={{ textAlign: 'right', fontSize: 14 }}>
                       {c.priceKnown
                         ? <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'}>{c.chg >= 0 ? '+' : ''}{c.chg}%</span>
