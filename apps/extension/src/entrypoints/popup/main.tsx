@@ -645,7 +645,9 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
    live Quantt product site. */
 // LAX application page (dashboard register — supports ?address=<0x…> prefill;
 // address plumbing to this card is a queued follow-up).
-const LAX_APPLY_URL = 'https://dashboard.lax.money/register#individual';
+// Public site only until the LAX integration is approved (client request
+// 2026-07-19) — the dashboard.lax.money register link is pre-approval.
+const LAX_APPLY_URL = 'https://lax.money';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
@@ -1117,8 +1119,9 @@ function DiscoverScreen() {
 
 function SettingsScreen({
   isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook, onOpenPermissions,
-  address, accountName, onOpenChangePassword, onOpenRecoveryPhrase,
+  address, accountName, onOpenChangePassword, onOpenRecoveryPhrase, onDeleteWallet,
 }: {
+  onDeleteWallet: () => void;
   isDark: boolean;
   onToggleTheme: () => void;
   onLock: () => void;
@@ -1334,6 +1337,26 @@ function SettingsScreen({
           <div style={{ flex: 1 }}>
             <div className="set-label">Security disclosures</div>
             <div className="set-sub">Report a vulnerability + PGP key</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
+      </div>
+
+      {/* Danger zone — "Reset wallet" already existed on the unlock screen,
+          but users look for it here. Two-step confirm, and the warning depends
+          on whether the recovery phrase was actually backed up: that's the
+          difference between "restorable" and "gone forever". */}
+      <SectionHead Icon={AlertTriangle} title="Danger zone" sub="Irreversible — read before you click"/>
+      <div className="card list">
+        <button
+          className="set-row"
+          style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+          onClick={onDeleteWallet}
+        >
+          <div className="set-icon"><Trash2 size={15} color="#f87171"/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label" style={{ color: '#f87171' }}>Delete wallet</div>
+            <div className="set-sub">Erase this wallet from this browser</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </button>
@@ -2948,6 +2971,25 @@ function App() {
     setNameTick(t => t + 1);
   };
 
+  /* Delete wallet — erases the vault from this browser. Two confirms, and the
+     first states the actual consequence based on whether the recovery phrase
+     was backed up: without a backup this is permanent loss, and the user
+     deserves to know that BEFORE the destructive click. */
+  const deleteWallet = () => {
+    const backedUp = isSeedBackedUp();
+    const first = backedUp
+      ? 'Delete this wallet from this browser?\n\nYou can restore it later with your recovery phrase.'
+      : 'You have NOT backed up your recovery phrase.\n\nIf you delete this wallet now, these funds are gone permanently — nobody can recover them.';
+    if (!window.confirm(first)) return;
+    if (!window.confirm('Are you sure? This cannot be undone.')) return;
+    clearVault();
+    clearSessionKey();
+    void clearPersistedSessionKey();
+    setSeed([]);
+    setUnlocked(false);
+    setHasVault(false);
+  };
+
   const deleteAccount = async (idx: number) => {
     setAcctMsg(null);
     if (getVisibleAccountIndices().length <= 1) {
@@ -3365,7 +3407,7 @@ function App() {
           />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
-          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={`Account ${activeIdx + 1}`} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')}/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={getAccountName(activeIdx)} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')} onDeleteWallet={deleteWallet}/>}
         </div>
         <div className="tabbar">
           {([

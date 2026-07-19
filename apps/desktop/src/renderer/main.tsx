@@ -503,7 +503,9 @@ function AIAssistant() {
    web app's LaxCardPromo so all clients show the same offer. */
 // LAX application page (dashboard register — supports ?address=<0x…> prefill;
 // address plumbing to this card is a queued follow-up).
-const LAX_APPLY_URL = 'https://dashboard.lax.money/register#individual';
+// Public site only until the LAX integration is approved (client request
+// 2026-07-19) — the dashboard.lax.money register link is pre-approval.
+const LAX_APPLY_URL = 'https://lax.money';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
   'Unlimited top-ups with 0 fees',
@@ -2445,7 +2447,7 @@ function StakingView() {
 }
 
 /* ──────────────────────── Settings view ──────────────────────── */
-function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme: () => void; isDark: boolean; walletAddr: string; onLock: () => void }) {
+function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet, onWalletBackedUp }: { toggleTheme: () => void; isDark: boolean; walletAddr: string; onLock: () => void; onDeleteWallet: () => void; onWalletBackedUp: boolean }) {
   // LIVE display currency — the pick reformats every price in the app via
   // the shared sdk-core fx engine (falls back to USD if a rate is missing).
   const [currency, setCurrency] = useState<DisplayCurrency>(getDisplayCurrency());
@@ -2599,6 +2601,25 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock }: { toggleTheme
               className="settings-btn settings-btn-link"
               onClick={() => { void window.thanosDesktop?.openExternal?.('https://thanos.fi/.well-known/security.txt'); }}
             >View <ChevRight2 size={14}/></button>
+          </Row>
+        </Section>
+
+        {/* Danger zone — "Reset wallet" already existed on the unlock screen,
+            but users look for it here. Two-step confirm, and the warning
+            depends on whether the recovery phrase was actually backed up:
+            that's the difference between "restorable" and "gone forever". */}
+        <Section icon={Shield} title="Danger zone" sub="Irreversible — read before you click">
+          <Row
+            label="Delete wallet"
+            sub={onWalletBackedUp
+              ? 'Erases this wallet from this computer. Restorable with your recovery phrase.'
+              : 'You have NOT backed up your recovery phrase — deleting now loses these funds permanently.'}
+          >
+            <button
+              type="button"
+              className="settings-btn settings-btn-danger"
+              onClick={onDeleteWallet}
+            >Delete wallet</button>
           </Row>
         </Section>
       </div>
@@ -3708,6 +3729,23 @@ function App() {
     setAcctTick(t => t + 1);
   };
 
+  /* Delete wallet — erases the vault from this computer. Two confirms, and the
+     first states the actual consequence based on whether the recovery phrase
+     was backed up: without a backup this is permanent loss. */
+  const deleteWallet = () => {
+    const backedUp = isSeedBackedUp();
+    const first = backedUp
+      ? 'Delete this wallet from this computer?\n\nYou can restore it later with your recovery phrase.'
+      : 'You have NOT backed up your recovery phrase.\n\nIf you delete this wallet now, these funds are gone permanently — nobody can recover them.';
+    if (!window.confirm(first)) return;
+    if (!window.confirm('Are you sure? This cannot be undone.')) return;
+    clearVault();
+    clearSessionKey();
+    setWalletSeed([]);
+    setUnlocked(false);
+    setHasVault(false);
+  };
+
   const deleteAccount = async (idx: number) => {
     setAcctMsg(null);
     if (getVisibleAccountIndices().length <= 1) {
@@ -4066,7 +4104,7 @@ function App() {
           {view === 'staking'      && <StakingView/>}
           {view === 'discover'     && <DiscoverView/>}
           {view === 'nfts'         && <NftsView/>}
-          {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark} walletAddr={walletAddr} onLock={lock}/>}
+          {view === 'settings'     && <SettingsView toggleTheme={toggleTheme} isDark={isDark} walletAddr={walletAddr} onLock={lock} onDeleteWallet={deleteWallet} onWalletBackedUp={isSeedBackedUp()}/>}
         </div>
 
         {view !== 'settings' && (

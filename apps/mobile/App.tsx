@@ -1061,13 +1061,12 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
    clients show. Native LAX issuance is gated on the partner API, so "Get
    Started" opens the LAX application (lax.money) in the device browser.
    QUANTT_AGENTS_URL points at the live Quantt product site. */
-/** LAX application deep-link — the dashboard accepts the user's wallet
- *  address as a query param, so the LAX account is bound to their Thanos
- *  wallet from the first screen (LAX integration, 2026-07-17). */
-const laxApplyUrl = (address?: string) =>
-  address
-    ? `https://dashboard.lax.money/register?address=${address}#individual`
-    : 'https://dashboard.lax.money/register#individual';
+/** LAX entry point — public site only. The dashboard.lax.money register link
+ *  and the ?address= wallet-binding prefill were a partner/pre-approval flow;
+ *  per the client (2026-07-19) they must not ship until the LAX integration is
+ *  approved. Kept as a function so the call site (which passes the address) is
+ *  untouched; the address is deliberately ignored now. */
+const laxApplyUrl = (_address?: string) => 'https://lax.money';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
@@ -5633,7 +5632,7 @@ function extractWcUri(url: string): string | null {
  *  Partner sign-in surfaces + the Discover directory only. */
 const BROWSE_ALLOWED_HOSTS: Set<string> = new Set([
   'quantts.ai', 'www.quantts.ai',                       // Quantt Agents in-app sign-in
-  'lax.money', 'www.lax.money', 'dashboard.lax.money',  // LAX application
+  'lax.money', 'www.lax.money',                         // LAX public site (dashboard.lax removed pre-approval)
   ...ECOSYSTEM_APPS.map(a => { try { return new URL(a.url).host.toLowerCase(); } catch { return ''; } }).filter(Boolean),
 ]);
 

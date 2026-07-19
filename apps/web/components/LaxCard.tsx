@@ -18,7 +18,10 @@ import { Check } from 'lucide-react';
 
 // LAX application page (dashboard register — supports ?address=<0x…> prefill;
 // address plumbing to this card is a queued follow-up).
-const LAX_APPLY_URL = 'https://dashboard.lax.money/register#individual';
+// Public site only until the LAX integration is approved — the
+// dashboard.lax.money register link is a pre-approval partner URL and must not
+// ship (client request 2026-07-19).
+const LAX_APPLY_URL = 'https://lax.money';
 
 const BENEFITS = [
   'Get a LAX Debit Card for free',
