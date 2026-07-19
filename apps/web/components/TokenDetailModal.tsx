@@ -28,6 +28,7 @@ import {
   type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from '@thanos/sdk-core';
 import { TOKENS, explorerUrl, type Token } from '../lib/tokens';
+import { convertFromUsd, currencySymbol } from '@thanos/sdk-core';
 import { EVM_CHAINS } from '../lib/evm-chains';
 import { useQuotes } from '../lib/usePrices';
 import { getPortfolio, getActivity, type IndexerActivityItem } from '../lib/indexer';
@@ -43,18 +44,22 @@ const PROXY_FEEDS: Record<string, string> = {
 
 /* ─── Local formatting (mirrors views.tsx fmt helpers) ─────────────────── */
 
-function fmtUsd(n: number): string {
-  if (!isFinite(n)) return '—';
-  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
-  if (n < 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmtUsd(nUsd: number): string {
+  if (!isFinite(nUsd)) return '—';
+  const s = currencySymbol();
+  const n = convertFromUsd(nUsd);
+  if (n > 0 && n < 0.01) return `${s}${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
+  if (n < 1) return `${s}${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+  return `${s}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function fmtCompactUsd(n: number | null): string {
-  if (typeof n !== 'number' || !isFinite(n)) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
-  return `$${n.toFixed(2)}`;
+function fmtCompactUsd(nUsd: number | null): string {
+  if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
+  const s = currencySymbol();
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e9) return `${s}${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${s}${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${s}${(n / 1e3).toFixed(2)}K`;
+  return `${s}${n.toFixed(2)}`;
 }
 function fmtCompactQty(n: number | null): string {
   if (typeof n !== 'number' || !isFinite(n)) return '—';

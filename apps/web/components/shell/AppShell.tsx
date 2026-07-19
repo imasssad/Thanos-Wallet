@@ -16,6 +16,7 @@ import {
 } from '../../lib/vault';
 import { discoverFundedAccountCount, deriveAccountAddresses } from '../../lib/account-discovery';
 import { setSignerAccountIndex } from '../../lib/signer-client';
+import { initDisplayCurrency, subscribeFx } from '@thanos/sdk-core';
 
 /* Wallet context — exposes the unlocked address (in both formats) AND the
    raw mnemonic words to any descendant. The mnemonic is needed only when a
@@ -40,6 +41,16 @@ export function useWallet(): WalletContextValue | null {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   const { unlocked, hasVault, onComplete, lock, evmAddress, walletSeed, walletPrivateKey } = useWalletGate();
+
+  // Display-currency boot + live updates. Prices are held in USD internally and
+  // converted at FORMAT time, so a currency change only needs the tree to
+  // re-render — this tick does that. Without it the Settings picker would
+  // change the stored preference but leave every on-screen figure stale.
+  const [, setFxTick] = useState(0);
+  useEffect(() => {
+    void initDisplayCurrency().then(() => setFxTick(t => t + 1));
+    return subscribeFx(() => setFxTick(t => t + 1));
+  }, []);
 
   // Multi-account state. activeIdx is the HD-path the wallet derives
   // from; accountCount is how many "Account N" rows we expose in the

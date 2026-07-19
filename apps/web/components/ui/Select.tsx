@@ -66,6 +66,9 @@ export function Select({ value, onChange, options, ariaLabel, width }: Props) {
         <RSelect.Content
           position="popper"
           sideOffset={6}
+          // Keep the panel off the viewport edges when the trigger sits low or
+          // far right, so it can't render half off-screen.
+          collisionPadding={8}
           style={{
             zIndex:       100,
             background:   'var(--bg-elevated)',
@@ -78,7 +81,11 @@ export function Select({ value, onChange, options, ariaLabel, width }: Props) {
             overflow:     'hidden',
           }}
         >
-          <RSelect.Viewport style={{ padding: 2 }}>
+          {/* MUST scroll: Content is overflow:hidden with a maxHeight capped by
+              the available viewport height, so when the trigger sits low on the
+              page the list gets clipped — without this the last options (JPY /
+              BTC) were simply unreachable. */}
+          <RSelect.Viewport style={{ padding: 2, overflowY: 'auto', maxHeight: 'inherit' }}>
             {opts.map(o => (
               <RSelect.Item
                 key={o.value}

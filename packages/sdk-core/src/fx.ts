@@ -47,6 +47,18 @@ export function subscribeFx(fn: () => void): () => void {
   return () => { _subs.delete(fn); };
 }
 
+/** Convert a USD amount into the active display currency as a RAW number.
+ *  For callers that need their own precision rules — e.g. sub-dollar token
+ *  prices, which formatFiat's fixed 2-dp would flatten to "0.00". */
+export function convertFromUsd(nUsd: number): number {
+  return (isFinite(nUsd) ? nUsd : 0) * _rate;
+}
+
+/** Currency symbol for the active display currency (pairs with convertFromUsd). */
+export function currencySymbol(): string {
+  return META[_code].symbol;
+}
+
 /** Format a USD amount in the active display currency. */
 export function formatFiat(nUsd: number): string {
   const meta = META[_code];

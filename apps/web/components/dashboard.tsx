@@ -11,6 +11,7 @@ import {
 import { SendModal, ReceiveModal, SwapModal, type ModalKind } from './modals';
 import { LaxCardPromo, LaxCardModal } from './LaxCard';
 import { QuanttCard } from './QuanttCard';
+import { formatFiat, convertFromUsd, currencySymbol } from '@thanos/sdk-core';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
 import { Select } from './ui/Select';
@@ -81,7 +82,7 @@ function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
     sym:    item.symbol,
     name:   canon?.name ?? item.symbol,
     date:   item.ts ? new Date(item.ts).toLocaleDateString() : '—',
-    price:  canon ? `$${canon.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
+    price:  canon ? `${currencySymbol()}${convertFromUsd(canon.priceUsd).toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
     status: item.status === 'pending' ? 'Pending' : item.status === 'failed' ? 'Failed' : 'Completed',
     amount: `${isOut ? '-' : '+'}${amountStr} ${item.symbol}`,
     pos:    !isOut,
@@ -152,7 +153,7 @@ function fmtDay(msSinceEpoch: number): string {
   return DAY_FMT.format(new Date(msSinceEpoch));
 }
 function fmtUsdShort(n: number): string {
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+  return formatFiat(n);
 }
 
 /** Asset performance card with a working 7D / 30D / 1Y toggle.
@@ -736,7 +737,7 @@ export function Dashboard() {
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
-      usd: c.priceKnown ? `$${c.usdNum.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—',
+      usd: c.priceKnown ? `${currencySymbol()}${convertFromUsd(c.usdNum).toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '—',
       priceKnown: c.priceKnown,
       chg: c.chg, color: c.color,
       chainId: c.chainId, native: c.native,
@@ -771,11 +772,9 @@ export function Dashboard() {
   }, [liveActivity, pendingTick]);
 
   const totalUsd = COINS.reduce((s, c) => s + c.usdNum, 0);
-  // Currency style → always 2 decimals + grouping (so $4,560,363.30, not .3).
-  const totalDisplay = totalUsd.toLocaleString('en-US', {
-    style: 'currency', currency: 'USD',
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  });
+  // Converted into the active display currency (formatFiat applies that
+  // currency's own decimals — 2 for USD/EUR/GBP, 0 for JPY, 6 for BTC).
+  const totalDisplay = formatFiat(totalUsd);
   // Holdings for the portfolio history chart (qty + current USD value).
   const holdings: Holding[] = useMemo(
     () => COINS.filter(c => c.balNum > 0 && c.usdNum > 0)

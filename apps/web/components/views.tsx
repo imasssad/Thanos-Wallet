@@ -7,6 +7,10 @@ import { Globe, Shield, Info, ChevronRight, Key, Download, Lock, User as UserIco
 import { LedgerModal } from './LedgerModal';
 import { TrezorModal } from './TrezorModal';
 import { useWallet } from './shell/AppShell';
+import {
+  applyDisplayCurrency, getDisplayCurrency, convertFromUsd, currencySymbol,
+  FX_CURRENCIES, type DisplayCurrency,
+} from '@thanos/sdk-core';
 import { loadVault, openVault, setSeedBackedUp } from '../lib/vault';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
@@ -67,24 +71,30 @@ interface CGMarket {
   image?:                              string;
 }
 
+// Converts into the ACTIVE display currency and keeps the caller's precision
+// (formatFiat's fixed 2-dp would flatten sub-dollar token prices to "0.00").
 function fmtUsd(n: number, fractionDigits = 4): string {
-  return `$${n.toLocaleString('en-US', { maximumFractionDigits: fractionDigits })}`;
+  return `${currencySymbol()}${convertFromUsd(n).toLocaleString('en-US', { maximumFractionDigits: fractionDigits })}`;
 }
 /** Price formatter that keeps precision on sub-dollar assets (IMAGE etc.)
  *  instead of rounding them to "$0", while showing clean 2-decimal
  *  figures for mainstream coins (SOL/BTC/ETH). */
-function fmtPriceUsd(n: number): string {
-  if (!isFinite(n)) return '—';
-  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
-  if (n < 1)            return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmtPriceUsd(nUsd: number): string {
+  if (!isFinite(nUsd)) return '—';
+  const s = currencySymbol();
+  const n = convertFromUsd(nUsd);
+  if (n > 0 && n < 0.01) return `${s}${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
+  if (n < 1)            return `${s}${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
+  return `${s}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function fmtCompactUsd(n: number | undefined | null): string {
-  if (typeof n !== 'number' || !isFinite(n)) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
-  return `$${n.toFixed(2)}`;
+function fmtCompactUsd(nUsd: number | undefined | null): string {
+  if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
+  const s = currencySymbol();
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e9) return `${s}${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `${s}${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${s}${(n / 1e3).toFixed(2)}K`;
+  return `${s}${n.toFixed(2)}`;
 }
 
 /** Top mainstream markets — live from CoinGecko. We deliberately exclude
@@ -316,7 +326,7 @@ export function PortfolioView() {
     color: r.color,
     pct:   Math.max(1, Math.round((r.usd / _total) * 100)),
     priceKnown: r.priceUsd != null,
-    price: r.priceUsd != null ? `$${r.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
+    price: r.priceUsd != null ? fmtUsd(r.priceUsd, 4) : '—',
   }));
   let offset = 0;
   const r = 70, circ = 2 * Math.PI * r;
@@ -439,7 +449,7 @@ function activityToRow(item: IndexerActivityItem) {
     sym:    item.symbol,
     name:   canon?.name ?? item.symbol,
     date:   item.ts ? new Date(item.ts).toLocaleDateString() : '—',
-    price:  canon ? `$${canon.priceUsd.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : '—',
+    price:  canon ? fmtUsd(canon.priceUsd, 4) : '—',
     type:   typeLabel,
     status: item.status === 'pending' ? 'Pending'
           : item.status === 'failed'  ? 'Failed'
@@ -1187,7 +1197,10 @@ function DnnsSection({ Section }: {
 export function SettingsView() {
   const wallet = useWallet();
   const [revealOpen, setRevealOpen] = useState(false);
-  const [currency, setCurrency] = useState('USD');
+  // Bound to the shared FX engine (same one desktop/extension use) — reads the
+  // ACTIVE currency rather than a local default, so the picker reflects the
+  // persisted preference on load instead of always showing USD.
+  const [currency, setCurrency] = useState<DisplayCurrency>(getDisplayCurrency());
   const [language, setLanguage] = useState('English');
   const [autoLock, setAutoLock] = useState('5 minutes');
   const [hwModal,  setHwModal]  = useState<'ledger' | 'trezor' | null>(null);
@@ -1233,8 +1246,14 @@ export function SettingsView() {
           <Row label="Currency" sub="Display prices in">
             <Select
               value={currency}
-              onChange={setCurrency}
-              options={['USD','EUR','GBP','JPY','BTC','LAX']}
+              // applyDisplayCurrency persists the choice, fetches the rate and
+              // notifies subscribers (AppShell re-renders the tree, so every
+              // price re-formats). It resolves to what ACTUALLY took effect —
+              // falling back to USD if the rate can't be fetched, rather than
+              // showing wrong math. "LAX" was dropped: it isn't a real FX
+              // currency and the engine has no rate for it.
+              onChange={(pick) => { void applyDisplayCurrency(pick as DisplayCurrency).then(setCurrency); }}
+              options={[...FX_CURRENCIES]}
               ariaLabel="Display currency"
             />
           </Row>
