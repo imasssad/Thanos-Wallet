@@ -11,8 +11,14 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.1 (versionCode 13), EAS build
-// 2dc1ff97, 2026-07-19.
+// Latest production-apk build — app version 1.1.2 (versionCode 14), EAS build
+// 5927bc5a, 2026-07-19.
+// NEW in 1.1.2: LAX card points at the public site (lax.money) only — the
+// pre-approval dashboard.lax register link + ?address= prefill were removed at
+// the client's request. LAX totals now render with the Ⱡ prefix. Account
+// rename + delete (guarded, hides the HD index so no address shifts) and
+// "Delete wallet" in Settings, both from 1.1.1.
+// From 1.1.1 (versionCode 13), EAS build 2dc1ff97: account management landed.
 // NEW in 1.1.1: account management. Delete an account from the switcher —
 // guarded, so an account holding more than $1 can't be removed, and if the
 // balance can't be VERIFIED (indexer unreachable) the delete is refused rather
@@ -63,12 +69,12 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/6HTmHOsaiPUCCb752LspwWAHmH5MaVi-Pcb178ItG0E.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/_C4KKE-9dvxtRd2WRamr0hEajAEK-_b70wFvfjdWmGM.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
 // v1.xx counter, so the filename matches what Play / the App Store report.
-const APK_VERSION = 'thanos-v1.1.1';
+const APK_VERSION = 'thanos-v1.1.2';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
