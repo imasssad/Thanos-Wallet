@@ -445,7 +445,7 @@ type DL = {
  *  apps/mobile/app.json `version` and APK_VERSION in app/download/route.ts —
  *  the route serves the artifact, this just labels it so users can see which
  *  build they're getting before downloading. */
-const ANDROID_APK_VERSION = '1.1.0';
+const ANDROID_APK_VERSION = '1.1.1';
 
 /** The visitor's device, at OS granularity — drives which install options we
  *  offer. A phone can't run the browser extension or the desktop app, so those

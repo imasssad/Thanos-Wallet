@@ -11,8 +11,17 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.0 (versionCode 12), EAS build
-// 538a26cc, 2026-07-18. First APK carrying the multi-chain in-app browser.
+// Latest production-apk build — app version 1.1.1 (versionCode 13), EAS build
+// 2dc1ff97, 2026-07-19.
+// NEW in 1.1.1: account management. Delete an account from the switcher —
+// guarded, so an account holding more than $1 can't be removed, and if the
+// balance can't be VERIFIED (indexer unreachable) the delete is refused rather
+// than risk hiding funds. Removal hides the HD index instead of splicing it
+// out, so no address ever shifts. Plus "Delete wallet" in Settings → Danger
+// zone, whose confirm text depends on whether the recovery phrase was actually
+// backed up (offering "Back up first" when it wasn't).
+// From 1.1.0 (versionCode 12), EAS build 538a26cc: first APK carrying the
+// multi-chain in-app browser.
 // NEW in 1.1.0: multi-chain in-app dApp browser — the browser was locked to
 // Makalu and REJECTED wallet_switchEthereumChain, so dApps on other chains
 // dead-ended on "wrong network — need chain 56" (this is the Ignite TGE on BNB
@@ -54,12 +63,12 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/JVRKh3n7GL4w6Ka6N_ENqy3C5URGiDO5FfutPM2uYXI.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/6HTmHOsaiPUCCb752LspwWAHmH5MaVi-Pcb178ItG0E.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
 // v1.xx counter, so the filename matches what Play / the App Store report.
-const APK_VERSION = 'thanos-v1.1.0';
+const APK_VERSION = 'thanos-v1.1.1';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
