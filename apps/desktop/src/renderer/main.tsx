@@ -10,6 +10,8 @@ import {
   isSeedBackedUp, setSeedBackedUp,
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount,       setAccountCount,
+  getAccountName, getCustomAccountName, setAccountName,
+  getVisibleAccountIndices, hideAccount,
   MAX_ACCOUNTS,
   hydrateVaultFromKeychain,
 } from './vault';
@@ -3688,6 +3690,51 @@ function App() {
     setAccountCountState(next + 1);
     setActiveAccountIndex(next);
     setActiveIdx(next);
+    setAcctTick(t => t + 1);
+  };
+
+  /* ─── Rename / delete account ─────────────────────────────────────────
+     Removal hides the HD index (vault.ts hideAccount) so no address ever
+     shifts. Guarded: an account over $1 can't go, and if the balance can't be
+     VERIFIED we refuse rather than risk hiding funds the user can't recover. */
+  const [acctTick, setAcctTick] = useState(0);
+  const [acctMsg, setAcctMsg]   = useState<string | null>(null);
+
+  const renameAccount = (idx: number) => {
+    const current = getCustomAccountName(idx) ?? '';
+    const next = window.prompt(`Rename ${getAccountName(idx)}`, current);
+    if (next == null) return;                 // cancelled
+    setAccountName(idx, next);
+    setAcctTick(t => t + 1);
+  };
+
+  const deleteAccount = async (idx: number) => {
+    setAcctMsg(null);
+    if (getVisibleAccountIndices().length <= 1) {
+      setAcctMsg('Your wallet must keep at least one account.');
+      return;
+    }
+    const addr = walletSeed.length ? deriveAddressesFromSeed(walletSeed, idx).evm : '';
+    if (!addr) { setAcctMsg('Unlock your wallet to delete an account.'); return; }
+    setAcctMsg('Checking balance…');
+    const m = await import('./account-balance');
+    const usd = await m.accountUsdValue(addr);
+    if (usd == null) {
+      setAcctMsg("Couldn't verify this account's balance — it wasn't deleted.");
+      return;
+    }
+    if (usd > m.DELETE_MAX_USD) {
+      setAcctMsg(`That account holds about $${usd.toFixed(2)}. Move the funds out first.`);
+      return;
+    }
+    if (!window.confirm(`Delete ${getAccountName(idx)}? The same recovery phrase can restore it later.`)) {
+      setAcctMsg(null);
+      return;
+    }
+    if (!hideAccount(idx)) { setAcctMsg('That account can\'t be removed.'); return; }
+    setActiveIdx(getActiveAccountIndex());
+    setAcctTick(t => t + 1);
+    setAcctMsg(null);
   };
   const walletAddr = addrs.evm;
   const shortAddr  = addrs.short;
@@ -3905,21 +3952,57 @@ function App() {
                   {walletSeed.length > 0 && (
                     <>
                       <div className="menu-divider"/>
-                      {Array.from({ length: accountCount }, (_, i) => (
-                        <button
-                          key={i}
-                          className="menu-item"
-                          onClick={() => { switchAccount(i); setAccountMenu(false); }}
-                          style={i === activeIdx ? { fontWeight: 700 } : undefined}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                            <circle cx="12" cy="8" r="4"/>
-                            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                          </svg>
-                          Account {i + 1}
-                          {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
-                        </button>
-                      ))}
+                      {getVisibleAccountIndices().map((i) => {
+                        // A wallet must keep one account, so the last can't be
+                        // removed — rendered disabled rather than hidden, or the
+                        // feature looks absent to single-account users.
+                        const lastAccount = getVisibleAccountIndices().length <= 1;
+                        return (
+                          <div
+                            key={i}
+                            className="menu-item"
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, ...(i === activeIdx ? { fontWeight: 700 } : {}) }}
+                          >
+                            <button
+                              onClick={() => { switchAccount(i); setAccountMenu(false); }}
+                              style={{
+                                flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
+                                background: 'none', border: 'none', color: 'inherit', font: 'inherit',
+                                cursor: 'pointer', padding: 0, textAlign: 'left',
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                <circle cx="12" cy="8" r="4"/>
+                                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                              </svg>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {getAccountName(i)}
+                              </span>
+                              {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); renameAccount(i); setAccountMenu(false); }}
+                              title="Rename account"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 3, display: 'flex' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); if (!lastAccount) { void deleteAccount(i); setAccountMenu(false); } }}
+                              disabled={lastAccount}
+                              title={lastAccount ? 'Your wallet must keep at least one account' : 'Delete account'}
+                              style={{
+                                background: 'none', border: 'none', padding: 3, display: 'flex',
+                                cursor: lastAccount ? 'not-allowed' : 'pointer',
+                                color: lastAccount ? 'var(--text-muted)' : '#f87171',
+                                opacity: lastAccount ? 0.45 : 1,
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                            </button>
+                          </div>
+                        );
+                      })}
                       {accountCount < MAX_ACCOUNTS && (
                         <button
                           className="menu-item"

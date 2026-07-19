@@ -157,7 +157,7 @@ export interface PortfolioState {
 
 /* ─── Fetch ──────────────────────────────────────────────────────────── */
 
-async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
+export async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
   const ctrl  = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8_000);
   try {
