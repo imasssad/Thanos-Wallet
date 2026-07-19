@@ -43,6 +43,12 @@ const CSP = [
     + " https://bridge.litho.ai"
     + " https://ignite.litho.ai"
     + " https://api.coingecko.com"
+    // Display-currency FX rates (sdk-core/fx.ts → USD→EUR/GBP/JPY/BTC).
+    // WITHOUT this the browser blocks the rate fetch, the engine falls back to
+    // USD exactly as designed ("never show wrong math"), and the Settings
+    // Currency picker silently appears to do nothing. The native apps have no
+    // CSP, which is why this only ever broke on web.
+    + " https://api.coinbase.com"
     // Multi-chain balance/send upstreams the lib/ clients actually call.
     + " https://mempool.space"
     + " https://api.mainnet-beta.solana.com"

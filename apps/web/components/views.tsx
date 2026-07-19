@@ -1207,6 +1207,10 @@ export function SettingsView() {
   // ACTIVE currency rather than a local default, so the picker reflects the
   // persisted preference on load instead of always showing USD.
   const [currency, setCurrency] = useState<DisplayCurrency>(getDisplayCurrency());
+  // Surfaced under the Currency row when a pick can't take effect (rate fetch
+  // blocked/offline) — otherwise the engine's USD fallback is invisible and
+  // looks like the picker is simply broken.
+  const [fxNote, setFxNote] = useState<string | null>(null);
   const [language, setLanguage] = useState('English');
   const [autoLock, setAutoLock] = useState('5 minutes');
   const [hwModal,  setHwModal]  = useState<'ledger' | 'trezor' | null>(null);
@@ -1249,16 +1253,22 @@ export function SettingsView() {
         </header>
 
         <Section icon={Globe} title="General" sub="Display, language, and locale">
-          <Row label="Currency" sub="Display prices in">
+          <Row label="Currency" sub={fxNote ?? 'Display prices in'}>
             <Select
               value={currency}
               // applyDisplayCurrency persists the choice, fetches the rate and
-              // notifies subscribers (AppShell re-renders the tree, so every
-              // price re-formats). It resolves to what ACTUALLY took effect —
-              // falling back to USD if the rate can't be fetched, rather than
-              // showing wrong math. "LAX" was dropped: it isn't a real FX
-              // currency and the engine has no rate for it.
-              onChange={(pick) => { void applyDisplayCurrency(pick as DisplayCurrency).then(setCurrency); }}
+              // notifies subscribers (each price view re-renders via
+              // useDisplayCurrency). It resolves to what ACTUALLY took effect,
+              // falling back to USD if the rate can't be fetched rather than
+              // showing wrong math — so when the pick doesn't stick we SAY so
+              // instead of silently reverting, which reads as a broken picker.
+              // "LAX" was dropped: it isn't an FX currency and has no rate.
+              onChange={(pick) => {
+                void applyDisplayCurrency(pick as DisplayCurrency).then((actual) => {
+                  setCurrency(actual);
+                  setFxNote(actual !== pick ? `Couldn't fetch live ${pick} rates — showing USD.` : null);
+                });
+              }}
               options={[...FX_CURRENCIES]}
               ariaLabel="Display currency"
             />
