@@ -8,7 +8,7 @@ import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from '../../lib/bridge-m
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
-  Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search,
+  Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search, Pencil, Trash2,
   Fingerprint, Key, AlertTriangle, Globe, Zap, Bell, Shield,
   Sparkles, CreditCard,
 } from 'lucide-react';
@@ -20,6 +20,8 @@ import {
   isSeedBackedUp, setSeedBackedUp,
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount,       setAccountCount,
+  getAccountName, getCustomAccountName, setAccountName,
+  getVisibleAccountIndices, hideAccount,
   MAX_ACCOUNTS,
 } from '../../lib/vault';
 import {
@@ -740,7 +742,7 @@ function AIAssistant() {
 
 function HomeScreen({
   onAction, onLock, onOpenSettings, onOpenToken,
-  activeIdx, accountCount, onSwitch, onAddAccount,
+  activeIdx, accountCount, onSwitch, onAddAccount, onRenameAccount, onDeleteAccount,
 }: {
   onAction:      (m: 'send'|'receive'|'swap') => void;
   onLock:        () => void;
@@ -750,6 +752,8 @@ function HomeScreen({
   accountCount:  number;
   onSwitch:      (idx: number) => void;
   onAddAccount:  () => void;
+  onRenameAccount: (idx: number) => void;
+  onDeleteAccount: (idx: number) => void;
 }) {
   const { coins, totalUsd, loading, offline } = usePortfolioCtx();
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
@@ -789,23 +793,60 @@ function HomeScreen({
                   boxShadow: '0 10px 28px rgba(0,0,0,0.24)',
                 }}
               >
-                {Array.from({ length: accountCount }, (_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { onSwitch(i); setAcctMenu(false); }}
-                    style={{
-                      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
-                      padding: '8px 10px', border: 'none', borderRadius: 6,
-                      background: i === activeIdx ? 'var(--bg-hover)' : 'transparent',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer', textAlign: 'left',
-                      fontSize: 12, fontWeight: i === activeIdx ? 700 : 500,
-                    }}
-                  >
-                    <User size={12}/> Account {i + 1}
-                    {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
-                  </button>
-                ))}
+                {getVisibleAccountIndices().map((i) => {
+                  // A wallet must keep one account, so the last one can't go.
+                  // Rendered disabled rather than hidden — hiding it made the
+                  // feature look absent to anyone with a single account.
+                  const lastAccount = getVisibleAccountIndices().length <= 1;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex', width: '100%', alignItems: 'center', gap: 4,
+                        padding: '4px 6px', borderRadius: 6,
+                        background: i === activeIdx ? 'var(--bg-hover)' : 'transparent',
+                      }}
+                    >
+                      <button
+                        onClick={() => { onSwitch(i); setAcctMenu(false); }}
+                        style={{
+                          display: 'flex', flex: 1, alignItems: 'center', gap: 8, minWidth: 0,
+                          padding: '4px 4px', border: 'none', borderRadius: 6, background: 'transparent',
+                          color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left',
+                          fontSize: 12, fontWeight: i === activeIdx ? 700 : 500,
+                        }}
+                      >
+                        <User size={12}/>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {getAccountName(i)}
+                        </span>
+                        {i === activeIdx && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRenameAccount(i); setAcctMenu(false); }}
+                        title="Rename account"
+                        aria-label={`Rename ${getAccountName(i)}`}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 3, display: 'flex' }}
+                      >
+                        <Pencil size={11}/>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (!lastAccount) { onDeleteAccount(i); setAcctMenu(false); } }}
+                        disabled={lastAccount}
+                        title={lastAccount ? 'Your wallet must keep at least one account' : 'Delete account'}
+                        aria-label={`Delete ${getAccountName(i)}`}
+                        style={{
+                          background: 'none', border: 'none', padding: 3, display: 'flex',
+                          cursor: lastAccount ? 'not-allowed' : 'pointer',
+                          color: lastAccount ? 'var(--text-muted)' : '#f87171',
+                          opacity: lastAccount ? 0.45 : 1,
+                        }}
+                      >
+                        <Trash2 size={11}/>
+                      </button>
+                    </div>
+                  );
+                })}
                 {accountCount < MAX_ACCOUNTS && (
                   <button
                     onClick={() => { onAddAccount(); setAcctMenu(false); }}
@@ -2889,6 +2930,53 @@ function App() {
     setActiveIdx(next);
   };
 
+  /* ─── Rename / delete account ─────────────────────────────────────────
+     Removal hides the HD index (lib/vault.ts hideAccount) so no address ever
+     shifts. Guarded: an account over $1 can't go, and if the balance can't be
+     VERIFIED we refuse rather than risk hiding funds. The popup has no modal
+     system for this, so rename uses a compact inline prompt row and delete
+     surfaces its outcome in acctMsg. */
+  const [acctMsg, setAcctMsg] = useState<string | null>(null);
+  const [nameTick, setNameTick] = useState(0);
+
+  const renameAccount = (idx: number) => {
+    const current = getCustomAccountName(idx) ?? '';
+    // eslint-disable-next-line no-alert
+    const next = window.prompt(`Rename ${getAccountName(idx)}`, current);
+    if (next == null) return;               // cancelled
+    setAccountName(idx, next);
+    setNameTick(t => t + 1);
+  };
+
+  const deleteAccount = async (idx: number) => {
+    setAcctMsg(null);
+    if (getVisibleAccountIndices().length <= 1) {
+      setAcctMsg('Your wallet must keep at least one account.');
+      return;
+    }
+    const addr = seed.length ? deriveEvm(seed, idx) : '';
+    if (!addr) { setAcctMsg('Unlock your wallet to delete an account.'); return; }
+    setAcctMsg('Checking balance…');
+    const m = await import('../../lib/account-balance');
+    const usd = await m.accountUsdValue(addr);
+    if (usd == null) {
+      setAcctMsg("Couldn't verify this account's balance — it wasn't deleted.");
+      return;
+    }
+    if (usd > m.DELETE_MAX_USD) {
+      setAcctMsg(`That account holds about $${usd.toFixed(2)}. Move the funds out first.`);
+      return;
+    }
+    if (!window.confirm(`Delete ${getAccountName(idx)}? The same recovery phrase can restore it later.`)) {
+      setAcctMsg(null);
+      return;
+    }
+    if (!hideAccount(idx)) { setAcctMsg('That account can\'t be removed.'); return; }
+    setActiveIdx(getActiveAccountIndex());
+    setNameTick(t => t + 1);
+    setAcctMsg(null);
+  };
+
   // Watch chrome.storage.session for incoming dApp approval / signing
   // requests so the popup can render the right sheet without polling.
   useEffect(() => {
@@ -3267,10 +3355,13 @@ function App() {
       <div className="app">
         <div className="app-body">
           {tab === 'home'     && <HomeScreen
+            key={nameTick}
             onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}
             onOpenToken={setDetailSym}
             activeIdx={activeIdx} accountCount={accountCount}
             onSwitch={switchAccount} onAddAccount={addAccount}
+            onRenameAccount={renameAccount}
+            onDeleteAccount={(i) => { void deleteAccount(i); }}
           />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
