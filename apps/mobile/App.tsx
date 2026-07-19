@@ -115,6 +115,7 @@ import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresenta
 import { fetchNativeLithoActivity, fetchKametNativeActivity, mergeActivityFeeds } from './lib/makalu-explorer';
 import {
   formatFiat, initDisplayCurrency, applyDisplayCurrency, persistDisplayCurrency,
+  convertFromUsd, withCurrencyAffix,
   CURRENCY_OPTS as FX_CURRENCY_OPTS, type DisplayCurrency,
 } from './lib/fx';
 import type { ImageSourcePropType } from 'react-native';
@@ -3991,12 +3992,15 @@ const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
   { key: '1d', label: '1D' }, { key: '1w', label: '1W' }, { key: '1m', label: '1M' },
   { key: '3m', label: '3M' }, { key: '1y', label: '1Y' },
 ];
-function tdCompact(n: number | null): string {
-  if (typeof n !== 'number' || !isFinite(n)) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
-  return `$${n.toFixed(2)}`;
+// Market cap / total volume — convert USD → active display currency so they
+// match the balance/ATH/ATL (the whole screen reads in one currency).
+function tdCompact(nUsd: number | null): string {
+  if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e9) return withCurrencyAffix(`${(n / 1e9).toFixed(2)}B`);
+  if (n >= 1e6) return withCurrencyAffix(`${(n / 1e6).toFixed(2)}M`);
+  if (n >= 1e3) return withCurrencyAffix(`${(n / 1e3).toFixed(2)}K`);
+  return withCurrencyAffix(n.toFixed(2));
 }
 function tdCompactQty(n: number | null): string {
   if (typeof n !== 'number' || !isFinite(n)) return '—';
@@ -5277,18 +5281,20 @@ const MARKET_LIST: { sym: string; name: string }[] = [
   { sym: 'AVAX',   name: 'Avalanche' },
 ];
 
-function fmtCompactUsd(n: number | null): string {
-  if (typeof n !== 'number' || !isFinite(n)) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
-  return `$${n.toFixed(0)}`;
+function fmtCompactUsd(nUsd: number | null): string {
+  if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e9) return withCurrencyAffix(`${(n / 1e9).toFixed(2)}B`);
+  if (n >= 1e6) return withCurrencyAffix(`${(n / 1e6).toFixed(2)}M`);
+  if (n >= 1e3) return withCurrencyAffix(`${(n / 1e3).toFixed(2)}K`);
+  return withCurrencyAffix(n.toFixed(0));
 }
-function fmtMarketPrice(n: number): string {
-  if (!isFinite(n)) return '—';
-  if (n > 0 && n < 0.01) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 8 })}`;
-  if (n < 1) return `$${n.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function fmtMarketPrice(nUsd: number): string {
+  if (!isFinite(nUsd)) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n > 0 && n < 0.01) return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 8 }));
+  if (n < 1) return withCurrencyAffix(n.toLocaleString('en-US', { maximumFractionDigits: 4 }));
+  return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
 function MarketScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string) => void }) {

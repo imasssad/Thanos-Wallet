@@ -53,6 +53,21 @@ export function formatFiat(nUsd: number): string {
   return meta.suffix ? `${s}${meta.suffix}` : `${meta.symbol}${s}`;
 }
 
+/** Convert a USD amount to the active display currency as a RAW number — for
+ *  callers that need their own precision/compact rules (market cap "1.2B",
+ *  sub-dollar prices) and so can't use formatFiat's fixed decimals. */
+export function convertFromUsd(nUsd: number): number {
+  return (isFinite(nUsd) ? nUsd : 0) * _rate;
+}
+
+/** Wrap an already-formatted number with the active currency's affix on the
+ *  correct side — "$1.2B" / "Ⱡ1.2B", and "1.2B LAX" if a suffix ccy is ever
+ *  re-added. Pairs with convertFromUsd. */
+export function withCurrencyAffix(formatted: string): string {
+  const meta = META[_code];
+  return meta.suffix ? `${formatted}${meta.suffix}` : `${meta.symbol}${formatted}`;
+}
+
 async function fetchRates(): Promise<Record<string, number> | null> {
   try {
     const cached = await AsyncStorage.getItem(RATES_CACHE_KEY);

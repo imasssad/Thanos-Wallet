@@ -43,6 +43,7 @@ import {
   fetchEcosystemPrices,
   initDisplayCurrency, applyDisplayCurrency, getDisplayCurrency,
   subscribeFx, FX_CURRENCIES, type DisplayCurrency,
+  convertFromUsd, withCurrencyAffix,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError, activeChain } from './wc-signer';
@@ -1429,12 +1430,15 @@ function tdPath(prices: Array<[number, number]>, w: number, h: number): string |
   const dx = w / (prices.length - 1);
   return vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * dx).toFixed(1)},${(span === 0 ? h / 2 : h - 6 - ((v - min) / span) * (h - 12)).toFixed(1)}`).join(' ');
 }
-function tdCompact(n: number | null): string {
-  if (typeof n !== 'number' || !isFinite(n)) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
-  return `$${n.toFixed(2)}`;
+// Convert USD → active display currency so market cap / volume match the rest
+// of the screen (one currency everywhere).
+function tdCompact(nUsd: number | null): string {
+  if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e9) return withCurrencyAffix(`${(n / 1e9).toFixed(2)}B`);
+  if (n >= 1e6) return withCurrencyAffix(`${(n / 1e6).toFixed(2)}M`);
+  if (n >= 1e3) return withCurrencyAffix(`${(n / 1e3).toFixed(2)}K`);
+  return withCurrencyAffix(n.toFixed(2));
 }
 /* Precision-aware per-unit price — the shared formatUsd floors to 2dp, so
    sub-cent tokens (IMAGE ~$0.0000115) would show "$0.00". */

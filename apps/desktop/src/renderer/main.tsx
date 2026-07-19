@@ -32,6 +32,7 @@ import {
   type TokenHistory, type TokenMarketDetails, type TokenRange,
   initDisplayCurrency, applyDisplayCurrency, getDisplayCurrency,
   subscribeFx, FX_CURRENCIES, type DisplayCurrency,
+  convertFromUsd, withCurrencyAffix,
 } from '@thanos/sdk-core';
 import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
@@ -1025,12 +1026,15 @@ function tdPath(prices: Array<[number, number]>, w: number, h: number): { line: 
   const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   return { line, area: `${line} L${w},${h} L0,${h} Z` };
 }
-function tdFmtCompactUsd(n: number | null): string {
-  if (typeof n !== 'number' || !isFinite(n)) return '—';
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(2)}K`;
-  return `$${n.toFixed(2)}`;
+// Convert USD → active display currency so market cap / volume match the rest
+// of the screen (one currency everywhere).
+function tdFmtCompactUsd(nUsd: number | null): string {
+  if (typeof nUsd !== 'number' || !isFinite(nUsd)) return '—';
+  const n = convertFromUsd(nUsd);
+  if (n >= 1e9) return withCurrencyAffix(`${(n / 1e9).toFixed(2)}B`);
+  if (n >= 1e6) return withCurrencyAffix(`${(n / 1e6).toFixed(2)}M`);
+  if (n >= 1e3) return withCurrencyAffix(`${(n / 1e3).toFixed(2)}K`);
+  return withCurrencyAffix(n.toFixed(2));
 }
 function tdFmtQty(n: number | null): string {
   if (typeof n !== 'number' || !isFinite(n)) return '—';
