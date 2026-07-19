@@ -245,6 +245,12 @@ function useToggle()  { return useContext(ToggleCtx); }
 function useStyles()  { return useContext(StylesCtx); }
 function useRenameAccount() { return useContext(RenameAcctCtx); }
 
+/* Full wallet wipe, provided by App so Settings can trigger it — clearing the
+   vault alone isn't enough, the in-memory unlocked state and the biometric key
+   must go too or the app would sit on a stale unlocked session. */
+const ResetWalletCtx = createContext<() => void>(() => {});
+function useResetWallet() { return useContext(ResetWalletCtx); }
+
 /* ─── Page-transition wrapper ─────────────────────────────────────
    Plays a fade + small slide-up animation whenever `keyName` changes.
    Used for the main tab body and onboarding step transitions.
@@ -2892,6 +2898,43 @@ function SettingsScreen() {
   const seed = useWalletSeed();
   const isDark = C.bgBase === DARK.bgBase;
 
+  /* Delete wallet — two-step Alert confirm. The warning text depends on
+     whether the recovery phrase was actually backed up: with a backup this is
+     recoverable, without one it is permanent loss, and the user deserves to be
+     told which situation they're in BEFORE the destructive tap. */
+  const resetWallet = useResetWallet();
+  const deleteWalletFlow = async () => {
+    let backedUp = false;
+    try { backedUp = await isSeedBackedUp(); } catch { backedUp = false; }
+    Alert.alert(
+      'Delete wallet?',
+      backedUp
+        ? 'This erases the wallet from this device. You can restore it later with your recovery phrase.'
+        : 'You have NOT backed up your recovery phrase.\n\nIf you delete this wallet now, these funds are gone permanently — nobody can recover them.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        ...(backedUp ? [] : [{ text: 'Back up first', onPress: () => setRevealOpen(true) }]),
+        {
+          text: 'Delete wallet',
+          style: 'destructive' as const,
+          onPress: () => {
+            Alert.alert(
+              'Are you sure?',
+              'This cannot be undone.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Erase', style: 'destructive',
+                  onPress: () => { resetWallet(); },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   // Modal flags for the settings actions.
   const [revealOpen, setRevealOpen]     = useState(false);
   const [changePwdOpen, setChangePwdOpen] = useState(false);
@@ -3182,6 +3225,16 @@ function SettingsScreen() {
           onPress: () => { Linking.openURL('https://thanos.fi/privacy').catch(() => {}); } },
         { label: 'Security disclosures', desc: 'Report a vulnerability + PGP key', Icon: AlertTriangle,
           onPress: () => { Linking.openURL('https://thanos.fi/.well-known/security.txt').catch(() => {}); } },
+      ]}/>
+
+      {/* Danger zone — the only irreversible action in Settings. "Reset
+          wallet" already existed on the unlock screen; users look for it
+          here too. The confirm copy changes based on whether the recovery
+          phrase has actually been backed up, because that's the difference
+          between "restorable" and "gone forever". */}
+      <Section Icon={AlertTriangle} title="Danger zone" sub="Irreversible — read before you tap" items={[
+        { label: 'Delete wallet', desc: 'Erase this wallet from this device', Icon: AlertTriangle,
+          onPress: () => { void deleteWalletFlow(); } },
       ]}/>
 
       <SectionHead Icon={isDark ? Moon : Sun} title="Appearance" sub="Theme and display"/>
@@ -5880,6 +5933,22 @@ function App() {
     return () => sub.remove();
   }, [unlocked]);
 
+  /* Delete wallet (Settings → Danger zone). Wipes the vault, the biometric
+     key that pointed at it, and every trace of the unlocked session, then
+     drops back to onboarding. Distinct from handleLock, which keeps the vault
+     so the user can unlock again. */
+  const resetWalletCompletely = () => {
+    void (async () => {
+      try { await clearVaultStore(); } catch { /* already gone */ }
+      try { await disableBiometricUnlock(); } catch { /* nothing enrolled */ }
+      setUnlocked(false);
+      setWalletSeed([]);
+      setHasVault(false);
+      clearSessionKey();
+      void import('./lib/signer').then(s => s.clearSeed()).catch(() => { /* not loaded */ });
+    })();
+  };
+
   const handleLock = () => {
     setUnlocked(false);
     setWalletSeed([]);
@@ -5965,6 +6034,7 @@ function App() {
         <ToggleCtx.Provider value={toggle}>
         <FiatCtx.Provider value={fiatCtxValue}>
         <RenameAcctCtx.Provider value={openRename}>
+        <ResetWalletCtx.Provider value={resetWalletCompletely}>
         <WalletAddrCtx.Provider value={walletAddr}>
         <WalletSeedCtx.Provider value={walletSeed}>
         <BrowserCtx.Provider value={setBrowserUrl}>
@@ -6248,6 +6318,7 @@ function App() {
         </BrowserCtx.Provider>
         </WalletSeedCtx.Provider>
         </WalletAddrCtx.Provider>
+        </ResetWalletCtx.Provider>
         </RenameAcctCtx.Provider>
         </FiatCtx.Provider>
         </ToggleCtx.Provider>
