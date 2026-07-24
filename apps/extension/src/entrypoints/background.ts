@@ -74,6 +74,31 @@ function pushResultToTab(
 // wallet_switchEthereumChain were all answering for the wrong chain.
 const MAKALU_CHAIN_ID_HEX = '0xab169'; // 700777
 
+// Makalu's canonical RPC pair. dapp-chains.ts leaves Makalu's rpcUrl '' because
+// the in-wallet SIGNER uses the sdk FallbackProvider, but the dApp-facing read
+// passthrough below needs a concrete URL — mirror MAKALU_TESTNET.rpcUrls.
+const MAKALU_RPC_URLS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
+
+/* Read-only JSON-RPC methods the dApp provider proxies to the active chain's
+   node. MetaMask forwards every method it doesn't handle internally to the
+   current network's RPC; without this, a wagmi/viem dApp's eth_call /
+   eth_getBalance / eth_blockNumber / eth_getBlockByNumber / eth_estimateGas …
+   ALL throw -32601, so right after wallet_switchEthereumChain the dApp can't
+   read the new chain to confirm the switch and bounces back to "wrong network".
+   This was the real cause of tge.ignite.trade never leaving 700777.
+   Signing + state-changing methods are deliberately NOT here — they stay gated
+   by the popup approval flow (eth_sendTransaction/personal_sign/… above). */
+const RPC_PASSTHROUGH = new Set<string>([
+  'eth_call', 'eth_estimateGas', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+  'eth_blockNumber', 'eth_getBalance', 'eth_getCode', 'eth_getStorageAt', 'eth_getProof',
+  'eth_getTransactionCount', 'eth_getTransactionReceipt', 'eth_getTransactionByHash',
+  'eth_getTransactionByBlockHashAndIndex', 'eth_getTransactionByBlockNumberAndIndex',
+  'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getBlockReceipts',
+  'eth_getBlockTransactionCountByNumber', 'eth_getBlockTransactionCountByHash',
+  'eth_getLogs', 'eth_getUncleCountByBlockHash', 'eth_getUncleCountByBlockNumber',
+  'eth_createAccessList', 'eth_syncing', 'web3_clientVersion', 'net_listening',
+]);
+
 /* ─── WalletConnect offscreen lifecycle ────────────────────────────────
    The relay socket lives in a hidden offscreen document so it survives
    the popup closing + this service worker idling out. Chrome-only API —
@@ -136,6 +161,39 @@ async function getChainIdHex(): Promise<string> {
   // constant instead of overriding it forever from storage.
   if (!stored || stored.toLowerCase() === '0xab09f9') return MAKALU_CHAIN_ID_HEX;
   return stored;
+}
+
+/* Proxy a read-only JSON-RPC call to the ACTIVE chain's node. The service
+   worker's broad https host_permissions exempt these cross-origin fetches from
+   CORS. Makalu ships a primary+fallback pair; the 8 external EVM chains each
+   carry a single verified rpcUrl (evm-external.ts). A JSON-RPC error from the
+   node is authoritative (the request is bad) → surfaced immediately; only a
+   transport failure rotates to the next endpoint. */
+async function rpcPassthrough(method: string, params: unknown[]): Promise<unknown> {
+  const hex   = await getChainIdHex();
+  const chain = dappChainByHex(hex);
+  const urls  = chain && chain.rpcUrl ? [chain.rpcUrl] : MAKALU_RPC_URLS;
+  let lastErr: unknown;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: params ?? [] }),
+      });
+      if (!res.ok) { lastErr = rpcError(-32603, `RPC ${res.status} from ${hostOf(url)}`); continue; }
+      const json = await res.json() as { result?: unknown; error?: { code?: number; message?: string; data?: unknown } };
+      if (json.error) {
+        // Preserve `data` so viem/wagmi can decode revert reasons (eth_call).
+        throw Object.assign(rpcError(json.error.code ?? -32603, json.error.message ?? 'RPC error'), { data: json.error.data });
+      }
+      return json.result;
+    } catch (e) {
+      if (e && typeof e === 'object' && 'code' in e) throw e; // node-side JSON-RPC error — don't retry
+      lastErr = e;                                            // transport failure — try the fallback
+    }
+  }
+  throw lastErr ?? rpcError(-32603, 'RPC request failed');
 }
 
 /* ─── RPC dispatch ───────────────────────────────────────────────────── */
@@ -271,9 +329,10 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
       });
     }
 
-    /* ─ Unknown ──────────────────────────────────────────────────── */
+    /* ─ Generic read-only RPC — proxy to the active chain's node ─── */
 
     default:
+      if (RPC_PASSTHROUGH.has(method)) return await rpcPassthrough(method, params);
       throw rpcError(-32601, `Method not supported: ${method}`);
   }
 }

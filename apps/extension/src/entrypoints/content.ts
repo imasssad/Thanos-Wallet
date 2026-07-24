@@ -31,7 +31,7 @@ export default defineContentScript({
     // or the background's durable tab-push (survives SW eviction). injected.ts
     // also dedupes by id, but we dedupe here too so a stale channel can't
     // clobber a real result.
-    type Payload = { result: unknown } | { error: { code: number; message: string } };
+    type Payload = { result: unknown } | { error: { code: number; message: string; data?: unknown } };
     const inflight = new Map<string, { done: boolean; timer: ReturnType<typeof setTimeout> }>();
     function deliver(pageId: string, payload: Payload) {
       const rec = inflight.get(pageId);
@@ -80,11 +80,13 @@ export default defineContentScript({
         // legitimately (null is used for switch/add-chain), so this is safe.
         if (result !== undefined) deliver(pageId, { result });
       } catch (err) {
-        const e = err as { code?: number; message?: string };
+        const e = err as { code?: number; message?: string; data?: unknown };
         // A closed port during an approval is expected on SW eviction — wait
         // for the durable push (or the timeout) rather than erroring early.
         if (/message port closed/i.test(e?.message ?? '')) return;
-        deliver(pageId, { error: { code: e?.code ?? -32603, message: e?.message ?? 'Internal error' } });
+        // `data` carries eth_call revert payloads so viem/wagmi can decode the
+        // reason (undefined for non-revert errors — harmless).
+        deliver(pageId, { error: { code: e?.code ?? -32603, message: e?.message ?? 'Internal error', data: e?.data } });
       }
     });
 

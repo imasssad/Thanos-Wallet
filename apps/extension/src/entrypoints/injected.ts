@@ -47,14 +47,14 @@ export default defineUnlistedScript(() => {
   // Listen for responses + push events from the content bridge.
   window.addEventListener('message', evt => {
     if (evt.source !== window) return;
-    const msg = evt.data as { target?: string; type?: string; id?: string; result?: unknown; error?: { code: number; message: string }; event?: string; args?: unknown[] } | null;
+    const msg = evt.data as { target?: string; type?: string; id?: string; result?: unknown; error?: { code: number; message: string; data?: unknown }; event?: string; args?: unknown[] } | null;
     if (!msg || msg.target !== 'thanos-page') return;
 
     if (msg.type === 'response' && msg.id) {
       const p = pending.get(msg.id);
       if (!p) return;
       pending.delete(msg.id);
-      if (msg.error) p.reject(Object.assign(new Error(msg.error.message), { code: msg.error.code }));
+      if (msg.error) p.reject(Object.assign(new Error(msg.error.message), { code: msg.error.code, data: msg.error.data }));
       else p.resolve(msg.result);
     } else if (msg.type === 'event' && msg.event) {
       emit(msg.event, ...(msg.args ?? []));
