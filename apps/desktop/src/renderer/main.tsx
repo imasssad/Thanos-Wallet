@@ -18,7 +18,7 @@ import {
 import { UpdateBanner } from './components/UpdateBanner';
 import { DappBrowserOverlay } from './components/DappBrowserOverlay';
 import { DappRequestHost } from './DappRequestHost';
-import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, type DisplayCoin } from './portfolio';
+import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, type DisplayCoin, type DisplayTx } from './portfolio';
 import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain } from './evm-external-meta';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
@@ -33,6 +33,7 @@ import {
   initDisplayCurrency, applyDisplayCurrency, getDisplayCurrency,
   subscribeFx, FX_CURRENCIES, type DisplayCurrency,
   convertFromUsd, withCurrencyAffix,
+  fetchOnchainTxDetails, type OnchainTxDetails,
 } from '@thanos/sdk-core';
 import { HardwareModal } from './hardware';
 import { WalletConnectModal } from './walletconnect';
@@ -703,6 +704,7 @@ function SecurityPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
 function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null; onOpenSettings: () => void }) {
   const openDapp = useOpenDapp();
   const { coins, activity, totalUsd, loading } = usePortfolioCtx();
+  const [txDetail, setTxDetail] = useState<DisplayTx | null>(null);
   // Cold first-load (no cached data) → shimmer; otherwise show real/cached total
   // immediately (cached-first) even while a background refresh runs.
   const coldLoad = loading && coins.length === 0;
@@ -810,7 +812,7 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
           </thead>
           <tbody>
             {activity.slice(0, 6).map((tx) => (
-              <tr key={tx.id}>
+              <tr key={tx.id} onClick={() => setTxDetail(tx)} style={{ cursor: 'pointer' }}>
                 <td>
                   <div className="tx-cell">
                     <TokenAvatar sym={tx.sym} color={tx.color} className="tx-avatar" label={tx.sym.slice(0, 2)}/>
@@ -842,6 +844,7 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
           <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No transactions yet.</div>
         )}
       </div>
+      {txDetail && <TxDetailModal tx={txDetail} onClose={() => setTxDetail(null)} />}
     </>
   );
 }
@@ -858,6 +861,106 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         {children}
       </div>
     </div>
+  );
+}
+
+/* Transaction detail — opens when the user clicks a past activity row (Payment
+   history, Transactions view, per-token activity). ≈fiat hero + signed amount,
+   then Date / Status / Recipient and Network fee / Nonce, with a block-explorer
+   link. Fee + nonce live only on chain, so they're fetched on open
+   (fetchOnchainTxDetails); shown as "…" while loading and "—" if unresolvable. */
+const TX_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtTxDateTime(ts?: string): string {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${TX_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m} ${ampm}`;
+}
+function shortTxAddr(a?: string | null): string {
+  if (!a) return '—';
+  return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+}
+function TxDetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '11px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13, gap: 12 }}>
+      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontWeight: 600, textAlign: 'right', minWidth: 0, wordBreak: 'break-word' }}>{children}</span>
+    </div>
+  );
+}
+
+function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) {
+  const { coins } = usePortfolioCtx();
+  const title = tx.type === 'Send' ? 'Sent' : tx.type === 'Receive' ? 'Received' : tx.type === 'Swap' ? 'Swap' : 'Transaction';
+  const amountNum = tx.rawAmount ?? 0;
+  const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const priceUsd = coins.find(c => c.sym.toLowerCase() === tx.sym.toLowerCase())?.priceUsd ?? null;
+  const fiat = priceUsd != null && amountNum > 0
+    ? withCurrencyAffix(convertFromUsd(amountNum * priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    : null;
+
+  const statusColor = tx.status === 'Pending' ? 'var(--orange, #f59e0b)' : tx.status === 'Failed' ? 'var(--red, #f87171)' : 'var(--green, #10b981)';
+
+  const [det, setDet] = useState<OnchainTxDetails | null>(null);
+  const [detLoading, setDetLoading] = useState<boolean>(!!tx.txHash);
+  useEffect(() => {
+    if (!tx.txHash) { setDetLoading(false); return; }
+    let cancel = false;
+    setDetLoading(true);
+    fetchOnchainTxDetails(tx.txHash)
+      .then(d => { if (!cancel) { setDet(d); setDetLoading(false); } })
+      .catch(() => { if (!cancel) setDetLoading(false); });
+    return () => { cancel = true; };
+  }, [tx.txHash]);
+
+  const feeText = det?.feeNative != null
+    ? `${det.feeNative.toLocaleString('en-US', { maximumFractionDigits: 8 })} ${det.nativeSymbol}`
+    : (detLoading ? '…' : '—');
+  const feeUsdText = det?.feeUsd != null
+    ? '≈ ' + withCurrencyAffix(convertFromUsd(det.feeUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }))
+    : null;
+  const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
+  const counterparty = tx.pos ? det?.from : det?.to;
+  const cpLabel = tx.pos ? 'From' : 'Recipient';
+  const explorer = det?.explorerTxUrl ?? (tx.txHash ? `https://makalu.litho.ai/tx/${tx.txHash}` : null);
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div style={{ textAlign: 'center', padding: '6px 0 18px' }}>
+        <div style={{ fontSize: 30, fontWeight: 800 }}>{fiat ? `≈ ${fiat}` : `${tx.pos ? '+' : '-'}${amountStr} ${tx.sym}`}</div>
+        <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>{tx.pos ? '+' : '-'}{amountStr} {tx.sym}</div>
+      </div>
+
+      <div className="card" style={{ padding: '2px 14px', marginBottom: 12 }}>
+        <TxDetailRow label="Date">{fmtTxDateTime(tx.rawTs)}</TxDetailRow>
+        <TxDetailRow label="Status"><span style={{ color: statusColor, fontWeight: 700 }}>{tx.status}</span></TxDetailRow>
+        {counterparty && <TxDetailRow label={cpLabel}><span style={{ fontFamily: 'Geist Mono, monospace' }}>{shortTxAddr(counterparty)}</span></TxDetailRow>}
+        {det?.networkName && <TxDetailRow label="Network">{det.networkName}</TxDetailRow>}
+      </div>
+
+      {tx.txHash && (
+        <div className="card" style={{ padding: '2px 14px', marginBottom: 12 }}>
+          <TxDetailRow label="Network fee">
+            <span>
+              <div>{feeText}</div>
+              {feeUsdText && <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>{feeUsdText}</div>}
+            </span>
+          </TxDetailRow>
+          <TxDetailRow label="Nonce">{nonceText}</TxDetailRow>
+        </div>
+      )}
+
+      {explorer && (
+        <a href={explorer} target="_blank" rel="noreferrer" className="btn-outline"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none', color: 'var(--green, #10b981)', fontWeight: 700, padding: '12px' }}>
+          View on block explorer
+        </a>
+      )}
+    </Modal>
   );
 }
 
@@ -1111,6 +1214,7 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
   };
 
   const rows = (activity ?? []).filter(t => t.sym.toLowerCase() === sym.toLowerCase()).slice(0, 8);
+  const [txDetail, setTxDetail] = useState<DisplayTx | null>(null);
   const W = 520, H = 170;
   const paths = hist?.hasRealData ? tdPath(hist.prices, W, H) : null;
   const up = (hist?.changePct ?? 0) >= 0;
@@ -1213,7 +1317,7 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
           <div style={{ fontSize: 15, fontWeight: 800, margin: '18px 0 6px' }}>Your activity</div>
           {rows.length === 0 && <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
           {rows.map(t => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
+            <div key={t.id} onClick={() => setTxDetail(t)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13, cursor: 'pointer' }}>
               <div>
                 <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>{t.type}{t.pending && <PendingBadge/>}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.date}</div>
@@ -1223,6 +1327,7 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
           ))}
         </div>
       </div>
+      {txDetail && <TxDetailModal tx={txDetail} onClose={() => setTxDetail(null)} />}
     </div>
   );
 }
@@ -2367,6 +2472,7 @@ function PortfolioView() {
 function TransactionsView() {
   const { activity, loading, offline } = usePortfolioCtx();
   const [filter, setFilter] = useState<'All'|'Send'|'Receive'|'Swap'>('All');
+  const [txDetail, setTxDetail] = useState<DisplayTx | null>(null);
   const filtered = filter === 'All' ? activity : activity.filter(t => t.type === filter);
 
   return (
@@ -2394,7 +2500,7 @@ function TransactionsView() {
           <tbody>
             {loading && activity.length === 0 && <SkeletonTableRows rows={5} cols={5}/>}
             {filtered.map((tx) => (
-              <tr key={tx.id}>
+              <tr key={tx.id} onClick={() => setTxDetail(tx)} style={{ cursor: 'pointer' }}>
                 <td>
                   <div className="tx-cell">
                     <TokenAvatar sym={tx.sym} color={tx.color} className="tx-avatar" label={tx.sym.slice(0,2)}/>
@@ -2431,6 +2537,7 @@ function TransactionsView() {
           <div style={{ padding: 14, fontSize: 12, color: 'var(--text-muted)' }}>No transactions.</div>
         )}
       </div>
+      {txDetail && <TxDetailModal tx={txDetail} onClose={() => setTxDetail(null)} />}
     </div>
   );
 }

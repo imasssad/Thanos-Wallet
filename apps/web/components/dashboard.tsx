@@ -30,6 +30,7 @@ import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } fro
 import { getAllEvmNativeBalances, getEvmChain, type EvmChain } from '../lib/evm-chains';
 import { getAllEvmTokenBalances, type EvmToken } from '../lib/evm-tokens';
 import { pendingActivityRows } from '../lib/tx-store';
+import { TransactionDetailModal } from './TransactionDetailModal';
 
 import { TOKENS } from '../lib/tokens';
 
@@ -88,6 +89,7 @@ function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
     amount: `${isOut ? '-' : '+'}${amountStr} ${item.symbol}`,
     pos:    !isOut,
     color:  canon?.color ?? '#52525b',
+    item,   // raw row → click opens the detail modal (needs hash/counterparty/ts)
   };
 }
 
@@ -821,6 +823,7 @@ export function Dashboard() {
      are folded under the DeFi tab so nothing is lost; Activity wraps
      the Payment history table. */
   const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity' | 'cards'>('tokens');
+  const [txDetail, setTxDetail] = useState<IndexerActivityItem | null>(null);
 
   /* Network filter for the Tokens tab. The wallet today has assets on
      four "kinds" of chain: Lithosphere Makalu, EVM-imported tokens,
@@ -1303,7 +1306,7 @@ export function Dashboard() {
               </tr></thead>
               <tbody>
                 {TXS.map((tx, i) => (
-                  <tr key={i}>
+                  <tr key={i} onClick={() => setTxDetail(tx.item)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div className="tx-cell">
                         <TokenIcon sym={tx.sym} color={tx.color} size={36} style={{ borderRadius: 10 }}/>
@@ -1335,6 +1338,7 @@ export function Dashboard() {
         )}
 
       </div>
+      {txDetail && <TransactionDetailModal item={txDetail} onClose={() => setTxDetail(null)} />}
     </div>
   );
 }

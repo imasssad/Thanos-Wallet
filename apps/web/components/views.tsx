@@ -28,6 +28,7 @@ import { BumpFeeModal } from './BumpFeeModal';
 import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 import { TokenDetailModal } from './TokenDetailModal';
+import { TransactionDetailModal } from './TransactionDetailModal';
 
 /* Lithosphere rows shown at the top of the Market view. Prices come
    from usePrices() at runtime; caps and volumes are intentionally
@@ -501,8 +502,11 @@ export function TransactionsView() {
     return () => { cancel = true; };
   }, [evmAddress]);
 
-  const rows = live && live.length > 0 ? live.map(activityToRow) : [];
+  // Keep the raw indexer item beside its display row so a click can open the
+  // detail modal (which needs hash/counterparty/ts, not the formatted row).
+  const rows = live && live.length > 0 ? live.map(item => ({ ...activityToRow(item), item })) : [];
   const filtered = filter === 'All' ? rows : rows.filter(t => t.type === filter);
+  const [detail, setDetail] = useState<IndexerActivityItem | null>(null);
   return (
     <div className="main-area" style={{ width: '100%' }}>
       <div className="page-wrap">
@@ -617,7 +621,7 @@ export function TransactionsView() {
             </thead>
             <tbody>
               {filtered.map((tx, i) => (
-                <tr key={i}>
+                <tr key={i} onClick={() => setDetail(tx.item)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div className="tx-cell">
                       <TokenIcon sym={tx.sym} color={tx.color} size={36} style={{ borderRadius: 10 }}/>
@@ -645,6 +649,7 @@ export function TransactionsView() {
           </table>
         </div>
       </div>
+      {detail && <TransactionDetailModal item={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

@@ -30,7 +30,7 @@ import {
   SESSION_DURATION_OPTIONS, type SessionDuration,
 } from './session-store';
 import {
-  usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd,
+  usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, type DisplayTx,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import {
@@ -44,6 +44,7 @@ import {
   initDisplayCurrency, applyDisplayCurrency, getDisplayCurrency,
   subscribeFx, FX_CURRENCIES, type DisplayCurrency,
   convertFromUsd, withCurrencyAffix,
+  fetchOnchainTxDetails, type OnchainTxDetails,
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError, activeChain } from './wc-signer';
@@ -969,6 +970,7 @@ function HomeScreen({
 function ActivityScreen() {
   const { activity, loading, offline } = usePortfolioCtx();
   const [filter, setFilter] = useState<'All' | 'Sent' | 'Received' | 'Swap'>('All');
+  const [detail, setDetail] = useState<DisplayTx | null>(null);
   const shown = filter === 'All' ? activity : activity.filter((t) => t.label === filter);
   return (
     <div className="screen">
@@ -990,7 +992,7 @@ function ActivityScreen() {
         {shown.map((t, i) => {
           const Ic = t.label === 'Sent' ? ArrowUpRight : t.label === 'Received' ? ArrowDownLeft : Repeat;
           return (
-            <div key={t.id} className={`row ${i < shown.length - 1 ? 'row-border' : ''}`}>
+            <div key={t.id} className={`row ${i < shown.length - 1 ? 'row-border' : ''}`} onClick={() => setDetail(t)} style={{ cursor: 'pointer' }}>
               <div className="row-avatar" style={{ background: t.pos ? 'rgba(16,185,129,0.18)' : 'rgba(59,122,247,0.18)', color: t.pos ? '#10b981' : '#3b7af7' }}>
                 <Ic size={14} strokeWidth={2.4}/>
               </div>
@@ -1005,6 +1007,7 @@ function ActivityScreen() {
           );
         })}
       </div>
+      {detail && <TxDetailModal tx={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }
@@ -1385,6 +1388,109 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
+/* Transaction detail — opens when the user clicks a past activity row.
+   ≈fiat hero + signed amount, then Date / Status / Recipient and Network fee /
+   Nonce, with a block-explorer link. Fee + nonce live only on chain and are
+   fetched on open (fetchOnchainTxDetails): "…" while loading, "—" if
+   unresolvable. Mirrors the web/mobile/desktop detail views. */
+const TX_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtTxDateTime(ts?: string): string {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${TX_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m} ${ampm}`;
+}
+function shortTxAddr(a?: string | null): string {
+  if (!a) return '—';
+  return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+}
+function TxDetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12, gap: 10 }}>
+      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontWeight: 600, textAlign: 'right', minWidth: 0, wordBreak: 'break-word' }}>{children}</span>
+    </div>
+  );
+}
+
+function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) {
+  const { coins } = usePortfolioCtx();
+  const title = tx.label === 'Activity' ? 'Transaction' : tx.label;
+  const amountNum = tx.rawAmount ?? 0;
+  const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const priceUsd = coins.find(c => c.sym.toLowerCase() === tx.sym.toLowerCase())?.priceUsd ?? null;
+  const fiat = priceUsd != null && amountNum > 0
+    ? withCurrencyAffix(convertFromUsd(amountNum * priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    : null;
+
+  const statusText  = tx.pending || tx.status === 'pending' ? 'Pending' : tx.status === 'failed' ? 'Failed' : 'Completed';
+  const statusColor = statusText === 'Pending' ? 'var(--orange, #f59e0b)' : statusText === 'Failed' ? 'var(--red, #f87171)' : 'var(--green, #10b981)';
+
+  const [det, setDet] = useState<OnchainTxDetails | null>(null);
+  const [detLoading, setDetLoading] = useState<boolean>(!!tx.txHash);
+  useEffect(() => {
+    if (!tx.txHash) { setDetLoading(false); return; }
+    let cancel = false;
+    setDetLoading(true);
+    fetchOnchainTxDetails(tx.txHash)
+      .then(d => { if (!cancel) { setDet(d); setDetLoading(false); } })
+      .catch(() => { if (!cancel) setDetLoading(false); });
+    return () => { cancel = true; };
+  }, [tx.txHash]);
+
+  const feeText = det?.feeNative != null
+    ? `${det.feeNative.toLocaleString('en-US', { maximumFractionDigits: 8 })} ${det.nativeSymbol}`
+    : (detLoading ? '…' : '—');
+  const feeUsdText = det?.feeUsd != null
+    ? '≈ ' + withCurrencyAffix(convertFromUsd(det.feeUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }))
+    : null;
+  const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
+  const counterparty = tx.pos ? det?.from : det?.to;
+  const cpLabel = tx.pos ? 'From' : 'Recipient';
+  const explorer = det?.explorerTxUrl ?? (tx.txHash ? `https://makalu.litho.ai/tx/${tx.txHash}` : null);
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="modal-body">
+        <div style={{ textAlign: 'center', padding: '2px 0 14px' }}>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{fiat ? `≈ ${fiat}` : `${tx.pos ? '+' : '-'}${amountStr} ${tx.sym}`}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{tx.pos ? '+' : '-'}{amountStr} {tx.sym}</div>
+        </div>
+
+        <div className="card" style={{ padding: '2px 12px', marginBottom: 10 }}>
+          <TxDetailRow label="Date">{fmtTxDateTime(tx.ts)}</TxDetailRow>
+          <TxDetailRow label="Status"><span style={{ color: statusColor, fontWeight: 700 }}>{statusText}</span></TxDetailRow>
+          {counterparty && <TxDetailRow label={cpLabel}><span style={{ fontFamily: 'monospace' }}>{shortTxAddr(counterparty)}</span></TxDetailRow>}
+          {det?.networkName && <TxDetailRow label="Network">{det.networkName}</TxDetailRow>}
+        </div>
+
+        {tx.txHash && (
+          <div className="card" style={{ padding: '2px 12px', marginBottom: 10 }}>
+            <TxDetailRow label="Network fee">
+              <span>
+                <div>{feeText}</div>
+                {feeUsdText && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{feeUsdText}</div>}
+              </span>
+            </TxDetailRow>
+            <TxDetailRow label="Nonce">{nonceText}</TxDetailRow>
+          </div>
+        )}
+
+        {explorer && (
+          <a href={explorer} target="_blank" rel="noopener noreferrer" className="btn-outline"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none', color: 'var(--green, #10b981)', fontWeight: 700 }}>
+            View on block explorer
+          </a>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /* First-run welcome — introduces the Lithosphere Makalu home network the
    first time a user reaches the unlocked popup. Self-gates on a localStorage
    flag (written the moment it shows) so it appears at most once. Compact for
@@ -1480,6 +1586,7 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
     return () => { cancel = true; };
   }, [sym]);
   const rows = (activity ?? []).filter(t => t.sym.toLowerCase() === sym.toLowerCase()).slice(0, 6);
+  const [txDetail, setTxDetail] = useState<DisplayTx | null>(null);
   const W = 312, H = 120;
   const line = hist?.hasRealData ? tdPath(hist.prices, W, H) : null;
   const up = (hist?.changePct ?? 0) >= 0;
@@ -1540,12 +1647,13 @@ function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
         <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 6px' }}>Your activity</div>
         {rows.length === 0 && <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
         {rows.map(t => (
-          <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
+          <div key={t.id} onClick={() => setTxDetail(t)} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12, cursor: 'pointer' }}>
             <div><div style={{ fontWeight: 600 }}>{t.label}{t.pending && <span className="pending-pill">Pending</span>}</div><div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.time}</div></div>
             <span style={{ fontFamily: 'Geist Mono, monospace', color: t.pos ? '#10b981' : 'var(--text-secondary)' }}>{t.amount}</span>
           </div>
         ))}
       </div>
+      {txDetail && <TxDetailModal tx={txDetail} onClose={() => setTxDetail(null)} />}
     </Modal>
   );
 }

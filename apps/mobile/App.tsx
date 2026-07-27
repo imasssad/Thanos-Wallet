@@ -153,6 +153,7 @@ import {
   fetchTokenHistory, fetchTokenMarketDetails,
   type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from './lib/price-history';
+import { fetchOnchainTxDetails, type OnchainTxDetails } from './lib/tx-details';
 import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal, notifyIfEnabled } from './lib/notifications';
 
 /* ╔══════════════════════════════════════════════════════════════════╗
@@ -2201,17 +2202,140 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   );
 }
 
+/* ─── Transaction detail bottom sheet ─────────────────────────────────
+   Opens when the user taps a past activity row. Amount / fiat / date /
+   status / counterparty come from the activity item; the network fee +
+   nonce live only on chain and are fetched on open (fetchOnchainTxDetails),
+   shown as "…" while loading and "—" when unresolvable. */
+const TX_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtTxDateTime(ts?: string): string {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${TX_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m} ${ampm}`;
+}
+function shortTxAddr(a?: string | null): string {
+  if (!a) return '—';
+  return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+}
+function TxSheetRow({ C, label, children }: { C: ReturnType<typeof useColors>; label: string; children: React.ReactNode }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 12, gap: 12 }}>
+      <Text style={{ color: C.textMuted, fontSize: 13 }}>{label}</Text>
+      <View style={{ flexShrink: 1, alignItems: 'flex-end' }}>{children}</View>
+    </View>
+  );
+}
+
+function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: () => void }) {
+  const C = useColors();
+  const d = txDisplay(item.type);
+  const amountNum = parseFloat(String(item.amount ?? '').replace(/^[+-]/, '')) || 0;
+  const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const mono = Platform.select({ ios: 'Menlo', android: 'monospace' }) as string;
+
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  useEffect(() => { fetchEcosystemPrices().then(setPrices).catch(() => {}); }, []);
+  const px = prices[item.symbol];
+  const fiat = typeof px === 'number'
+    ? withCurrencyAffix(convertFromUsd(amountNum * px).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    : null;
+
+  const [det, setDet] = useState<OnchainTxDetails | null>(null);
+  const [detLoading, setDetLoading] = useState<boolean>(!!item.txHash);
+  useEffect(() => {
+    if (!item.txHash) { setDetLoading(false); return; }
+    let cancel = false;
+    fetchOnchainTxDetails(item.txHash)
+      .then(r => { if (!cancel) { setDet(r); setDetLoading(false); } })
+      .catch(() => { if (!cancel) setDetLoading(false); });
+    return () => { cancel = true; };
+  }, [item.txHash]);
+
+  const statusText  = item.status === 'pending' ? 'Pending' : item.status === 'failed' ? 'Failed' : 'Completed';
+  const statusColor = item.status === 'pending' ? '#f59e0b' : item.status === 'failed' ? C.red : C.green;
+  const feeText = det?.feeNative != null
+    ? `${det.feeNative.toLocaleString('en-US', { maximumFractionDigits: 8 })} ${det.nativeSymbol}`
+    : (detLoading ? '…' : '—');
+  const feeUsdText = det?.feeUsd != null
+    ? '≈ ' + withCurrencyAffix(convertFromUsd(det.feeUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }))
+    : null;
+  const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
+  const counterparty = item.counterparty ?? (d.positive ? det?.from : det?.to) ?? null;
+  const cpLabel = d.positive ? 'From' : 'Recipient';
+  const explorer = det?.explorerTxUrl ?? (item.txHash ? `https://makalu.litho.ai/tx/${item.txHash}` : null);
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
+        <Pressable
+          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34 }}
+          onPress={() => { /* swallow taps inside the sheet */ }}
+        >
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <Pressable hitSlop={8} onPress={() => explorer && Linking.openURL(explorer).catch(() => {})}>
+              <Share2 size={20} color={C.textSecondary} />
+            </Pressable>
+            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>{d.label}</Text>
+            <Pressable hitSlop={8} onPress={onClose}>
+              <Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text>
+            </Pressable>
+          </View>
+
+          <View style={{ alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 30, fontWeight: '800' }}>
+              {fiat ? `≈ ${fiat}` : `${d.positive ? '+' : '-'}${amountStr} ${item.symbol}`}
+            </Text>
+            <Text style={{ color: C.textMuted, fontSize: 14, marginTop: 4 }}>{d.positive ? '+' : '-'}{amountStr} {item.symbol}</Text>
+          </View>
+
+          <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginBottom: 12 }}>
+            <TxSheetRow C={C} label="Date"><Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{fmtTxDateTime(item.ts)}</Text></TxSheetRow>
+            <TxSheetRow C={C} label="Status"><Text style={{ color: statusColor, fontSize: 13, fontWeight: '700' }}>{statusText}</Text></TxSheetRow>
+            {counterparty && <TxSheetRow C={C} label={cpLabel}><Text style={{ color: C.textPrimary, fontSize: 13, fontFamily: mono }}>{shortTxAddr(counterparty)}</Text></TxSheetRow>}
+            {det?.networkName ? <TxSheetRow C={C} label="Network"><Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{det.networkName}</Text></TxSheetRow> : null}
+          </View>
+
+          {!!item.txHash && (
+            <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginBottom: 18 }}>
+              <TxSheetRow C={C} label="Network fee">
+                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{feeText}</Text>
+                {feeUsdText ? <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>{feeUsdText}</Text> : null}
+              </TxSheetRow>
+              <TxSheetRow C={C} label="Nonce"><Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{nonceText}</Text></TxSheetRow>
+            </View>
+          )}
+
+          {explorer ? (
+            <Pressable onPress={() => Linking.openURL(explorer).catch(() => {})}
+              style={{ paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+              <Text style={{ color: C.green, fontSize: 14, fontWeight: '700' }}>View on block explorer</Text>
+            </Pressable>
+          ) : null}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function ActivityScreen() {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
   const { items, loading, offline, hydrated, reload } = useActivity(addr);
   const [filter, setFilter] = useState<'All' | 'Sent' | 'Received' | 'Swap'>('All');
+  const [detail, setDetail] = useState<IndexerActivityItem | null>(null);
   const shown = filter === 'All' ? items : items.filter(t => txDisplay(t.type).label === filter);
   // Cold first load only: nothing cached/painted yet.
   const showSkeleton = loading && !hydrated && items.length === 0;
 
   return (
+    <>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
@@ -2265,7 +2389,7 @@ function ActivityScreen() {
           const cpLine = cp ? `${d.label === 'Received' ? 'From' : 'To'} ${cpShort}` : '';
           const when = relativeTime(t.ts) || (t.status ?? '');
           return (
-            <Pressable key={t.id || `${i}`} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
+            <Pressable key={t.id || `${i}`} onPress={() => setDetail(t)} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
               <View style={[styles.txIcon, { backgroundColor: d.positive ? C.greenDim : C.blueDim }]}>
                 <TxIcon size={16} color={d.positive ? C.green : C.blue} strokeWidth={2.4}/>
               </View>
@@ -2292,6 +2416,8 @@ function ActivityScreen() {
       </View>
       )}
     </ScrollView>
+    {detail && <TxDetailSheet item={detail} onClose={() => setDetail(null)} />}
+    </>
   );
 }
 

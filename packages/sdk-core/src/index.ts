@@ -32,6 +32,7 @@ export * from './tokens/kamet-lep100-source';
 /* ── Portfolio ───────────────────────────────────────────────────────── */
 export * from './portfolio/indexer-client';
 export * from './portfolio/price-history';
+export * from './portfolio/tx-details';
 export * from './portfolio/allowances';
 export * from './portfolio/makalu-allowances';
 

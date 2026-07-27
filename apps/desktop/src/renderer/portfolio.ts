@@ -98,6 +98,8 @@ function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] 
     pos: false,
     color: coinColor(t.sym),
     txHash: t.hash,
+    rawTs: new Date(t.ts).toISOString(),
+    rawAmount: parseFloat(String(t.amount).replace(/^[+-]/, '')) || 0,
     pending: true, // local-only until the indexer reports this hash (see filter below)
   }));
   const fresh = local.filter(
@@ -141,6 +143,11 @@ export interface DisplayTx {
   status: 'Completed' | 'Pending' | 'Failed';
   amount: string; pos: boolean; color: string;
   txHash?: string;
+  /** Raw fields the detail modal needs (the display strings above are lossy):
+   *  ISO timestamp for the "Jul 20, 2026 7:20 PM" line, numeric amount for the
+   *  ≈fiat hero. */
+  rawTs?: string;
+  rawAmount?: number;
   /** True while this row is a local-only optimistic send the indexer hasn't
    *  reported yet. Drives the subtle "Pending" badge; cleared once reconciled. */
   pending?: boolean;
@@ -321,6 +328,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             type, date: formatDate(t.ts), status: txStatus(t.status),
             amount: `${pos ? '+' : '-'}${amt} ${t.symbol}`,
             pos, color: coinColor(t.symbol), txHash: t.txHash,
+            rawTs: t.ts, rawAmount: parseFloat(amt) || 0,
           };
         });
 

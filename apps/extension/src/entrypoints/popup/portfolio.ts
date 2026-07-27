@@ -83,6 +83,9 @@ function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] 
     time: relativeTime(new Date(t.ts).toISOString()) || 'just now',
     pos: false,
     color: coinColor(t.sym),
+    txHash: t.hash,
+    ts: new Date(t.ts).toISOString(),
+    rawAmount: parseFloat(String(t.amount).replace(/^[+-]/, '')) || 0,
     pending: true, // local-only until the indexer reports the hash (see filter below)
   }));
   const fresh = local.filter((l) => !indexed.some((x) => x.id === l.id || x.id.includes(l.id)));
@@ -113,6 +116,13 @@ export interface DisplayTx {
   id: string; sym: string;
   label: 'Sent' | 'Received' | 'Swap' | 'Activity';
   amount: string; time: string; pos: boolean; color: string;
+  /** Raw fields the detail modal needs (the display strings above are lossy):
+   *  hash for the on-chain fee/nonce lookup, ISO timestamp for the date-time
+   *  line, numeric amount for the ≈fiat hero, raw indexer status. */
+  txHash?: string;
+  ts?: string;
+  rawAmount?: number;
+  status?: string;
   /** True while this row is a local optimistic send not yet confirmed by the
    *  indexer. Drops to undefined once the indexer reports the hash and the
    *  local copy is deduped out (see mergeLocalActivity). Drives the "Pending"
@@ -279,6 +289,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             amount: `${pos ? '+' : '-'}${amt}`,
             time: relativeTime(t.ts) || (t.status ?? ''),
             pos, color: coinColor(t.symbol),
+            txHash: t.txHash, ts: t.ts, rawAmount: parseFloat(amt) || 0, status: t.status,
           };
         });
 
