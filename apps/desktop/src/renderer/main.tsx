@@ -1016,13 +1016,22 @@ const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
   { key: '3m', label: '3M' }, { key: '1y', label: '1Y' },
 ];
 
+// Stablecoins move ~0.1–0.3%; zooming the y-axis to that noise floor turns a
+// rock-stable coin like USDT into a full-height rollercoaster ("impossible for
+// a stablecoin"). Floor the visible domain to 6% peak-to-trough around the mid
+// price so sub-6% moves render proportionally flat; real ≥6% moves (and depegs)
+// still fill the chart. Mirrors web TokenDetailModal + mobile tdChartSvg.
+const TD_MIN_SPAN_FRAC = 0.06;
+
 function tdPath(prices: Array<[number, number]>, w: number, h: number): { line: string; area: string } | null {
   if (prices.length < 2) return null;
   const vals = prices.map(p => p[1]);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const span = max - min;
+  const dataMin = Math.min(...vals), dataMax = Math.max(...vals);
+  const mid = (dataMin + dataMax) / 2;
+  const span = Math.max(dataMax - dataMin, Math.abs(mid) * TD_MIN_SPAN_FRAC);
+  const lo = mid - span / 2;
   const dx = w / (prices.length - 1);
-  const pts = vals.map((v, i) => [i * dx, span === 0 ? h / 2 : h - 8 - ((v - min) / span) * (h - 16)] as const);
+  const pts = vals.map((v, i) => [i * dx, span === 0 ? h / 2 : h - 8 - ((v - lo) / span) * (h - 16)] as const);
   const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   return { line, area: `${line} L${w},${h} L0,${h} Z` };
 }

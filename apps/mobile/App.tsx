@@ -4016,10 +4016,11 @@ function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, strok
   let min = Math.min(...vals), max = Math.max(...vals);
   // Honest Y-scaling: auto-fitting the domain to the data's min/max blew a
   // stablecoin's ±0.05% jitter up into full-height mountains ("$1.00 pumping
-  // 2x"). Enforce a minimum domain of ±1% around the mid price — real moves
-  // beyond that still fill the chart; sub-1% noise renders honestly flat.
+  // 2x"). Floor the domain to 6% peak-to-trough around the mid price — real
+  // moves (and depegs) beyond that still fill the chart; sub-6% noise renders
+  // honestly flat. Matches web TokenDetailModal + desktop tdPath.
   const mid = (min + max) / 2;
-  const minSpan = mid * 0.02;
+  const minSpan = mid * 0.06;
   if (mid > 0 && max - min < minSpan) { min = mid - minSpan / 2; max = mid + minSpan / 2; }
   const span = max - min;
   const dx = w / (prices.length - 1);

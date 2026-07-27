@@ -81,17 +81,29 @@ function fmtActivityAmount(raw: string, decimals: number): string {
 
 /* ─── Chart path builder ───────────────────────────────────────────────── */
 
+/* Stablecoins move ~0.1–0.3% day to day. If the y-axis is zoomed to that
+   noise floor, a rock-stable coin like USDT renders as a full-height
+   rollercoaster — "impossible for a stablecoin". Enforce a MINIMUM visible
+   span proportional to price: the plotted move never exaggerates beyond a
+   real ±(MIN_SPAN_FRAC/2) band, so a 0.2% wiggle reads as the near-flat line
+   it actually is. When the true range exceeds the floor (any volatile asset),
+   the real range is used unchanged and nothing is suppressed. */
+const MIN_SPAN_FRAC = 0.06; // 6% peak-to-trough to fill the chart height
+
 function pathFrom(prices: Array<[number, number]>, w: number, h: number): { line: string; area: string } | null {
   if (prices.length < 2) return null;
   const vals = prices.map(p => p[1]);
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const span = max - min;
+  const dataMin = Math.min(...vals), dataMax = Math.max(...vals);
+  const mid = (dataMin + dataMax) / 2;
+  // Domain = the real range, floored to MIN_SPAN_FRAC of price and centred on
+  // the midpoint. Below the floor the series sits in the middle of the band
+  // (a flat-ish line); at/above it this reduces to the exact data range.
+  const span = Math.max(dataMax - dataMin, Math.abs(mid) * MIN_SPAN_FRAC);
+  const lo = mid - span / 2;
   const dx = w / (prices.length - 1);
-  // A perfectly flat series draws as a centred horizontal line, not a
-  // line pinned to the bottom edge.
   const pts = vals.map((v, i) => [
     i * dx,
-    span === 0 ? h / 2 : h - 8 - ((v - min) / span) * (h - 16),
+    span === 0 ? h / 2 : h - 8 - ((v - lo) / span) * (h - 16),
   ] as const);
   const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   return { line, area: `${line} L${w},${h} L0,${h} Z` };
