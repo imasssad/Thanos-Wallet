@@ -1358,8 +1358,18 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 }
 .onboard-card::-webkit-scrollbar { display: none; }
 /* Desktop body-zoom (1.25) magnifies dvh, so divide to keep the card inside
-   the real viewport — same trap/divisor as .app-shell and the modals. */
+   the real viewport — same trap/divisor as .app-shell and the modals.
+   .onboard-wrap MUST divide too: a raw 100dvh renders 125% of the real
+   viewport under the zoom, so the wrap overflowed the body and stranded a
+   body scrollbar. The card is overflow-y:auto + overscroll-behavior:none, so
+   when the login content fit the card, wheeling over it couldn't scroll the
+   card AND overscroll-behavior blocked the wheel from chaining out to the
+   over-tall body — you could drag the body scrollbar but the wheel did
+   nothing over the content. Sizing the wrap to the real viewport removes the
+   body overflow entirely: the login fits (no scroll needed), or the card
+   scrolls itself on short/zoomed windows. */
 @media (min-width: 769px) {
+  .onboard-wrap { min-height: calc(100vh / 1.25); min-height: calc(100dvh / 1.25); }
   .onboard-card { max-height: calc((100dvh - 16px) / 1.25); }
 }
 [data-theme="dark"] .onboard-card {
