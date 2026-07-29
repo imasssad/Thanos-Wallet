@@ -911,7 +911,16 @@ function HomeScreen({
             </>
           )}
         </div>
-        <button className="icon-btn"><Bell size={15}/></button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Expand into a full browser tab — MetaMask-style corner icon.
+              Hidden when we're already the full-tab view. */}
+          {!IS_EXPANDED && (
+            <button className="icon-btn" onClick={openFullscreen} title="Open in full screen" aria-label="Open in full screen">
+              <Maximize2 size={15}/>
+            </button>
+          )}
+          <button className="icon-btn"><Bell size={15}/></button>
+        </div>
       </div>
 
       <div className="balance-card">
