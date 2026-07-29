@@ -7,8 +7,8 @@ import { getIgniteDexUrl } from '../dex/ignite.js';
 
 describe('getIgniteDexUrl', () => {
   it('returns the bare home URL with no params', () => {
-    expect(getIgniteDexUrl()).toBe('https://ignite.litho.ai/');
-    expect(getIgniteDexUrl({})).toBe('https://ignite.litho.ai/');
+    expect(getIgniteDexUrl()).toBe('https://ignite.trade/');
+    expect(getIgniteDexUrl({})).toBe('https://ignite.trade/');
   });
 
   it('adds symbol + chain query params when given', () => {

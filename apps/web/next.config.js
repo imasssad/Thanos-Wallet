@@ -41,7 +41,7 @@ const CSP = [
     // only for the server-side proxy target + any direct server callers.
     + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://api-3.litho.ai"
     + " https://bridge.litho.ai"
-    + " https://ignite.litho.ai"
+    + " https://ignite.trade"
     + " https://api.coingecko.com"
     // Display-currency FX rates (sdk-core/fx.ts → USD→EUR/GBP/JPY/BTC).
     // WITHOUT this the browser blocks the rate fetch, the engine falls back to

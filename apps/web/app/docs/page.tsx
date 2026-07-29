@@ -310,7 +310,7 @@ await provider.request({
           repo README). Most use the default Makalu chain (<span style={kbd}>700777</span>); Kamet uses
           <span style={kbd}>900523</span>:
         </p>
-        <Code>{`// Ignite DEX — ignite.litho.ai
+        <Code>{`// Ignite DEX — ignite.trade
 <ThanosConnectButton
   config={{ appName: 'Ignite DEX', chainId: 700777 }}
   onSignIn={({ sessionToken }) => { localStorage.setItem('ignite.session', sessionToken!); location.reload(); }}

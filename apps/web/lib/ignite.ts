@@ -1,5 +1,5 @@
 /**
- * Ignite DEX client — talks to https://ignite.litho.ai.
+ * Ignite DEX client — talks to https://ignite.trade.
  *
  * Ignite is the Lithosphere-ecosystem **same-chain** DEX (an AMM), as
  * opposed to MultX which bridges *across* chains. The SwapModal quotes
@@ -20,7 +20,7 @@
  *   GET  /api/health      —                                  -> { ok }
  */
 
-const DEFAULT_BASE = 'https://ignite.litho.ai';
+const DEFAULT_BASE = 'https://ignite.trade';
 
 function baseUrl(): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

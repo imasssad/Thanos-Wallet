@@ -66,7 +66,7 @@ test.describe('Swap', () => {
     await createWallet(page);
     await page.getByRole('button', { name: 'Swap' }).first().click();
 
-    // In CI both bridge.litho.ai and ignite.litho.ai are unreachable.
+    // In CI both bridge.litho.ai and ignite.trade are unreachable.
     // The modal eventually surfaces "Bridge offline" and disables the
     // primary action. Give it the full quote-debounce + timeout window.
     const swapBtn = page.getByRole('button', { name: /^(Swap |Bridge offline|Fetching quote)/ }).last();

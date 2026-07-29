@@ -3,7 +3,7 @@
  * Mirrors apps/web/lib/ignite.ts.
  */
 
-const DEFAULT_BASE = 'https://ignite.litho.ai';
+const DEFAULT_BASE = 'https://ignite.trade';
 
 export interface IgniteQuote {
   quoteId: string; from: string; to: string;

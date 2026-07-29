@@ -44,7 +44,7 @@ export class WalletEngine {
   readonly solana = new SolanaClient();
   readonly simulator = new TransactionSimulator(this.evm, this.lithic);
   readonly multx = new MultXClient();
-  /** Same-chain DEX. Defaults to live (https://ignite.litho.ai) — any
+  /** Same-chain DEX. Defaults to live (https://ignite.trade) — any
    *  parse/network failure throws IgniteUnavailable, which the SwapModal
    *  catches and falls back to MultX, so a half-matched API spec degrades
    *  gracefully rather than blowing up. Force the mock client (e.g. in

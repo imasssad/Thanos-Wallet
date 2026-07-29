@@ -3,7 +3,7 @@
  * Mirrors apps/web/lib/ignite.ts. Same-chain AMM swap on Lithosphere.
  */
 
-const DEFAULT_BASE = 'https://ignite.litho.ai';
+const DEFAULT_BASE = 'https://ignite.trade';
 
 function baseUrl(): string {
   const e = (import.meta as unknown as { env?: Record<string, string> }).env;

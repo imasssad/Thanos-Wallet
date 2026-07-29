@@ -3,7 +3,7 @@ import type {
 } from '../types';
 
 /**
- * Ignite DEX integration — Lithosphere same-chain AMM at https://ignite.litho.ai.
+ * Ignite DEX integration — Lithosphere same-chain AMM at https://ignite.trade.
  *
  * MultX bridges *across* chains; Ignite swaps *within* one. The swap UI
  * quotes both in parallel and routes to whichever returns the better
@@ -15,7 +15,7 @@ import type {
  * order/market/listing endpoints only — there is NO /api/quote +
  * /api/execute swap-router pair, and no published swap API spec on
  * their side. The router contract this client targets is Litho-side
- * WIP. ignite.litho.ai is a separate Litho-hosted SPA whose /api/*
+ * WIP. ignite.trade is a separate Litho-hosted SPA whose /api/*
  * paths return the app shell (verified live), so the mock default
  * below remains the correct production posture until a real spec lands.
  *
@@ -43,7 +43,7 @@ import type {
 
 /** Build a URL that opens the Ignite web app on a specific market. */
 export function getIgniteDexUrl(params?: { symbol?: string; chain?: string }): string {
-  const url = new URL('https://ignite.litho.ai/');
+  const url = new URL('https://ignite.trade/');
   if (params?.symbol) url.searchParams.set('symbol', params.symbol);
   if (params?.chain)  url.searchParams.set('chain',  params.chain);
   return url.toString();
@@ -212,10 +212,10 @@ export interface LiveIgniteConfig {
   timeoutMs?: number;
 }
 
-const DEFAULT_LIVE_BASE = 'https://ignite.litho.ai';
+const DEFAULT_LIVE_BASE = 'https://ignite.trade';
 
 /**
- * LiveIgniteClient — talks to https://ignite.litho.ai.
+ * LiveIgniteClient — talks to https://ignite.trade.
  *
  * **STATUS: PROVISIONAL.** The request/response shape below is a best-
  * guess built on (a) the conventional same-chain DEX REST pattern

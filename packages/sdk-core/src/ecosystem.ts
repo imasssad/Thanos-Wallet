@@ -80,7 +80,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     id: 'ignite',
     name: 'Ignite DEX',
     description: 'Same-chain AMM and routing on Lithosphere.',
-    url: 'https://ignite.litho.ai',
+    url: 'https://ignite.trade',
     color: '#22c55e',
     category: 'DEX',
     section: 'DeFi & Yield',

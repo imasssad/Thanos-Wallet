@@ -3,7 +3,7 @@
  * Mirrors apps/web/lib/ignite.ts.
  */
 
-const DEFAULT_BASE = 'https://ignite.litho.ai';
+const DEFAULT_BASE = 'https://ignite.trade';
 function baseUrl(): string {
   const e = (import.meta as unknown as { env?: Record<string, string> }).env;
   return (e?.VITE_IGNITE_API_URL || DEFAULT_BASE).replace(/\/$/, '');

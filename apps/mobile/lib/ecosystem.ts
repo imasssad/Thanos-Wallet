@@ -28,7 +28,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   { id: 'imagen', name: 'Imagen Network', description: 'Decentralized AI image generation network.',        url: 'https://imagen.network', color: '#10b981', category: 'AI',        section: 'AI & Agents' },
   { id: 'furgpt', name: 'FurGPT',         description: 'AI agents and tooling on Lithosphere.',             url: 'https://furgpt.org',     color: '#10b981', category: 'AI',        section: 'AI & Agents' },
   { id: 'atua',   name: 'ATUA AI',        description: 'AI-driven analytics and on-chain insights.',        url: 'https://atua.ai',        color: '#06b6d4', category: 'AI',        section: 'AI & Agents' },
-  { id: 'ignite', name: 'Ignite DEX',     description: 'Same-chain AMM and routing on Lithosphere.',        url: 'https://ignite.litho.ai', color: '#22c55e', category: 'DEX',      section: 'DeFi & Yield' },
+  { id: 'ignite', name: 'Ignite DEX',     description: 'Same-chain AMM and routing on Lithosphere.',        url: 'https://ignite.trade', color: '#22c55e', category: 'DEX',      section: 'DeFi & Yield' },
   { id: 'mansa',  name: 'Mansa AI',       description: 'AI-driven DeFi and liquidity on Lithosphere.',      url: 'https://mansa.world',    color: '#eab308', category: 'AI · DeFi', section: 'DeFi & Yield' },
   { id: 'colle',  name: 'Colle AI',       description: 'Multi-chain, AI-powered NFT creation and trading.', url: 'https://colle.ai',       color: '#a3e635', category: 'NFT · AI',  section: 'NFTs' },
   { id: 'makalu-explorer', name: 'Makalu Explorer', description: 'Block explorer + portal for the Makalu main chain (700777).',        url: 'https://makalu.litho.ai',    color: '#3b7af7', category: 'Explorer', section: 'Infrastructure' },
