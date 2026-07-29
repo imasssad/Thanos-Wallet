@@ -174,3 +174,41 @@ export const APPROVAL_METHODS = new Set([
   'eth_signTypedData_v4',
   'eth_sendTransaction',
 ]);
+
+/**
+ * Hides third-party "Get it on Google Play" / "Download on the App Store" badges
+ * inside the in-app browser.
+ *
+ * WHY: iOS App Review flagged cross-platform store references (Google Play) —
+ * the source was a dApp's OWN website (AGII) rendering store badges inside our
+ * WebView. Apple treats in-app-browsed content as part of the app, and we can't
+ * edit third-party sites. This injects a CSS rule that hides any store-badge /
+ * store-link element (initial load + SPA route changes, since the rule applies
+ * live). Store navigations themselves are intercepted on the RN side
+ * (onShouldStartLoadWithRequest → external browser) so a store page can never
+ * render inside the app. Runs as `injectedJavaScript` (after content) and must
+ * end in `true;` per react-native-webview.
+ */
+export const STORE_BADGE_SCRUBBER_JS = `(function () {
+  var SEL = [
+    'a[href*="play.google.com"]','a[href*="apps.apple.com"]','a[href*="itunes.apple.com"]',
+    'img[src*="google-play"]','img[src*="googleplay"]','img[src*="play-store"]','img[src*="app-store"]','img[src*="appstore"]','img[src*="app_store"]',
+    'img[alt*="google play" i]','img[alt*="app store" i]','img[alt*="play store" i]','img[alt*="download on the" i]','img[alt*="get it on" i]',
+    '[class*="google-play" i]','[class*="app-store" i]','[class*="appstore" i]','[class*="play-store" i]','[class*="playstore" i]',
+    '[aria-label*="google play" i]','[aria-label*="app store" i]'
+  ].join(',');
+  function ensureStyle() {
+    if (document.getElementById('__thanos_scrub')) return;
+    var s = document.createElement('style');
+    s.id = '__thanos_scrub';
+    s.textContent = SEL + '{display:none !important;visibility:hidden !important;pointer-events:none !important;height:0 !important;width:0 !important;opacity:0 !important;}';
+    (document.head || document.documentElement).appendChild(s);
+  }
+  ensureStyle();
+  try {
+    var mo = new MutationObserver(function () { ensureStyle(); });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+  document.addEventListener('DOMContentLoaded', ensureStyle);
+  window.addEventListener('load', ensureStyle);
+})(); true;`;

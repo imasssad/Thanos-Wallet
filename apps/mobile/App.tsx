@@ -134,7 +134,7 @@ import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
-import { INJECTED_PROVIDER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
+import { INJECTED_PROVIDER_JS, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
@@ -5351,6 +5351,19 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
           onLoadEnd={() => setLoading(false)}
           onMessage={(e) => onMessage(e.nativeEvent.data)}
           injectedJavaScriptBeforeContentLoaded={INJECTED_PROVIDER_JS}
+          // Hide third-party Google Play / App Store badges rendered by dApp
+          // sites (iOS App Review flagged cross-platform store references).
+          injectedJavaScript={STORE_BADGE_SCRUBBER_JS}
+          // A tapped store badge (or redirect) opens in the system browser, so a
+          // store page never renders inside the app — belt-and-suspenders to the
+          // CSS scrub above.
+          onShouldStartLoadWithRequest={(req) => {
+            if (/(?:play\.google\.com|apps\.apple\.com|itunes\.apple\.com)/i.test(req.url)) {
+              Linking.openURL(req.url).catch(() => {});
+              return false;
+            }
+            return true;
+          }}
           style={{ flex: 1, backgroundColor: C.bgBase }}
           allowsBackForwardNavigationGestures
           setSupportMultipleWindows={false}
