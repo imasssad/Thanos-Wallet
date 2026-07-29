@@ -1914,7 +1914,7 @@ const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>>
   avalanche: [{ sym: 'AVAX', name: 'Avalanche' },     { sym: 'USDT', name: 'Tether USD' }, { sym: 'USDC', name: 'USD Coin' }],
 };
 
-function ReceiveScreen({ goBack }: { goBack: () => void }) {
+function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => void; initialSym?: string; initialChainId?: number }) {
   const C = useColors();
   const styles = useStyles();
   const walletAddr = useWalletAddr();
@@ -1922,12 +1922,24 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   const [copied, setCopied]   = useState(false);
   const [qrSvg, setQrSvg]     = useState<string | null>(null);
   const [showAlt, setShowAlt] = useState(false);   // false = litho1, true = 0x
-  /** SafePal step flow: network -> asset -> qr. */
-  const [step, setStep] = useState<'network' | 'asset' | 'qr'>('network');
+  /* Pre-seed from a token-detail "Receive" tap: jump straight to that exact
+     asset's QR/address, skipping the network + asset pickers. The global (Home)
+     Receive passes no initialSym, so it still starts at the network picker. */
+  const preseedChain: ReceiveChain =
+      initialSym === 'BTC'  ? 'bitcoin'
+    : initialSym === 'SOL'  ? 'solana'
+    : initialSym === 'ATOM' ? 'cosmos'
+    : (initialChainId != null ? (RECEIVE_NETWORKS.find(n => n.chainId === initialChainId)?.id ?? 'lithosphere') : 'lithosphere');
+  const preseeded = !!initialSym;
+  const preseedAsset = preseeded
+    ? (RECEIVE_ASSETS[preseedChain].find(a => a.sym.toLowerCase() === initialSym!.toLowerCase()) ?? { sym: initialSym!, name: initialSym! })
+    : null;
+  /** SafePal step flow: network -> asset -> qr. Pre-seeded receives start at qr. */
+  const [step, setStep] = useState<'network' | 'asset' | 'qr'>(preseeded ? 'qr' : 'network');
   /** The asset being received (drives the QR header + warning). */
-  const [asset, setAsset] = useState<{ sym: string; name: string } | null>(null);
+  const [asset, setAsset] = useState<{ sym: string; name: string } | null>(preseedAsset);
   /** Active chain — switches the displayed address + QR. */
-  const [chain, setChain] = useState<ReceiveChain>('lithosphere');
+  const [chain, setChain] = useState<ReceiveChain>(preseeded ? preseedChain : 'lithosphere');
 
   // Derive the Lithosphere bech32 form from the same 0x keypair — one
   // wallet, two formats. Defaults to showing the chain-native litho1.
@@ -2080,7 +2092,7 @@ function ReceiveScreen({ goBack }: { goBack: () => void }) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <View style={styles.screenHeader}>
-        <Pressable onPress={() => setStep('asset')} hitSlop={16} style={styles.backBtn}>
+        <Pressable onPress={() => (preseeded ? goBack() : setStep('asset'))} hitSlop={16} style={styles.backBtn}>
           <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
         </Pressable>
         <Text style={styles.screenTitle}>Receive</Text>
@@ -4169,7 +4181,7 @@ function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, strok
 }
 
 function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
-  sym: string; goBack: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
+  sym: string; goBack: () => void; onSend: () => void; onReceive: (chainId?: number) => void; onSwap: () => void;
 }) {
   const C = useColors();
   const addr = useWalletAddr();
@@ -4261,7 +4273,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
           <Pressable onPress={onSend} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Send</Text>
           </Pressable>
-          <Pressable onPress={onReceive} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+          <Pressable onPress={() => onReceive(coin?.chainId)} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Receive</Text>
           </Pressable>
           {isMakalu && EXCHANGE_ENABLED && (
@@ -5813,8 +5825,10 @@ function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
-  /** Asset carried from detail into Send/Swap so they open pre-seeded. */
+  /** Asset carried from detail into Send/Swap/Receive so they open pre-seeded. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
+  /** Chain of the seeded asset (Receive needs it to show the exact network). */
+  const [seedChainId, setSeedChainId] = useState<number | null>(null);
   // Dark-first, matching the web/desktop/extension clients (they're all
   // dark by default). The Settings toggle still lets users switch to light.
   const [isDark, setIsDark] = useState(true);
@@ -6425,7 +6439,7 @@ function App() {
                 {screen === 'send'     && <SendScreen goBack={() => { setScreen('home'); setSeedSym(null); }}
                   initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
                   initialSym={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
-                {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
+                {screen === 'receive'  && <ReceiveScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }} initialSym={seedSym ?? undefined} initialChainId={seedChainId ?? undefined}/>}
                 {screen === 'swap' && EXCHANGE_ENABLED && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
@@ -6444,7 +6458,7 @@ function App() {
                   sym={detailSym}
                   goBack={() => setDetailSym(null)}
                   onSend={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('send'); }}
-                  onReceive={() => { setDetailSym(null); setScreen('receive'); }}
+                  onReceive={(chainId) => { setSeedSym(detailSym); setSeedChainId(chainId ?? null); setDetailSym(null); setScreen('receive'); }}
                   onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('swap'); }}
                 />
               )}
