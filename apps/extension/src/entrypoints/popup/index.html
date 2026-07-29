@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=360, initial-scale=1" />
+    <!-- device-width (not a hard 360) so the same page renders correctly BOTH
+         as the 360px popup and as a full browser tab (Expand view). In the
+         popup the window IS 360px, so device-width resolves to 360 — identical
+         to before; in a tab it fills the real width and the expanded layout
+         (popup.css html[data-expanded]) centres a column. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Thanos Wallet</title>
     <!-- No remote web fonts. The popup renders in the local system UI stack
          (see popup.css `font-family`). MV3 review flags any remote resource,

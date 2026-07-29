@@ -79,6 +79,40 @@ body {
 button { font-family: inherit; cursor: pointer; }
 input, textarea { font-family: inherit; }
 
+/* ── Expand view (full browser tab) ──────────────────────────────────────
+   When opened via Settings → "Open in full screen" (popup.html?expanded=1,
+   main.tsx sets html[data-expanded]), drop the 360×600 popup clamp and present
+   the wallet as a centred, full-height column on a full-page ground. The UI is
+   built around a ~360px width, so we keep that column and centre it — like
+   MetaMask's expanded view — rather than stretching every screen edge-to-edge.
+   Unlike the popup this surface is a real tab, so `zoom` isn't a hazard here,
+   but we don't need it: the panel just gets room to breathe. */
+html[data-expanded], html[data-expanded] body {
+  width: 100%;
+  height: auto;
+  min-height: 100vh;
+  overflow: auto;
+}
+html[data-expanded] body {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 16px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(139,125,247,0.06), transparent 60%),
+    var(--bg-base);
+}
+html[data-expanded] #root {
+  width: 400px;
+  max-width: 100%;
+  height: min(880px, calc(100vh - 80px));
+  min-height: 560px;
+  border: 1px solid var(--border-subtle, #1c1c24);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
 

@@ -10,7 +10,7 @@ import {
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search, Pencil, Trash2,
   Fingerprint, Key, AlertTriangle, Globe, Zap, Bell, Shield,
-  Sparkles, CreditCard,
+  Sparkles, CreditCard, Maximize2,
 } from 'lucide-react';
 import {
   createVault, openVault, openVaultWithKey,
@@ -64,6 +64,32 @@ import { addLocalActivity } from '../../lib/local-activity';
 const STORAGE = {
   theme: 'thanos-theme',
 };
+
+/* ──────────────────────── Full-screen (Expand view) ────────────────────────
+   MetaMask-style "Expand view": the same wallet UI, opened in a real browser
+   TAB instead of the toolbar popup. A tab is persistent — it doesn't vanish
+   when you click away (the popup does), which matters for seed backup, dApp
+   approvals, and just having the wallet parked on a second monitor.
+
+   The tab loads popup.html?expanded=1; IS_EXPANDED flips the 360×600 popup
+   clamp into a centered full-page column (popup.css `html[data-expanded]`).
+   Applied at module load — before React mounts — so there's no popup-sized
+   flash before the layout settles. */
+const IS_EXPANDED = (() => {
+  try { return new URLSearchParams(window.location.search).get('expanded') === '1'; }
+  catch { return false; }
+})();
+if (IS_EXPANDED) { try { document.documentElement.dataset.expanded = '1'; } catch { /* pre-DOM */ } }
+
+/** Open (or re-open) the wallet in a full browser tab. Creating a tab needs no
+ *  extra permission; we intentionally don't query existing tabs (that WOULD
+ *  need the "tabs" permission), so a repeat click just opens another tab. */
+function openFullscreen(): void {
+  const url = browser.runtime.getURL('/popup.html') + '?expanded=1';
+  try { void browser.tabs.create({ url }); } catch { /* no tabs API — ignore */ }
+  // The popup is transient; close it once the tab is on its way.
+  if (!IS_EXPANDED) { try { window.close(); } catch { /* not a popup context */ } }
+}
 
 /* Dark-first, applied synchronously at module load — BEFORE React mounts
    — so the popup never flashes white for dark users. Matches the web +
@@ -1188,7 +1214,7 @@ function SettingsScreen({
 
       <SectionHead Icon={Globe} title="General" sub="Display and locale"/>
       <div className="card list">
-        <div className="set-row">
+        <div className={`set-row${IS_EXPANDED ? '' : ' row-border'}`}>
           <div className="set-icon"><Globe size={15}/></div>
           <div style={{ flex: 1 }}>
             <div className="set-label">Currency</div>
@@ -1209,6 +1235,18 @@ function SettingsScreen({
             {FX_CURRENCIES.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
+        {/* Expand view — open the wallet in a full browser tab (MetaMask-style).
+            Hidden when we're already the full-tab view. */}
+        {!IS_EXPANDED && (
+          <button className="set-row" onClick={openFullscreen} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+            <div className="set-icon"><Maximize2 size={15}/></div>
+            <div style={{ flex: 1 }}>
+              <div className="set-label">Open in full screen</div>
+              <div className="set-sub">Expand the wallet into a full browser tab</div>
+            </div>
+            <ChevronRight size={15} color="var(--text-muted)"/>
+          </button>
+        )}
       </div>
 
       <SectionHead Icon={Shield} title="Security" sub="Protect access to your wallet"/>

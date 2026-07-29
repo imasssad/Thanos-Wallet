@@ -28,6 +28,17 @@
 
   if (!g.global) { g.global = g; }
 
+  // ── Expand view (full-tab) flag ────────────────────────────────────────
+  // Set html[data-expanded] here — in head parse, before popup.css paints and
+  // before the module runs — so the full-tab layout (popup.css) applies from
+  // the very first frame with no 360px-popup flash. main.tsx re-derives the
+  // same flag for its own logic; this is purely the no-flash paint hint.
+  try {
+    if (new URLSearchParams(g.location.search).get('expanded') === '1') {
+      document.documentElement.setAttribute('data-expanded', '1');
+    }
+  } catch (_e) { /* pre-DOM / no URLSearchParams — main.tsx still handles it */ }
+
   if (!g.process) {
     g.process = {
       env: {}, argv: [], browser: true, version: '', versions: {},
