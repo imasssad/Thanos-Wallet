@@ -27,7 +27,7 @@
     "@cosmjs/proto-signing": "^0.32.4",
     "@cosmjs/stargate": "^0.32.4",
     "@litho/multx-sdk": "file:../../vendor/litho-multx-sdk-0.2.0.tgz",
-    "@ledgerhq/hw-app-btc": "^10.4.4",
+    "@ledgerhq/hw-app-btc": "^11.2.0",
     "@ledgerhq/hw-app-eth": "^6.46.0",
     "@ledgerhq/hw-app-solana": "^7.2.4",
     "@ledgerhq/hw-transport-webhid": "^6.31.5",
