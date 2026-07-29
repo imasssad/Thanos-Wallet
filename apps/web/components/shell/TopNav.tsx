@@ -1,14 +1,16 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '../providers/ThemeProvider';
 import { useWallet } from './AppShell';
 import { Addr } from '../Addr';
 import {
   Search, Bell, ChevronDown, Sun, Moon, User, Copy, Settings as SettingsIcon, Lock, Menu, KeyRound,
-  Pencil, Trash2,
+  Pencil, Trash2, X, ArrowUpRight, ArrowDownLeft, Clock,
 } from 'lucide-react';
 import { getAccountName, getVisibleAccountIndices } from '../../lib/vault';
+import { TOKENS } from '../../lib/tokens';
+import { getActivity, type IndexerActivityItem } from '../../lib/indexer';
 
 const ACCOUNT_NAME = 'RobbyWallet';
 
@@ -84,6 +86,33 @@ export function TopNav({
     setCopiedFmt(fmt);
     setTimeout(() => setCopiedFmt(null), 1600);
   };
+
+  /* ── Search: quick-nav palette over destinations + your tokens ── */
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ]       = useState('');
+  const sq = searchQ.trim().toLowerCase();
+  const navHits   = sq ? NAV.filter(n => n.label.toLowerCase().includes(sq)) : NAV;
+  const tokenHits = sq
+    ? TOKENS.filter(t => t.sym.toLowerCase().includes(sq) || t.name.toLowerCase().includes(sq)).slice(0, 6)
+    : [];
+  const goSearch = (href: string) => { setSearchOpen(false); setSearchQ(''); router.push(href); };
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSearchOpen(false); setSearchQ(''); } };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [searchOpen]);
+
+  /* ── Notifications: recent on-chain activity from the indexer ── */
+  const [notifOpen, setNotifOpen]   = useState(false);
+  const [notifSeen, setNotifSeen]   = useState(false);
+  const [notifItems, setNotifItems] = useState<IndexerActivityItem[] | null>(null);
+  useEffect(() => {
+    if (!notifOpen || !evm) return;
+    let cancel = false;
+    getActivity(evm).then(a => { if (!cancel) setNotifItems(a.slice(0, 6)); }).catch(() => { if (!cancel) setNotifItems([]); });
+    return () => { cancel = true; };
+  }, [notifOpen, evm]);
 
   return (
     <nav className="topnav">
@@ -270,11 +299,46 @@ export function TopNav({
             </>
           )}
         </div>
-        <button className="icon-btn-nav nav-icon-desktop" title="Search"><Search size={18}/></button>
-        <button className="icon-btn-nav nav-icon-desktop" title="Notifications" style={{ position: 'relative' }}>
-          <Bell size={18}/>
-          <span style={{ position: 'absolute', top: 6, right: 6, width: 5, height: 5, background: 'var(--blue)', borderRadius: '50%', border: '1.5px solid var(--bg-surface)' }}/>
-        </button>
+        <button className="icon-btn-nav nav-icon-desktop" title="Search" onClick={() => setSearchOpen(true)}><Search size={18}/></button>
+        <div style={{ position: 'relative' }}>
+          <button className="icon-btn-nav nav-icon-desktop" title="Notifications" style={{ position: 'relative' }}
+            onClick={() => { setNotifOpen(v => !v); setNotifSeen(true); }}>
+            <Bell size={18}/>
+            {!notifSeen && <span style={{ position: 'absolute', top: 6, right: 6, width: 5, height: 5, background: 'var(--blue)', borderRadius: '50%', border: '1.5px solid var(--bg-surface)' }}/>}
+          </button>
+          {notifOpen && (<>
+            <div onClick={() => setNotifOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60 }}/>
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, zIndex: 61, width: 320, maxWidth: '90vw', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 12, boxShadow: '0 16px 40px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-subtle)', fontSize: 13, fontWeight: 700 }}>Notifications</div>
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {notifItems === null && <div style={{ padding: 16, fontSize: 12, color: 'var(--text-muted)' }}>Loading…</div>}
+                {notifItems !== null && notifItems.length === 0 && (
+                  <div style={{ padding: '22px 16px', fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>You’re all caught up.</div>
+                )}
+                {(notifItems ?? []).map((n, i) => {
+                  const out = n.type === 'send' || n.type === 'burn';
+                  const label = `${out ? 'Sent' : 'Received'} ${n.symbol}`;
+                  return (
+                    <button key={n.id || i} onClick={() => { setNotifOpen(false); router.push('/app/history'); }}
+                      style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '10px 14px', border: 'none', borderBottom: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left' }}>
+                      <span style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: out ? 'rgba(59,122,247,0.15)' : 'rgba(16,185,129,0.15)', color: out ? 'var(--blue)' : 'var(--green)' }}>
+                        {out ? <ArrowUpRight size={15}/> : <ArrowDownLeft size={15}/>}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>{label}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>{n.amount} {n.symbol}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={() => { setNotifOpen(false); router.push('/app/history'); }}
+                style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px', border: 'none', background: 'transparent', color: 'var(--blue)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+                <Clock size={13}/> View all activity
+              </button>
+            </div>
+          </>)}
+        </div>
         <button className="nav-mobile-toggle" onClick={() => setMobileMenu(v => !v)} title="Menu">
           <Menu size={24}/>
         </button>
@@ -296,6 +360,43 @@ export function TopNav({
             ))}
           </div>
         </>
+      )}
+
+      {/* Search — quick-nav palette over destinations + your tokens */}
+      {searchOpen && (
+        <div onClick={() => { setSearchOpen(false); setSearchQ(''); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.55)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '12vh' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width: 520, maxWidth: '92vw', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.45)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <Search size={18} color="var(--text-muted)"/>
+              <input autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
+                placeholder="Search pages and assets…"
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: 15 }}/>
+              <button onClick={() => { setSearchOpen(false); setSearchQ(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}><X size={18}/></button>
+            </div>
+            <div style={{ maxHeight: '52vh', overflowY: 'auto', padding: 6 }}>
+              {navHits.length === 0 && tokenHits.length === 0 && (
+                <div style={{ padding: '22px 16px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>No matches for “{searchQ}”.</div>
+              )}
+              {navHits.length > 0 && <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 10px 4px' }}>Pages</div>}
+              {navHits.map(n => (
+                <button key={n.href} onClick={() => goSearch(n.href)}
+                  style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 14, textAlign: 'left' }}>
+                  {n.label}
+                </button>
+              ))}
+              {tokenHits.length > 0 && <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 10px 4px' }}>Assets</div>}
+              {tokenHits.map(t => (
+                <button key={t.sym} onClick={() => goSearch('/app/assets')}
+                  style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 14, textAlign: 'left' }}>
+                  <span style={{ fontWeight: 700 }}>{t.sym}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{t.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </nav>
   );

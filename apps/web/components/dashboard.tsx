@@ -830,6 +830,12 @@ export function Dashboard() {
      Bitcoin, and Solana. 'all' keeps the current behaviour (everything). */
   type NetFilter = 'all' | 'Makalu' | 'Kamet' | 'EVM' | 'Bitcoin' | 'Solana';
   const [netFilter, setNetFilter] = useState<NetFilter>('all');
+  // Token-list controls behind the sliders (sort/hide) and ⋮ (quick actions).
+  type SortMode = 'value-desc' | 'value-asc' | 'name';
+  const [sortMode, setSortMode]   = useState<SortMode>('value-desc');
+  const [hideSmall, setHideSmall] = useState(false);
+  const [filterMenu, setFilterMenu] = useState(false);
+  const [moreMenu, setMoreMenu]     = useState(false);
 
   /* Privacy: hide the dollar total when shoulder-surfing risk. Stored
      only in component state — restoring on each mount is intentional
@@ -851,12 +857,19 @@ export function Dashboard() {
   }, [searchParams]);
 
   const filteredCoins = useMemo(() => {
-    if (netFilter === 'all') return COINS;
-    return COINS.filter(c => {
-      const t = TOKENS.find(x => x.sym === c.sym);
-      return t?.chain === netFilter;
-    });
-  }, [COINS, netFilter]);
+    let list = netFilter === 'all'
+      ? COINS
+      : COINS.filter(c => {
+          const t = TOKENS.find(x => x.sym === c.sym);
+          return t?.chain === netFilter;
+        });
+    if (hideSmall) list = list.filter(c => c.usdNum >= 1);
+    list = [...list].sort((a, b) =>
+      sortMode === 'name'      ? a.sym.localeCompare(b.sym)
+      : sortMode === 'value-asc' ? a.usdNum - b.usdNum
+      :                            b.usdNum - a.usdNum);
+    return list;
+  }, [COINS, netFilter, hideSmall, sortMode]);
 
   /* COLD LOAD = the portfolio fetch hasn't resolved AND no snapshot
      hydrated the view (liveAssets/liveActivity are still their initial
@@ -1074,9 +1087,42 @@ export function Dashboard() {
                   ariaLabel="Filter tokens by network"
                 />
               </div>
-              <div style={{ display: 'flex', gap: 6, color: 'var(--text-muted)' }}>
-                <button style={iconBtnStyle} title="Coming soon"><SlidersHorizontal size={16}/></button>
-                <button style={iconBtnStyle} title="Coming soon"><MoreVertical    size={16}/></button>
+              <div style={{ display: 'flex', gap: 6, color: 'var(--text-muted)', position: 'relative' }}>
+                <button style={iconBtnStyle} title="Sort & filter" onClick={() => { setFilterMenu(v => !v); setMoreMenu(false); }}>
+                  <SlidersHorizontal size={16}/>
+                </button>
+                <button style={iconBtnStyle} title="Quick actions" onClick={() => { setMoreMenu(v => !v); setFilterMenu(false); }}>
+                  <MoreVertical size={16}/>
+                </button>
+
+                {/* Sort + hide-small-balances */}
+                {filterMenu && (<>
+                  <div onClick={() => setFilterMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }}/>
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 41, minWidth: 230, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 6, boxShadow: '0 12px 32px rgba(0,0,0,0.3)' }}>
+                    <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '4px 8px' }}>Sort by</div>
+                    {([['value-desc', 'Value: high → low'], ['value-asc', 'Value: low → high'], ['name', 'Name (A–Z)']] as const).map(([v, label]) => (
+                      <button key={v} onClick={() => { setSortMode(v); setFilterMenu(false); }}
+                        style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 8, border: 'none', borderRadius: 7, background: sortMode === v ? 'var(--bg-hover)' : 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>
+                        {label}{sortMode === v && <span style={{ color: 'var(--blue)' }}>✓</span>}
+                      </button>
+                    ))}
+                    <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }}/>
+                    <button onClick={() => setHideSmall(v => !v)}
+                      style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 8, border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>
+                      Hide small balances (&lt; $1){hideSmall && <span style={{ color: 'var(--blue)' }}>✓</span>}
+                    </button>
+                  </div>
+                </>)}
+
+                {/* Quick-action shortcut menu (Swap / Send / Receive) */}
+                {moreMenu && (<>
+                  <div onClick={() => setMoreMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }}/>
+                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 41, minWidth: 170, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 6, boxShadow: '0 12px 32px rgba(0,0,0,0.3)' }}>
+                    <button onClick={() => { setModal('swap'); setMoreMenu(false); }} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '9px 8px', border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}><Repeat size={15}/> Swap</button>
+                    <button onClick={() => { setModal('send'); setMoreMenu(false); }} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '9px 8px', border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}><ArrowUpRight size={15}/> Send</button>
+                    <button onClick={() => { setModal('receive'); setMoreMenu(false); }} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '9px 8px', border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}><ArrowDownLeft size={15}/> Receive</button>
+                  </div>
+                </>)}
               </div>
             </div>
 
