@@ -12,7 +12,6 @@
  * hashes get the explorer link only.
  */
 import React, { useEffect, useState } from 'react';
-import { formatUnits } from 'ethers';
 import {
   convertFromUsd, withCurrencyAffix,
   fetchOnchainTxDetails, type OnchainTxDetails,
@@ -67,17 +66,13 @@ export function TransactionDetailModal({ item, onClose }: { item: IndexerActivit
   const quotes = useQuotes();
   const meta = txMeta(item.type);
   const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
-  const decimals = canon?.decimals ?? 18;
-
-  // Amount arrives as raw base units (wei) OR already-formatted — handle both.
-  let amountNum = 0;
-  let amountStr = item.amount;
-  try {
-    amountNum = parseFloat(formatUnits(item.amount, decimals));
-    amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
-  } catch {
-    amountNum = parseFloat(item.amount) || 0;
-  }
+  // Activity amounts are ALREADY human-readable: the indexer runs
+  // formatTokenAmount(amount, decimals) (services/indexer lep100-sync.ts) and
+  // local optimistic rows store what the user typed. Re-applying formatUnits
+  // treated a whole-number "30" as 30 wei and collapsed it to ~0 — a real
+  // 30-FGPT receive rendered as "+0 FGPT". Parse the value directly.
+  const amountNum = parseFloat(String(item.amount).replace(/^[+-]/, '')) || 0;
+  const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
 
   const priceUsd = quotes?.[item.symbol]?.usd ?? (canon?.priceUsd || null);
   const fiat = priceUsd != null

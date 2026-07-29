@@ -434,13 +434,11 @@ function activityToRow(item: IndexerActivityItem) {
   // we look up icon/color from canonical TOKENS by symbol and format the
   // amount with the right decimals. Unknown tokens fall back to neutral grey.
   const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
-  const decimals = canon?.decimals ?? 18;
-  let amountStr = item.amount;
-  try {
-    const formatted = ethers.formatUnits(item.amount, decimals);
-    const n = parseFloat(formatted);
-    amountStr = n.toLocaleString('en-US', { maximumFractionDigits: 6 });
-  } catch { /* indexer returned a non-wei value (e.g. already-formatted) */ }
+  // Indexer + local activity amounts are ALREADY human-readable (indexer runs
+  // formatTokenAmount by decimals). Re-applying formatUnits collapsed a
+  // whole-number "30" (= 30 wei) to ~0 — parse directly, matching the dashboard.
+  const n = parseFloat(String(item.amount).replace(/^[+-]/, '')) || 0;
+  const amountStr = n.toLocaleString('en-US', { maximumFractionDigits: 6 });
   const isOut = item.type === 'send' || item.type === 'burn';
   const typeLabel =
     item.type === 'send'    ? 'Send'    :
