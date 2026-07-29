@@ -14,13 +14,18 @@
 import React, { useEffect, useState } from 'react';
 import {
   convertFromUsd, withCurrencyAffix,
-  fetchOnchainTxDetails, type OnchainTxDetails,
+  fetchOnchainTxDetails, setTxMakaluRpc, type OnchainTxDetails,
 } from '@thanos/sdk-core';
 import { TOKENS } from '../lib/tokens';
 import { useDisplayCurrency } from '../lib/use-fx';
 import { useQuotes } from '../lib/usePrices';
 import { TokenIcon } from './TokenIcon';
 import type { IndexerActivityItem } from '../lib/indexer';
+
+// Makalu's RPC blocks the browser CORS preflight; route Makalu tx lookups
+// through the web app's same-origin proxy so fee/nonce resolve (see
+// sdk-core tx-details setTxMakaluRpc + apps/web/next.config.js /rpc/makalu).
+setTxMakaluRpc('/rpc/makalu');
 
 function txMeta(type: string): { title: string; out: boolean } {
   switch (type) {
@@ -105,7 +110,7 @@ export function TransactionDetailModal({ item, onClose }: { item: IndexerActivit
 
   const counterparty = item.counterparty ?? (meta.out ? det?.to : det?.from) ?? null;
   const recipientLabel = meta.out ? 'Recipient' : 'From';
-  const explorer = det?.explorerTxUrl ?? (item.txHash ? `https://makalu.litho.ai/tx/${item.txHash}` : null);
+  const explorer = det?.explorerTxUrl ?? (item.txHash ? `https://makalu.litho.ai/txs/${item.txHash}` : null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };

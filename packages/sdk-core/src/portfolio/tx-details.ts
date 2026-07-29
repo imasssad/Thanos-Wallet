@@ -45,10 +45,26 @@ const TX_CHAINS: readonly TxChain[] = [
 
 const chainById = (id: number): TxChain | undefined => TX_CHAINS.find((c) => c.chainId === id);
 
+/* Makalu's RPC (rpc.litho.ai) answers cross-origin POSTs with `ACAO: *` but its
+   OPTIONS preflight omits Access-Control-Allow-Headers, so a browser JSON-RPC
+   POST is blocked — fee/nonce came back "—" on the web app only (native clients
+   have no CORS). The web sets this to its same-origin proxy ('/rpc/makalu',
+   see apps/web/next.config.js) so Makalu lookups go through same-origin. Native
+   clients leave it null and hit rpc.litho.ai directly. */
+let makaluRpcOverride: string | null = null;
+export function setTxMakaluRpc(url: string | null): void { makaluRpcOverride = url; }
+const rpcUrlFor = (c: TxChain): string =>
+  (c.chainId === 700777 && makaluRpcOverride) ? makaluRpcOverride : c.rpcUrl;
+
+/* Makalu's explorer uses /txs/<hash> (a bare /tx/ 308-redirects there); the
+   EVM explorers (Etherscan/BscScan/…) use /tx/<hash>. */
+const explorerTx = (c: TxChain, hash: string): string =>
+  `${c.explorer}/${c.chainId === 700777 ? 'txs' : 'tx'}/${hash}`;
+
 /** Explorer tx URL for a known chain id, or null when the chain is unknown. */
 export function evmExplorerTxUrl(chainId: number, hash: string): string | null {
   const c = chainById(chainId);
-  return c ? `${c.explorer}/tx/${hash}` : null;
+  return c ? explorerTx(c, hash) : null;
 }
 
 export interface OnchainTxDetails {
@@ -111,7 +127,7 @@ export async function fetchOnchainTxDetails(
   const probes = await Promise.all(
     candidates.map(async (c) => {
       try {
-        const tx = (await rpcCall(c.rpcUrl, 'eth_getTransactionByHash', [txHash])) as RawTx | null;
+        const tx = (await rpcCall(rpcUrlFor(c), 'eth_getTransactionByHash', [txHash])) as RawTx | null;
         return tx ? { c, tx } : null;
       } catch {
         return null;
@@ -129,7 +145,7 @@ export async function fetchOnchainTxDetails(
   let status: OnchainTxDetails['status'] = 'pending';
   let blockNumber: number | null = tx.blockNumber ? parseInt(tx.blockNumber, 16) : null;
   try {
-    const rcpt = (await rpcCall(c.rpcUrl, 'eth_getTransactionReceipt', [txHash])) as RawReceipt | null;
+    const rcpt = (await rpcCall(rpcUrlFor(c), 'eth_getTransactionReceipt', [txHash])) as RawReceipt | null;
     if (rcpt) {
       const gasUsed = BigInt(rcpt.gasUsed ?? '0x0');
       const gasPrice = BigInt(rcpt.effectiveGasPrice ?? tx.gasPrice ?? '0x0');
@@ -163,7 +179,7 @@ export async function fetchOnchainTxDetails(
     to:            tx.to ?? null,
     status,
     blockNumber,
-    explorerTxUrl: `${c.explorer}/tx/${txHash}`,
+    explorerTxUrl: explorerTx(c, txHash),
   };
   cache.set(key, { at: Date.now(), d });
   return d;
