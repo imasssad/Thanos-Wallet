@@ -162,6 +162,14 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ╚══════════════════════════════════════════════════════════════════╝ */
 const APP_VERSION = 'thanos-v1.12';
 
+/* In-app exchange (Swap / Cross-chain / Bridge) is DISABLED on iOS.
+   Apple Guideline 3.1.5(iii) rejects crypto-exchange functionality that routes
+   through a third-party exchange API (here MultX/Ignite DEX + the Lithosphere
+   bridge) unless the publisher is a licensed exchange or partnered with one.
+   Gating on iOS removes access to those features so the app can ship; Android /
+   the other clients keep them. Flip this to re-enable once licensing lands. */
+const EXCHANGE_ENABLED = Platform.OS !== 'ios';
+
 /* ─────────────────────────── Theme ─────────────────────────── */
 
 // Canonical Thanos palette — same hex values as web/desktop/extension
@@ -1165,7 +1173,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
       <View style={styles.qaRow}>
         <QuickAction Icon={ArrowUpRight}  label="Send"    onPress={() => navigate('send')}/>
         <QuickAction Icon={ArrowDownLeft} label="Receive" onPress={() => navigate('receive')}/>
-        <QuickAction Icon={Repeat}        label="Swap"    onPress={() => navigate('swap')}/>
+        {EXCHANGE_ENABLED && <QuickAction Icon={Repeat} label="Swap" onPress={() => navigate('swap')}/>}
         {/* TGE — opens the Ignite token-generation event in the in-app dApp
             browser, which injects the window.thanos EIP-1193 provider from the
             unlocked seed so the page can connect to this wallet (replaces the
@@ -4254,7 +4262,7 @@ function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
           <Pressable onPress={onReceive} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Receive</Text>
           </Pressable>
-          {isMakalu && (
+          {isMakalu && EXCHANGE_ENABLED && (
             <Pressable onPress={onSwap} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
               <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Swap</Text>
             </Pressable>
@@ -6416,7 +6424,7 @@ function App() {
                   initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
                   initialSym={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => setScreen('home')}/>}
-                {screen === 'swap'     && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
+                {screen === 'swap' && EXCHANGE_ENABLED && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
                 {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
