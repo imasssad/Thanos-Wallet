@@ -37,6 +37,11 @@ const TX_CHAINS: readonly TxChain[] = [
 
 const chainById = (id: number): TxChain | undefined => TX_CHAINS.find((c) => c.chainId === id);
 
+/* Makalu's explorer uses /txs/<hash> (a bare /tx/ 308-redirects); EVM explorers
+   use /tx/<hash>. Mirrors sdk-core tx-details. */
+const explorerTx = (c: TxChain, hash: string): string =>
+  `${c.explorer}/${c.chainId === 700777 ? 'txs' : 'tx'}/${hash}`;
+
 export interface OnchainTxDetails {
   chainId:       number;
   networkName:   string;
@@ -139,7 +144,7 @@ export async function fetchOnchainTxDetails(
     to:            tx.to ?? null,
     status,
     blockNumber,
-    explorerTxUrl: `${c.explorer}/tx/${txHash}`,
+    explorerTxUrl: explorerTx(c, txHash),
   };
   cache.set(key, { at: Date.now(), d });
   return d;

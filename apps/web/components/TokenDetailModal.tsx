@@ -68,15 +68,12 @@ function fmtCompactQty(n: number | null): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
 
-/** Indexer activity amounts arrive as raw base units (wei) — format with
- *  the token's decimals, same as views.tsx activityToRow. */
-function fmtActivityAmount(raw: string, decimals: number): string {
-  try {
-    const n = parseFloat(formatUnits(raw, decimals));
-    return n.toLocaleString('en-US', { maximumFractionDigits: 6 });
-  } catch {
-    return raw; // already formatted / non-wei
-  }
+/** Indexer + local activity amounts are ALREADY human-readable (the indexer
+ *  runs formatTokenAmount by decimals). Parse directly — re-applying formatUnits
+ *  turned a whole-number "30" into 30 wei → "0". */
+function fmtActivityAmount(raw: string): string {
+  const n = parseFloat(String(raw).replace(/^[+-]/, ''));
+  return isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 6 }) : raw;
 }
 
 /* ─── Chart path builder ───────────────────────────────────────────────── */
@@ -498,7 +495,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: 12 }}>
                   {a.type === 'send' ? '-' : a.type === 'receive' ? '+' : ''}
-                  {fmtActivityAmount(a.amount, token.decimals)} {token.sym}
+                  {fmtActivityAmount(a.amount)} {token.sym}
                 </div>
                 {a.status && <div style={{ fontSize: 10, color: a.status === 'failed' ? 'var(--red, #f87171)' : 'var(--text-muted)', textTransform: 'capitalize' }}>{a.status}</div>}
               </div>

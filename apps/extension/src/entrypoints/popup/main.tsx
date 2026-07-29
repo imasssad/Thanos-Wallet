@@ -1498,7 +1498,7 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
   const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
   const counterparty = tx.pos ? det?.from : det?.to;
   const cpLabel = tx.pos ? 'From' : 'Recipient';
-  const explorer = det?.explorerTxUrl ?? (tx.txHash ? `https://makalu.litho.ai/tx/${tx.txHash}` : null);
+  const explorer = det?.explorerTxUrl ?? (tx.txHash ? `https://makalu.litho.ai/txs/${tx.txHash}` : null);
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -2447,7 +2447,7 @@ function ExtMakaluKametBridge({ seed }: { seed: string[] }) {
       </div>
       {txHash && (
         <div style={{ fontSize: 11, marginTop: 8 }}>
-          <a href={`https://makalu.litho.ai/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)' }}>
+          <a href={`https://makalu.litho.ai/txs/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)' }}>
             Lock tx: {txHash.slice(0, 10)}…{txHash.slice(-6)}
           </a>
         </div>

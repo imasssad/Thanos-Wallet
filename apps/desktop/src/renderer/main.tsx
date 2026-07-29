@@ -926,7 +926,7 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
   const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
   const counterparty = tx.pos ? det?.from : det?.to;
   const cpLabel = tx.pos ? 'From' : 'Recipient';
-  const explorer = det?.explorerTxUrl ?? (tx.txHash ? `https://makalu.litho.ai/tx/${tx.txHash}` : null);
+  const explorer = det?.explorerTxUrl ?? (tx.txHash ? `https://makalu.litho.ai/txs/${tx.txHash}` : null);
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -2283,7 +2283,7 @@ function DesktopBridgePanel({ seed }: { seed: string[] }) {
       {txHash && (
         <div className="fee-row" style={{ marginTop: 10 }}>
           <span>Lock tx</span>
-          <a href={`https://makalu.litho.ai/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)', fontFamily: 'monospace', fontSize: 12 }}>
+          <a href={`https://makalu.litho.ai/txs/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)', fontFamily: 'monospace', fontSize: 12 }}>
             {txHash.slice(0, 10)}…{txHash.slice(-6)}
           </a>
         </div>

@@ -2219,7 +2219,7 @@ function MakaluKametBridge() {
       {txHash && (
         <div className="fee-row" style={{ marginTop: 10 }}>
           <span>Lock tx</span>
-          <a href={`https://makalu.litho.ai/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+          <a href={`https://makalu.litho.ai/txs/${txHash}`} target="_blank" rel="noopener noreferrer"
              style={{ color: 'var(--blue, #3b7af7)', fontFamily: 'Geist Mono, monospace', fontSize: 12 }}>
             {txHash.slice(0, 10)}…{txHash.slice(-6)}
           </a>
@@ -2526,7 +2526,7 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
             </div>
             {sourceHash && (
               <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', maxWidth: 320 }}>
-                Source: <a href={`https://makalu.litho.ai/tx/${sourceHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)' }}>{sourceHash}</a>
+                Source: <a href={`https://makalu.litho.ai/txs/${sourceHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)' }}>{sourceHash}</a>
               </div>
             )}
             {destHash && (

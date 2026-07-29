@@ -1359,7 +1359,7 @@ function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: s
     case 'bitcoin': return `https://mempool.space/tx/${hash}`;
     case 'solana':  return `https://explorer.solana.com/tx/${hash}`;
     case 'cosmos':  return `https://www.mintscan.io/cosmos/tx/${hash}`;
-    default:        return `https://makalu.litho.ai/tx/${hash}`;
+    default:        return `https://makalu.litho.ai/txs/${hash}`;
   }
 }
 
@@ -2267,7 +2267,7 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
   const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
   const counterparty = item.counterparty ?? (d.positive ? det?.from : det?.to) ?? null;
   const cpLabel = d.positive ? 'From' : 'Recipient';
-  const explorer = det?.explorerTxUrl ?? (item.txHash ? `https://makalu.litho.ai/tx/${item.txHash}` : null);
+  const explorer = det?.explorerTxUrl ?? (item.txHash ? `https://makalu.litho.ai/txs/${item.txHash}` : null);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -2621,7 +2621,7 @@ function MobileMakaluKametBridge() {
       </Text>
 
       {txHash ? (
-        <Text style={{ color: C.blue, fontSize: 11 }} onPress={() => Linking.openURL(`https://makalu.litho.ai/tx/${txHash}`)}>
+        <Text style={{ color: C.blue, fontSize: 11 }} onPress={() => Linking.openURL(`https://makalu.litho.ai/txs/${txHash}`)}>
           Lock tx: {txHash.slice(0, 10)}…{txHash.slice(-6)}
         </Text>
       ) : null}
