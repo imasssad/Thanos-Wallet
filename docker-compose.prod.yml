@@ -14,6 +14,11 @@ services:
       # api). Push delivery to devices is DISABLED until this is set in the
       # VPS .env (generate: openssl rand -hex 32).
       PUSH_INTERNAL_SECRET: ${PUSH_INTERNAL_SECRET:-}
+      # LAX card partner API (server-side proxy, see services/api/routes/lax.ts).
+      # Secret — set BOTH in the VPS .env, never in the repo. The /lax proxy
+      # stays in safe external-registration fallback until LAX_API_BASE is set.
+      LAX_API_KEY:  ${LAX_API_KEY:-}
+      LAX_API_BASE: ${LAX_API_BASE:-}
     # Remove dev volume mount — use built image only
     volumes: []
     # Expose only on localhost; use nginx reverse proxy in front for SSL
