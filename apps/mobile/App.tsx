@@ -144,7 +144,7 @@ import {
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
-  Check, CreditCard, Sparkles, Pencil,
+  Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -154,6 +154,7 @@ import {
   type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from './lib/price-history';
 import { fetchOnchainTxDetails, type OnchainTxDetails } from './lib/tx-details';
+import { laxCreateAccount } from './lib/lax';
 import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal, notifyIfEnabled } from './lib/notifications';
 
 /* ╔══════════════════════════════════════════════════════════════════╗
@@ -1084,6 +1085,97 @@ const LAX_BENEFITS = [
   'Accepted worldwide where Visa™ is accepted',
 ];
 
+/* LAX "Create Account" bottom sheet — SafePal-style registration entry.
+   Shows the KYC requirements notice, a Terms agreement, and an optional
+   referral code, then routes "Next" through the backend LAX proxy
+   (lib/lax.ts → services/api /lax/account). Until the partner API is wired the
+   proxy returns the hosted registration URL, which we open. */
+function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose: () => void }) {
+  const C = useColors();
+  const [agreed, setAgreed]   = useState(false);
+  const [showRef, setShowRef] = useState(false);
+  const [refCode, setRefCode] = useState('');
+  const [busy, setBusy]       = useState(false);
+
+  const onNext = async () => {
+    if (!agreed || busy) return;
+    setBusy(true);
+    try {
+      const r = await laxCreateAccount({ address, referralCode: refCode.trim() || undefined });
+      if (r.registrationUrl) await Linking.openURL(r.registrationUrl).catch(() => {});
+      onClose();
+    } finally { setBusy(false); }
+  };
+
+  const Requirement = ({ Icon, label }: { Icon: React.ElementType; label: string }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 }}>
+      <Icon size={19} color={C.textSecondary} />
+      <Text style={{ color: C.textPrimary, fontSize: 14 }}>{label}</Text>
+    </View>
+  );
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
+        <Pressable
+          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34 }}
+          onPress={() => { /* swallow taps inside the sheet */ }}
+        >
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: '800' }}>Create Account</Text>
+            <Pressable hitSlop={8} onPress={onClose}><XIcon size={22} color={C.textSecondary} /></Pressable>
+          </View>
+
+          <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, padding: 16, marginBottom: 18 }}>
+            <Text style={{ color: C.textSecondary, fontSize: 14, marginBottom: 4 }}>During the registration process you will need to:</Text>
+            <Requirement Icon={BookUser} label="Prepare your Passport" />
+            <Requirement Icon={Home}     label="Be at your home" />
+            <Requirement Icon={MapPin}   label="Allow location access" />
+            <Pressable hitSlop={6} onPress={() => Linking.openURL('https://lax.money').catch(() => {})}>
+              <Text style={{ color: C.blue, fontSize: 13, fontWeight: '600', marginTop: 6 }}>Learn more</Text>
+            </Pressable>
+          </View>
+
+          <Pressable onPress={() => setAgreed(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <View style={{ width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: agreed ? C.blue : 'transparent', borderWidth: agreed ? 0 : 1.5, borderColor: C.borderDefault }}>
+              {agreed && <Check size={15} color="#fff" strokeWidth={3} />}
+            </View>
+            <Text style={{ color: C.textPrimary, fontSize: 14 }}>
+              I agree to <Text style={{ color: C.blue, fontWeight: '600' }} onPress={() => Linking.openURL('https://lax.money').catch(() => {})}>Terms &amp; Conditions</Text>
+            </Text>
+          </Pressable>
+
+          {showRef && (
+            <TextInput
+              value={refCode}
+              onChangeText={setRefCode}
+              placeholder="Referral code"
+              placeholderTextColor={C.textMuted}
+              autoCapitalize="characters"
+              style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14, marginBottom: 12 }}
+            />
+          )}
+
+          <Pressable
+            onPress={onNext}
+            disabled={!agreed || busy}
+            style={{ height: 50, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: (!agreed || busy) ? 0.45 : 1 }}
+          >
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Please wait…' : 'Next'}</Text>
+          </Pressable>
+
+          {!showRef && (
+            <Pressable onPress={() => setShowRef(true)} style={{ height: 50, borderRadius: 14, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
+              <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>I have a referral code</Text>
+            </Pressable>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string) => void }) {
   const C = useColors();
   const styles = useStyles();
@@ -1097,6 +1189,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   const showSkeleton = loading && !hydrated && assets.length === 0;
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
   useEffect(() => { isSeedBackedUp().then(setBackedUp).catch(() => {}); }, []);
+  const [laxCreate, setLaxCreate] = useState(false);
   const holdings: Holding[] = useMemo(
     () => assets.filter(a => a.balance > 0 && a.usdValue > 0).map(a => ({ sym: a.sym, qty: a.balance, usd: a.usdValue })),
     [assets],
@@ -1114,6 +1207,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   );
 
   return (
+    <>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
@@ -1305,7 +1399,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           </View>
         ))}
         <Pressable
-          onPress={() => Linking.openURL(laxApplyUrl(addr)).catch(() => {})}
+          onPress={() => setLaxCreate(true)}
           style={({ pressed }) => [{
             marginTop: 14, height: 46, borderRadius: 12, backgroundColor: C.blue,
             alignItems: 'center', justifyContent: 'center',
@@ -1337,6 +1431,8 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         </View>
       </Pressable>
     </ScrollView>
+    {laxCreate && <LaxCreateAccountSheet address={addr} onClose={() => setLaxCreate(false)} />}
+    </>
   );
 }
 

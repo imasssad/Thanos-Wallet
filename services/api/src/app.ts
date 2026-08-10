@@ -13,6 +13,7 @@ import { requestId, type LoggedRequest } from './middleware/request-id.js';
 import { authRouter } from './routes/auth.js';
 import { contactsRouter } from './routes/contacts.js';
 import { dnnsRouter } from './routes/dnns.js';
+import { laxRouter } from './routes/lax.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import { pushRouter } from './routes/push.js';
 import { wcSessionsRouter } from './routes/wc-sessions.js';
@@ -56,6 +57,7 @@ export function createApp(): express.Express {
   app.use('/auth', authRouter);
   app.use('/contacts', contactsRouter);
   app.use('/dnns', dnnsRouter);
+  app.use('/lax', laxRouter);
   app.use('/portfolio', portfolioRouter);
   app.use('/push', pushRouter);
   app.use('/wc/sessions', wcSessionsRouter);
