@@ -39,7 +39,7 @@
     "android": {
       "package": "ai.thanos.wallet",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 15,
+      "versionCode": 16,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"
@@ -101,8 +101,8 @@
         "expo-build-properties",
         {
           "android": {
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
             "enableProguardInReleaseBuilds": false,
             "enableShrinkResourcesInReleaseBuilds": false,
             "enableBundleCompression": false,
