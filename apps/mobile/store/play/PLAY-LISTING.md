@@ -16,8 +16,8 @@
 | Contains ads | No |
 
 Assets are in this folder:
-- `icon-512.png` — 512×512 store icon (matches the launcher icon)
-- `feature-graphic.png` — 1024×500 feature graphic (required)
+- `play-icon-512.png` — 512×512 store icon (matches the launcher icon)
+- `play-feature-graphic.png` — 1024×500 feature graphic (required)
 - **Screenshots** — the only asset still needed (see §7)
 
 ---
@@ -46,8 +46,8 @@ Features:
 Thanos Wallet is self-custodial. Your keys, your crypto.
 ```
 
-- **App icon:** `icon-512.png`
-- **Feature graphic:** `feature-graphic.png`
+- **App icon:** `play-icon-512.png`
+- **Feature graphic:** `play-feature-graphic.png`
 - **Category:** Finance · **Tags:** Crypto, Finance
 - **Contact email:** `support@thanos.fi` (dev contact `devs@thanos.fi`)
 - **Website:** `https://thanos.fi`
@@ -177,7 +177,7 @@ Play). Keys to a smooth review:
 2. **Set up your app** panel → work top-to-bottom: App access (§2), Ads (§3),
    Content rating (§4), Target audience (§5), Data safety (§6), **Financial features (§6b)**,
    News/Government/Health = No.
-3. **Store listing** → paste §1, upload `icon-512.png` + `feature-graphic.png` + screenshots (§7).
+3. **Store listing** → paste §1, upload `play-icon-512.png` + `play-feature-graphic.png` + screenshots (§7).
 4. **Production → Create new release** → upload the `.aab`, paste §8 release notes,
    pick countries → **Save → Review release → Roll out to production**.
 5. First-app review typically takes **a few days to ~2 weeks** (crypto apps get extra scrutiny).
