@@ -1966,9 +1966,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
    per-network (same for every asset on a chain); the asset drives the QR
    header (name + logo) and the coin-specific warning. */
 type ReceiveChain =
-  | 'lithosphere' | 'bitcoin' | 'solana' | 'cosmos'
+  | 'lithosphere' | 'lithosphere-mainnet' | 'bitcoin' | 'solana' | 'cosmos'
   | 'ethereum' | 'bsc' | 'polygon' | 'base' | 'arbitrum' | 'linea' | 'optimism' | 'avalanche';
 const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string; chainId?: number }> = [
+  { id: 'lithosphere-mainnet', name: 'Lithosphere', sym: 'LITHO', chainId: 9005 },
   { id: 'lithosphere', name: 'Lithosphere Makalu', sym: 'LITHO', chainId: 700777 },
   { id: 'bitcoin',     name: 'Bitcoin',            sym: 'BTC'   },
   { id: 'solana',      name: 'Solana',             sym: 'SOL'   },
@@ -1987,6 +1988,9 @@ const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string; cha
   { id: 'avalanche',   name: 'Avalanche',          sym: 'AVAX', chainId: 43114 },
 ];
 const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>> = {
+  'lithosphere-mainnet': [
+    { sym: 'LITHO', name: 'Lithosphere' },
+  ],
   lithosphere: [
     { sym: 'LITHO',  name: 'Lithosphere' },
     { sym: 'LAX',    name: 'Lithosphere Algorithmic' },
@@ -5328,7 +5332,7 @@ const MAKALU_CHAIN_ID_NUM = 700777;
  *  wallet_addEthereumChain — adding a dApp-supplied chain would let it point the
  *  wallet at a malicious RPC. This is what unblocks dApps on other chains (e.g.
  *  the Ignite TGE on BNB) while keeping the wallet on known-good RPCs. */
-const BROWSER_EVM_CHAIN_IDS = new Set<number>([MAKALU_CHAIN_ID_NUM, 1, 56, 137, 8453, 42161, 59144, 10, 43114]);
+const BROWSER_EVM_CHAIN_IDS = new Set<number>([MAKALU_CHAIN_ID_NUM, 9005, 1, 56, 137, 8453, 42161, 59144, 10, 43114]);
 
 function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void; seed: string[] }) {
   const C = useColors();

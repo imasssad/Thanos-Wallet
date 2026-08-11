@@ -54,6 +54,20 @@ export interface EvmChain {
  */
 export const EVM_CHAINS: readonly EvmChain[] = [
   {
+    // Lithosphere Mainnet — the flagship Litho L1 (EVM 9005, Cosmos
+    // lithosphere_9005-1). Live at rpc-mainnet.litho.ai / lithoscan.ai.
+    chainId:      9005,
+    name:         'Lithosphere',
+    slug:         'lithosphere',
+    rpcUrl:       'https://rpc-mainnet.litho.ai',
+    nativeSymbol: 'LITHO',
+    nativeName:   'Lithosphere',
+    decimals:     18,
+    explorerUrl:  'https://lithoscan.ai',
+    color:        '#22c55e',
+    coingeckoId:  'lithosphere',
+  },
+  {
     chainId:      1,
     name:         'Ethereum',
     slug:         'ethereum',

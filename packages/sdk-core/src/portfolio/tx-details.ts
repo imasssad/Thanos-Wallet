@@ -33,6 +33,7 @@ interface TxChain {
    is on it; the external EVM chains mirror evm-external.ts / networks.ts. */
 const TX_CHAINS: readonly TxChain[] = [
   { chainId: 700777, name: 'Lithosphere Makalu', rpcUrl: 'https://rpc.litho.ai',                    nativeSymbol: 'LITHO', explorer: 'https://makalu.litho.ai' },
+  { chainId: 9005,   name: 'Lithosphere',        rpcUrl: 'https://rpc-mainnet.litho.ai',            nativeSymbol: 'LITHO', explorer: 'https://lithoscan.ai' },
   { chainId: 1,      name: 'Ethereum',           rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',   explorer: 'https://etherscan.io' },
   { chainId: 56,     name: 'BNB Chain',          rpcUrl: 'https://bsc-dataseed.binance.org',        nativeSymbol: 'BNB',   explorer: 'https://bscscan.com' },
   { chainId: 137,    name: 'Polygon',            rpcUrl: 'https://polygon-bor-rpc.publicnode.com',  nativeSymbol: 'POL',   explorer: 'https://polygonscan.com' },

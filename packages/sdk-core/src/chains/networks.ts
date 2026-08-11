@@ -50,6 +50,24 @@ export const KAMET_MAINNET: NetworkConfig = {
 /** @deprecated Kamet is mainnet since 2026-05-18 — use KAMET_MAINNET. Retained for back-compat. */
 export const KAMET_TESTNET = KAMET_MAINNET;
 
+// Lithosphere Mainnet — the flagship Litho L1, live 2026-08. EVM chainId 9005
+// (0x2325), Cosmos lithosphere_9005-1. dApps (lithoscan.ai) switch/add to it via
+// the wallet provider; the wallet must recognise it as a first-class network.
+export const LITHOSPHERE_MAINNET: NetworkConfig = {
+  id: 'lithosphere-mainnet',
+  chainId: 9005,
+  name: 'Lithosphere',
+  kind: 'lithic',
+  rpcUrls: ['https://rpc-mainnet.litho.ai'],
+  blockExplorerUrl: 'https://lithoscan.ai',
+  nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+  extras: {
+    cosmosChainId: 'lithosphere_9005-1',
+    bech32Prefix: 'litho',
+    isMainnet: true,
+  },
+};
+
 export const ETHEREUM: NetworkConfig = {
   id: 'ethereum',
   chainId: 1,
@@ -119,6 +137,7 @@ export const SOLANA_DEVNET: NetworkConfig = {
 };
 
 export const SUPPORTED_NETWORKS = [
+  LITHOSPHERE_MAINNET,
   MAKALU_TESTNET,
   KAMET_MAINNET,
   ETHEREUM,

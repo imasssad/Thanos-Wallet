@@ -23,8 +23,12 @@ export interface ExtEvmChain {
   color:        string;
 }
 
-/** The 8 external EVM chains shown as first-class rows. Order = display order. */
+/** EVM chains shown as first-class rows. Order = display order. Lithosphere
+ *  Mainnet (9005) leads — it's the flagship Litho L1 (EVM chainId 9005, Cosmos
+ *  lithosphere_9005-1); dApps like lithoscan.ai switch/add to it via the
+ *  provider, so it must be in DAPP_CHAINS (= Makalu + this list). */
 export const EXT_EVM_CHAINS: readonly ExtEvmChain[] = [
+  { chainId: 9005,  name: 'Lithosphere', slug: 'lithosphere', rpcUrl: 'https://rpc-mainnet.litho.ai',           nativeSymbol: 'LITHO', nativeName: 'Lithosphere',       explorerUrl: 'https://lithoscan.ai',            color: '#22c55e' },
   { chainId: 1,     name: 'Ethereum',  slug: 'ethereum',  rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',  nativeName: 'Ether',              explorerUrl: 'https://etherscan.io',            color: '#627eea' },
   { chainId: 56,    name: 'BNB Chain', slug: 'bsc',       rpcUrl: 'https://bsc-dataseed.binance.org',        nativeSymbol: 'BNB',  nativeName: 'BNB',                explorerUrl: 'https://bscscan.com',             color: '#f3ba2f' },
   { chainId: 137,   name: 'Polygon',   slug: 'polygon',   rpcUrl: 'https://polygon-bor-rpc.publicnode.com',  nativeSymbol: 'POL',  nativeName: 'Polygon',            explorerUrl: 'https://polygonscan.com',         color: '#8247e5' },

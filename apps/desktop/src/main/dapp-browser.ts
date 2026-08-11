@@ -45,6 +45,7 @@ const MAKALU_CHAIN_ID = 700777;
 // known-good RPCs only, so a dApp can't point the wallet at a malicious node.
 const BROWSER_CHAINS: Record<number, string> = {
   700777: 'https://rpc.litho.ai',
+  9005:   'https://rpc-mainnet.litho.ai',   // Lithosphere Mainnet
   1:      'https://ethereum.publicnode.com',
   56:     'https://bsc-dataseed.binance.org',
   137:    'https://polygon-bor-rpc.publicnode.com',

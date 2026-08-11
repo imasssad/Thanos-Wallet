@@ -25,6 +25,7 @@ export interface ExtEvmChain {
 
 /** The 8 external EVM chains shown as first-class rows. Order = display order. */
 export const EXT_EVM_CHAINS: readonly ExtEvmChain[] = [
+  { chainId: 9005,  name: 'Lithosphere', slug: 'lithosphere', rpcUrl: 'https://rpc-mainnet.litho.ai',           nativeSymbol: 'LITHO', nativeName: 'Lithosphere',       explorerUrl: 'https://lithoscan.ai',            color: '#22c55e' },
   { chainId: 1,     name: 'Ethereum',  slug: 'ethereum',  rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',  nativeName: 'Ether',              explorerUrl: 'https://etherscan.io',            color: '#627eea' },
   { chainId: 56,    name: 'BNB Chain', slug: 'bsc',       rpcUrl: 'https://bsc-dataseed.binance.org',        nativeSymbol: 'BNB',  nativeName: 'BNB',                explorerUrl: 'https://bscscan.com',             color: '#f3ba2f' },
   { chainId: 137,   name: 'Polygon',   slug: 'polygon',   rpcUrl: 'https://polygon-bor-rpc.publicnode.com',  nativeSymbol: 'POL',  nativeName: 'Polygon',            explorerUrl: 'https://polygonscan.com',         color: '#8247e5' },
