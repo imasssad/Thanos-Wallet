@@ -2916,6 +2916,54 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   background: rgba(59,122,247,0.06);
 }
 
+/* Watch-video button (ghost + play icon) */
+.lp-btn-video {
+  gap: 7px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+}
+.lp-btn-video svg { margin-left: -2px; opacity: 0.9; }
+
+/* Inline video lightbox */
+.lp-video-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(4,6,11,0.86);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  animation: lpVideoFade 0.18s ease-out;
+}
+@keyframes lpVideoFade { from { opacity: 0; } to { opacity: 1; } }
+.lp-video-box {
+  position: relative;
+  width: min(960px, 100%);
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+}
+.lp-video-frame {
+  width: 100%; height: 100%;
+  display: block; border: 0;
+  object-fit: contain; background: #000;
+}
+.lp-video-close {
+  position: absolute; top: -15px; right: -15px; z-index: 2;
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff; color: #06070b; border: 0; cursor: pointer;
+  font-size: 26px; line-height: 1; padding: 0;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  transition: transform 0.15s;
+}
+.lp-video-close:hover { transform: scale(1.08); }
+@media (max-width: 680px) {
+  .lp-video-close { top: 8px; right: 8px; }
+}
+
 .lp-hero-meta {
   display: flex; gap: 14px; flex-wrap: wrap;
   font-size: 12px; font-weight: 500;
