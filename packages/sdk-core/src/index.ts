@@ -42,6 +42,9 @@ export * from './bridge/kamet-config';
 export * from './bridge/status';
 export * from './dex/ignite';
 
+/* ── Quantt (AI trading agents) ──────────────────────────────────────── */
+export * from './quantt/client';
+
 /* ── Names (DNNS) ────────────────────────────────────────────────────── */
 export * from './dnns/service';
 
