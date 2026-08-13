@@ -11,11 +11,12 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.2 (versionCode 15), EAS build
-// 96199907, 2026-08-11.
-// NEW in vc15: Lithosphere Mainnet (LITHO, EVM chain 9005); new wallet-mark app
-// icon; tap any past activity row for full on-chain detail (fee/nonce/status);
-// network-aware Send/Receive. (versionCode 14 was build 5927bc5a, 2026-07-19.)
+// Latest production-apk build — app version 1.1.2 (versionCode 16), EAS build
+// FnLAiwg1, 2026-08-14. Now targets Android 16 / API 36 (Google Play's new
+// minimum for updates).
+// NEW in vc16: targets API 36. vc15 added Lithosphere Mainnet (LITHO, EVM chain
+// 9005), the new wallet-mark app icon, tap-a-transaction on-chain detail
+// (fee/nonce/status), and network-aware Send/Receive.
 // NEW in 1.1.2: LAX card points at the public site (lax.money) only — the
 // pre-approval dashboard.lax register link + ?address= prefill were removed at
 // the client's request. LAX totals now render with the Ⱡ prefix. Account
@@ -72,7 +73,7 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/EikPYYzKdJdgMrNk_gQ27b8YI-Jhy8a31OeaIAc4v7A.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/FnLAiwg17imQCxXyrs2qSSJU1xuRs3UTkccOxEiz_JQ.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
