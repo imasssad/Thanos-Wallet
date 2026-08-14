@@ -1,162 +1,115 @@
 'use client';
 /**
- * Quantt Agents card — web's version of the AI-assistant card the desktop /
- * extension / mobile clients ship (the .ai-* classes in globals.css were
- * ported with the desktop styles and were unused until this card).
+ * Quantt Agents card — native wallet sign-in for the web wallet.
  *
- * The web wallet is itself a website — it cannot inject a provider into a
- * cross-origin quantts.ai tab, so Quantt's "Sign in with Thanos" needs a
- * wallet at the destination. Two paths:
- *   • Desktop browser → the Thanos EXTENSION serves quantts.ai. The card
- *     opens the site in a new tab; when the extension isn't detected we show
- *     an install CTA under the card (sign-in won't work without it).
- *   • Phone browser → no extension exists on mobile; hand off to the native
- *     app's in-app browser via thanoswallet://open?url=… (provider injected
- *     there — the mobile App.tsx allowlists quantts.ai for this route). If
- *     the app never takes over, a fallback row appears with a plain link +
- *     (Android) a Play-Store link, instead of auto-opening anything — a
- *     delayed window.open would hit popup blockers.
+ * "Connect with Thanos" runs the EIP-712 wallet login through the signing
+ * worker (lib/quantt.ts → sdk-core QuanttClient); the mnemonic never leaves the
+ * worker and Quantt only ever sees a signature. Once connected, the live
+ * portfolio + agents load from /v1/mobile/overview. A secondary link still opens
+ * quantts.ai in a new tab.
+ *
+ * (Replaces the earlier open-in-tab card: because the web wallet signs the
+ * challenge itself, it no longer needs a wallet at the quantts.ai destination.)
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sparkles } from 'lucide-react';
-import { detectPlatform, useExtensionInstalled, CHROME_STORE_URL, PLAY_STORE_URL, type Platform } from './ExtensionPrompt';
+import { quantt, quanttSignIn } from '../lib/quantt';
+import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
-const APP_DEEP_LINK = `thanoswallet://open?url=${encodeURIComponent(QUANTT_AGENTS_URL)}`;
 
-/** Chromium desktop browsers — the only ones the Thanos extension installs on
- *  (Firefox AMO isn't published; Safari has no build). Used to decide whether
- *  the "install the extension" CTA is actually actionable. */
-function isChromiumDesktop(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent;
-  return /Chrome\/|Edg\/|OPR\//.test(ua) && !/Firefox\//.test(ua);
+/* Live portfolio + agents summary once connected (/v1/mobile/overview). */
+function QuanttPanel({ overview }: { overview: QuanttOverview }) {
+  const p = overview?.dashboard?.portfolio;
+  const agents = overview?.dashboard?.agents ?? [];
+  if (!p) return null;
+  const fmtUsd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+  const pct = (n: number) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(1) + '%';
+  const posColor = (n: number) => (n >= 0 ? '#22c55e' : '#ef4444');
+  return (
+    <div style={{ marginTop: 12, borderTop: '1px solid var(--border-default)', paddingTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{fmtUsd(p.equity)}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 3 }}>
+        {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
+      </div>
+      {agents.slice(0, 3).map((a) => (
+        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12.5, marginTop: 7 }}>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{a.chain}{a.status ? ' · ' + a.status : ''}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function QuanttCard() {
-  const installed = useExtensionInstalled();
-  const [platform, setPlatform] = useState<Platform | null>(null);
-  const [chromium, setChromium] = useState(false);
-  // Phone path: true after a deep-link attempt visibly failed (app not
-  // installed) — flips on the fallback row below the card.
-  const [showFallback, setShowFallback] = useState(false);
-  // Single teardown for the current phone-handoff attempt's timer + listener,
-  // so repeated clicks never accumulate listeners.
-  const cleanupRef = useRef<(() => void) | null>(null);
+  const [session, setSession] = useState<QuanttSession | null>(null);
+  const [overview, setOverview] = useState<QuanttOverview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
+  const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
   useEffect(() => {
-    setPlatform(detectPlatform());
-    setChromium(isChromiumDesktop());
-    return () => { cleanupRef.current?.(); };
+    let live = true;
+    quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
+    return () => { live = false; };
   }, []);
 
-  const isPhone = platform === 'android' || platform === 'ios';
-
-  const openQuantt = () => {
-    if (!isPhone) {
-      // Desktop: the extension (when installed) injects into the new tab —
-      // full sign-in. Direct user gesture, so window.open isn't blocked.
-      window.open(QUANTT_AGENTS_URL, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (platform === 'ios') {
-      // No iOS app exists yet to register thanoswallet:// — firing it would
-      // surface a native "Cannot Open Page" error. Go straight to the
-      // (desktop-directing) fallback instead.
-      setShowFallback(true);
-      return;
-    }
-    // Android: try the native app. If it takes over, the tab hides and we tear
-    // down; if nothing handles the scheme, reveal the fallback row (no
-    // auto-navigation — popup blockers eat a delayed window.open).
-    cleanupRef.current?.();
-    const timer = setTimeout(() => { if (!document.hidden) setShowFallback(true); }, 1600);
-    const onHide = () => { if (document.hidden) cleanup(); };
-    const cleanup = () => {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onHide);
-      cleanupRef.current = null;
-    };
-    cleanupRef.current = cleanup;
-    document.addEventListener('visibilitychange', onHide);
-    window.location.href = APP_DEEP_LINK;
+  const connect = async () => {
+    setBusy(true); setErr(null);
+    try { setSession(await quanttSignIn()); loadOverview(); }
+    catch (e) { setErr((e as Error)?.message || 'Sign-in failed'); }
+    finally { setBusy(false); }
   };
+  const disconnect = async () => { try { await quantt.signOut(); } finally { setSession(null); setOverview(null); } };
+
+  const btnBase: React.CSSProperties = {
+    fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10,
+    cursor: 'pointer', textDecoration: 'none', display: 'inline-block',
+  };
+  const ghost: React.CSSProperties = {
+    ...btnBase, background: 'transparent', color: 'var(--text-secondary)',
+    border: '1px solid var(--border-default)',
+  };
+  const primary: React.CSSProperties = { ...btnBase, background: 'var(--blue)', color: '#fff', border: 'none' };
 
   return (
-    <div
-      style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-default)',
-        borderRadius: 'var(--radius-lg, 16px)',
-        padding: 18,
-      }}
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={openQuantt}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openQuantt(); } }}
-        style={{ cursor: 'pointer' }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11 }}>
-          AI Assistant
-        </div>
-        <div className="ai-body">
-          <div className="ai-icon"><Sparkles size={16}/></div>
-          <div>
-            <div className="ai-title">Quantt Agents ↗</div>
-            <div className="ai-sub">Your AI assistant — optimize your portfolio balance across chains.</div>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg, 16px)', padding: 18 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>AI Assistant</span>
+        {session && <span style={{ color: 'var(--blue)', fontSize: 12, fontWeight: 700 }}>● Connected</span>}
+      </div>
+      <div className="ai-body">
+        <div className="ai-icon"><Sparkles size={16}/></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="ai-title">Quantt Agents</div>
+          <div className="ai-sub">
+            {session
+              ? 'Signed in with your wallet — your AI trading agents.'
+              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+          </div>
+          {session && overview && <QuanttPanel overview={overview} />}
+          {err && <div style={{ fontSize: 12, color: '#ff6b6b', marginTop: 8 }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {session ? (
+              <>
+                <a href={QUANTT_AGENTS_URL} target="_blank" rel="noopener noreferrer" style={primary}>Open Quantt ↗</a>
+                <button onClick={disconnect} style={ghost}>Disconnect</button>
+              </>
+            ) : (
+              <>
+                <button onClick={connect} disabled={busy} style={{ ...primary, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
+                  {busy ? 'Connecting…' : 'Connect with Thanos'}
+                </button>
+                <a href={QUANTT_AGENTS_URL} target="_blank" rel="noopener noreferrer" style={ghost}>Open ↗</a>
+              </>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Desktop without the extension: sign-in on quantts.ai has no wallet to
-          talk to. On Chromium, the Chrome-store CTA is actionable; on Firefox/
-          Safari the extension isn't available, so say so honestly (no dead
-          store link) and point at a working path. */}
-      {platform === 'desktop' && !installed && (
-        chromium ? (
-          <a
-            href={CHROME_STORE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            style={{ display: 'inline-block', marginTop: 12, color: 'var(--blue)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none' }}
-          >
-            Install the Thanos extension to sign in ›
-          </a>
-        ) : (
-          <span style={{ display: 'block', marginTop: 12, color: 'var(--text-muted)', fontSize: 12.5 }}>
-            Sign-in needs the Thanos extension — use a Chromium browser (Chrome, Brave, Edge) or the desktop app.
-          </span>
-        )
-      )}
-
-      {/* Phone fallback — the deep link went unhandled (app not installed). A
-          phone browser can't sign in on quantts.ai (no extension, no injected
-          provider), so direct to the app rather than a dead "continue" — iOS
-          has no App Store build yet, so send those users to desktop. */}
-      {showFallback && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12, fontSize: 12.5 }}>
-          {platform === 'ios' ? (
-            <span style={{ color: 'var(--text-muted)' }}>
-              Thanos for iOS is coming soon — for now, sign in from a desktop browser with the Thanos extension.
-            </span>
-          ) : (
-            <>
-              <span style={{ color: 'var(--text-muted)' }}>Sign-in runs inside the Thanos app.</span>
-              <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-                 style={{ color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
-                Get the app on Google Play ›
-              </a>
-            </>
-          )}
-          <a href={QUANTT_AGENTS_URL} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-             style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>
-            Open quantts.ai in the browser ›
-          </a>
-        </div>
-      )}
     </div>
   );
 }

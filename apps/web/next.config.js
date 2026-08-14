@@ -42,6 +42,9 @@ const CSP = [
     + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://api-3.litho.ai"
     + " https://bridge.litho.ai"
     + " https://ignite.trade"
+    // Quantt AI agents — native wallet sign-in + /v1/mobile BFF. api.quantts.ai
+    // returns CORS for https://thanos.fi, so the browser calls it directly.
+    + " https://api.quantts.ai"
     + " https://api.coingecko.com"
     // Display-currency FX rates (sdk-core/fx.ts → USD→EUR/GBP/JPY/BTC).
     // WITHOUT this the browser blocks the rate fetch, the engine falls back to
