@@ -34,7 +34,7 @@ import {
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn } from './quantt';
-import type { QuanttSession } from '@thanos/sdk-core';
+import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
@@ -741,19 +741,52 @@ function LaxCard() {
   );
 }
 
+/* Live portfolio + agents summary once connected (shapes from /v1/mobile/overview). */
+function QuanttPanel({ overview }: { overview: QuanttOverview }) {
+  const p = overview?.dashboard?.portfolio;
+  const agents = overview?.dashboard?.agents ?? [];
+  if (!p) return null;
+  const fmtUsd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+  const pct = (n: number) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(1) + '%';
+  const posColor = (n: number) => (n >= 0 ? '#22c55e' : '#ef4444');
+  return (
+    <div style={{ marginTop: 10, borderTop: '1px solid var(--border, rgba(148,163,184,0.16))', paddingTop: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{fmtUsd(p.equity)}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+        {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
+      </div>
+      {agents.slice(0, 3).map((a) => (
+        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, marginTop: 6 }}>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{a.chain}{a.status ? ' · ' + a.status : ''}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Quantt Agents — AI assistant card with native wallet sign-in. "Connect with
    Thanos" runs the EIP-712 wallet login (quantt.ts → sdk-core QuanttClient)
    through the offscreen signer; the bearer session is stored for the browser
-   session. Falls back to opening quantts.ai in a tab. */
+   session, and the live portfolio/agents panel loads from /v1/mobile/overview.
+   Falls back to opening quantts.ai in a tab. */
 function AIAssistant() {
   const seed = useWalletSeed();
   const [session, setSession] = useState<QuanttSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [overview, setOverview] = useState<QuanttOverview | null>(null);
+
+  const loadOverview = () => {
+    quantt.getOverview().then(setOverview).catch(() => setOverview(null));
+  };
 
   useEffect(() => {
     let live = true;
-    quantt.session().then((s) => { if (live) setSession(s); }).catch(() => {});
+    quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
     return () => { live = false; };
   }, []);
 
@@ -761,6 +794,7 @@ function AIAssistant() {
     setBusy(true); setErr(null);
     try {
       setSession(await quanttSignIn(seed));
+      loadOverview();
     } catch (e) {
       setErr((e as Error)?.message || 'Sign-in failed');
     } finally {
@@ -768,7 +802,7 @@ function AIAssistant() {
     }
   };
   const disconnect = async () => {
-    try { await quantt.signOut(); } finally { setSession(null); }
+    try { await quantt.signOut(); } finally { setSession(null); setOverview(null); }
   };
 
   return (
@@ -789,9 +823,10 @@ function AIAssistant() {
           <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>Quantt Agents</div>
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>
             {session
-              ? 'Signed in with your wallet — your AI trading agents are connected.'
+              ? 'Signed in with your wallet — your AI trading agents.'
               : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
           </div>
+          {session && overview && <QuanttPanel overview={overview} />}
           {err && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6, lineHeight: 1.35 }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             {session ? (

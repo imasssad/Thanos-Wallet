@@ -30,11 +30,50 @@ export interface Eip712TypedData {
   message: Record<string, unknown>;
 }
 
+export interface QuanttUser {
+  id: string;
+  email?: string;
+  role?: string;
+  name?: string;
+}
+
 export interface QuanttSession {
   accessToken: string;
   refreshToken?: string;
   /** epoch seconds when the access token expires, if the server tells us */
   expiresAt?: number;
+  user?: QuanttUser;
+}
+
+/** `/v1/mobile/overview` → `dashboard.portfolio` (shapes observed 2026-08-14). */
+export interface QuanttPortfolio {
+  equity: number;
+  pnl24h: number;
+  pnl7d: number;
+  pnl30d: number;
+  sharpe30d?: number;
+  maxDrawdown30d?: number;
+  activeAgents: number;
+  performanceHistory?: number[];
+}
+
+/** One trading agent from `/v1/mobile/overview` → `dashboard.agents[]`. */
+export interface QuanttAgent {
+  id: string;
+  name: string;
+  chain?: string;
+  status?: string;
+  exposureUsd?: number;
+  pnlPercent30d?: number;
+  confidence?: number;
+  strategy?: string;
+}
+
+export interface QuanttOverview {
+  dashboard: {
+    portfolio: QuanttPortfolio;
+    agents: QuanttAgent[];
+  };
 }
 
 /** Sign an EIP-712 payload with the wallet key and return a 0x… signature.
@@ -184,8 +223,8 @@ export class QuanttClient {
 
   /* ── /v1/mobile BFF (response shapes provisional — see file header) ── */
 
-  /** Home overview: balances/agents/alerts summary for the panel. */
-  getOverview(): Promise<unknown> { return this.authed('/v1/mobile/overview'); }
+  /** Home overview: portfolio summary + agents list for the connected panel. */
+  getOverview(): Promise<QuanttOverview> { return this.authed<QuanttOverview>('/v1/mobile/overview'); }
   getAgent(id: string): Promise<unknown> { return this.authed(`/v1/mobile/agents/${encodeURIComponent(id)}`); }
   createAgent(body: unknown): Promise<unknown> {
     return this.authed('/v1/mobile/agents', { method: 'POST', body: JSON.stringify(body) });
@@ -251,5 +290,6 @@ function normalizeSession(raw: unknown, prev?: QuanttSession): QuanttSession {
   if (expiresAt == null && typeof expiresInRaw === 'number') {
     expiresAt = Math.floor(Date.now() / 1000) + expiresInRaw;
   }
-  return { accessToken, refreshToken, expiresAt };
+  const user = (o.user && typeof o.user === 'object') ? (o.user as QuanttUser) : prev?.user;
+  return { accessToken, refreshToken, expiresAt, user };
 }
