@@ -65,6 +65,7 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
 }
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits, randomBytes } from 'ethers';
+import { quantt, quanttSignIn, type QuanttSession, type QuanttOverview } from './lib/quantt';
 import {
   createVault, openVault, openVaultWithKey,
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
@@ -1413,26 +1414,111 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           wallet's in-app browser (not the OS browser) so Quantt's EIP-712
           "Sign in with Thanos" flow runs against the injected provider and the
           user authenticates without leaving the app. */}
-      <Pressable
-        onPress={() => openBrowser(QUANTT_AGENTS_URL)}
-        style={({ pressed }) => [styles.card, { padding: 16, marginTop: 12 }, pressed && { opacity: 0.85 }]}
-      >
-        <Text style={{ color: C.textSecondary, fontSize: 12, fontWeight: '700', marginBottom: 11 }}>AI Assistant</Text>
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
-            <Sparkles size={17} color={C.blue}/>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Quantt Agents ↗</Text>
-            <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 }}>
-              Your AI assistant — optimize your portfolio balance across chains.
-            </Text>
-          </View>
-        </View>
-      </Pressable>
+      <QuanttAgentsCard/>
     </ScrollView>
     {laxCreate && <LaxCreateAccountSheet address={addr} onClose={() => setLaxCreate(false)} />}
     </>
+  );
+}
+
+/* Quantt Agents — AI assistant card with native wallet sign-in. "Connect with
+   Thanos" runs the EIP-712 wallet login (lib/quantt.ts) signed inline at the
+   active HD path; the live portfolio/agents panel loads from /v1/mobile/overview.
+   Still opens quantts.ai in the in-app browser. */
+function QuanttAgentsCard() {
+  const C = useColors();
+  const styles = useStyles();
+  const seed = useWalletSeed();
+  const openBrowser = useBrowser();
+  const [session, setSession] = useState<QuanttSession | null>(null);
+  const [overview, setOverview] = useState<QuanttOverview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
+  useEffect(() => {
+    let live = true;
+    quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  const connect = async () => {
+    setBusy(true); setErr(null);
+    try { setSession(await quanttSignIn(seed, getActiveAccountIndex())); loadOverview(); }
+    catch (e) { setErr((e as Error)?.message || 'Sign-in failed'); }
+    finally { setBusy(false); }
+  };
+  const disconnect = async () => { try { await quantt.signOut(); } finally { setSession(null); setOverview(null); } };
+
+  const p = overview?.dashboard?.portfolio;
+  const agents = overview?.dashboard?.agents ?? [];
+  const fmtUsd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+  const pctv = (n: number) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(1) + '%';
+  const pos = (n: number) => (n >= 0 ? '#22c55e' : '#ef4444');
+  const divider = 'rgba(148,163,184,0.18)';
+
+  return (
+    <View style={[styles.card, { padding: 16, marginTop: 12 }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 11 }}>
+        <Text style={{ color: C.textSecondary, fontSize: 12, fontWeight: '700' }}>AI Assistant</Text>
+        {session ? <Text style={{ color: C.blue, fontSize: 11, fontWeight: '700' }}>● Connected</Text> : null}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+          <Sparkles size={17} color={C.blue}/>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Quantt Agents</Text>
+          <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 }}>
+            {session
+              ? 'Signed in with your wallet — your AI trading agents.'
+              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+          </Text>
+
+          {session && p ? (
+            <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: divider, paddingTop: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: C.textPrimary }}>{fmtUsd(p.equity)}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: pos(p.pnl30d) }}>{pctv(p.pnl30d)} · 30d</Text>
+              </View>
+              <Text style={{ fontSize: 11, color: C.textSecondary, marginTop: 2 }}>
+                {p.activeAgents} active agents · <Text style={{ color: pos(p.pnl24h) }}>{pctv(p.pnl24h)} 24h</Text>
+              </Text>
+              {agents.slice(0, 3).map((a) => (
+                <View key={a.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 6 }}>
+                  <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontWeight: '600', color: C.textPrimary }}>{a.name}</Text>
+                  <Text style={{ fontSize: 11, color: C.textSecondary }}>{a.chain}{a.status ? ' · ' + a.status : ''}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {err ? <Text style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>{err}</Text> : null}
+
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {session ? (
+              <>
+                <Pressable onPress={() => openBrowser(QUANTT_AGENTS_URL)} style={({ pressed }) => [{ backgroundColor: C.blue, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 }, pressed && { opacity: 0.85 }]}>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Open Quantt ↗</Text>
+                </Pressable>
+                <Pressable onPress={disconnect} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: divider }, pressed && { opacity: 0.7 }]}>
+                  <Text style={{ color: C.textSecondary, fontSize: 13, fontWeight: '700' }}>Disconnect</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable disabled={busy || !seed.length} onPress={connect} style={({ pressed }) => [{ backgroundColor: C.blue, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, opacity: (busy || !seed.length) ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{busy ? 'Connecting…' : 'Connect with Thanos'}</Text>
+                </Pressable>
+                <Pressable onPress={() => openBrowser(QUANTT_AGENTS_URL)} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: divider }, pressed && { opacity: 0.7 }]}>
+                  <Text style={{ color: C.textSecondary, fontSize: 13, fontWeight: '700' }}>Open ↗</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      </View>
+    </View>
   );
 }
 
