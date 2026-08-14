@@ -22,6 +22,8 @@ import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, 
 import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain } from './evm-external-meta';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
+import { quantt, quanttSignIn } from './quantt';
+import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
 import {
@@ -477,22 +479,95 @@ function PortfolioList() {
    browser). Points at the live Quantt product site. */
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 
+/* Live portfolio + agents summary once connected (/v1/mobile/overview). */
+function QuanttPanel({ overview }: { overview: QuanttOverview }) {
+  const p = overview?.dashboard?.portfolio;
+  const agents = overview?.dashboard?.agents ?? [];
+  if (!p) return null;
+  const fmtUsd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+  const pct = (n: number) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(1) + '%';
+  const posColor = (n: number) => (n >= 0 ? '#22c55e' : '#ef4444');
+  return (
+    <div style={{ marginTop: 12, borderTop: '1px solid var(--border-default, rgba(148,163,184,0.16))', paddingTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 17, fontWeight: 800 }}>{fmtUsd(p.equity)}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+        {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
+      </div>
+      {agents.slice(0, 3).map((a) => (
+        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, marginTop: 7 }}>
+          <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{a.chain}{a.status ? ' · ' + a.status : ''}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* Quantt Agents — AI assistant card with native wallet sign-in. "Connect with
+   Thanos" runs the EIP-712 wallet login (quantt.ts → sdk-core QuanttClient),
+   signed in-renderer at the active HD path; the live portfolio/agents panel
+   loads from /v1/mobile/overview. Still opens quantts.ai in the in-app browser. */
 function AIAssistant() {
   const open = useOpenDapp();
+  const seed = useWalletSeed();
+  const [session, setSession] = useState<QuanttSession | null>(null);
+  const [overview, setOverview] = useState<QuanttOverview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
+  useEffect(() => {
+    let live = true;
+    quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  const connect = async () => {
+    setBusy(true); setErr(null);
+    try { setSession(await quanttSignIn(seed)); loadOverview(); }
+    catch (e) { setErr((e as Error)?.message || 'Sign-in failed'); }
+    finally { setBusy(false); }
+  };
+  const disconnect = async () => { try { await quantt.signOut(); } finally { setSession(null); setOverview(null); } };
+
+  const disabled = busy || !seed?.length;
   return (
-    <div
-      className="card"
-      role="button"
-      tabIndex={0}
-      onClick={() => open(QUANTT_AGENTS_URL, 'Quantt Agents')}
-      style={{ cursor: 'pointer' }}
-    >
-      <div className="card-title" style={{ marginBottom: 10 }}>AI Assistant</div>
+    <div className="card">
+      <div className="card-title" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>AI Assistant</span>
+        {session && <span style={{ color: 'var(--blue)', fontSize: 12, fontWeight: 700 }}>● Connected</span>}
+      </div>
       <div className="ai-body">
         <div className="ai-icon"><Bot size={17}/></div>
-        <div>
-          <div className="ai-title">Quantt Agents ↗</div>
-          <div className="ai-sub">Your AI assistant — optimize your portfolio balance across chains.</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="ai-title">Quantt Agents</div>
+          <div className="ai-sub">
+            {session
+              ? 'Signed in with your wallet — your AI trading agents.'
+              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+          </div>
+          {session && overview && <QuanttPanel overview={overview} />}
+          {err && <div style={{ fontSize: 12, color: '#ff6b6b', marginTop: 8 }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            {session ? (
+              <>
+                <button onClick={() => open(QUANTT_AGENTS_URL, 'Quantt Agents')}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' }}>Open Quantt ↗</button>
+                <button onClick={disconnect}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default, rgba(148,163,184,0.28))' }}>Disconnect</button>
+              </>
+            ) : (
+              <>
+                <button onClick={connect} disabled={disabled}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, border: 'none', cursor: disabled ? 'default' : 'pointer', background: 'var(--blue)', color: '#fff', opacity: disabled ? 0.6 : 1 }}>{busy ? 'Connecting…' : 'Connect with Thanos'}</button>
+                <button onClick={() => open(QUANTT_AGENTS_URL, 'Quantt Agents')}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default, rgba(148,163,184,0.28))' }}>Open ↗</button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
