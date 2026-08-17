@@ -34,7 +34,11 @@ import {
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn } from './quantt';
-import { loadCustomAssets } from '../../lib/custom-assets';
+import {
+  loadCustomAssets, customChains, customTokens, allEvmChains,
+  addCustomChain, addCustomToken, removeCustomChain, removeCustomToken,
+  probeChainId, probeErc20, type CustomChain, type CustomToken,
+} from '../../lib/custom-assets';
 import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -1247,6 +1251,126 @@ function DiscoverScreen() {
   );
 }
 
+/* Custom networks + tokens (Settings). Add an EVM network by RPC (its real
+   chainId is read on-chain) or an ERC-20 by contract (symbol/decimals read
+   on-chain). Persisted via lib/custom-assets; flows into portfolio/send/dApp. */
+function CustomAssetsSection() {
+  const [chains, setChains] = useState<CustomChain[]>([]);
+  const [tokens, setTokens] = useState<CustomToken[]>([]);
+  const [openForm, setOpenForm] = useState<'' | 'net' | 'tok'>('');
+  const [nName, setNName] = useState(''); const [nRpc, setNRpc] = useState('');
+  const [nSym, setNSym] = useState(''); const [nExp, setNExp] = useState('');
+  const [nBusy, setNBusy] = useState(false); const [nErr, setNErr] = useState<string | null>(null);
+  const [tChain, setTChain] = useState<number>(0); const [tAddr, setTAddr] = useState('');
+  const [tBusy, setTBusy] = useState(false); const [tErr, setTErr] = useState<string | null>(null);
+
+  const refresh = () => { setChains([...customChains()]); setTokens([...customTokens()]); };
+  useEffect(() => { void loadCustomAssets().then(refresh); }, []);
+
+  const nets = allEvmChains();
+
+  const addNet = async () => {
+    setNBusy(true); setNErr(null);
+    try {
+      const rpc = nRpc.trim();
+      if (!/^https?:\/\/\S+/.test(rpc)) throw new Error('Enter a valid RPC URL (https://…)');
+      const chainId = await probeChainId(rpc);
+      await addCustomChain({
+        chainId, name: nName.trim() || `Chain ${chainId}`, rpcUrl: rpc,
+        nativeSymbol: (nSym.trim() || 'ETH').toUpperCase(), explorerUrl: nExp.trim(),
+      });
+      refresh(); setOpenForm(''); setNName(''); setNRpc(''); setNSym(''); setNExp('');
+    } catch (e) { setNErr((e as Error)?.message || 'Could not reach that RPC'); }
+    finally { setNBusy(false); }
+  };
+  const addTok = async () => {
+    setTBusy(true); setTErr(null);
+    try {
+      const addr = tAddr.trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) throw new Error('Enter a valid 0x token address');
+      const chain = nets.find((c) => c.chainId === (tChain || nets[0]?.chainId));
+      if (!chain) throw new Error('Pick a network');
+      const meta = await probeErc20(chain.rpcUrl, addr);
+      await addCustomToken({ chainId: chain.chainId, symbol: meta.symbol, name: meta.name, address: addr, decimals: meta.decimals });
+      refresh(); setOpenForm(''); setTAddr('');
+    } catch (e) { setTErr((e as Error)?.message || 'Not a valid ERC-20 on that network'); }
+    finally { setTBusy(false); }
+  };
+
+  const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--bg-elev, #1a1a1f)', color: 'var(--text-primary)', border: '1px solid var(--border, #2a2a30)', borderRadius: 8, padding: '7px 9px', fontSize: 12, marginTop: 6 };
+  const btn: React.CSSProperties = { fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' };
+  const link: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 };
+
+  return (
+    <>
+      <div className="x-set-section-head">
+        <div className="x-set-section-icon"><Globe size={14}/></div>
+        <div>
+          <div className="x-set-section-title">Networks &amp; tokens</div>
+          <div className="x-set-section-sub">Add custom EVM networks and tokens</div>
+        </div>
+      </div>
+      <div className="card list" style={{ padding: 12 }}>
+        {chains.map((c) => (
+          <div key={c.chainId} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="set-label">{c.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {c.chainId}</span></div>
+              <div className="set-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.rpcUrl}</div>
+            </div>
+            <button style={link} onClick={() => { void removeCustomChain(c.chainId).then(refresh); }}>Remove</button>
+          </div>
+        ))}
+        {tokens.map((t) => (
+          <div key={`${t.chainId}-${t.address}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="set-label">{t.symbol} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {nets.find((c) => c.chainId === t.chainId)?.name ?? t.chainId}</span></div>
+              <div className="set-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.address}</div>
+            </div>
+            <button style={link} onClick={() => { void removeCustomToken(t.chainId, t.address).then(refresh); }}>Remove</button>
+          </div>
+        ))}
+        {chains.length === 0 && tokens.length === 0 && openForm === '' && (
+          <div className="set-sub" style={{ padding: '4px 0 10px' }}>No custom networks or tokens yet.</div>
+        )}
+
+        {openForm === 'net' && (
+          <div style={{ paddingTop: 8 }}>
+            <input style={inp} placeholder="Network name (e.g. Sepolia)" value={nName} onChange={(e) => setNName(e.target.value)}/>
+            <input style={inp} placeholder="RPC URL (https://…)" value={nRpc} onChange={(e) => setNRpc(e.target.value)}/>
+            <input style={inp} placeholder="Currency symbol (e.g. ETH)" value={nSym} onChange={(e) => setNSym(e.target.value)}/>
+            <input style={inp} placeholder="Block explorer URL (optional)" value={nExp} onChange={(e) => setNExp(e.target.value)}/>
+            {nErr && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>{nErr}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+              <button style={{ ...btn, opacity: nBusy ? 0.6 : 1 }} disabled={nBusy} onClick={addNet}>{nBusy ? 'Checking…' : 'Add network'}</button>
+              <button style={link} onClick={() => setOpenForm('')}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {openForm === 'tok' && (
+          <div style={{ paddingTop: 8 }}>
+            <select style={inp} value={tChain || nets[0]?.chainId} onChange={(e) => setTChain(Number(e.target.value))}>
+              {nets.map((c) => <option key={c.chainId} value={c.chainId}>{c.name}</option>)}
+            </select>
+            <input style={inp} placeholder="Token contract (0x…)" value={tAddr} onChange={(e) => setTAddr(e.target.value)}/>
+            {tErr && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>{tErr}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+              <button style={{ ...btn, opacity: tBusy ? 0.6 : 1 }} disabled={tBusy} onClick={addTok}>{tBusy ? 'Checking…' : 'Add token'}</button>
+              <button style={link} onClick={() => setOpenForm('')}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {openForm === '' && (
+          <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+            <button style={link} onClick={() => { setNErr(null); setOpenForm('net'); }}>+ Add network</button>
+            <button style={link} onClick={() => { setTErr(null); setOpenForm('tok'); }}>+ Add token</button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SettingsScreen({
   isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook, onOpenPermissions,
   address, accountName, onOpenChangePassword, onOpenRecoveryPhrase, onDeleteWallet,
@@ -1348,6 +1472,8 @@ function SettingsScreen({
           </button>
         )}
       </div>
+
+      <CustomAssetsSection/>
 
       <SectionHead Icon={Shield} title="Security" sub="Protect access to your wallet"/>
       <div className="card list">
