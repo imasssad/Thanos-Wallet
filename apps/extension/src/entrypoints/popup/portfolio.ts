@@ -254,12 +254,15 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             });
           }
           for (const { token, balance } of tokens) {
-            const priceUsd = prices[token.symbol] ?? 1; // stablecoins ≈ $1
+            // Built-in USDT/USDC are ≈$1; custom tokens use a live price if known,
+            // else $0 — never fabricate a stablecoin peg for an unknown token.
+            const isStable = token.symbol === 'USDT' || token.symbol === 'USDC';
+            const priceUsd = prices[token.symbol] ?? (isStable ? 1 : 0);
             evmExt.push({
               sym: token.symbol, name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
               chainId: token.chainId, balance, balanceText: formatAmount(balance),
               decimals: token.decimals, priceUsd, usdValue: balance * priceUsd,
-              color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+              color: token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : coinColor(token.symbol),
               tokenAddress: token.address, native: false,
             });
           }

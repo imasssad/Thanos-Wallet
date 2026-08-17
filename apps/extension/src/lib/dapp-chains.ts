@@ -13,6 +13,7 @@
  * external EVM chains reuse the verified RPC config in evm-external.ts.
  */
 import { EXT_EVM_CHAINS } from './evm-external';
+import { customChains } from './custom-assets';
 
 export interface DappChain {
   chainId:      number;
@@ -32,13 +33,23 @@ export const DAPP_CHAINS: readonly DappChain[] = [
 
 export const toChainHex = (id: number): string => `0x${id.toString(16)}`;
 
+/** Built-in switchable chains + user-added custom networks (deduped). The
+ *  custom overlay is primed by loadCustomAssets() at background/popup startup. */
+export function allDappChains(): DappChain[] {
+  const seen = new Set(DAPP_CHAINS.map((c) => c.chainId));
+  const extra: DappChain[] = customChains()
+    .filter((c) => !seen.has(c.chainId))
+    .map((c) => ({ chainId: c.chainId, name: c.name, rpcUrl: c.rpcUrl, nativeSymbol: c.nativeSymbol }));
+  return [...DAPP_CHAINS, ...extra];
+}
+
 export function dappChainByHex(hex: string): DappChain | undefined {
   const h = (hex || '').toLowerCase();
-  return DAPP_CHAINS.find((c) => toChainHex(c.chainId) === h);
+  return allDappChains().find((c) => toChainHex(c.chainId) === h);
 }
 
 export function dappChainById(id: number): DappChain | undefined {
-  return DAPP_CHAINS.find((c) => c.chainId === id);
+  return allDappChains().find((c) => c.chainId === id);
 }
 
 export const isMakalu = (id: number): boolean => id === MAKALU_CHAIN_ID;

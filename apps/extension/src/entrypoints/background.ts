@@ -12,6 +12,11 @@
  * browser close) — the popup picks them up when it opens.
  */
 import { dappChainByHex, toChainHex } from '../lib/dapp-chains';
+import { loadCustomAssets } from '../lib/custom-assets';
+
+// Prime user-added custom networks so the dApp provider can switch to them
+// after a service-worker (re)start.
+void loadCustomAssets();
 
 interface Connection {
   address:     string;

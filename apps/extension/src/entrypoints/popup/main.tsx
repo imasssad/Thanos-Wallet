@@ -34,6 +34,7 @@ import {
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn } from './quantt';
+import { loadCustomAssets } from '../../lib/custom-assets';
 import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -3184,6 +3185,10 @@ function App() {
   const evmAddr   = seed.length ? deriveEvm(seed, activeIdx) : '';
   const lithoAddr = useMemo(() => { try { return evmAddr ? evmToLitho(evmAddr) : ''; } catch { return evmAddr; } }, [evmAddr]);
   const portfolio = usePortfolio(evmAddr, seed);
+
+  // Prime the custom-network/token overlay, then refresh so user-added
+  // holdings appear on first open (the initial fetch runs before it loads).
+  useEffect(() => { void loadCustomAssets().then(() => portfolio.reload()); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Switch to a different derived account. Updates storage so the
    *  next popup open + the signer paths pick up the same index. */
