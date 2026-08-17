@@ -164,8 +164,7 @@ export function TopNav({
                 </div>
                 <div className="menu-network">
                   <span className="menu-net-dot"/>
-                  <span>Makalu</span>
-                  <span className="menu-net-status">synced</span>
+                  <span className="menu-net-status">Synced</span>
                 </div>
 
                 {/* Dual-address rows. Each shows the full address + a copy

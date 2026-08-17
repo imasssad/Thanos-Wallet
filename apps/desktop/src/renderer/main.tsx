@@ -4152,8 +4152,7 @@ function App() {
 
                   <div className="menu-network">
                     <span className="menu-net-dot"/>
-                    <span>Makalu</span>
-                    <span className="menu-net-status">synced</span>
+                    <span className="menu-net-status">Synced</span>
                   </div>
 
                   <div className="menu-divider"/>

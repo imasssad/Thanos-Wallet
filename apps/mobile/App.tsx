@@ -1221,7 +1221,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
       <View style={styles.netPillRow}>
         <View style={styles.netPill}>
           <View style={[styles.netDot, offline && { backgroundColor: C.red }]}/>
-          <Text style={styles.netText}>{offline ? 'Makalu · offline' : 'Makalu · synced'}</Text>
+          <Text style={styles.netText}>{offline ? 'Offline' : 'Synced'}</Text>
         </View>
       </View>
 

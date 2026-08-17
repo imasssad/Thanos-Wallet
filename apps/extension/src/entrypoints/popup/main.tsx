@@ -894,7 +894,7 @@ function HomeScreen({
             <div className="acct-avatar"><User size={13}/></div>
             <div>
               <div className="acct-name">Account {activeIdx + 1}</div>
-              <div className="acct-addr">{offline ? 'Makalu · offline' : 'Makalu'}</div>
+              <div className="acct-addr">{offline ? 'Offline' : 'Synced'}</div>
             </div>
           </div>
           {acctMenu && (
