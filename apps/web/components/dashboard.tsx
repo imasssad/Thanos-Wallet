@@ -822,7 +822,7 @@ export function Dashboard() {
      The dense charts + Exchange widget + Staking from the prior layout
      are folded under the DeFi tab so nothing is lost; Activity wraps
      the Payment history table. */
-  const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity' | 'cards'>('tokens');
+  const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity' | 'cards' | 'quantt'>('tokens');
   const [txDetail, setTxDetail] = useState<IndexerActivityItem | null>(null);
 
   /* Network filter for the Tokens tab. The wallet today has assets on
@@ -1036,13 +1036,14 @@ export function Dashboard() {
           borderBottom: '1px solid var(--border-subtle)',
           paddingBottom: 0,
         }}>
-          {(['tokens', 'defi', 'nfts', 'activity', 'cards'] as const).map(t => {
+          {(['tokens', 'defi', 'nfts', 'activity', 'cards', 'quantt'] as const).map(t => {
             const active = tab === t;
             const label = t === 'tokens' ? 'Tokens'
                         : t === 'defi'   ? 'DeFi'
                         : t === 'nfts'   ? 'NFTs'
                         : t === 'activity' ? 'Activity'
-                        : 'Cards';
+                        : t === 'cards'  ? 'Cards'
+                        : 'Quantt';
             return (
               <button
                 key={t}
@@ -1227,9 +1228,13 @@ export function Dashboard() {
         {tab === 'cards' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <LaxCardPromo onGetStarted={() => setModal('laxcard')}/>
-            {/* Quantt Agents — same AI-assistant offer the desktop/extension/
-                mobile clients show; on web it routes sign-in via the extension
-                (desktop) or the native app deep link (phones). */}
+          </div>
+        )}
+
+        {tab === 'quantt' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Quantt Agents — native "Connect with Thanos" wallet sign-in +
+                live portfolio/agents panel. Its own tab, not a LAX-style card. */}
             <QuanttCard/>
           </div>
         )}
