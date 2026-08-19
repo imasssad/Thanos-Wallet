@@ -1177,7 +1177,7 @@ function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose
   );
 }
 
-function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string) => void }) {
+function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string, chainId?: number) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -1340,7 +1340,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
             <Text style={[styles.rowSub, { padding: 16 }]}>No assets yet.</Text>
           )}
           {assets.map((a, i) => (
-            <Pressable key={`${a.sym}-${a.chainId}`} style={[styles.row, i < assets.length - 1 && styles.rowBorder]} onPress={() => onOpenToken(a.sym)}>
+            <Pressable key={`${a.sym}-${a.chainId}`} style={[styles.row, i < assets.length - 1 && styles.rowBorder]} onPress={() => onOpenToken(a.sym, a.chainId)}>
               <Avatar symbol={a.sym} color={a.color} chainId={a.chainId} native={a.native} />
               <View style={styles.rowMid}>
                 <Text style={styles.rowSymbol}>{a.name}</Text>
@@ -1555,7 +1555,7 @@ function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: s
   }
 }
 
-function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string }) {
+function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string; initialChainId?: number }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -1588,6 +1588,10 @@ function SendScreen({ goBack, initialChain, initialSym }: { goBack: () => void; 
   const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0), [assets]);
   const coin =
     (selectedKey ? evmAssets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
+    // Prefer an exact (symbol + chain) match — several symbols repeat across
+    // chains (LITHO on Makalu 700777 AND Lithosphere Mainnet 9005; USDT/USDC
+    // across EVM chains), so chainId disambiguates which one was tapped.
+    ?? (initialSym && initialChainId != null ? evmAssets.find((a) => a.sym === initialSym && a.chainId === initialChainId) : undefined)
     ?? (initialSym ? evmAssets.find((a) => a.sym === initialSym) : undefined)
     ?? evmAssets[0] ?? null;
   const amtNum = parseFloat(amt || '0');
@@ -4366,15 +4370,23 @@ function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, strok
     + `<path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
 
-function TokenDetailScreen({ sym, goBack, onSend, onReceive, onSwap }: {
-  sym: string; goBack: () => void; onSend: () => void; onReceive: (chainId?: number) => void; onSwap: () => void;
+function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: {
+  sym: string; chainId?: number; goBack: () => void; onSend: () => void; onReceive: (chainId?: number) => void; onSwap: () => void;
 }) {
   const C = useColors();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
   const { assets } = usePortfolio(addr, seed);
   const { items, loading: actLoading, offline: actOffline } = useActivity(addr);
-  const coin = assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
+  // Prefer an exact (symbol + chain) match — LITHO exists natively on BOTH
+  // Lithosphere Makalu (700777) and Lithosphere Mainnet (9005), so matching by
+  // symbol alone always resolved to whichever came first in the list,
+  // regardless of which row the user actually tapped. Falls back to a
+  // symbol-only match for callers that don't know the chain (e.g. Market,
+  // which browses prices rather than holdings).
+  const coin =
+    (chainId != null ? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase() && a.chainId === chainId) : undefined)
+    ?? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   // Gates the Swap action — the MultX/Ignite swap flow is Makalu-only, so a
   // token must actually LIVE on Makalu (not merely be any contract token:
@@ -5725,7 +5737,7 @@ function donutSvg(segs: { color: string; pct: number }[]): string {
   return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(-90 ${cx} ${cy})">${arcs}</g></svg>`;
 }
 
-function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string) => void }) {
+function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string, chainId?: number) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -5768,7 +5780,7 @@ function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
         {rows.map((a, i) => (
           <Pressable
             key={a.sym + i}
-            onPress={() => onOpenToken(a.sym)}
+            onPress={() => onOpenToken(a.sym, a.chainId)}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}
           >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: a.color, marginRight: 10 }}/>
@@ -6011,6 +6023,13 @@ function App() {
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Chain of the tapped row — several symbols exist on more than one chain
+   *  (e.g. LITHO is native on BOTH Lithosphere Makalu 700777 and Lithosphere
+   *  Mainnet 9005; USDT/USDC repeat across EVM chains), so the detail screen
+   *  must disambiguate by chain, not just symbol, or it always resolves to
+   *  whichever same-symbol asset happens to be first in the list. */
+  const [detailChainId, setDetailChainId] = useState<number | undefined>(undefined);
+  const openToken = (sym: string, chainId?: number) => { setDetailSym(sym); setDetailChainId(chainId); };
   /** Asset carried from detail into Send/Swap/Receive so they open pre-seeded. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
   /** Chain of the seeded asset (Receive needs it to show the exact network). */
@@ -6613,7 +6632,7 @@ function App() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={styles.netPill}>
                   <View style={styles.netDot}/>
-                  <Text style={styles.netText}>Makalu</Text>
+                  <Text style={styles.netText}>Synced</Text>
                 </View>
               </View>
             </View>
@@ -6621,16 +6640,17 @@ function App() {
             {/* Body — animated screen transitions */}
             <View style={styles.body}>
               <AnimatedSwitch keyName={screen} style={{ flex: 1 }}>
-                {screen === 'home'     && <HomeScreen navigate={setScreen} onOpenToken={setDetailSym}/>}
-                {screen === 'send'     && <SendScreen goBack={() => { setScreen('home'); setSeedSym(null); }}
+                {screen === 'home'     && <HomeScreen navigate={setScreen} onOpenToken={openToken}/>}
+                {screen === 'send'     && <SendScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }}
                   initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
-                  initialSym={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
+                  initialSym={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}
+                  initialChainId={seedChainId ?? undefined}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }} initialSym={seedSym ?? undefined} initialChainId={seedChainId ?? undefined}/>}
                 {screen === 'swap' && EXCHANGE_ENABLED && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
-                {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
-                {screen === 'assets'   && <AssetsScreen goBack={() => setScreen('home')} onOpenToken={setDetailSym}/>}
+                {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={openToken}/>}
+                {screen === 'assets'   && <AssetsScreen goBack={() => setScreen('home')} onOpenToken={openToken}/>}
                 {screen === 'nfts'     && <NFTsScreen goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
@@ -6638,14 +6658,15 @@ function App() {
             </View>
 
             {/* Token-detail overlay — full-screen Modal over the tab shell. */}
-            <Modal visible={!!detailSym} animationType="slide" onRequestClose={() => setDetailSym(null)} presentationStyle="fullScreen">
+            <Modal visible={!!detailSym} animationType="slide" onRequestClose={() => { setDetailSym(null); setDetailChainId(undefined); }} presentationStyle="fullScreen">
               {detailSym && (
                 <TokenDetailScreen
                   sym={detailSym}
-                  goBack={() => setDetailSym(null)}
-                  onSend={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('send'); }}
-                  onReceive={(chainId) => { setSeedSym(detailSym); setSeedChainId(chainId ?? null); setDetailSym(null); setScreen('receive'); }}
-                  onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setScreen('swap'); }}
+                  chainId={detailChainId}
+                  goBack={() => { setDetailSym(null); setDetailChainId(undefined); }}
+                  onSend={() => { setSeedSym(detailSym); setSeedChainId(detailChainId ?? null); setDetailSym(null); setDetailChainId(undefined); setScreen('send'); }}
+                  onReceive={(chainId) => { setSeedSym(detailSym); setSeedChainId(chainId ?? null); setDetailSym(null); setDetailChainId(undefined); setScreen('receive'); }}
+                  onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setDetailChainId(undefined); setScreen('swap'); }}
                 />
               )}
             </Modal>
