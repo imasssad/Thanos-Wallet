@@ -118,7 +118,10 @@ export class QuanttClient {
     this.base = (opts.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, '');
     this.store = opts.store;
     this.partnerKey = opts.partnerKey;
-    this.f = opts.fetchImpl ?? fetch;
+    // Bind to globalThis — an unbound `fetch` reference invoked as `this.f(...)`
+    // runs with `this` = the QuanttClient instance, and browsers reject that
+    // ("Illegal invocation": fetch requires `this` to be a real Window/Worker).
+    this.f = opts.fetchImpl ?? fetch.bind(globalThis);
   }
 
   /* ── session ──────────────────────────────────────────────────────── */
