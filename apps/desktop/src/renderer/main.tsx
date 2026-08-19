@@ -23,6 +23,7 @@ import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain } from './evm-external-m
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn } from './quantt';
+import { isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from './asset-visibility';
 import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
@@ -393,7 +394,7 @@ function ExchangeWidget({ onSwap }: { onSwap: () => void }) {
 
 /* Lets any token row (right-panel list, Assets table, dashboard tokens)
    open the token-detail modal without prop-drilling. Provided by App. */
-const OpenTokenDetail = React.createContext<((sym: string) => void) | null>(null);
+const OpenTokenDetail = React.createContext<((sym: string, chainId?: number) => void) | null>(null);
 const useOpenTokenDetail = () => useContext(OpenTokenDetail);
 
 /* ───── Skeleton placeholders (cold first-load only) ─────
@@ -443,7 +444,11 @@ function SkeletonTableRows({ rows = 5, cols }: { rows?: number; cols: number }) 
 }
 
 function PortfolioList() {
-  const { coins, loading, offline } = usePortfolioCtx();
+  const { coins: allCoins, loading, offline } = usePortfolioCtx();
+  // Networks/assets hidden in Settings never reach this list — see
+  // asset-visibility.ts's header note (Send/Receive/detail navigation stay
+  // unaffected; this is a portfolio-VIEW preference only).
+  const coins = useMemo(() => allCoins.filter(isCoinVisible), [allCoins]);
   const openDetail = useOpenTokenDetail();
   return (
     <div className="card">
@@ -458,7 +463,7 @@ function PortfolioList() {
           <div className="portfolio-sym" style={{ padding: 12 }}>No assets yet</div>
         )}
         {coins.map(c => (
-          <div key={c.sym} className="portfolio-row" onClick={() => openDetail?.(c.sym)} style={{ cursor: 'pointer' }}>
+          <div key={`${c.sym}-${c.chainId ?? 'litho'}`} className="portfolio-row" onClick={() => openDetail?.(c.sym, c.chainId)} style={{ cursor: 'pointer' }}>
             <TokenAvatar sym={c.sym} color={c.color} className="portfolio-icon"/>
             <div>
               <div className="portfolio-name">{c.name}</div>
@@ -845,12 +850,12 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
       <div className="card" style={{ padding: '14px 18px' }}>
         <div className="alloc-bar">
           {coins.map(c => (
-            <div key={c.sym} className="alloc-seg" style={{ flex: c.pct || 1, background: c.color }}/>
+            <div key={`${c.sym}-${c.chainId ?? 'litho'}`} className="alloc-seg" style={{ flex: c.pct || 1, background: c.color }}/>
           ))}
         </div>
         <div className="alloc-coins">
           {coins.map(c => (
-            <div key={c.sym} className="alloc-coin">
+            <div key={`${c.sym}-${c.chainId ?? 'litho'}`} className="alloc-coin">
               <div className="alloc-coin-top">
                 <div className="alloc-dot" style={{ background: c.color }}/>
                 <span className="alloc-name">{c.name} ({c.sym})</span>
@@ -1242,11 +1247,17 @@ function tdFmtUsdPrice(nUsd: number): string {
   return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
-function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
-  sym: string; onClose: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
+function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive, onSwap }: {
+  sym: string; chainId?: number; onClose: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
 }) {
   const { coins, activity } = usePortfolioCtx();
-  const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
+  // Prefer an exact (symbol + chain) match — LITHO is native on BOTH
+  // Lithosphere Makalu (chainId undefined in DisplayCoin) and Lithosphere
+  // Mainnet (9005), so a symbol-only match always resolved to whichever came
+  // first, regardless of which row was actually tapped.
+  const coin =
+    coins.find(c => c.sym.toLowerCase() === sym.toLowerCase() && c.chainId === chainId)
+    ?? coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   // Swap is Makalu-only — a token must actually LIVE on Makalu (external-EVM
   // coins carry their chainId; Makalu rows carry none/700777). Same fix as
@@ -2446,7 +2457,17 @@ function MarketView() {
 
 /* ──────────────────────── Portfolio view ──────────────────────── */
 function PortfolioView() {
-  const { coins, totalUsd, loading, offline } = usePortfolioCtx();
+  const { coins: allCoins, loading, offline } = usePortfolioCtx();
+  // Networks/assets hidden in Settings never reach this page — see
+  // asset-visibility.ts's header note (Send/Receive/detail navigation stay
+  // unaffected). Recompute totalUsd + pct against the VISIBLE set only, so
+  // the donut/allocation stay honest about what's actually shown.
+  const coins = useMemo(() => {
+    const visible = allCoins.filter(isCoinVisible);
+    const total = visible.reduce((s, c) => s + c.usdValue, 0) || 1;
+    return visible.map((c) => ({ ...c, pct: Math.max(1, Math.round((c.usdValue / total) * 100)) }));
+  }, [allCoins]);
+  const totalUsd = useMemo(() => coins.reduce((s, c) => s + c.usdValue, 0), [coins]);
   const openDetail = useOpenTokenDetail();
 
   // Donut chart
@@ -2484,7 +2505,7 @@ function PortfolioView() {
             </div>
           </div>
           {coins.map(c => (
-            <div key={c.sym} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+            <div key={`${c.sym}-${c.chainId ?? 'litho'}`} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }}/>
               <span style={{ fontSize: 12, flex: 1, color: 'var(--text-secondary)' }}>{c.name}</span>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{c.pct}%</span>
@@ -2507,7 +2528,7 @@ function PortfolioView() {
             <tbody>
               {loading && coins.length === 0 && <SkeletonTableRows rows={5} cols={5}/>}
               {coins.map(c => (
-                <tr key={c.sym} onClick={() => openDetail?.(c.sym)} style={{ cursor: 'pointer' }}>
+                <tr key={`${c.sym}-${c.chainId ?? 'litho'}`} onClick={() => openDetail?.(c.sym, c.chainId)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div className="tx-cell">
                       <TokenAvatar sym={c.sym} color={c.color} className="tx-avatar" label={c.sym.slice(0,2)}/>
@@ -2720,6 +2741,7 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
           </Row>
         </Section>
 
+        <NetworksSection Section={Section}/>
         <AddressBookSection Section={Section}/>
         <PermissionsSection Section={Section}/>
 
@@ -2825,6 +2847,45 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
 }
 
 /* ──────────────────────── Address book section ──────────────────────── */
+/** Show/hide which networks appear in the portfolio. Purely a display
+ *  preference (see asset-visibility.ts's header note) — Send/Receive/detail
+ *  navigation are unaffected. Lithosphere Mainnet (9005) and Makalu are
+ *  independent, separately-hideable rows since native LITHO exists on both. */
+function NetworksSection({
+  Section,
+}: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+}) {
+  const [, setTick] = useState(0);
+  const hidden = getHiddenNetworks();
+
+  return (
+    <Section icon={Globe} title="Networks" sub="Show or hide networks in your portfolio">
+      {ALL_NETWORKS.map((n) => {
+        const on = !hidden.has(n.key);
+        return (
+          <div key={n.key} className="settings-row">
+            <div className="settings-row-label">
+              <div className="settings-row-title">{n.name}</div>
+              <div className="settings-row-sub">{n.sub}</div>
+            </div>
+            <div className="settings-row-control">
+              <button
+                className="toggle-btn"
+                style={{ background: on ? 'var(--blue)' : 'var(--bg-elevated)' }}
+                onClick={() => { toggleNetworkVisibility(n.key); setTick((t) => t + 1); }}
+                aria-label={on ? `Hide ${n.name}` : `Show ${n.name}`}
+              >
+                <div className={`toggle-thumb ${on ? 'right' : 'left'}`}/>
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
 function AddressBookSection({
   Section,
 }: {
@@ -3872,6 +3933,11 @@ function App() {
   const [modal, setModal]   = useState<Modal>(null);
   /** Token-detail modal — opened by tapping any token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Chain of the tapped row — LITHO is native on both Lithosphere Makalu and
+   *  Lithosphere Mainnet, so symbol alone can't tell TokenDetailModal which
+   *  one to show. */
+  const [detailChainId, setDetailChainId] = useState<number | undefined>(undefined);
+  const openToken = (sym: string, chainId?: number) => { setDetailSym(sym); setDetailChainId(chainId); };
   /** Asset carried from the detail screen into Send/Swap so they open
    *  pre-seeded with the token the user was viewing. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
@@ -4062,7 +4128,7 @@ function App() {
   return (
     <WalletSeedContext.Provider value={walletSeed}>
     <PortfolioContext.Provider value={portfolio}>
-    <OpenTokenDetail.Provider value={setDetailSym}>
+    <OpenTokenDetail.Provider value={openToken}>
     <DappOpenerContext.Provider value={(url, name) => setDapp({ url, name })}>
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
@@ -4278,10 +4344,11 @@ function App() {
       {detailSym && (
         <TokenDetailModal
           sym={detailSym}
-          onClose={() => setDetailSym(null)}
-          onSend={() => { setSeedSym(detailSym); setDetailSym(null); setModal('send'); }}
-          onReceive={() => { setDetailSym(null); setModal('receive'); }}
-          onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setModal('swap'); }}
+          chainId={detailChainId}
+          onClose={() => { setDetailSym(null); setDetailChainId(undefined); }}
+          onSend={() => { setSeedSym(detailSym); setDetailSym(null); setDetailChainId(undefined); setModal('send'); }}
+          onReceive={() => { setDetailSym(null); setDetailChainId(undefined); setModal('receive'); }}
+          onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setDetailChainId(undefined); setModal('swap'); }}
         />
       )}
       {modal === 'send'    && <SendModal    onClose={() => { setModal(null); setSeedSym(null); }} address={walletAddr}
