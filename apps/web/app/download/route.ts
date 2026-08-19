@@ -11,12 +11,15 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.2 (versionCode 17), EAS build
-// GGgtr2H2, 2026-08-14. Targets Android 16 / API 36.
-// NEW in vc17: native Quantt Agents sign-in (Connect with Thanos → EIP-712
-// wallet login → live portfolio/agents panel). vc16 targeted API 36; vc15 added
-// Lithosphere Mainnet (chain 9005), the wallet-mark icon, tap-a-transaction
-// on-chain detail (fee/nonce/status), and network-aware Send/Receive.
+// Latest production-apk build — app version 1.1.2 (versionCode 18), EAS build
+// d85a2295, 2026-08-19. Targets Android 16 / API 36.
+// NEW in vc18: Android App Links — thanos.fi/wc and thanos.fi/app now open
+// this app directly instead of the browser (autoVerify https intent-filter +
+// the assetlinks.json manifest at thanos.fi/.well-known/). vc17 added native
+// Quantt Agents sign-in (Connect with Thanos → EIP-712 wallet login → live
+// portfolio/agents panel). vc16 targeted API 36; vc15 added Lithosphere
+// Mainnet (chain 9005), the wallet-mark icon, tap-a-transaction on-chain
+// detail (fee/nonce/status), and network-aware Send/Receive.
 // NEW in 1.1.2: LAX card points at the public site (lax.money) only — the
 // pre-approval dashboard.lax register link + ?address= prefill were removed at
 // the client's request. LAX totals now render with the Ⱡ prefix. Account
@@ -73,7 +76,7 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/GGgtr2H2R17iuoTfTHVPbTQNJTv8FcDIKIJKlW7bq-Y.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/WanAesZLPLNCIwALOeJRshogmu2T0NDUdxkXDYz8brE.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
