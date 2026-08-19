@@ -1183,11 +1183,17 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   const addr = useWalletAddr();
   const seed = useWalletSeed();
   const openBrowser = useBrowser();
-  const { assets, totalUsd, loading, offline, hydrated, reload } = usePortfolio(addr, seed);
+  const { assets: allAssets, loading, offline, hydrated, reload } = usePortfolio(addr, seed);
+  // Networks/assets the user hid in Settings never reach this screen's list
+  // or totals — see useHiddenAssets' header note for why Send/Receive/detail
+  // navigation stay unaffected (this is a portfolio-VIEW preference only).
+  const { isVisible } = useHiddenAssets();
+  const assets = useMemo(() => allAssets.filter(isVisible), [allAssets, isVisible]);
+  const totalUsd = assets.reduce((s, a) => s + a.usdValue, 0);
   const networks = new Set(assets.map((a) => a.chainId)).size;
   // Cold first load only: loading AND nothing cached/painted yet. If a snapshot
   // hydrated the view (or any assets are already present), show real data.
-  const showSkeleton = loading && !hydrated && assets.length === 0;
+  const showSkeleton = loading && !hydrated && allAssets.length === 0;
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
   useEffect(() => { isSeedBackedUp().then(setBackedUp).catch(() => {}); }, []);
   const [laxCreate, setLaxCreate] = useState(false);
@@ -1336,7 +1342,10 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
               Couldn’t reach the indexer — pull down to retry.
             </Text>
           )}
-          {!loading && !offline && assets.length === 0 && (
+          {!loading && !offline && assets.length === 0 && allAssets.length > 0 && (
+            <Text style={[styles.rowSub, { padding: 16 }]}>All networks are hidden. Manage them in Settings → Manage networks.</Text>
+          )}
+          {!loading && !offline && assets.length === 0 && allAssets.length === 0 && (
             <Text style={[styles.rowSub, { padding: 16 }]}>No assets yet.</Text>
           )}
           {assets.map((a, i) => (
@@ -1536,6 +1545,85 @@ const CHAIN_META: Record<SendChainOption, { label: string; sym: string; decimals
  *  Key = sym@chainId[:tokenAddress]. */
 const assetKeyOf = (a: { sym: string; chainId: number; tokenAddress?: string }): string =>
   `${a.sym}@${a.chainId}${a.tokenAddress ? ':' + a.tokenAddress : ''}`;
+
+/* ── Hide/show networks + assets ──────────────────────────────────────────
+   A pure DISPLAY preference — it never restricts Send/Receive/dApp use, so a
+   hidden asset stays fully reachable once un-hidden. Two independent layers:
+     - Network-level: hides every row on that chain. BTC/SOL/ATOM all share
+       chainId 0 in DisplayAsset, so they're keyed by symbol instead.
+     - Asset-level: hides one specific row (e.g. one token on an otherwise-
+       visible chain), keyed the same way Send's FROM-picker already does
+       (assetKeyOf) so identity is consistent across the app.
+   Persisted via AsyncStorage. Home/Assets aren't kept mounted across
+   navigation (plain conditional rendering), so a toggle made in Settings is
+   picked up fresh the next time either screen opens — no shared context
+   needed. */
+const HIDDEN_NETWORKS_KEY = 'thanos.hidden_networks.v1';
+const HIDDEN_ASSETS_KEY   = 'thanos.hidden_assets.v1';
+
+const networkVisKey = (chainId: number, sym: string): string =>
+  chainId === 0 ? `sym:${sym}` : `chain:${chainId}`;
+
+/** Static catalog of every network the wallet supports, for the "Manage
+ *  networks" toggle list. LITHO is native on BOTH Lithosphere Mainnet (9005)
+ *  and Lithosphere Makalu (700777) — listed as distinct, independently
+ *  hideable rows, same as the portfolio treats them. */
+const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
+  { key: networkVisKey(9005, 'LITHO'),   name: 'Lithosphere',        sub: 'Mainnet · chain 9005' },
+  { key: networkVisKey(700777, 'LITHO'), name: 'Lithosphere Makalu', sub: 'Testnet · chain 700777' },
+  { key: networkVisKey(0, 'BTC'),        name: 'Bitcoin',            sub: 'Native' },
+  { key: networkVisKey(0, 'SOL'),        name: 'Solana',             sub: 'Native' },
+  { key: networkVisKey(0, 'ATOM'),       name: 'Cosmos Hub',         sub: 'Native' },
+  { key: networkVisKey(1, 'ETH'),        name: 'Ethereum',           sub: 'chain 1' },
+  { key: networkVisKey(56, 'BNB'),       name: 'BNB Chain',          sub: 'chain 56' },
+  { key: networkVisKey(137, 'POL'),      name: 'Polygon',            sub: 'chain 137' },
+  { key: networkVisKey(8453, 'ETH'),     name: 'Base',               sub: 'chain 8453' },
+  { key: networkVisKey(42161, 'ETH'),    name: 'Arbitrum',           sub: 'chain 42161' },
+  { key: networkVisKey(10, 'ETH'),       name: 'Optimism',           sub: 'chain 10' },
+  { key: networkVisKey(59144, 'ETH'),    name: 'Linea',              sub: 'chain 59144' },
+  { key: networkVisKey(43114, 'AVAX'),   name: 'Avalanche',          sub: 'chain 43114' },
+];
+
+/** Loads + persists the two hidden-key sets and exposes toggle/filter
+ *  helpers. Cheap (a couple of small JSON arrays) — fine to load fresh in
+ *  every screen that needs it. */
+function useHiddenAssets() {
+  const [hiddenNetworks, setHiddenNetworks] = useState<Set<string>>(new Set());
+  const [hiddenAssets, setHiddenAssets]     = useState<Set<string>>(new Set());
+  useEffect(() => {
+    (async () => {
+      try {
+        const [nRaw, aRaw] = await Promise.all([
+          AsyncStorage.getItem(HIDDEN_NETWORKS_KEY),
+          AsyncStorage.getItem(HIDDEN_ASSETS_KEY),
+        ]);
+        if (nRaw) setHiddenNetworks(new Set(JSON.parse(nRaw)));
+        if (aRaw) setHiddenAssets(new Set(JSON.parse(aRaw)));
+      } catch { /* corrupt/missing pref — default to nothing hidden */ }
+    })();
+  }, []);
+
+  const toggleNetwork = (key: string) => {
+    setHiddenNetworks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      AsyncStorage.setItem(HIDDEN_NETWORKS_KEY, JSON.stringify([...next])).catch(() => {});
+      return next;
+    });
+  };
+  const toggleAsset = (key: string) => {
+    setHiddenAssets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      AsyncStorage.setItem(HIDDEN_ASSETS_KEY, JSON.stringify([...next])).catch(() => {});
+      return next;
+    });
+  };
+  const isVisible = (a: { sym: string; chainId: number; tokenAddress?: string }): boolean =>
+    !hiddenNetworks.has(networkVisKey(a.chainId, a.sym)) && !hiddenAssets.has(assetKeyOf(a));
+
+  return { hiddenNetworks, hiddenAssets, toggleNetwork, toggleAsset, isVisible };
+}
 
 /** chainIds of the external EVM chains (mirror lib/evm-external EXT_EVM_CHAINS).
  *  Used to route sends + skip the Makalu-only pre-send simulation. */
@@ -3282,6 +3370,7 @@ function SettingsScreen() {
   const [permsOpen, setPermsOpen] = useState(false);
   const [dnnsOpen, setDnnsOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
+  const [networksOpen, setNetworksOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
   const [language, setLanguage]         = useState('English');
   useEffect(() => {
@@ -3431,7 +3520,8 @@ function SettingsScreen() {
       ),
       onPress: onToggleNotif,
     },
-    { label: 'Network',           desc: 'Makalu (mainnet)',                Icon: Globe },
+    { label: 'Manage networks',   desc: 'Show or hide networks & chains',  Icon: Globe,
+      onPress: () => setNetworksOpen(true) },
     { label: 'Lithosphere names', desc: 'Register a .litho name for your wallet', Icon: BadgeCheck,
       onPress: () => setDnnsOpen(true) },
     { label: 'Custom RPC',        desc: 'Override the Makalu RPC endpoint', Icon: Server,
@@ -3613,6 +3703,7 @@ function SettingsScreen() {
       <PermissionsModal visible={permsOpen} onClose={() => setPermsOpen(false)} seed={seed}/>
       <DnnsModal visible={dnnsOpen} onClose={() => setDnnsOpen(false)} ownerAddr={walletAddr}/>
       <AccountModal visible={acctOpen} onClose={() => setAcctOpen(false)}/>
+      <NetworksVisibilityModal visible={networksOpen} onClose={() => setNetworksOpen(false)}/>
     </ScrollView>
   );
 }
@@ -3911,6 +4002,50 @@ function SheetShell({ title, onClose, children }: { title: string; onClose: () =
         </View>
       </View>
     </Modal>
+  );
+}
+
+/** "Manage networks" — toggle which chains show up in the portfolio. Purely a
+ *  display preference (see useHiddenAssets' header note); LITHO mainnet and
+ *  Makalu are independent rows here since the wallet holds native LITHO on
+ *  both. Per-asset (single-token) hiding lives inline on the Assets screen
+ *  instead, next to the specific row it affects. */
+function NetworksVisibilityModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  const { hiddenNetworks, toggleNetwork } = useHiddenAssets();
+  if (!visible) return null;
+  return (
+    <SheetShell title="Manage networks" onClose={onClose}>
+      <Text style={{ color: C.textMuted, fontSize: 12, marginTop: -6, marginBottom: 4 }}>
+        Hidden networks disappear from your portfolio and totals. You can always turn one back on here.
+      </Text>
+      <ScrollView style={{ maxHeight: 420 }}>
+        {ALL_NETWORKS.map((n, i) => {
+          const on = !hiddenNetworks.has(n.key);
+          return (
+            <Pressable
+              key={n.key}
+              onPress={() => toggleNetwork(n.key)}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 10,
+                paddingVertical: 12, borderBottomWidth: i < ALL_NETWORKS.length - 1 ? 1 : 0,
+                borderBottomColor: C.borderSubtle,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 14 }}>{n.name}</Text>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>{n.sub}</Text>
+              </View>
+              {on ? <Eye size={16} color={C.textSecondary}/> : <EyeOff size={16} color={C.textMuted}/>}
+              <View style={[styles.toggleSwitch, on && styles.toggleSwitchOn]}>
+                <View style={[styles.toggleThumb, on && styles.toggleThumbOn]}/>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </SheetShell>
   );
 }
 
@@ -5742,12 +5877,25 @@ function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
-  const { assets, totalUsd, loading, offline, reload } = usePortfolio(addr, seed);
+  const { assets, loading, offline, reload } = usePortfolio(addr, seed);
+  const { hiddenNetworks, hiddenAssets, toggleAsset } = useHiddenAssets();
 
-  const held  = assets.filter(a => a.usdValue > 0);
-  const total = held.reduce((s, a) => s + a.usdValue, 0) || 1;
-  const rows  = held.map(a => ({ ...a, pct: Math.max(1, Math.round((a.usdValue / total) * 100)) }));
-  const svg   = rows.length ? donutSvg(rows.map(r => ({ color: r.color, pct: r.pct }))) : null;
+  // Network-level hides (Settings → Manage networks) drop the row entirely —
+  // no override here, that's managed in one place. Asset-level hides stay
+  // reversible IN this list: the row keeps showing (dimmed) with the eye
+  // toggle flipped, so hiding a token is never a dead end with no way back.
+  const heldAll     = assets.filter(a => a.usdValue > 0 && !hiddenNetworks.has(networkVisKey(a.chainId, a.sym)));
+  const heldVisible = heldAll.filter(a => !hiddenAssets.has(assetKeyOf(a)));
+  const total    = heldVisible.reduce((s, a) => s + a.usdValue, 0) || 1;
+  const totalUsd = heldVisible.reduce((s, a) => s + a.usdValue, 0);
+  const rows = heldAll.map(a => ({
+    ...a,
+    pct: Math.max(1, Math.round((a.usdValue / total) * 100)),
+    hidden: hiddenAssets.has(assetKeyOf(a)),
+  }));
+  const svg = heldVisible.length
+    ? donutSvg(heldVisible.map(r => ({ color: r.color, pct: Math.max(1, Math.round((r.usdValue / total) * 100)) })))
+    : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
@@ -5781,15 +5929,22 @@ function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
           <Pressable
             key={a.sym + i}
             onPress={() => onOpenToken(a.sym, a.chainId)}
-            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: i < rows.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle, opacity: a.hidden ? 0.45 : 1 }}
           >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: a.color, marginRight: 10 }}/>
             <Avatar symbol={a.sym} color={a.color} size={34}/>
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{a.name}</Text>
-              <Text style={{ color: C.textMuted, fontSize: 11 }}>{a.balanceText} {a.sym} · {a.pct}%</Text>
+              <Text style={{ color: C.textMuted, fontSize: 11 }}>{a.balanceText} {a.sym} · {a.hidden ? 'Hidden' : `${a.pct}%`}</Text>
             </View>
-            <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14 }}>{formatUsd(a.usdValue)}</Text>
+            <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 14, marginRight: 10 }}>{formatUsd(a.usdValue)}</Text>
+            <Pressable
+              hitSlop={10}
+              onPress={(e) => { e.stopPropagation(); toggleAsset(assetKeyOf(a)); }}
+              accessibilityLabel={a.hidden ? `Show ${a.name}` : `Hide ${a.name}`}
+            >
+              {a.hidden ? <EyeOff size={16} color={C.textMuted}/> : <Eye size={16} color={C.textSecondary}/>}
+            </Pressable>
           </Pressable>
         ))}
       </ScrollView>
@@ -5835,11 +5990,13 @@ function NFTsScreen({ goBack }: { goBack: () => void }) {
   );
 }
 
-/* First-run welcome — introduces the Lithosphere Makalu home network the
-   first time a user reaches the unlocked wallet. Self-gates on an
-   AsyncStorage flag (written the moment it shows) so it appears at most once
-   per install. Client request (Esha, 2026-06-15). */
-const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v1';
+/* First-run welcome — introduces Lithosphere Mainnet, the wallet's home
+   network, the first time a user reaches the unlocked wallet. Self-gates on
+   an AsyncStorage flag (written the moment it shows) so it appears at most
+   once per install. Client request (Esha, 2026-06-15); copy updated to the
+   mainnet (chain 9005) once it went live — v2 flag re-shows it once for
+   users who already dismissed the old Makalu-testnet version. */
+const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v2';
 function MakaluWelcomeModal() {
   const C = useColors();
   const [visible, setVisible] = useState(false);
@@ -5857,10 +6014,10 @@ function MakaluWelcomeModal() {
           <Image source={require('./assets/images/Thanos_Logo_Transparent.png')} style={{ width: 60, height: 60, marginBottom: 14, resizeMode: 'contain' }}/>
           <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Welcome to Thanos Wallet</Text>
           <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 6 }}>
-            Your wallet is on the Lithosphere Makalu network (chain 700777) — the Web4 home chain. The native coin is LITHO; Bitcoin, Solana, Cosmos and EVM are built in too.
+            Your wallet is on the Lithosphere network (chain 9005) — the Web4 home chain. The native coin is LITHO; Bitcoin, Solana, Cosmos and EVM are built in too.
           </Text>
           <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, textAlign: 'center', marginBottom: 18 }}>
-            Explorer: makalu.litho.ai · RPC: rpc.litho.ai
+            Explorer: lithoscan.ai · RPC: rpc-mainnet.litho.ai
           </Text>
           <Pressable onPress={() => setVisible(false)} style={{ width: '100%', paddingVertical: 13, borderRadius: 12, backgroundColor: '#3b7af7', alignItems: 'center' }}>
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Got it</Text>
