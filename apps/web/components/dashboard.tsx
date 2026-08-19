@@ -33,6 +33,7 @@ import { pendingActivityRows } from '../lib/tx-store';
 import { TransactionDetailModal } from './TransactionDetailModal';
 
 import { TOKENS } from '../lib/tokens';
+import { isCoinVisible } from '../lib/asset-visibility';
 
 /* Project an indexer asset onto a dashboard coin row, using canonical TOKENS
    for icon/color/price (the indexer doesn't ship that metadata).
@@ -777,7 +778,10 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveActivity, pendingTick]);
 
-  const totalUsd = COINS.reduce((s, c) => s + c.usdNum, 0);
+  // Hidden networks/assets drop out of the total too — consistent with the
+  // list filtering above and the other clients (a hidden holding shouldn't
+  // skew what "Total balance" claims to show).
+  const totalUsd = COINS.filter(isCoinVisible).reduce((s, c) => s + c.usdNum, 0);
   // Converted into the active display currency (formatFiat applies that
   // currency's own decimals — 2 for USD/EUR/GBP, 0 for JPY, 6 for BTC).
   const totalDisplay = formatFiat(totalUsd);
@@ -857,12 +861,16 @@ export function Dashboard() {
   }, [searchParams]);
 
   const filteredCoins = useMemo(() => {
-    let list = netFilter === 'all'
-      ? COINS
-      : COINS.filter(c => {
-          const t = TOKENS.find(x => x.sym === c.sym);
-          return t?.chain === netFilter;
-        });
+    // Networks/assets hidden in Settings never reach this list — see
+    // lib/asset-visibility's header note (Send/Receive/detail navigation
+    // stay unaffected; this is a portfolio-VIEW preference only).
+    let list = COINS.filter(isCoinVisible);
+    if (netFilter !== 'all') {
+      list = list.filter(c => {
+        const t = TOKENS.find(x => x.sym === c.sym);
+        return t?.chain === netFilter;
+      });
+    }
     if (hideSmall) list = list.filter(c => c.usdNum >= 1);
     list = [...list].sort((a, b) =>
       sortMode === 'name'      ? a.sym.localeCompare(b.sym)
@@ -1175,7 +1183,7 @@ export function Dashboard() {
                   : '';
                 return (
                 <div
-                  key={c.sym}
+                  key={`${c.sym}-${c.chainId ?? 'litho'}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => setDetail({ sym: c.sym, chainId: c.chainId })}

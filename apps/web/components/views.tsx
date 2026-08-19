@@ -28,6 +28,7 @@ import { BumpFeeModal } from './BumpFeeModal';
 import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 import { TokenDetailModal } from './TokenDetailModal';
+import { getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from '../lib/asset-visibility';
 import { TransactionDetailModal } from './TransactionDetailModal';
 
 /* Lithosphere rows shown at the top of the Market view. Prices come
@@ -794,6 +795,39 @@ function AccountSection({ Section, Row }: {
   );
 }
 
+/* ─── Networks section — show/hide which chains appear in the portfolio ──
+   Purely a display preference (asset-visibility.ts's header note): Send/
+   Receive/detail navigation are unaffected. Lithosphere Mainnet (9005) and
+   Makalu are independent, separately-hideable rows since native LITHO
+   exists on both. ─────────────────────────────────────────────────────── */
+function NetworksSection({ Section, Row }: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+  Row:     React.FC<{ label: string; sub?: string; children: React.ReactNode }>;
+}) {
+  const [, setTick] = useState(0);
+  const hidden = getHiddenNetworks();
+
+  return (
+    <Section icon={Globe} title="Networks" sub="Show or hide networks in your portfolio">
+      {ALL_NETWORKS.map((n) => {
+        const on = !hidden.has(n.key);
+        return (
+          <Row key={n.key} label={n.name} sub={n.sub}>
+            <button
+              className="toggle-btn"
+              style={{ background: on ? 'var(--blue)' : 'var(--bg-elevated)' }}
+              onClick={() => { toggleNetworkVisibility(n.key); setTick((t) => t + 1); }}
+              aria-label={on ? `Hide ${n.name}` : `Show ${n.name}`}
+            >
+              <div className={`toggle-thumb ${on ? 'right' : 'left'}`}/>
+            </button>
+          </Row>
+        );
+      })}
+    </Section>
+  );
+}
+
 /* ─── Address book section ──────────────────────────────────────────────── */
 function AddressBookSection({ Section, Row }: {
   Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
@@ -1303,6 +1337,7 @@ export function SettingsView() {
 
         <AccountSection Section={Section} Row={Row}/>
 
+        <NetworksSection Section={Section} Row={Row}/>
         <AddressBookSection Section={Section} Row={Row}/>
         <DnnsSection Section={Section}/>
 
