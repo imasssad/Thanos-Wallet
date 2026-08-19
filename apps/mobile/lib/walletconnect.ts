@@ -70,7 +70,11 @@ export async function getWalletKit(): Promise<IWalletKit> {
         description: 'Lithosphere-first multi-chain wallet',
         url:         'https://thanos.fi',
         icons:       ['https://thanos.fi/images/Thanos_Logo.png'],
-        redirect:    { native: 'thanoswallet://', universal: 'https://thanos.fi' },
+        // universal must be a path covered by the AASA/assetlinks manifests
+        // (thanos.fi/.well-known/…) or the OS won't treat it as an app link —
+        // the bare root domain isn't in scope, so a dApp's post-approval
+        // redirect there opened the browser instead of returning to the app.
+        redirect:    { native: 'thanoswallet://', universal: 'https://thanos.fi/wc' },
       },
     });
   })();

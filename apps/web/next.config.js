@@ -126,10 +126,14 @@ const nextConfig = {
       { source: '/rpc/makalu',   destination: 'https://rpc.litho.ai/' },
       { source: '/rpc/makalu-2', destination: 'https://rpc-2.litho.ai/' },
       { source: '/rpc/kamet',    destination: 'https://rpc-3.litho.ai/' },
-      // Apple universal-links manifest for the WalletConnect handoff
-      // (thanos.fi/wc → Thanos mobile). Internal rewrite, so it's served with
-      // the route handler's application/json + no redirect, as Apple requires.
+      // Apple universal-links manifest for the WalletConnect + Connect/Launch
+      // handoff (thanos.fi/wc, thanos.fi/app → Thanos mobile). Internal
+      // rewrite, so it's served with the route handler's application/json +
+      // no redirect, as Apple requires.
       { source: '/.well-known/apple-app-site-association', destination: '/api/aasa' },
+      // Android App Links manifest — same handoff, Android side. Internal
+      // rewrite for the same reason (application/json + no redirect).
+      { source: '/.well-known/assetlinks.json', destination: '/api/assetlinks' },
     ];
   },
 

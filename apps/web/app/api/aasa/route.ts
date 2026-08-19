@@ -1,8 +1,10 @@
 /**
  * Apple App Site Association (AASA).
  *
- * Serves the universal-link manifest so iOS opens the Thanos mobile app for
- * https://thanos.fi/wc?uri=… (the WalletConnect handoff). A next.config rewrite
+ * Serves the universal-link manifest so iOS opens the Thanos mobile app instead
+ * of Safari for https://thanos.fi/wc?uri=… (the WalletConnect handoff) and
+ * https://thanos.fi/app (any "Connect"/"Launch wallet" link that used to land on
+ * the web wallet even when the native app is installed). A next.config rewrite
  * maps the canonical path `/.well-known/apple-app-site-association` here, so it's
  * delivered as application/json with NO redirect — both Apple requirements.
  *
@@ -22,7 +24,7 @@ const DEFAULT_TEAM_ID = 'JEYAFQ92YG'; // KaJ Labs LLC — Apple Developer Progra
 export function GET() {
   const teamId = process.env.APPLE_TEAM_ID?.trim() || DEFAULT_TEAM_ID;
   const details = teamId
-    ? [{ appID: `${teamId}.${IOS_BUNDLE_ID}`, paths: ['/wc', '/wc/*'] }]
+    ? [{ appID: `${teamId}.${IOS_BUNDLE_ID}`, paths: ['/wc', '/wc/*', '/app', '/app/*'] }]
     : [];
 
   const body = JSON.stringify({ applinks: { apps: [], details } });

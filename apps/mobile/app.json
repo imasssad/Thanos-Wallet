@@ -39,7 +39,7 @@
     "android": {
       "package": "ai.thanos.wallet",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 17,
+      "versionCode": 18,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"
@@ -64,6 +64,26 @@
             },
             {
               "scheme": "wc"
+            }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "thanos.fi",
+              "pathPrefix": "/wc"
+            },
+            {
+              "scheme": "https",
+              "host": "thanos.fi",
+              "pathPrefix": "/app"
             }
           ]
         }
