@@ -39,6 +39,9 @@ import {
   addCustomChain, addCustomToken, removeCustomChain, removeCustomToken,
   probeChainId, probeErc20, type CustomChain, type CustomToken,
 } from '../../lib/custom-assets';
+import {
+  loadHiddenAssets, isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS,
+} from '../../lib/asset-visibility';
 import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -872,7 +875,7 @@ function HomeScreen({
   onAction:      (m: 'send'|'receive'|'swap') => void;
   onLock:        () => void;
   onOpenSettings: () => void;
-  onOpenToken:   (sym: string) => void;
+  onOpenToken:   (sym: string, chainId?: number) => void;
   activeIdx:     number;
   accountCount:  number;
   onSwitch:      (idx: number) => void;
@@ -880,7 +883,12 @@ function HomeScreen({
   onRenameAccount: (idx: number) => void;
   onDeleteAccount: (idx: number) => void;
 }) {
-  const { coins, totalUsd, loading, offline } = usePortfolioCtx();
+  const { coins: allCoins, loading, offline } = usePortfolioCtx();
+  // Networks/assets hidden in Settings never reach this list or the total —
+  // see lib/asset-visibility's header note (Send/Receive/detail navigation
+  // stay unaffected; this is a portfolio-VIEW preference only).
+  const coins = useMemo(() => allCoins.filter(isCoinVisible), [allCoins]);
+  const totalUsd = useMemo(() => coins.reduce((s, c) => s + c.usdValue, 0), [coins]);
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
   const [acctMenu, setAcctMenu] = useState(false);
   useEffect(() => { setBackedUp(isSeedBackedUp()); }, []);
@@ -1077,7 +1085,7 @@ function HomeScreen({
         {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
         {!loading && !offline && coins.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No assets yet</div>}
         {coins.map((a, i) => (
-          <div key={a.sym} className={`row ${i < coins.length - 1 ? 'row-border' : ''}`} onClick={() => onOpenToken(a.sym)} style={{ cursor: 'pointer' }}>
+          <div key={`${a.sym}-${a.chainId ?? 'litho'}`} className={`row ${i < coins.length - 1 ? 'row-border' : ''}`} onClick={() => onOpenToken(a.sym, a.chainId)} style={{ cursor: 'pointer' }}>
             <TokenAvatar sym={a.sym} color={a.color}/>
             <div className="row-mid">
               <div className="row-name">{a.name}</div>
@@ -1373,7 +1381,7 @@ function CustomAssetsSection() {
 
 function SettingsScreen({
   isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook, onOpenPermissions,
-  address, accountName, onOpenChangePassword, onOpenRecoveryPhrase, onDeleteWallet,
+  address, accountName, onOpenChangePassword, onOpenRecoveryPhrase, onDeleteWallet, onOpenManageNetworks,
 }: {
   onDeleteWallet: () => void;
   isDark: boolean;
@@ -1386,6 +1394,7 @@ function SettingsScreen({
   accountName: string;
   onOpenChangePassword: () => void;
   onOpenRecoveryPhrase: () => void;
+  onOpenManageNetworks: () => void;
 }) {
   // LIVE display currency — the pick reformats every price in the popup via
   // the shared sdk-core fx engine (falls back to USD if a rate is missing).
@@ -1471,6 +1480,18 @@ function SettingsScreen({
             <ChevronRight size={15} color="var(--text-muted)"/>
           </button>
         )}
+      </div>
+
+      <SectionHead Icon={Globe} title="Networks" sub="Show or hide networks in your portfolio"/>
+      <div className="card list">
+        <button className="set-row" onClick={onOpenManageNetworks} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+          <div className="set-icon"><Globe size={15}/></div>
+          <div style={{ flex: 1 }}>
+            <div className="set-label">Manage networks</div>
+            <div className="set-sub">Hide networks you don't use — Send/Receive still work</div>
+          </div>
+          <ChevronRight size={15} color="var(--text-muted)"/>
+        </button>
       </div>
 
       <CustomAssetsSection/>
@@ -1821,11 +1842,17 @@ function tdPrice(nUsd: number): string {
   return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
-function TokenDetailModal({ sym, onClose, onSend, onReceive, onSwap }: {
-  sym: string; onClose: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
+function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive, onSwap }: {
+  sym: string; chainId?: number; onClose: () => void; onSend: () => void; onReceive: () => void; onSwap: () => void;
 }) {
   const { coins, activity } = usePortfolioCtx();
-  const coin = coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
+  // Prefer an exact (symbol + chain) match — LITHO is native on BOTH
+  // Lithosphere Makalu (chainId undefined in DisplayCoin) and Lithosphere
+  // Mainnet (9005), so a symbol-only match always resolved to whichever came
+  // first, regardless of which row was actually tapped.
+  const coin =
+    coins.find(c => c.sym.toLowerCase() === sym.toLowerCase() && c.chainId === chainId)
+    ?? coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   // Same fix as mobile/desktop: external-EVM coins must show their REAL chain
   // and must not offer the Makalu-only swap (Makalu rows carry no chainId).
@@ -1940,10 +1967,11 @@ const EXT_EVM_CHAIN_NAME: Record<number, string> = {
 const coinKey = (c: { sym: string; chainId?: number; tokenAddress?: string }): string =>
   `${c.sym}@${c.chainId ?? 'litho'}${c.tokenAddress ? ':' + c.tokenAddress : ''}`;
 
-function SendModal({ onClose, initialChain, initialCoin, address }: {
+function SendModal({ onClose, initialChain, initialCoin, initialChainId, address }: {
   onClose: () => void;
   initialChain?: ExtSendChain;
   initialCoin?: string;
+  initialChainId?: number;
   address?: string;
 }) {
   const { coins, reload } = usePortfolioCtx();
@@ -1959,6 +1987,9 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
 
   const coin =
     (selectedKey ? coins.find(c => coinKey(c) === selectedKey) : undefined)
+    // Prefer an exact (symbol + chain) match — LITHO repeats across Makalu and
+    // Lithosphere Mainnet, so chainId disambiguates which one was tapped.
+    ?? (initialCoin ? coins.find(c => c.sym === initialCoin && c.chainId === initialChainId) : undefined)
     ?? (initialCoin ? coins.find(c => c.sym === initialCoin) : undefined)
     ?? coins[0] ?? null;
   const amtNum = parseFloat(amt || '0');
@@ -2886,6 +2917,46 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
 }
 
 /* ──────────────────────────────────────────────────────────────────────
+   Manage networks — show/hide which chains appear in the portfolio. Purely
+   a display preference (lib/asset-visibility's header note): Send/Receive
+   and token-detail navigation are unaffected. LITHO's two homes (Mainnet
+   9005, Makalu) are independent, separately-hideable rows.
+   ────────────────────────────────────────────────────────────────────── */
+
+function ManageNetworksModal({ onClose }: { onClose: () => void }) {
+  const [, setTick] = useState(0);
+  const hidden = getHiddenNetworks();
+  const onToggle = (key: string) => { void toggleNetworkVisibility(key).then(() => setTick((t) => t + 1)); };
+
+  return (
+    <Modal title="Manage networks" onClose={onClose}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.4 }}>
+        Hidden networks disappear from your portfolio and totals. You can always turn one back on here.
+      </div>
+      <div className="card list">
+        {ALL_NETWORKS.map((n, i) => {
+          const on = !hidden.has(n.key);
+          return (
+            <button
+              key={n.key}
+              onClick={() => onToggle(n.key)}
+              className={`set-row ${i < ALL_NETWORKS.length - 1 ? 'row-border' : ''}`}
+              style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+            >
+              <div style={{ flex: 1 }}>
+                <div className="set-label">{n.name}</div>
+                <div className="set-sub">{n.sub}</div>
+              </div>
+              <div className={`toggle ${on ? 'on' : ''}`}><div className="toggle-thumb"/></div>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
    Permissions modal — token allowances + connected dApps
    ────────────────────────────────────────────────────────────────────── */
 
@@ -3062,7 +3133,7 @@ function SessionsPanel() {
 /* ──────────────────────── App shell ──────────────────────── */
 
 type Tab = 'home' | 'discover' | 'activity' | 'settings';
-type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | 'permissions' | 'recovery' | 'change-password' | null;
+type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | 'permissions' | 'recovery' | 'change-password' | 'manage-networks' | null;
 
 /* Reveal the secret recovery phrase — re-prompts the password (defense in
    depth) and decrypts the STORED vault before showing the words, rather than
@@ -3271,8 +3342,13 @@ function App() {
   const [modal, setModal] = useState<Modal>(null);
   /** Token-detail screen — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Chain of the tapped row — LITHO is native on both Makalu and Lithosphere
+   *  Mainnet, so symbol alone can't tell TokenDetailModal which one to show. */
+  const [detailChainId, setDetailChainId] = useState<number | undefined>(undefined);
+  const openToken = (sym: string, chainId?: number) => { setDetailSym(sym); setDetailChainId(chainId); };
   /** Asset carried from detail into Send/Swap so they open pre-seeded. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
+  const [seedChainId, setSeedChainId] = useState<number | undefined>(undefined);
   const [isDark, setIsDark] = useState(true);  // dark-first — matches web/desktop
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [pendingRpc, setPendingRpc] = useState<PendingRpcRequest | null>(null);
@@ -3315,6 +3391,12 @@ function App() {
   // Prime the custom-network/token overlay, then refresh so user-added
   // holdings appear on first open (the initial fetch runs before it loads).
   useEffect(() => { void loadCustomAssets().then(() => portfolio.reload()); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prime the hide/show overlay too. Pure display filter (no re-fetch needed)
+  // — bumping visTick just forces a re-render once the async load resolves,
+  // so a hidden coin doesn't flash before disappearing on cold popup open.
+  const [, setVisTick] = useState(0);
+  useEffect(() => { void loadHiddenAssets().then(() => setVisTick((t) => t + 1)); }, []);
 
   /** Switch to a different derived account. Updates storage so the
    *  next popup open + the signer paths pick up the same index. */
@@ -3756,23 +3838,26 @@ function App() {
     <PortfolioContext.Provider value={portfolio}>
       {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
       <MakaluWelcomeModal/>
-      {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); }} address={evmAddr}
+      {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); setSeedChainId(undefined); }} address={evmAddr}
         initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
-        initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}/>}
+        initialCoin={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}
+        initialChainId={seedChainId}/>}
       {modal === 'receive'       && <ReceiveModal       onClose={() => setModal(null)} address={evmAddr}/>}
       {modal === 'swap'          && <SwapModal          onClose={() => { setModal(null); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
       {modal === 'walletconnect' && <WalletConnectModal onClose={() => setModal(null)} evmAddress={evmAddr}/>}
       {modal === 'address-book' && <AddressBookModal    onClose={() => setModal(null)}/>}
       {modal === 'permissions'  && <PermissionsModal    onClose={() => setModal(null)}/>}
+      {modal === 'manage-networks' && <ManageNetworksModal onClose={() => setModal(null)}/>}
       {modal === 'recovery'        && <RecoveryPhraseModal onClose={() => setModal(null)}/>}
       {modal === 'change-password' && <ChangePasswordModal onClose={() => setModal(null)}/>}
       {detailSym && (
         <TokenDetailModal
           sym={detailSym}
-          onClose={() => setDetailSym(null)}
-          onSend={() => { setSeedSym(detailSym); setDetailSym(null); setModal('send'); }}
-          onReceive={() => { setDetailSym(null); setModal('receive'); }}
-          onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setModal('swap'); }}
+          chainId={detailChainId}
+          onClose={() => { setDetailSym(null); setDetailChainId(undefined); }}
+          onSend={() => { setSeedSym(detailSym); setSeedChainId(detailChainId); setDetailSym(null); setDetailChainId(undefined); setModal('send'); }}
+          onReceive={() => { setDetailSym(null); setDetailChainId(undefined); setModal('receive'); }}
+          onSwap={() => { setSeedSym(detailSym); setDetailSym(null); setDetailChainId(undefined); setModal('swap'); }}
         />
       )}
 
@@ -3781,7 +3866,7 @@ function App() {
           {tab === 'home'     && <HomeScreen
             key={nameTick}
             onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}
-            onOpenToken={setDetailSym}
+            onOpenToken={openToken}
             activeIdx={activeIdx} accountCount={accountCount}
             onSwitch={switchAccount} onAddAccount={addAccount}
             onRenameAccount={renameAccount}
@@ -3789,7 +3874,7 @@ function App() {
           />}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
-          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={getAccountName(activeIdx)} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')} onDeleteWallet={deleteWallet}/>}
+          {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={getAccountName(activeIdx)} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')} onDeleteWallet={deleteWallet} onOpenManageNetworks={() => setModal('manage-networks')}/>}
         </div>
         <div className="tabbar">
           {([
