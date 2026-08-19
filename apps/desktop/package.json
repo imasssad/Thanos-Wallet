@@ -22,10 +22,10 @@
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
-    "@cosmjs/crypto": "^0.32.4",
-    "@cosmjs/encoding": "^0.32.4",
-    "@cosmjs/proto-signing": "^0.32.4",
-    "@cosmjs/stargate": "^0.32.4",
+    "@cosmjs/crypto": "^0.39.0",
+    "@cosmjs/encoding": "^0.39.0",
+    "@cosmjs/proto-signing": "^0.39.0",
+    "@cosmjs/stargate": "^0.39.0",
     "@litho/multx-sdk": "file:../../vendor/litho-multx-sdk-0.2.0.tgz",
     "@ledgerhq/hw-app-btc": "^10.4.4",
     "@ledgerhq/hw-app-eth": "^6.46.0",
