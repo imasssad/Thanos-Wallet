@@ -30,7 +30,7 @@ import {
 import { TOKENS, explorerUrl, type Token } from '../lib/tokens';
 import { convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
-import { EVM_CHAINS } from '../lib/evm-chains';
+import { getEvmChainMerged } from '../lib/custom-assets';
 import { useQuotes } from '../lib/usePrices';
 import { getPortfolio, getActivity, type IndexerActivityItem } from '../lib/indexer';
 import { TokenIcon } from './TokenIcon';
@@ -145,7 +145,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   const canon = useMemo(() =>
     TOKENS.find(t => t.sym.toLowerCase() === sym.toLowerCase()) ?? null, [sym]);
   const evmChain = useMemo(() =>
-    chainId != null ? EVM_CHAINS.find(c => c.chainId === chainId) ?? null : null, [chainId]);
+    chainId != null ? getEvmChainMerged(chainId) ?? null : null, [chainId]);
 
   // Canonical row, or a minimal stand-in for indexer/EVM-discovered symbols.
   // The stand-in claims NOTHING it doesn't know: network comes from the

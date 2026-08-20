@@ -29,6 +29,7 @@ import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 import { TokenDetailModal } from './TokenDetailModal';
 import { getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from '../lib/asset-visibility';
+import * as customAssets from '../lib/custom-assets';
 import { TransactionDetailModal } from './TransactionDetailModal';
 
 /* Lithosphere rows shown at the top of the Market view. Prices come
@@ -828,6 +829,167 @@ function NetworksSection({ Section, Row }: {
   );
 }
 
+/* ─── Custom networks / tokens section ──────────────────────────────────── */
+function CustomAssetsSection({ Section }: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+}) {
+  const [, setTick] = useState(0);
+  const chains = customAssets.customChains();
+  const tokens = customAssets.customTokens();
+
+  const [mode, setMode] = useState<'chain' | 'token'>('chain');
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState<string | null>(null);
+
+  const [chainRpc,  setChainRpc]  = useState('');
+  const [chainName, setChainName] = useState('');
+  const [chainSym,  setChainSym]  = useState('');
+  const [chainExplorer, setChainExplorer] = useState('');
+
+  const [tokChainId, setTokChainId] = useState<number | null>(null);
+  const [tokAddress, setTokAddress] = useState('');
+
+  const evmChains = customAssets.allEvmChains();
+
+  const onAddChain = async () => {
+    if (busy || !chainRpc.trim() || !chainName.trim() || !chainSym.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const chainId = await customAssets.probeChainId(chainRpc.trim());
+      await customAssets.addCustomChain({
+        chainId,
+        name: chainName.trim(),
+        rpcUrl: chainRpc.trim(),
+        nativeSymbol: chainSym.trim().toUpperCase(),
+        explorerUrl: chainExplorer.trim(),
+      });
+      setChainRpc(''); setChainName(''); setChainSym(''); setChainExplorer('');
+      setTick(t => t + 1);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not reach that RPC — check the URL');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAddToken = async () => {
+    if (busy || tokChainId === null || !tokAddress.trim()) return;
+    const chain = evmChains.find(c => c.chainId === tokChainId);
+    if (!chain) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const meta = await customAssets.probeErc20(chain.rpcUrl, tokAddress.trim());
+      await customAssets.addCustomToken({
+        chainId: tokChainId,
+        address: tokAddress.trim(),
+        symbol: meta.symbol,
+        name: meta.name,
+        decimals: meta.decimals,
+      });
+      setTokAddress('');
+      setTick(t => t + 1);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Not a valid token contract on that network');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeChain = (chainId: number) => { customAssets.removeCustomChain(chainId); setTick(t => t + 1); };
+  const removeToken = (chainId: number, address: string) => { customAssets.removeCustomToken(chainId, address); setTick(t => t + 1); };
+
+  return (
+    <Section icon={Globe} title="Custom networks & tokens" sub="Add an EVM network or ERC-20 token">
+      <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className="settings-btn"
+            style={{ flex: 1, opacity: mode === 'chain' ? 1 : 0.55 }}
+            onClick={() => { setMode('chain'); setErr(null); }}
+          >
+            Network
+          </button>
+          <button
+            className="settings-btn"
+            style={{ flex: 1, opacity: mode === 'token' ? 1 : 0.55 }}
+            onClick={() => { setMode('token'); setErr(null); }}
+          >
+            Token
+          </button>
+        </div>
+
+        {mode === 'chain' ? (
+          <>
+            <input className="settings-select" placeholder="RPC URL" value={chainRpc} onChange={e => setChainRpc(e.target.value)} spellCheck={false} autoCapitalize="off"/>
+            <input className="settings-select" placeholder="Network name" value={chainName} onChange={e => setChainName(e.target.value)}/>
+            <input className="settings-select" placeholder="Native symbol (e.g. ETH)" value={chainSym} onChange={e => setChainSym(e.target.value)}/>
+            <input className="settings-select" placeholder="Block explorer URL (optional)" value={chainExplorer} onChange={e => setChainExplorer(e.target.value)} spellCheck={false} autoCapitalize="off"/>
+            {err && <div style={{ fontSize: 11, color: 'var(--red)' }}>{err}</div>}
+            <button className="settings-btn" onClick={onAddChain} disabled={busy || !chainRpc.trim() || !chainName.trim() || !chainSym.trim()}>
+              <Plus size={14}/> {busy ? 'Checking…' : 'Add network'}
+            </button>
+          </>
+        ) : (
+          <>
+            <select
+              className="settings-select"
+              value={tokChainId ?? ''}
+              onChange={e => setTokChainId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Select network…</option>
+              {evmChains.map(c => <option key={c.chainId} value={c.chainId}>{c.name}</option>)}
+            </select>
+            <input
+              className="settings-select"
+              placeholder="Token contract address (0x…)"
+              value={tokAddress}
+              onChange={e => setTokAddress(e.target.value)}
+              spellCheck={false}
+              autoCapitalize="off"
+              style={{ fontFamily: tokAddress ? 'Geist Mono, monospace' : undefined, fontSize: tokAddress ? 12 : undefined }}
+            />
+            {err && <div style={{ fontSize: 11, color: 'var(--red)' }}>{err}</div>}
+            <button className="settings-btn" onClick={onAddToken} disabled={busy || tokChainId === null || !tokAddress.trim()}>
+              <Plus size={14}/> {busy ? 'Checking…' : 'Add token'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {(chains.length > 0 || tokens.length > 0) && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {chains.map(c => (
+            <div key={`chain-${c.chainId}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Network · chain {c.chainId} · {c.nativeSymbol}</div>
+              </div>
+              <button onClick={() => removeChain(c.chainId)} aria-label={`Remove ${c.name}`} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          ))}
+          {tokens.map(t => (
+            <div key={`token-${t.chainId}-${t.address}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t.symbol}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Token · {t.name} · {t.address}
+                </div>
+              </div>
+              <button onClick={() => removeToken(t.chainId, t.address)} aria-label={`Remove ${t.symbol}`} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 6, display: 'flex' }}>
+                <Trash2 size={14}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 /* ─── Address book section ──────────────────────────────────────────────── */
 function AddressBookSection({ Section, Row }: {
   Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
@@ -1338,6 +1500,7 @@ export function SettingsView() {
         <AccountSection Section={Section} Row={Row}/>
 
         <NetworksSection Section={Section} Row={Row}/>
+        <CustomAssetsSection Section={Section}/>
         <AddressBookSection Section={Section} Row={Row}/>
         <DnnsSection Section={Section}/>
 

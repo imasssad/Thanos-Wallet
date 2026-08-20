@@ -26,7 +26,8 @@ import { getPortfolio, IndexerOffline, type IndexerAsset } from './indexer';
 import { getSolanaAddress,    getSolanaBalance    } from './solana';
 import { getBitcoinAddressFromSource, getBitcoinBalance } from './bitcoin';
 import { getCosmosAddress,    getCosmosBalance    } from './cosmos';
-import { getAllEvmNativeBalances, type EvmChain } from './evm-chains';
+import { type EvmChain } from './evm-chains';
+import { getAllEvmNativeBalancesMerged } from './custom-assets';
 import type { WalletSource } from './wallet-source';
 
 /** Per-EVM-chain native-coin entry. Each row is its own balance even
@@ -155,7 +156,7 @@ async function loadOnce(
     let evm: EvmChainBalance[] = [];
     if (evmAddress) {
       try {
-        evm = await getAllEvmNativeBalances(evmAddress);
+        evm = await getAllEvmNativeBalancesMerged(evmAddress);
         for (const { chain, balance } of evm) {
           if (balance <= 0) continue;
           const sym = chain.nativeSymbol.toLowerCase();

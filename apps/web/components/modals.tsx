@@ -57,8 +57,7 @@ import { getActiveAccountIndex } from '../lib/vault';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from '../lib/multx-bridge';
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
-import { EVM_CHAINS } from '../lib/evm-chains';
-import { EVM_TOKENS, evmTokensForChain } from '../lib/evm-tokens';
+import { allEvmChains, allTokensForChain, allEvmTokens } from '../lib/custom-assets';
 import { classifyRecipient } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
 import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
@@ -128,14 +127,18 @@ type SendNet =
   | { id: 'cosmos';  label: 'Cosmos Hub' }
   | { id: `evm:${number}`; label: string };
 
-const SEND_NETWORKS: SendNet[] = [
-  { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
-  { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
-  { id: 'bitcoin', label: 'Bitcoin' },
-  { id: 'solana',  label: 'Solana' },
-  { id: 'cosmos',  label: 'Cosmos Hub' },
-  ...EVM_CHAINS.map(c => ({ id: `evm:${c.chainId}` as const, label: c.name })),
-];
+// A function (not a frozen const) so a custom network added mid-session
+// shows up immediately — allEvmChains() re-reads the live custom-assets cache.
+function getSendNetworks(): SendNet[] {
+  return [
+    { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
+    { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
+    { id: 'bitcoin', label: 'Bitcoin' },
+    { id: 'solana',  label: 'Solana' },
+    { id: 'cosmos',  label: 'Cosmos Hub' },
+    ...allEvmChains().map(c => ({ id: `evm:${c.chainId}` as const, label: c.name })),
+  ];
+}
 
 export function SendModal({ onClose, initialNetwork, initialCoin }: {
   onClose: () => void;
@@ -173,14 +176,14 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     else if (network === 'cosmos')  setCoin('ATOM');
     else if (network.startsWith('evm:')) {
       const chainId = parseInt(network.slice(4), 10);
-      const chain   = EVM_CHAINS.find(c => c.chainId === chainId);
+      const chain   = allEvmChains().find(c => c.chainId === chainId);
       if (chain) setCoin(chain.nativeSymbol);
     }
   }, [network]);
 
   const evmChainId: number | null =
     network.startsWith('evm:') ? parseInt(network.slice(4), 10) : null;
-  const evmChain = evmChainId !== null ? EVM_CHAINS.find(c => c.chainId === evmChainId) ?? null : null;
+  const evmChain = evmChainId !== null ? allEvmChains().find(c => c.chainId === evmChainId) ?? null : null;
 
   // Sendable assets for the selected network. Litho has the LEP100 set; EVM
   // chains have their native coin + the stablecoins we track (USDT/USDC); the
@@ -194,7 +197,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     if (network === 'bitcoin') return ['BTC'];
     if (network === 'solana')  return ['SOL'];
     if (network === 'cosmos')  return ['ATOM'];
-    if (evmChain) return [evmChain.nativeSymbol, ...evmTokensForChain(evmChain.chainId).map(t => t.symbol)];
+    if (evmChain) return [evmChain.nativeSymbol, ...allTokensForChain(evmChain.chainId).map(t => t.symbol)];
     return [];
   }, [network, evmChain]);
 
@@ -205,7 +208,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   useEffect(() => {
     setStableBal(null);
     const addr = wallet?.addresses?.evm;
-    const tok = evmChainId ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin) : null;
+    const tok = evmChainId ? allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === coin) : null;
     if (!tok || !addr) return;
     let cancel = false;
     (async () => {
@@ -260,7 +263,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   const balanceFor = (sym: string) => {
     // Selected EVM stablecoin → its per-chain balance (not the cross-chain
     // bySym aggregate, which useLiveBalances doesn't populate for tokens anyway).
-    const tok = evmChainId ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === sym) : null;
+    const tok = evmChainId ? allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === sym) : null;
     if (tok && stableBal !== null) return stableBal;
     return live.bySym.get(sym.toLowerCase()) ?? '0';
   };
@@ -484,7 +487,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     // WITHOUT tokenAddress the simulator treats a USDT send as native BNB/ETH
     // and blocks on the gas balance with a nonsense message.
     const stableTok = isEvmSend && evmChainId
-      ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin) ?? null
+      ? allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === coin) ?? null
       : null;
     let cancelled = false;
     const t = setTimeout(async () => {
@@ -511,7 +514,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
   const recordPendingSend = (hash: string) => {
     if (!hash) return;
     const chain: 'evm' | 'solana' = isSolanaSend ? 'solana' : 'evm';
-    const tok = evmChainId ? EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin) : null;
+    const tok = evmChainId ? allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === coin) : null;
     try {
       recordPendingTx({
         id:           hash,
@@ -811,7 +814,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
       try {
         const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
         // Stablecoin (USDT/USDC) on this chain → ERC-20 transfer; else native.
-        const stable = EVM_TOKENS.find(t => t.chainId === evmChainId && t.symbol === coin);
+        const stable = allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === coin);
         const acctIdx = getActiveAccountIndex();
         const result = stable
           ? await sendEvmToken(walletInput, {
@@ -1048,7 +1051,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
             <div className="success-title">Confirmed</div>
             <div className="success-sub">{amount} {coin} sent to <Addr value={to.trim()} head={10} tail={6}/></div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              on <strong style={{ color: 'var(--text-secondary)' }}>{SEND_NETWORKS.find(n => n.id === network)?.label ?? network}</strong>
+              on <strong style={{ color: 'var(--text-secondary)' }}>{getSendNetworks().find(n => n.id === network)?.label ?? network}</strong>
             </div>
             {txHash && <a href={explorer ?? '#'} target="_blank" rel="noreferrer"
               style={{ fontSize: 11, color: 'var(--blue)', wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', marginTop: 6 }}>
@@ -1083,7 +1086,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
     ? withCurrencyAffix(convertFromUsd(amountNum * tokenPrice).toLocaleString('en-US', { maximumFractionDigits: 2 }))
     : withCurrencyAffix((0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
-  const currentNet = SEND_NETWORKS.find(n => n.id === network);
+  const currentNet = getSendNetworks().find(n => n.id === network);
 
   return (
     <Modal title="Send" onClose={onClose}>
@@ -1137,9 +1140,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin }: {
               }}
             >
               <RadixSelect.Viewport style={{ padding: 2 }}>
-                {SEND_NETWORKS.map(n => {
+                {getSendNetworks().map(n => {
                   const evmId = n.id.startsWith('evm:') ? parseInt(n.id.slice(4), 10) : null;
-                  const chain = evmId !== null ? EVM_CHAINS.find(c => c.chainId === evmId) ?? null : null;
+                  const chain = evmId !== null ? allEvmChains().find(c => c.chainId === evmId) ?? null : null;
                   const sym   =
                     n.id === 'makalu'  ? 'LITHO' :
                     n.id === 'kamet'   ? 'LITHO' :
@@ -1563,7 +1566,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
     // Polygon, etc.) for the same 0x address. Receiving on any of these is read
     // back by the dashboard's getAllEvmNativeBalances.
     if (evm) {
-      for (const c of EVM_CHAINS) {
+      for (const c of allEvmChains()) {
         out.push({
           id:      `evm-${c.chainId}`,
           name:    c.name,
@@ -1591,8 +1594,8 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
       // EVM chain → its native gas coin (ETH/BNB/POL/AVAX) + the stablecoins we
       // track on that chain (USDT/USDC). All go to the same 0x address.
       const chainId = parseInt(net.id.slice(4), 10);
-      const chain = EVM_CHAINS.find(c => c.chainId === chainId);
-      const stables = evmTokensForChain(chainId).map(t => ({ sym: t.symbol, name: t.name }));
+      const chain = allEvmChains().find(c => c.chainId === chainId);
+      const stables = allTokensForChain(chainId).map(t => ({ sym: t.symbol, name: t.name }));
       return chain ? [{ sym: chain.nativeSymbol, name: chain.nativeName }, ...stables] : [];
     }
     return TOKENS.filter(t => t.chain === 'Makalu').map(t => ({ sym: t.sym, name: t.name })); // Makalu / Kamet

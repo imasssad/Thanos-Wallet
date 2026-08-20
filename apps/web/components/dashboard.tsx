@@ -27,8 +27,11 @@ import { loadPortfolioSnapshot, savePortfolioSnapshot } from '../lib/cache-store
 import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
-import { getAllEvmNativeBalances, getEvmChain, type EvmChain } from '../lib/evm-chains';
-import { getAllEvmTokenBalances, type EvmToken } from '../lib/evm-tokens';
+import { type EvmChain } from '../lib/evm-chains';
+import {
+  getAllEvmNativeBalancesMerged, getAllEvmTokenBalancesMerged, getEvmChainMerged,
+  type EvmTokenLike,
+} from '../lib/custom-assets';
 import { pendingActivityRows } from '../lib/tx-store';
 import { TransactionDetailModal } from './TransactionDetailModal';
 
@@ -614,7 +617,7 @@ export function Dashboard() {
      Each chain is one parallel RPC call; one slow / dead endpoint doesn't
      block the rest. */
   const [evmChainBalances, setEvmChainBalances] = useState<Array<{ chain: EvmChain; balance: number }>>([]);
-  const [evmTokenBalances, setEvmTokenBalances] = useState<Array<{ token: EvmToken; balance: number }>>([]);
+  const [evmTokenBalances, setEvmTokenBalances] = useState<Array<{ token: EvmTokenLike; balance: number }>>([]);
   const walletSeed = wallet?.seed;
   const walletPk   = wallet?.privateKey;
   useEffect(() => {
@@ -658,7 +661,7 @@ export function Dashboard() {
     let cancel = false;
     (async () => {
       try {
-        const rows = await getAllEvmNativeBalances(evmAddress);
+        const rows = await getAllEvmNativeBalancesMerged(evmAddress);
         if (!cancel) setEvmChainBalances(rows.filter(r => r.balance > 0));
       } catch {
         if (!cancel) setEvmChainBalances([]);
@@ -668,7 +671,7 @@ export function Dashboard() {
     // token read doesn't hold up the native-balance render.
     (async () => {
       try {
-        const toks = await getAllEvmTokenBalances(evmAddress);
+        const toks = await getAllEvmTokenBalancesMerged(evmAddress);
         if (!cancel) setEvmTokenBalances(toks);
       } catch {
         if (!cancel) setEvmTokenBalances([]);
@@ -723,7 +726,7 @@ export function Dashboard() {
        name so USDT-on-Ethereum reads distinct from USDT-on-BSC. Priced ~$1
        (CoinGecko if available, else $1 fallback). */
     const evmTokenRows = evmTokenBalances.map(({ token, balance }) => {
-      const chainName = getEvmChain(token.chainId)?.name ?? `Chain ${token.chainId}`;
+      const chainName = getEvmChainMerged(token.chainId)?.name ?? `Chain ${token.chainId}`;
       return {
         sym:    token.symbol,
         name:   `${token.name} · ${chainName}`,
