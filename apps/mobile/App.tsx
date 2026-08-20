@@ -146,6 +146,7 @@ import {
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
+  ChevronDown, ChevronUp,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -1093,6 +1094,7 @@ const LAX_BENEFITS = [
    proxy returns the hosted registration URL, which we open. */
 function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose: () => void }) {
   const C = useColors();
+  const openBrowser = useBrowser();
   const [agreed, setAgreed]   = useState(false);
   const [showRef, setShowRef] = useState(false);
   const [refCode, setRefCode] = useState('');
@@ -1103,7 +1105,7 @@ function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose
     setBusy(true);
     try {
       const r = await laxCreateAccount({ address, referralCode: refCode.trim() || undefined });
-      if (r.registrationUrl) await Linking.openURL(r.registrationUrl).catch(() => {});
+      if (r.registrationUrl) openBrowser(r.registrationUrl);
       onClose();
     } finally { setBusy(false); }
   };
@@ -1133,7 +1135,7 @@ function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose
             <Requirement Icon={BookUser} label="Prepare your Passport" />
             <Requirement Icon={Home}     label="Be at your home" />
             <Requirement Icon={MapPin}   label="Allow location access" />
-            <Pressable hitSlop={6} onPress={() => Linking.openURL('https://lax.money').catch(() => {})}>
+            <Pressable hitSlop={6} onPress={() => openBrowser('https://lax.money')}>
               <Text style={{ color: C.blue, fontSize: 13, fontWeight: '600', marginTop: 6 }}>Learn more</Text>
             </Pressable>
           </View>
@@ -1143,7 +1145,7 @@ function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose
               {agreed && <Check size={15} color="#fff" strokeWidth={3} />}
             </View>
             <Text style={{ color: C.textPrimary, fontSize: 14 }}>
-              I agree to <Text style={{ color: C.blue, fontWeight: '600' }} onPress={() => Linking.openURL('https://lax.money').catch(() => {})}>Terms &amp; Conditions</Text>
+              I agree to <Text style={{ color: C.blue, fontWeight: '600' }} onPress={() => openBrowser('https://lax.money')}>Terms &amp; Conditions</Text>
             </Text>
           </Pressable>
 
@@ -1640,6 +1642,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
+  const openBrowser = useBrowser();
   const { assets, loading } = usePortfolio(addr);
   // Private-key wallets are EVM-only (a bare EVM key can't derive BTC/SOL/
   // Cosmos keys) — pin the chain to 'evm' and hide the chain selector.
@@ -2067,7 +2070,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
                 <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 12 }}>
                   {sentInfo.amount} {sentInfo.sym} broadcast on {sentInfo.network}.
                 </Text>
-                <Pressable onPress={() => Linking.openURL(sentInfo.explorerUrl).catch(() => {})} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
+                <Pressable onPress={() => openBrowser(sentInfo.explorerUrl)} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
                   <Text style={{ color: C.blue, fontSize: 11, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) }}>
                     {sentInfo.hash.slice(0, 14)}…{sentInfo.hash.slice(-10)}
                   </Text>
@@ -2210,6 +2213,10 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
   const [asset, setAsset] = useState<{ sym: string; name: string } | null>(preseedAsset);
   /** Active chain — switches the displayed address + QR. */
   const [chain, setChain] = useState<ReceiveChain>(preseeded ? preseedChain : 'lithosphere');
+  // litho1 is the SAME keypair's bech32 form regardless of which Lithosphere
+  // network it's used on — Mainnet (9005) and Makalu (700777) both accept it,
+  // so both get the litho1/EVM toggle here (not just Makalu).
+  const isLitho = chain === 'lithosphere' || chain === 'lithosphere-mainnet';
 
   // Derive the Lithosphere bech32 form from the same 0x keypair — one
   // wallet, two formats. Defaults to showing the chain-native litho1.
@@ -2276,7 +2283,7 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
     chain === 'bitcoin' ? btcAddr
     : chain === 'solana'  ? solAddr
     : chain === 'cosmos'  ? atomAddr
-    : chain === 'lithosphere' ? (lithoAddr && !showAlt ? lithoAddr : walletAddr)
+    : isLitho ? (lithoAddr && !showAlt ? lithoAddr : walletAddr)
     : walletAddr;  // external EVM (Ethereum/BNB/Polygon/…) → the 0x address
 
   /* Generate a real QR for the currently-displayed address. Re-renders
@@ -2405,7 +2412,8 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
         <View style={[styles.networkSelector, { marginTop: 10 }]}>
           <View style={styles.netDot}/>
           <Text style={styles.networkSelectorText}>
-            {chain === 'lithosphere' ? 'Lithosphere · Makalu'
+            {chain === 'lithosphere'         ? 'Lithosphere · Makalu'
+             : chain === 'lithosphere-mainnet' ? 'Lithosphere · Mainnet'
              : chain === 'bitcoin'   ? 'Bitcoin · mainnet'
              : chain === 'solana'    ? 'Solana · mainnet-beta'
              : chain === 'cosmos'    ? 'Cosmos Hub · cosmoshub-4'
@@ -2414,14 +2422,16 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
         </View>
 
         {/* Live balance for the active non-Lithosphere chain. */}
-        {chain !== 'lithosphere' && !!chainBalance && (
+        {!isLitho && !!chainBalance && (
           <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '700', marginTop: 6, alignSelf: 'center' }}>
             Balance: {chainBalance}
           </Text>
         )}
 
-        {/* Litho1 / EVM toggle — same wallet, two address formats. */}
-        {chain === 'lithosphere' && !!lithoAddr && (
+        {/* Litho1 / EVM toggle — same wallet, two address formats. Shown for
+            BOTH Lithosphere networks (Mainnet + Makalu) — litho1 decodes to
+            the same 0x address on either. */}
+        {isLitho && !!lithoAddr && (
           <View style={{
             flexDirection: 'row', alignSelf: 'center',
             backgroundColor: C.bgElevated,
@@ -2525,6 +2535,7 @@ function TxSheetRow({ C, label, children }: { C: ReturnType<typeof useColors>; l
 
 function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: () => void }) {
   const C = useColors();
+  const openBrowser = useBrowser();
   const d = txDisplay(item.type);
   const amountNum = parseFloat(String(item.amount ?? '').replace(/^[+-]/, '')) || 0;
   const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
@@ -2570,7 +2581,7 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <Pressable hitSlop={8} onPress={() => explorer && Linking.openURL(explorer).catch(() => {})}>
+            <Pressable hitSlop={8} onPress={() => explorer && openBrowser(explorer)}>
               <Share2 size={20} color={C.textSecondary} />
             </Pressable>
             <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>{d.label}</Text>
@@ -2604,7 +2615,7 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
           )}
 
           {explorer ? (
-            <Pressable onPress={() => Linking.openURL(explorer).catch(() => {})}
+            <Pressable onPress={() => openBrowser(explorer)}
               style={{ paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
               <Text style={{ color: C.green, fontSize: 14, fontWeight: '700' }}>View on block explorer</Text>
             </Pressable>
@@ -2841,6 +2852,7 @@ function MobileMakaluKametBridge() {
   const C = useColors();
   const styles = useStyles();
   const seed = useWalletSeed();
+  const openBrowser = useBrowser();
   const [tokenSym, setTokenSym] = useState(BRIDGE_TOKENS[0].symbol);
   const [amt, setAmt]   = useState('');
   const [step, setStep] = useState<BridgeStep>('idle');
@@ -2913,7 +2925,7 @@ function MobileMakaluKametBridge() {
       </Text>
 
       {txHash ? (
-        <Text style={{ color: C.blue, fontSize: 11 }} onPress={() => Linking.openURL(`https://makalu.litho.ai/txs/${txHash}`)}>
+        <Text style={{ color: C.blue, fontSize: 11 }} onPress={() => openBrowser(`https://makalu.litho.ai/txs/${txHash}`)}>
           Lock tx: {txHash.slice(0, 10)}…{txHash.slice(-6)}
         </Text>
       ) : null}
@@ -3314,6 +3326,7 @@ function SettingsScreen() {
   const toggle = useToggle();
   const walletAddr = useWalletAddr();
   const seed = useWalletSeed();
+  const openBrowser = useBrowser();
   const isDark = C.bgBase === DARK.bgBase;
 
   /* Delete wallet — two-step Alert confirm. The warning text depends on
@@ -3637,14 +3650,13 @@ function SettingsScreen() {
       <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
 
       {/* Legal + transparency — required by App Store + Google Play
-          submission reviewers, and standard wallet-UX hygiene. Opens
-          in the device's default browser via Linking.openURL so users
-          stay in-context (browser back returns them to the wallet). */}
+          submission reviewers, and standard wallet-UX hygiene. Opens in the
+          in-app browser (minimize keeps it a tap away, same as any dApp). */}
       <Section Icon={Shield} title="Legal" sub="Privacy policy and security disclosures" items={[
         { label: 'Privacy policy', desc: 'What data leaves your device, and where it goes', Icon: Shield,
-          onPress: () => { Linking.openURL('https://thanos.fi/privacy').catch(() => {}); } },
+          onPress: () => openBrowser('https://thanos.fi/privacy') },
         { label: 'Security disclosures', desc: 'Report a vulnerability + PGP key', Icon: AlertTriangle,
-          onPress: () => { Linking.openURL('https://thanos.fi/.well-known/security.txt').catch(() => {}); } },
+          onPress: () => openBrowser('https://thanos.fi/.well-known/security.txt') },
       ]}/>
 
       {/* Danger zone — the only irreversible action in Settings. "Reset
@@ -4909,12 +4921,13 @@ function ObCarousel() {
 function ObLegal() {
   const styles = useStyles();
   const C = useColors();
+  const openBrowser = useBrowser();
   return (
     <Text style={styles.obLegal}>
       By continuing you agree to our{' '}
-      <Text style={{ color: C.blue }} onPress={() => Linking.openURL('https://thanos.fi/terms').catch(() => {})}>Terms</Text>
+      <Text style={{ color: C.blue }} onPress={() => openBrowser('https://thanos.fi/terms')}>Terms</Text>
       {' '}&amp;{' '}
-      <Text style={{ color: C.blue }} onPress={() => Linking.openURL('https://thanos.fi/privacy').catch(() => {})}>Privacy Policy</Text>
+      <Text style={{ color: C.blue }} onPress={() => openBrowser('https://thanos.fi/privacy')}>Privacy Policy</Text>
     </Text>
   );
 }
@@ -5559,11 +5572,15 @@ const MAKALU_CHAIN_ID_NUM = 700777;
  *  the Ignite TGE on BNB) while keeping the wallet on known-good RPCs. */
 const BROWSER_EVM_CHAIN_IDS = new Set<number>([MAKALU_CHAIN_ID_NUM, 9005, 1, 56, 137, 8453, 42161, 59144, 10, 43114]);
 
-function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void; seed: string[] }) {
+function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
+  url: string; minimized: boolean; onMinimize: () => void; onClose: () => void; seed: string[];
+}) {
   const C = useColors();
   const ref = useRef<WebView>(null);
   const [current, setCurrent] = useState(url);
   const [loading, setLoading] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
   const [connected, setConnected] = useState(false);
   // Host the connect grant was given on. The WebView can navigate anywhere
   // (no origin whitelist) and re-injects the provider on every document, so a
@@ -5665,23 +5682,45 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
   const summary = pending ? (isConnect ? `Connect your wallet to ${host}?` : summariseRequest(pending.method, pending.params)) : '';
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={!minimized} animationType="slide" onRequestClose={onMinimize} statusBarTranslucent>
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
         <StatusBar barStyle={C.statusBar} backgroundColor={C.bgBase}/>
-        {/* Chrome: close · host (lock) · reload · open external */}
+        {/* Chrome: minimize · host (lock) · back · forward · reload · open external */}
         <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: 10,
+          flexDirection: 'row', alignItems: 'center', gap: 8,
           paddingHorizontal: 14, paddingVertical: 10,
           borderBottomWidth: 1, borderBottomColor: C.borderSubtle, backgroundColor: C.bgSurface,
         }}>
-          <Pressable onPress={onClose} hitSlop={8}><ChevronLeft size={24} color={C.textPrimary}/></Pressable>
+          <Pressable onPress={onMinimize} hitSlop={8} accessibilityLabel="Minimize browser">
+            <ChevronDown size={24} color={C.textPrimary}/>
+          </Pressable>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bgElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
             <Shield size={13} color={current.startsWith('https://') ? C.green : C.textMuted}/>
             <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: C.textSecondary }}>{host}</Text>
             {connected && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.green }}/>}
           </View>
-          <Pressable onPress={() => ref.current?.reload()} hitSlop={8}><Repeat size={18} color={C.textSecondary}/></Pressable>
-          <Pressable onPress={() => { Linking.openURL(current).catch(() => {}); }} hitSlop={8}><Globe size={18} color={C.textSecondary}/></Pressable>
+          <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Close browser">
+            <XIcon size={20} color={C.textSecondary}/>
+          </Pressable>
+        </View>
+
+        {/* Navigation row: back · forward · reload · open in system browser */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
+          paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.borderSubtle, backgroundColor: C.bgSurface,
+        }}>
+          <Pressable onPress={() => canGoBack && ref.current?.goBack()} hitSlop={8} disabled={!canGoBack} accessibilityLabel="Back">
+            <ChevronLeft size={22} color={canGoBack ? C.textPrimary : C.textMuted}/>
+          </Pressable>
+          <Pressable onPress={() => canGoForward && ref.current?.goForward()} hitSlop={8} disabled={!canGoForward} accessibilityLabel="Forward">
+            <ChevronRight size={22} color={canGoForward ? C.textPrimary : C.textMuted}/>
+          </Pressable>
+          <Pressable onPress={() => ref.current?.reload()} hitSlop={8} accessibilityLabel="Reload">
+            <Repeat size={18} color={C.textSecondary}/>
+          </Pressable>
+          <Pressable onPress={() => { Linking.openURL(current).catch(() => {}); }} hitSlop={8} accessibilityLabel="Open in system browser">
+            <Globe size={18} color={C.textSecondary}/>
+          </Pressable>
         </View>
 
         {loading && (
@@ -5693,7 +5732,7 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
         <WebView
           ref={ref}
           source={{ uri: url }}
-          onNavigationStateChange={(s) => setCurrent(s.url)}
+          onNavigationStateChange={(s) => { setCurrent(s.url); setCanGoBack(s.canGoBack); setCanGoForward(s.canGoForward); }}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onMessage={(e) => onMessage(e.nativeEvent.data)}
@@ -5743,6 +5782,35 @@ function InAppBrowser({ url, onClose, seed }: { url: string; onClose: () => void
         )}
       </SafeAreaView>
     </Modal>
+  );
+}
+
+/** Floating "call is minimized" style pill for a backgrounded browser tab —
+ *  tap to restore exactly where the dApp session left off, X to end it. Sits
+ *  above the tab bar so it never blocks the bottom nav. */
+function MinimizedBrowserChip({ url, onRestore, onClose }: { url: string; onRestore: () => void; onClose: () => void }) {
+  const C = useColors();
+  let host = url;
+  try { host = new URL(url).host; } catch { /* keep raw */ }
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 78, alignItems: 'center' }}>
+      <Pressable
+        onPress={onRestore}
+        style={({ pressed }) => [{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault,
+          borderRadius: 999, paddingLeft: 14, paddingRight: 8, paddingVertical: 8,
+          shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
+        }, pressed && { opacity: 0.85 }]}
+      >
+        <Globe size={15} color={C.blue}/>
+        <Text numberOfLines={1} style={{ maxWidth: 160, fontSize: 12.5, fontWeight: '600', color: C.textPrimary }}>{host}</Text>
+        <ChevronUp size={14} color={C.textMuted}/>
+        <Pressable onPress={onClose} hitSlop={8} style={{ padding: 4 }} accessibilityLabel="Close browser tab">
+          <XIcon size={14} color={C.textMuted}/>
+        </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -5950,6 +6018,7 @@ function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
 function NFTsScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
+  const openBrowser = useBrowser();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
@@ -5970,7 +6039,7 @@ function NFTsScreen({ goBack }: { goBack: () => void }) {
             on the Lithosphere marketplace.
           </Text>
           <Pressable
-            onPress={() => Linking.openURL('https://makalu.litho.ai/nfts').catch(() => {})}
+            onPress={() => openBrowser('https://makalu.litho.ai/nfts')}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: C.blue }}
           >
             <BadgeCheck size={14} color="#fff"/>
@@ -6198,9 +6267,9 @@ function App() {
       if (wc) { setPendingWcUri(wc); return; }
       // thanoswallet://open?url=… → allowlisted partner site in the in-app
       // browser (web-wallet hand-off, e.g. Quantt sign-in from a phone
-      // browser). Stashed in browserUrl; the overlay mounts after unlock.
+      // browser). Stashed in browserTab; the overlay mounts after unlock.
       const browse = url ? extractBrowseUrl(url) : null;
-      if (browse) setBrowserUrl(browse);
+      if (browse) setBrowserTab({ url: browse, minimized: false });
     };
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', (e) => handle(e.url));
@@ -6213,7 +6282,11 @@ function App() {
   // of sitting on the splash with hasVault stuck at null.
   const [bootError, setBootError]     = useState<string | null>(null);
   const [bootAttempt, setBootAttempt] = useState(0);
-  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+  // In-app browser tab. `minimized` keeps the WebView (and its dApp session)
+  // alive while the user does something else in the wallet — restoring picks
+  // up exactly where they left off, same idea as a phone-call's minimize pill.
+  const [browserTab, setBrowserTab] = useState<{ url: string; minimized: boolean } | null>(null);
+  const openBrowser = (url: string) => setBrowserTab({ url, minimized: false });
   // Multi-account state — same pattern as web/desktop/extension, but the
   // store is AsyncStorage so we hydrate once on app start.
   const [activeIdx, setActiveIdx]            = useState(0);
@@ -6528,23 +6601,45 @@ function App() {
       <ThemeCtx.Provider value={colors}>
         <StylesCtx.Provider value={styles}>
           <ToggleCtx.Provider value={toggle}>
-            <SafeAreaView style={styles.root}>
-              <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase}/>
-              <OnboardingScreen
-                hasVault={hasVault}
-                onComplete={(seed) => {
-                  setWalletSeed(seed);
-                  setHasVault(true);
-                  setUnlocked(true);
-                  // Mirror seed into the module-isolated signer.
-                  void import('./lib/signer').then(s => s.setSeed(seed)).catch(() => { /* skip */ });
-                  // Session key was cached inside createVault / openVault; no
-                  // extra plaintext flag is written. Cold-start still requires
-                  // password since the JS module is re-loaded — this is the
-                  // intentional security trade-off after removing plaintext.
-                }}
-              />
-            </SafeAreaView>
+            {/* Terms/Privacy links in onboarding (ObLegal) need somewhere to
+                open too — same in-app browser, wired here since this branch
+                renders before any wallet exists (seed=[] — fine, those pages
+                don't sign anything). */}
+            <BrowserCtx.Provider value={openBrowser}>
+              <SafeAreaView style={styles.root}>
+                <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase}/>
+                <OnboardingScreen
+                  hasVault={hasVault}
+                  onComplete={(seed) => {
+                    setWalletSeed(seed);
+                    setHasVault(true);
+                    setUnlocked(true);
+                    // Mirror seed into the module-isolated signer.
+                    void import('./lib/signer').then(s => s.setSeed(seed)).catch(() => { /* skip */ });
+                    // Session key was cached inside createVault / openVault; no
+                    // extra plaintext flag is written. Cold-start still requires
+                    // password since the JS module is re-loaded — this is the
+                    // intentional security trade-off after removing plaintext.
+                  }}
+                />
+              </SafeAreaView>
+              {browserTab && (
+                <InAppBrowser
+                  url={browserTab.url}
+                  minimized={browserTab.minimized}
+                  onMinimize={() => setBrowserTab(t => (t ? { ...t, minimized: true } : t))}
+                  onClose={() => setBrowserTab(null)}
+                  seed={[]}
+                />
+              )}
+              {browserTab?.minimized && (
+                <MinimizedBrowserChip
+                  url={browserTab.url}
+                  onRestore={() => setBrowserTab(t => (t ? { ...t, minimized: false } : t))}
+                  onClose={() => setBrowserTab(null)}
+                />
+              )}
+            </BrowserCtx.Provider>
           </ToggleCtx.Provider>
         </StylesCtx.Provider>
       </ThemeCtx.Provider>
@@ -6560,7 +6655,7 @@ function App() {
         <ResetWalletCtx.Provider value={resetWalletCompletely}>
         <WalletAddrCtx.Provider value={walletAddr}>
         <WalletSeedCtx.Provider value={walletSeed}>
-        <BrowserCtx.Provider value={setBrowserUrl}>
+        <BrowserCtx.Provider value={openBrowser}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
 
@@ -6583,8 +6678,26 @@ function App() {
               />
             )}
 
-            {/* In-app browser overlay (Discover dApps / typed links) */}
-            {browserUrl && <InAppBrowser url={browserUrl} onClose={() => setBrowserUrl(null)} seed={walletSeed}/>}
+            {/* In-app browser overlay (Discover dApps / typed links). Stays
+                mounted while minimized (Modal visible={false} keeps children
+                alive) so the dApp session survives; the floating chip below
+                is the only thing rendered when minimized. */}
+            {browserTab && (
+              <InAppBrowser
+                url={browserTab.url}
+                minimized={browserTab.minimized}
+                onMinimize={() => setBrowserTab(t => (t ? { ...t, minimized: true } : t))}
+                onClose={() => setBrowserTab(null)}
+                seed={walletSeed}
+              />
+            )}
+            {browserTab?.minimized && (
+              <MinimizedBrowserChip
+                url={browserTab.url}
+                onRestore={() => setBrowserTab(t => (t ? { ...t, minimized: false } : t))}
+                onClose={() => setBrowserTab(null)}
+              />
+            )}
 
             {/* Account switcher — dark-themed bottom sheet (replaces the OS
                 white Alert that clashed with the app theme). */}
