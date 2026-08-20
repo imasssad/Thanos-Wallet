@@ -91,9 +91,19 @@ features.
 6. `research.quantt.at` — is any of the research content meant to surface
    in-app, or is it reference material only?
 
-## Current state in the repo
-All four clients ship a "Quantt Agents" card that deep-links to
-quantts.ai (placeholder — `QUANTT_AGENTS_URL`). Wallet-signature login of
-Thanos INTO quantts.ai is live and proven. No Quantt API client exists in
-the codebase yet; this plan adds one (`packages/sdk-core/src/quantt/` so
-all clients share it).
+## Current state in the repo (updated 2026-08-20)
+
+**Phase 1's auth + read-only panel is DONE and shipped on all four clients.**
+`packages/sdk-core/src/quantt/client.ts` (+ a mobile twin, EAS can't resolve
+the workspace dep) implements the wallet-signature login end-to-end —
+verified against the LIVE api.quantts.ai, not just the OpenAPI spec:
+challenge → sign (EIP-712, per-client: mobile/desktop inline signer, web the
+signing worker, extension the offscreen signer) → verify → session
+`{accessToken, refreshToken, user}`. Each client's "Quantt Agents" card is
+now "Connect with Thanos" → live portfolio + top agents from
+`GET /v1/mobile/overview` (real shape: `{dashboard:{portfolio{equity,
+pnl24h/7d/30d,activeAgents,...}, agents[{id,name,chain,status,confidence,
+...}]}}`), replacing the old deep-link-to-quantts.ai placeholder.
+
+**Still blocked on the open questions below** — the logged-out teaser
+(needs a partnerKey) and Phases 2-4 haven't started.
