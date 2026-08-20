@@ -19,7 +19,11 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { DappBrowserOverlay } from './components/DappBrowserOverlay';
 import { DappRequestHost } from './DappRequestHost';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, type DisplayCoin, type DisplayTx } from './portfolio';
-import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain } from './evm-external-meta';
+import {
+  getExtEvmChain, allEvmChains, allEvmTokens,
+  customChains, customTokens, addCustomChain, removeCustomChain,
+  addCustomToken, removeCustomToken, probeChainId, probeErc20,
+} from './custom-assets';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn } from './quantt';
@@ -1269,7 +1273,7 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive, onSwap }: 
     coin?.sym === 'ATOM' ? 'Cosmos Hub'
     : coin?.chainId === 900523 ? 'Lithosphere Kamet'
     : coin?.chainId != null && coin.chainId !== 700777
-      ? (EXT_EVM_CHAINS.find(c => c.chainId === coin.chainId)?.name ?? `Chain ${coin.chainId}`)
+      ? (getExtEvmChain(coin.chainId)?.name ?? `Chain ${coin.chainId}`)
       : 'Lithosphere Makalu';
 
   const [range, setRange] = useState<TokenRange>('1d');
@@ -1434,14 +1438,18 @@ const DESKTOP_CHAIN_META: Record<DesktopSendChain, { label: string; sym: string;
    DesktopSendChain so all the existing send-routing + Ledger/Trezor signer logic
    keeps working unchanged. */
 interface DesktopNetwork { id: string; label: string; kind: DesktopSendChain; chainId?: number; color: string; iconSym: string }
-const DESKTOP_NETWORKS: DesktopNetwork[] = [
-  { id: 'makalu', label: 'Lithosphere · Makalu', kind: 'evm', chainId: 700777, color: '#22c55e', iconSym: 'LITHO' },
-  ...EXT_EVM_CHAINS.map((c): DesktopNetwork => ({ id: c.slug, label: c.name, kind: 'evm', chainId: c.chainId, color: c.color, iconSym: c.nativeSymbol })),
-  { id: 'bitcoin', label: 'Bitcoin',    kind: 'bitcoin', color: '#f7931a', iconSym: 'BTC'  },
-  { id: 'solana',  label: 'Solana',     kind: 'solana',  color: '#14f195', iconSym: 'SOL'  },
-  { id: 'cosmos',  label: 'Cosmos Hub', kind: 'cosmos',  color: '#2e3148', iconSym: 'ATOM' },
-];
-const networkById = (id: string): DesktopNetwork => DESKTOP_NETWORKS.find(n => n.id === id) ?? DESKTOP_NETWORKS[0];
+// A function (not a frozen const) so a custom network added mid-session shows
+// up immediately — allEvmChains() re-reads the live custom-assets cache.
+function getDesktopNetworks(): DesktopNetwork[] {
+  return [
+    { id: 'makalu', label: 'Lithosphere · Makalu', kind: 'evm', chainId: 700777, color: '#22c55e', iconSym: 'LITHO' },
+    ...allEvmChains().map((c): DesktopNetwork => ({ id: c.slug, label: c.name, kind: 'evm', chainId: c.chainId, color: c.color, iconSym: c.nativeSymbol })),
+    { id: 'bitcoin', label: 'Bitcoin',    kind: 'bitcoin', color: '#f7931a', iconSym: 'BTC'  },
+    { id: 'solana',  label: 'Solana',     kind: 'solana',  color: '#14f195', iconSym: 'SOL'  },
+    { id: 'cosmos',  label: 'Cosmos Hub', kind: 'cosmos',  color: '#2e3148', iconSym: 'ATOM' },
+  ];
+}
+const networkById = (id: string): DesktopNetwork => getDesktopNetworks().find(n => n.id === id) ?? getDesktopNetworks()[0];
 const initialNetworkId = (chain?: DesktopSendChain): string =>
   chain === 'bitcoin' ? 'bitcoin' : chain === 'solana' ? 'solana' : chain === 'cosmos' ? 'cosmos' : 'makalu';
 
@@ -1473,17 +1481,17 @@ function buildEvmSendAssets(coins: DisplayCoin[]): DisplayCoin[] {
   const makalu     = evmOwned.filter(c => !c.chainId); // LITHO + ecosystem LEP100
 
   const externalSynthetic: DisplayCoin[] = [
-    ...EXT_EVM_CHAINS.map((ch): DisplayCoin => ({
+    ...allEvmChains().map((ch): DisplayCoin => ({
       sym: ch.nativeSymbol, name: ch.name,
       balance: 0, balanceText: '0', decimals: 18,
       priceUsd: 0, usdValue: 0, pct: 0, color: ch.color,
       native: true, chainId: ch.chainId,
     })),
-    ...EXT_EVM_TOKENS.map((t): DisplayCoin => ({
+    ...allEvmTokens().map((t): DisplayCoin => ({
       sym: t.symbol, name: `${t.symbol} · ${getExtEvmChain(t.chainId)?.name ?? ''}`.trim(),
       balance: 0, balanceText: '0', decimals: t.decimals,
       priceUsd: 0, usdValue: 0, pct: 0,
-      color: t.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+      color: t.symbol === 'USDT' ? '#26a17b' : t.symbol === 'USDC' ? '#2775ca' : coinColor(t.symbol),
       native: false, chainId: t.chainId, tokenAddress: t.address,
     })),
   ];
@@ -1747,7 +1755,7 @@ function SendModal({ onClose, initialChain, initialCoin, address }: {
             and drives routing/signer via network.kind. */}
         <label className="field-label">Network</label>
         <CoinSelect
-          items={DESKTOP_NETWORKS.map(n => ({ value: n.id, sym: n.iconSym, color: n.color, label: n.label }))}
+          items={getDesktopNetworks().map(n => ({ value: n.id, sym: n.iconSym, color: n.color, label: n.label }))}
           value={networkId}
           onChange={(id) => { setNetworkId(id); setSelectedSym(''); setTo(''); setAmount(''); setMemo(''); }}
           placeholder="Select network"
@@ -2021,7 +2029,7 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
         {/* Network selector (web-style — every chain distinct). */}
         <div style={{ width: '100%', marginBottom: 12, textAlign: 'left' }}>
           <CoinSelect
-            items={DESKTOP_NETWORKS.map(n => ({ value: n.id, sym: n.iconSym, color: n.color, label: n.label }))}
+            items={getDesktopNetworks().map(n => ({ value: n.id, sym: n.iconSym, color: n.color, label: n.label }))}
             value={networkId}
             onChange={setNetworkId}
             placeholder="Select network"
@@ -2742,6 +2750,7 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
         </Section>
 
         <NetworksSection Section={Section}/>
+        <CustomAssetsSection Section={Section}/>
         <AddressBookSection Section={Section}/>
         <PermissionsSection Section={Section}/>
 
@@ -2882,6 +2891,125 @@ function NetworksSection({
           </div>
         );
       })}
+    </Section>
+  );
+}
+
+/** "Add network / token" — a custom EVM network (validated by reading its
+ *  real chainId on-chain) or an ERC-20 (validated by reading symbol/decimals
+ *  on-chain). Never trusts typed input blindly — see custom-assets.ts's
+ *  header note (a wrong decimals value is a fund-loss bug). Once added, both
+ *  flow into the portfolio, Send and the dApp browser automatically via
+ *  evm-external.ts's merged lookups. */
+function CustomAssetsSection({
+  Section,
+}: {
+  Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
+}) {
+  const [tick, setTick] = useState(0);
+  const [mode, setMode] = useState<'' | 'net' | 'tok'>('');
+  const [nName, setNName] = useState(''); const [nRpc, setNRpc] = useState('');
+  const [nSym, setNSym] = useState('');   const [nExp, setNExp] = useState('');
+  const [nBusy, setNBusy] = useState(false); const [nErr, setNErr] = useState<string | null>(null);
+  const [tChainId, setTChainId] = useState<number | null>(null); const [tAddr, setTAddr] = useState('');
+  const [tBusy, setTBusy] = useState(false); const [tErr, setTErr] = useState<string | null>(null);
+
+  void tick; // forces a re-read of the module-level cache after add/remove
+  const nets = allEvmChains();
+  const curChains = customChains();
+  const curTokens = customTokens();
+
+  const addNet = async () => {
+    setNBusy(true); setNErr(null);
+    try {
+      const rpc = nRpc.trim();
+      if (!/^https?:\/\/\S+/.test(rpc)) throw new Error('Enter a valid RPC URL (https://…)');
+      const chainId = await probeChainId(rpc);
+      await addCustomChain({
+        chainId, name: nName.trim() || `Chain ${chainId}`, rpcUrl: rpc,
+        nativeSymbol: (nSym.trim() || 'ETH').toUpperCase(), explorerUrl: nExp.trim(),
+      });
+      setMode(''); setNName(''); setNRpc(''); setNSym(''); setNExp('');
+      setTick((t) => t + 1);
+    } catch (e) { setNErr((e as Error)?.message || 'Could not reach that RPC'); }
+    finally { setNBusy(false); }
+  };
+  const addTok = async () => {
+    setTBusy(true); setTErr(null);
+    try {
+      const addr = tAddr.trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) throw new Error('Enter a valid 0x token address');
+      const chainId = tChainId ?? nets[0]?.chainId;
+      const chain = nets.find((c) => c.chainId === chainId);
+      if (!chain) throw new Error('Pick a network');
+      const meta = await probeErc20(chain.rpcUrl, addr);
+      await addCustomToken({ chainId, symbol: meta.symbol, name: meta.name, address: addr, decimals: meta.decimals });
+      setMode(''); setTAddr('');
+      setTick((t) => t + 1);
+    } catch (e) { setTErr((e as Error)?.message || 'Not a valid ERC-20 on that network'); }
+    finally { setTBusy(false); }
+  };
+
+  return (
+    <Section icon={Globe} title="Custom networks & tokens" sub="Add an EVM network or ERC-20 token">
+      {curChains.map((c) => (
+        <div key={c.chainId} className="settings-row">
+          <div className="settings-row-label">
+            <div className="settings-row-title">{c.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {c.chainId}</span></div>
+            <div className="settings-row-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>{c.rpcUrl}</div>
+          </div>
+          <div className="settings-row-control">
+            <button className="settings-btn" onClick={() => { removeCustomChain(c.chainId); setTick((t) => t + 1); }}>Remove</button>
+          </div>
+        </div>
+      ))}
+      {curTokens.map((t) => (
+        <div key={`${t.chainId}-${t.address}`} className="settings-row">
+          <div className="settings-row-label">
+            <div className="settings-row-title">{t.symbol} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {nets.find((n) => n.chainId === t.chainId)?.name ?? t.chainId}</span></div>
+            <div className="settings-row-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>{t.address}</div>
+          </div>
+          <div className="settings-row-control">
+            <button className="settings-btn" onClick={() => { removeCustomToken(t.chainId, t.address); setTick((t2) => t2 + 1); }}>Remove</button>
+          </div>
+        </div>
+      ))}
+      {curChains.length === 0 && curTokens.length === 0 && mode === '' && (
+        <div className="settings-row-sub" style={{ padding: '8px 0' }}>No custom networks or tokens yet.</div>
+      )}
+
+      {mode === 'net' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 0' }}>
+          <input className="settings-input" placeholder="Network name (e.g. Sepolia)" value={nName} onChange={(e) => setNName(e.target.value)}/>
+          <input className="settings-input" placeholder="RPC URL (https://…)" value={nRpc} onChange={(e) => setNRpc(e.target.value)}/>
+          <input className="settings-input" placeholder="Currency symbol (e.g. ETH)" value={nSym} onChange={(e) => setNSym(e.target.value)}/>
+          <input className="settings-input" placeholder="Block explorer URL (optional)" value={nExp} onChange={(e) => setNExp(e.target.value)}/>
+          {nErr && <div style={{ color: '#ff6b6b', fontSize: 12 }}>{nErr}</div>}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="settings-btn" disabled={nBusy} onClick={addNet}>{nBusy ? 'Checking…' : 'Add network'}</button>
+            <button className="settings-btn" onClick={() => setMode('')}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {mode === 'tok' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 0' }}>
+          <select className="settings-select" value={tChainId ?? nets[0]?.chainId} onChange={(e) => setTChainId(Number(e.target.value))}>
+            {nets.map((n) => <option key={n.chainId} value={n.chainId}>{n.name}</option>)}
+          </select>
+          <input className="settings-input" placeholder="Token contract (0x…)" value={tAddr} onChange={(e) => setTAddr(e.target.value)}/>
+          {tErr && <div style={{ color: '#ff6b6b', fontSize: 12 }}>{tErr}</div>}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="settings-btn" disabled={tBusy} onClick={addTok}>{tBusy ? 'Checking…' : 'Add token'}</button>
+            <button className="settings-btn" onClick={() => setMode('')}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {mode === '' && (
+        <div style={{ display: 'flex', gap: 16, paddingTop: 8 }}>
+          <button className="settings-btn" onClick={() => { setNErr(null); setMode('net'); }}>+ Add network</button>
+          <button className="settings-btn" onClick={() => { setTErr(null); setMode('tok'); }}>+ Add token</button>
+        </div>
+      )}
     </Section>
   );
 }

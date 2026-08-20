@@ -16,10 +16,14 @@ import { Contract, JsonRpcProvider, HDNodeWallet, Wallet, Mnemonic, formatUnits,
 // renderer can import the data without eager-loading ethers. Re-exported here
 // so existing `import { EXT_EVM_CHAINS, ... } from './evm-external'` keep working.
 export {
-  EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain, extEvmTokensForChain,
+  EXT_EVM_CHAINS, EXT_EVM_TOKENS, extEvmTokensForChain,
   type ExtEvmChain, type ExtEvmToken,
 } from './evm-external-meta';
-import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, getExtEvmChain, type ExtEvmChain, type ExtEvmToken } from './evm-external-meta';
+import { type ExtEvmChain } from './evm-external-meta';
+// getExtEvmChain here is the MERGED version (built-ins + user-added custom
+// networks) — shadows evm-external-meta's built-in-only one on purpose.
+export { getExtEvmChain, type ExtTokenLike } from './custom-assets';
+import { getExtEvmChain, allEvmChains, allTokensForChain, type ExtTokenLike } from './custom-assets';
 
 /* ─── Providers (memoised) ───────────────────────────────────────────── */
 const providers = new Map<number, Provider>();
@@ -38,11 +42,11 @@ const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) retur
 
 /* ─── Balance reads (parallel, error-tolerant) ───────────────────────── */
 
-/** Native gas-coin balance across all 8 chains. Failed/zero chains omitted. */
+/** Native gas-coin balance across all chains (built-in + custom). Failed/zero omitted. */
 export async function getAllExtEvmNativeBalances(address: string): Promise<Array<{ chain: ExtEvmChain; balance: number }>> {
   if (!address) return [];
   const results = await Promise.allSettled(
-    EXT_EVM_CHAINS.map(async (c) => {
+    allEvmChains().map(async (c) => {
       const wei = await getExtEvmProvider(c.chainId).getBalance(address);
       return { chain: c, balance: parseFloat(formatUnits(wei, 18)) || 0 };
     }),
@@ -52,18 +56,19 @@ export async function getAllExtEvmNativeBalances(address: string): Promise<Array
     .map(r => r.value);
 }
 
-/** USDT/USDC balances across all chains. Failed/zero entries omitted. */
-export async function getAllExtEvmTokenBalances(address: string): Promise<Array<{ token: ExtEvmToken; balance: number }>> {
+/** ERC-20 balances across all chains — built-in USDT/USDC + custom tokens. Failed/zero omitted. */
+export async function getAllExtEvmTokenBalances(address: string): Promise<Array<{ token: ExtTokenLike; balance: number }>> {
   if (!address) return [];
+  const all = allEvmChains().flatMap((c) => allTokensForChain(c.chainId));
   const results = await Promise.allSettled(
-    EXT_EVM_TOKENS.map(async (t) => {
+    all.map(async (t) => {
       const c = new Contract(t.address, ERC20_BALANCE_ABI, getExtEvmProvider(t.chainId));
       const raw: bigint = await c.balanceOf(address);
       return { token: t, balance: parseFloat(formatUnits(raw, t.decimals)) };
     }),
   );
   return results
-    .filter((r): r is PromiseFulfilledResult<{ token: ExtEvmToken; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
+    .filter((r): r is PromiseFulfilledResult<{ token: ExtTokenLike; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
     .map(r => r.value);
 }
 
