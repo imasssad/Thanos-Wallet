@@ -601,8 +601,9 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
               // balances merge in; the rest render as zero-balance rows so
               // users can see the wallet supports the network.
               const balByChain = new Map(natives.map((n) => [n.chain.chainId, n.balance]));
+              const cm = await import('./lib/custom-assets');
               const extRows: DisplayAsset[] = [
-                ...m.EXT_EVM_CHAINS.map((chain) => {
+                ...cm.allEvmChains().map((chain) => {
                   const balance = balByChain.get(chain.chainId) ?? 0;
                   return {
                     sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
@@ -3376,6 +3377,7 @@ function SettingsScreen() {
   const [dnnsOpen, setDnnsOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
   const [networksOpen, setNetworksOpen] = useState(false);
+  const [customAssetsOpen, setCustomAssetsOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(0);
   const [language, setLanguage]         = useState('English');
   useEffect(() => {
@@ -3527,6 +3529,8 @@ function SettingsScreen() {
     },
     { label: 'Manage networks',   desc: 'Show or hide networks & chains',  Icon: Globe,
       onPress: () => setNetworksOpen(true) },
+    { label: 'Add network / token', desc: 'Add a custom EVM network or ERC-20 token', Icon: Plus,
+      onPress: () => setCustomAssetsOpen(true) },
     { label: 'Lithosphere names', desc: 'Register a .litho name for your wallet', Icon: BadgeCheck,
       onPress: () => setDnnsOpen(true) },
     { label: 'Custom RPC',        desc: 'Override the Makalu RPC endpoint', Icon: Server,
@@ -3708,6 +3712,7 @@ function SettingsScreen() {
       <DnnsModal visible={dnnsOpen} onClose={() => setDnnsOpen(false)} ownerAddr={walletAddr}/>
       <AccountModal visible={acctOpen} onClose={() => setAcctOpen(false)}/>
       <NetworksVisibilityModal visible={networksOpen} onClose={() => setNetworksOpen(false)}/>
+      <CustomAssetsModal visible={customAssetsOpen} onClose={() => setCustomAssetsOpen(false)}/>
     </ScrollView>
   );
 }
@@ -4048,6 +4053,162 @@ function NetworksVisibilityModal({ visible, onClose }: { visible: boolean; onClo
             </Pressable>
           );
         })}
+      </ScrollView>
+    </SheetShell>
+  );
+}
+
+/** "Add network / token" — a custom EVM network (validated by reading its real
+ *  chainId on-chain) or an ERC-20 (validated by reading symbol/decimals
+ *  on-chain). Never trusts typed input blindly — see lib/custom-assets.ts's
+ *  header note (a wrong decimals value is a fund-loss bug). Once added, both
+ *  flow into the portfolio, Send and the dApp browser automatically via
+ *  evm-external.ts's merged lookups — no extra wiring needed here. */
+function CustomAssetsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const C = useColors();
+  const [tick, setTick] = useState(0);
+  const [chains, setChains] = useState<Array<{ chainId: number; name: string; rpcUrl: string }>>([]);
+  const [tokens, setTokens] = useState<Array<{ chainId: number; symbol: string; address: string }>>([]);
+  const [nets, setNets] = useState<Array<{ chainId: number; name: string }>>([]);
+  const [mode, setMode] = useState<'' | 'net' | 'tok'>('');
+
+  const [nName, setNName] = useState(''); const [nRpc, setNRpc] = useState('');
+  const [nSym, setNSym] = useState('');   const [nExp, setNExp] = useState('');
+  const [nBusy, setNBusy] = useState(false); const [nErr, setNErr] = useState<string | null>(null);
+
+  const [tChain, setTChain] = useState<number | null>(null); const [tAddr, setTAddr] = useState('');
+  const [tBusy, setTBusy] = useState(false); const [tErr, setTErr] = useState<string | null>(null);
+
+  const refresh = () => {
+    void import('./lib/custom-assets').then((m) => {
+      setChains(m.customChains().map((c) => ({ chainId: c.chainId, name: c.name, rpcUrl: c.rpcUrl })));
+      setTokens(m.customTokens().map((t) => ({ chainId: t.chainId, symbol: t.symbol, address: t.address })));
+      setNets(m.allEvmChains().map((c) => ({ chainId: c.chainId, name: c.name })));
+    });
+  };
+  useEffect(() => { if (visible) refresh(); }, [visible, tick]);
+  if (!visible) return null;
+
+  const addNet = async () => {
+    setNBusy(true); setNErr(null);
+    try {
+      const rpc = nRpc.trim();
+      if (!/^https?:\/\/\S+/.test(rpc)) throw new Error('Enter a valid RPC URL (https://…)');
+      const m = await import('./lib/custom-assets');
+      const chainId = await m.probeChainId(rpc);
+      await m.addCustomChain({
+        chainId, name: nName.trim() || `Chain ${chainId}`, rpcUrl: rpc,
+        nativeSymbol: (nSym.trim() || 'ETH').toUpperCase(), explorerUrl: nExp.trim(),
+      });
+      setMode(''); setNName(''); setNRpc(''); setNSym(''); setNExp('');
+      setTick((t) => t + 1);
+    } catch (e) { setNErr((e as Error)?.message || 'Could not reach that RPC'); }
+    finally { setNBusy(false); }
+  };
+  const addTok = async () => {
+    setTBusy(true); setTErr(null);
+    try {
+      const addr = tAddr.trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) throw new Error('Enter a valid 0x token address');
+      const chainId = tChain ?? nets[0]?.chainId;
+      const chain = nets.find((c) => c.chainId === chainId);
+      const m = await import('./lib/custom-assets');
+      const evmChain = m.allEvmChains().find((c) => c.chainId === chainId);
+      if (!chain || !evmChain) throw new Error('Pick a network');
+      const meta = await m.probeErc20(evmChain.rpcUrl, addr);
+      await m.addCustomToken({ chainId, symbol: meta.symbol, name: meta.name, address: addr, decimals: meta.decimals });
+      setMode(''); setTAddr('');
+      setTick((t) => t + 1);
+    } catch (e) { setTErr((e as Error)?.message || 'Not a valid ERC-20 on that network'); }
+    finally { setTBusy(false); }
+  };
+  const removeNet = async (chainId: number) => {
+    const m = await import('./lib/custom-assets');
+    await m.removeCustomChain(chainId);
+    setTick((t) => t + 1);
+  };
+  const removeTok = async (chainId: number, address: string) => {
+    const m = await import('./lib/custom-assets');
+    await m.removeCustomToken(chainId, address);
+    setTick((t) => t + 1);
+  };
+
+  const inputStyle = { backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: C.textPrimary, fontSize: 14, marginTop: 8 };
+
+  return (
+    <SheetShell title="Add network / token" onClose={onClose}>
+      <ScrollView style={{ maxHeight: 480 }}>
+        {chains.map((c) => (
+          <View key={c.chainId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{c.name} <Text style={{ color: C.textMuted, fontWeight: '400' }}>· {c.chainId}</Text></Text>
+              <Text numberOfLines={1} style={{ color: C.textMuted, fontSize: 11 }}>{c.rpcUrl}</Text>
+            </View>
+            <Pressable onPress={() => removeNet(c.chainId)}><Text style={{ color: C.blue, fontSize: 12, fontWeight: '700' }}>Remove</Text></Pressable>
+          </View>
+        ))}
+        {tokens.map((t) => (
+          <View key={`${t.chainId}-${t.address}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{t.symbol} <Text style={{ color: C.textMuted, fontWeight: '400' }}>· {nets.find((n) => n.chainId === t.chainId)?.name ?? t.chainId}</Text></Text>
+              <Text numberOfLines={1} style={{ color: C.textMuted, fontSize: 11 }}>{t.address}</Text>
+            </View>
+            <Pressable onPress={() => removeTok(t.chainId, t.address)}><Text style={{ color: C.blue, fontSize: 12, fontWeight: '700' }}>Remove</Text></Pressable>
+          </View>
+        ))}
+        {chains.length === 0 && tokens.length === 0 && mode === '' && (
+          <Text style={{ color: C.textMuted, fontSize: 12, paddingVertical: 10 }}>No custom networks or tokens yet.</Text>
+        )}
+
+        {mode === 'net' && (
+          <View style={{ paddingTop: 10 }}>
+            <TextInput style={inputStyle} placeholder="Network name (e.g. Sepolia)" placeholderTextColor={C.textMuted} value={nName} onChangeText={setNName}/>
+            <TextInput style={inputStyle} placeholder="RPC URL (https://…)" placeholderTextColor={C.textMuted} value={nRpc} onChangeText={setNRpc} autoCapitalize="none" autoCorrect={false}/>
+            <TextInput style={inputStyle} placeholder="Currency symbol (e.g. ETH)" placeholderTextColor={C.textMuted} value={nSym} onChangeText={setNSym} autoCapitalize="characters"/>
+            <TextInput style={inputStyle} placeholder="Block explorer URL (optional)" placeholderTextColor={C.textMuted} value={nExp} onChangeText={setNExp} autoCapitalize="none" autoCorrect={false}/>
+            {nErr && <Text style={{ color: '#ff6b6b', fontSize: 11, marginTop: 6 }}>{nErr}</Text>}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, alignItems: 'center' }}>
+              <Pressable disabled={nBusy} onPress={addNet} style={{ backgroundColor: C.blue, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, opacity: nBusy ? 0.6 : 1 }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{nBusy ? 'Checking…' : 'Add network'}</Text>
+              </Pressable>
+              <Pressable onPress={() => setMode('')}><Text style={{ color: C.textSecondary, fontWeight: '600', fontSize: 13 }}>Cancel</Text></Pressable>
+            </View>
+          </View>
+        )}
+        {mode === 'tok' && (
+          <View style={{ paddingTop: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+              {nets.map((n) => (
+                <Pressable
+                  key={n.chainId}
+                  onPress={() => setTChain(n.chainId)}
+                  style={{
+                    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+                    backgroundColor: (tChain ?? nets[0]?.chainId) === n.chainId ? C.blueDim : C.bgElevated,
+                    borderWidth: 1, borderColor: (tChain ?? nets[0]?.chainId) === n.chainId ? C.blue : C.borderDefault,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: (tChain ?? nets[0]?.chainId) === n.chainId ? C.blue : C.textSecondary }}>{n.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput style={inputStyle} placeholder="Token contract (0x…)" placeholderTextColor={C.textMuted} value={tAddr} onChangeText={setTAddr} autoCapitalize="none" autoCorrect={false}/>
+            {tErr && <Text style={{ color: '#ff6b6b', fontSize: 11, marginTop: 6 }}>{tErr}</Text>}
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, alignItems: 'center' }}>
+              <Pressable disabled={tBusy} onPress={addTok} style={{ backgroundColor: C.blue, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, opacity: tBusy ? 0.6 : 1 }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{tBusy ? 'Checking…' : 'Add token'}</Text>
+              </Pressable>
+              <Pressable onPress={() => setMode('')}><Text style={{ color: C.textSecondary, fontWeight: '600', fontSize: 13 }}>Cancel</Text></Pressable>
+            </View>
+          </View>
+        )}
+
+        {mode === '' && (
+          <View style={{ flexDirection: 'row', gap: 20, marginTop: 12 }}>
+            <Pressable onPress={() => { setNErr(null); setMode('net'); }}><Text style={{ color: C.blue, fontWeight: '700', fontSize: 13 }}>+ Add network</Text></Pressable>
+            <Pressable onPress={() => { setTErr(null); setMode('tok'); }}><Text style={{ color: C.blue, fontWeight: '700', fontSize: 13 }}>+ Add token</Text></Pressable>
+          </View>
+        )}
       </ScrollView>
     </SheetShell>
   );
@@ -6238,6 +6399,12 @@ function extractBrowseUrl(url: string): string | null {
 }
 
 function App() {
+  // Prime the custom-network/token overlay once at startup (lazy import,
+  // matching evm-external's own lazy-loading — keeps the heavy ethers-backed
+  // chain code out of the eager bundle). usePortfolio's own effects re-read
+  // the merged list on their next fetch/reload, so exact timing here isn't
+  // critical.
+  useEffect(() => { void import('./lib/custom-assets').then((m) => m.loadCustomAssets()); }, []);
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
