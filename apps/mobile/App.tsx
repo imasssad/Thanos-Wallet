@@ -1223,14 +1223,6 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         <RefreshControl refreshing={loading} onRefresh={reload} tintColor={C.textSecondary} />
       }
     >
-      {/* Network pill */}
-      <View style={styles.netPillRow}>
-        <View style={styles.netPill}>
-          <View style={[styles.netDot, offline && { backgroundColor: C.red }]}/>
-          <Text style={styles.netText}>{offline ? 'Offline' : 'Synced'}</Text>
-        </View>
-      </View>
-
       {/* Balance hero CARD with gradient feel — skeleton only on cold load */}
       {showSkeleton ? <BalanceSkeleton/> : (
       <View style={styles.balanceCard}>
@@ -6911,8 +6903,6 @@ function makeStyles(C: Colors) {
       alignItems: 'center', justifyContent: 'center',
     },
 
-    /* Network pill (top of home) */
-    netPillRow: { alignItems: 'flex-start', marginBottom: 4 },
     netPill: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
       paddingHorizontal: 10, paddingVertical: 5,
