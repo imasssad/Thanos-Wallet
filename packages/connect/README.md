@@ -33,7 +33,7 @@ import { ThanosConnect } from 'thanos-connect';
 
 const thanos = new ThanosConnect({
   appName: 'Ignite DEX',
-  chainId: 700777, // Lithosphere Makalu — default
+  chainId: 700777, // Lithosphere Makalu (testnet) — see "Lithosphere chains" below for Mainnet (9005)
 });
 
 // Click handler
@@ -153,7 +153,7 @@ package — use them to keep the wire format identical on both sides.
 |-------|------|---------|-------|
 | `appName` | string | **required** | Shown in the SIWE message statement |
 | `appUrl` | string | `window.location.origin` | Canonical URL anchor |
-| `chainId` | number | `700777` (Makalu) | Chain ID for the sign-in |
+| `chainId` | number | `700777` (Makalu testnet) | Chain ID for the sign-in — see [Lithosphere chains](#lithosphere-chains) |
 | `statement` | string | `Sign in to {appName} with your Thanos Wallet.` | Custom SIWE statement |
 | `nonceEndpoint` | string \| null | `/api/auth/nonce` | Set `null` to generate nonce client-side |
 | `verifyEndpoint` | string \| null | `/api/auth/verify` | Set `null` to skip backend round-trip |
@@ -179,6 +179,20 @@ try {
 }
 ```
 
+## Lithosphere chains
+
+The wallet is a first-class citizen on three Lithosphere networks. Pick the
+`chainId` that matches your dApp's environment:
+
+| Chain | chainId | hex | Explorer | Status |
+|-------|---------|-----|----------|--------|
+| **Lithosphere** (Mainnet) | `9005` | `0x2325` | [lithoscan.ai](https://lithoscan.ai) | Mainnet — flagship L1, live 2026-08 |
+| Lithosphere Kamet | `900523` | `0xdbdab` | [explorer-3.litho.ai](https://explorer-3.litho.ai) | Mainnet — sister chain, DNNS |
+| Lithosphere Makalu | `700777` | `0xab169` | [makalu.litho.ai](https://makalu.litho.ai) | Testnet |
+
+Production dApps should sign users in on **Lithosphere Mainnet (`9005`)**;
+Makalu is the testnet used throughout this doc's quick-start examples.
+
 ## Multi-chain example
 
 ```ts
@@ -194,7 +208,7 @@ Switch chains after sign-in:
 const provider = await thanos.getProvider();
 await provider.request({
   method: 'wallet_switchEthereumChain',
-  params: [{ chainId: '0xab169' }], // 700777
+  params: [{ chainId: '0x2325' }], // 9005 — Lithosphere Mainnet
 });
 ```
 
@@ -273,9 +287,20 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 />
 ```
 
+### Lithoscan — https://lithoscan.ai
+
+Lithoscan is the explorer for Lithosphere Mainnet — use chainId 9005:
+
+```tsx
+<ThanosConnectButton
+  config={{ appName: 'Lithoscan', chainId: 9005 }}
+  onSignIn={(s) => loginExplorer(s)}
+/>
+```
+
 ### Makalu Explorer — https://makalu.litho.ai
 
-Makalu is the Lithosphere main chain — use the default chainId:
+Makalu is the Lithosphere testnet — use chainId 700777:
 
 ```tsx
 <ThanosConnectButton
