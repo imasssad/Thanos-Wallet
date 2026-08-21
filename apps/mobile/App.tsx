@@ -2019,42 +2019,48 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
           onPress={() => setPickerOpen(false)}
         >
           <Pressable
-            style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 }}
+            style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32, maxHeight: '80%' }}
             onPress={() => {}}
           >
             <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>SELECT NETWORK &amp; ASSET</Text>
             {/* Grouped by network — same mental model as the Receive screen's
-                Select-network list, so Send and Receive read identically. */}
-            {(() => {
-              const groups: Array<{ name: string; items: typeof evmAssets }> = [];
-              for (const a of evmAssets) {
-                const name =
-                    a.chainId === 700777 ? 'Lithosphere Makalu'
-                  : a.chainId === 900523 ? 'Lithosphere Kamet'
-                  : RECEIVE_NETWORKS.find((n) => n.chainId === a.chainId)?.name ?? `Chain ${a.chainId}`;
-                const g = groups.find((x) => x.name === name);
-                if (g) g.items.push(a); else groups.push({ name, items: [a] });
-              }
-              return groups.map((g) => (
-                <View key={g.name}>
-                  <Text style={[styles.fieldLabel, { marginTop: 12, marginBottom: 2, fontSize: 10 }]}>{g.name.toUpperCase()}</Text>
-                  {g.items.map((a, i) => (
-                    <Pressable
-                      key={`${a.sym}-${a.chainId}`}
-                      style={[styles.row, i < g.items.length - 1 && styles.rowBorder]}
-                      onPress={() => { setSelectedKey(assetKeyOf(a)); setAmt(''); setPickerOpen(false); }}
-                    >
-                      <Avatar symbol={a.sym} color={a.color} size={36} chainId={a.chainId} native={a.native}/>
-                      <View style={styles.rowMid}>
-                        <Text style={styles.rowSymbol}>{a.name}</Text>
-                        <Text style={styles.rowSub}>{a.balanceText} {a.sym}</Text>
-                      </View>
-                      <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ));
-            })()}
+                Select-network list, so Send and Receive read identically.
+                ScrollView is required: the ecosystem + external-chain asset
+                list is long enough to overflow the sheet, and without it the
+                list was unscrollable — items below the fold were unreachable
+                (reported as "stuck on asset selection"). */}
+            <ScrollView style={{ maxHeight: 480 }}>
+              {(() => {
+                const groups: Array<{ name: string; items: typeof evmAssets }> = [];
+                for (const a of evmAssets) {
+                  const name =
+                      a.chainId === 700777 ? 'Lithosphere Makalu'
+                    : a.chainId === 900523 ? 'Lithosphere Kamet'
+                    : RECEIVE_NETWORKS.find((n) => n.chainId === a.chainId)?.name ?? `Chain ${a.chainId}`;
+                  const g = groups.find((x) => x.name === name);
+                  if (g) g.items.push(a); else groups.push({ name, items: [a] });
+                }
+                return groups.map((g) => (
+                  <View key={g.name}>
+                    <Text style={[styles.fieldLabel, { marginTop: 12, marginBottom: 2, fontSize: 10 }]}>{g.name.toUpperCase()}</Text>
+                    {g.items.map((a, i) => (
+                      <Pressable
+                        key={`${a.sym}-${a.chainId}-${a.tokenAddress ?? 'native'}`}
+                        style={[styles.row, i < g.items.length - 1 && styles.rowBorder]}
+                        onPress={() => { setSelectedKey(assetKeyOf(a)); setAmt(''); setPickerOpen(false); }}
+                      >
+                        <Avatar symbol={a.sym} color={a.color} size={36} chainId={a.chainId} native={a.native}/>
+                        <View style={styles.rowMid}>
+                          <Text style={styles.rowSymbol}>{a.name}</Text>
+                          <Text style={styles.rowSub}>{a.balanceText} {a.sym}</Text>
+                        </View>
+                        <Text style={styles.rowAmt}>{formatUsd(a.usdValue)}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ));
+              })()}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
