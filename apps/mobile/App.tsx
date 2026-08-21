@@ -614,13 +614,17 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
                   };
                 }),
                 ...tokens.map(({ token, balance }) => {
-                  const price = prices[token.symbol] ?? 1; // stablecoins ≈ $1
+                  // Built-in USDT/USDC are ≈$1; every other token (custom or
+                  // ecosystem, e.g. COLLE/IMAGE) uses a live price if known,
+                  // else $0 — never fabricate a stablecoin peg for it.
+                  const isStable = token.symbol === 'USDT' || token.symbol === 'USDC';
+                  const price = prices[token.symbol] ?? (isStable ? 1 : 0);
                   return {
                     sym: token.symbol,
                     name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
                     chainId: token.chainId, balance, balanceText: formatAmount(balance),
                     decimals: token.decimals, priceUsd: price, usdValue: balance * price,
-                    color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+                    color: token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : assetColor(token.symbol),
                     tokenAddress: token.address, native: false,
                   };
                 }),

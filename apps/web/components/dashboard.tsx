@@ -722,20 +722,23 @@ export function Dashboard() {
       native:  true,
     }));
 
-    /* Stablecoins (USDT/USDC) per EVM chain — one row each, the chain in the
-       name so USDT-on-Ethereum reads distinct from USDT-on-BSC. Priced ~$1
-       (CoinGecko if available, else $1 fallback). */
+    /* EVM tokens per chain — one row each, the chain in the name so
+       USDT-on-Ethereum reads distinct from USDT-on-BSC. Built-in USDT/USDC
+       are priced ~$1 (CoinGecko if available, else $1 fallback); every other
+       token (custom or ecosystem, e.g. COLLE/IMAGE) uses a live price if
+       known, else $0 — never fabricate a stablecoin peg for it. */
     const evmTokenRows = evmTokenBalances.map(({ token, balance }) => {
       const chainName = getEvmChainMerged(token.chainId)?.name ?? `Chain ${token.chainId}`;
+      const isStable = token.symbol === 'USDT' || token.symbol === 'USDC';
       return {
         sym:    token.symbol,
         name:   `${token.name} · ${chainName}`,
         bal:    balance.toLocaleString('en-US', { maximumFractionDigits: 2 }),
         balNum: balance,
-        usdNum: balance * priceOr(prices, token.symbol, 1),
+        usdNum: balance * priceOr(prices, token.symbol, isStable ? 1 : 0),
         priceKnown: true,
         chg:    0,
-        color:  token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+        color:  token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : '#8b7df7',
         chainId: token.chainId as number | undefined,
         native:  false,
       };

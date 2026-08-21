@@ -292,13 +292,17 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             }
             for (const { token, balance } of tokens) {
               if (balance <= 0) continue;
-              const priceUsd = prices[token.symbol] ?? 1; // stablecoins ~= $1
+              // Built-in USDT/USDC are ≈$1; every other token (custom or
+              // ecosystem, e.g. COLLE/IMAGE) uses a live price if known,
+              // else $0 — never fabricate a stablecoin peg for it.
+              const isStable = token.symbol === 'USDT' || token.symbol === 'USDC';
+              const priceUsd = prices[token.symbol] ?? (isStable ? 1 : 0);
               xchain.push({
                 sym: token.symbol,
                 name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
                 balance, balanceText: formatAmount(balance), decimals: token.decimals,
                 priceUsd, usdValue: balance * priceUsd,
-                pct: 0, color: token.symbol === 'USDT' ? '#26a17b' : '#2775ca',
+                pct: 0, color: token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : coinColor(token.symbol),
                 tokenAddress: token.address, native: false, chainId: token.chainId,
               });
             }
