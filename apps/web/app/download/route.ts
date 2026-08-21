@@ -11,11 +11,17 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.2 (versionCode 19), EAS build
-// 05315204, 2026-08-21. Targets Android 16 / API 36.
-// NEW in vc19: custom EVM networks + tokens — Settings → Add network / token,
-// with on-chain validation (real chainId + ERC-20 symbol/decimals probed
-// before saving) and add/remove for both. vc18 added Android App Links —
+// Latest production-apk build — app version 1.1.2 (versionCode 21), EAS build
+// 53d0fce2, 2026-08-22. Targets Android 16 / API 36.
+// NEW in vc21: fixed external-EVM token pricing (COLLE/IMAGE/MUSA/AGII no
+// longer default to a fabricated $1 when their live price fetch misses —
+// only USDT/USDC do). Also fixes the Send screen's asset picker, which had
+// no ScrollView and could overflow unscrollably once the ecosystem token
+// list grew — assets below the fold were unreachable ("stuck on asset
+// selection"). vc19 added custom EVM networks + tokens — Settings → Add
+// network / token, with on-chain validation (real chainId + ERC-20
+// symbol/decimals probed before saving) and add/remove for both. vc18 added
+// Android App Links —
 // thanos.fi/wc and thanos.fi/app now open this app directly instead of the
 // browser (autoVerify https intent-filter + the assetlinks.json manifest at
 // thanos.fi/.well-known/). vc17 added native
@@ -79,7 +85,7 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/GcYSsVodJBtdAkyVqZPTDp7MSsRO0N0sX_QwvRqkNg0.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/zDOMwbWqnsmmy-iIcxF3TQcYQPJmT-wVPuorRs2eafQ.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
