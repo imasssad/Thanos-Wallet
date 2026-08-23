@@ -2647,6 +2647,12 @@ function ActivityScreen() {
   const shown = filter === 'All' ? items : items.filter(t => txDisplay(t.type).label === filter);
   // Cold first load only: nothing cached/painted yet.
   const showSkeleton = loading && !hydrated && items.length === 0;
+  // Swap is unreachable on iOS (EXCHANGE_ENABLED gates it off — Apple
+  // Guideline 3.1.5(iii)), so no swap-type activity can ever exist there.
+  // Hide the filter chip rather than offer a filter that can only ever
+  // show "No swap transactions."
+  const filterOptions: Array<'All' | 'Sent' | 'Received' | 'Swap'> =
+    EXCHANGE_ENABLED ? ['All', 'Sent', 'Received', 'Swap'] : ['All', 'Sent', 'Received'];
 
   return (
     <>
@@ -2663,7 +2669,7 @@ function ActivityScreen() {
 
       {/* Filter pills — tap to filter the list by direction. */}
       <View style={styles.filterRow}>
-        {(['All', 'Sent', 'Received', 'Swap'] as const).map((f) => {
+        {filterOptions.map((f) => {
           const active = filter === f;
           return (
             <Pressable key={f} onPress={() => setFilter(f)} style={[styles.filterPill, active && styles.filterPillActive]}>
