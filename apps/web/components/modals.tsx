@@ -1559,14 +1559,31 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
         primaryLabel: 'Litho1',
         altLabel:     'EVM',
       });
+      // Lithosphere Mainnet (9005) — the flagship chain. Same dual-address
+      // treatment as Makalu/Kamet; this was previously falling through to
+      // the generic EVM-chains loop below and only ever showing the 0x
+      // address, with no litho1 option at all.
+      out.push({
+        id:           'lithosphere-mainnet',
+        name:         'Lithosphere',
+        symbol:       'LITHO',
+        color:        '#22c55e',
+        address:      litho || evm,
+        altAddress:   litho && evm ? evm : undefined,
+        primaryLabel: 'Litho1',
+        altLabel:     'EVM',
+        badge:        'EVM',
+      });
     }
     // EVM chains — all share the wallet's single 0x address, surfaced as
     // separate rows (MetaMask pattern) so a user withdrawing from an exchange
     // picks the right network (ETH on Ethereum, BNB on BNB Chain, POL on
     // Polygon, etc.) for the same 0x address. Receiving on any of these is read
-    // back by the dashboard's getAllEvmNativeBalances.
+    // back by the dashboard's getAllEvmNativeBalances. Lithosphere Mainnet
+    // (9005) is excluded — it already got its own dual-address row above.
     if (evm) {
       for (const c of allEvmChains()) {
+        if (c.chainId === 9005) continue;
         out.push({
           id:      `evm-${c.chainId}`,
           name:    c.name,
