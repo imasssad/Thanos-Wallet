@@ -136,6 +136,7 @@ import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availa
 import { apiClient, type AuthUser } from './lib/auth-client';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
+import { loadDappConnections, getGrant, grantConnection } from './lib/dapp-connections';
 import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
@@ -5778,6 +5779,18 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   let host = current;
   try { host = new URL(current).host; } catch { /* keep raw */ }
 
+  // Silent reconnect: if this host was already approved (for the CURRENT
+  // active account — a grant for a different account never auto-applies),
+  // restore the connected state without showing the approval sheet again.
+  // Without this, every fresh visit to a previously-connected dApp required
+  // re-approving from scratch, since `connected`/`connectedHost` are plain
+  // component state that resets whenever the browser tab is closed/reopened.
+  useEffect(() => {
+    if (!host || !address) return;
+    const grant = getGrant(host, address);
+    if (grant) { setConnected(true); setConnectedHost(host); }
+  }, [host, address]);
+
   const send = (js: string) => ref.current?.injectJavaScript(js);
 
   // Run a request against the wallet signer and post the result back.
@@ -5798,7 +5811,10 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       } else {
         result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
       }
-      if (req.method === 'eth_requestAccounts') { setConnected(true); setConnectedHost(host); }
+      if (req.method === 'eth_requestAccounts') {
+        setConnected(true); setConnectedHost(host);
+        grantConnection(host, address, currentChainId);
+      }
       send(resolveJs(req.id, result));
     } catch (e) {
       const code = e instanceof WcSignerError ? e.code : -32603;
@@ -6421,6 +6437,7 @@ function App() {
   // the merged list on their next fetch/reload, so exact timing here isn't
   // critical.
   useEffect(() => { void import('./lib/custom-assets').then((m) => m.loadCustomAssets()); }, []);
+  useEffect(() => { void loadDappConnections(); }, []);
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
