@@ -11,14 +11,18 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.2 (versionCode 21), EAS build
-// 53d0fce2, 2026-08-22. Targets Android 16 / API 36.
-// NEW in vc21: fixed external-EVM token pricing (COLLE/IMAGE/MUSA/AGII no
-// longer default to a fabricated $1 when their live price fetch misses —
-// only USDT/USDC do). Also fixes the Send screen's asset picker, which had
-// no ScrollView and could overflow unscrollably once the ecosystem token
-// list grew — assets below the fold were unreachable ("stuck on asset
-// selection"). vc19 added custom EVM networks + tokens — Settings → Add
+// Latest production-apk build — app version 1.1.2 (versionCode 22), EAS build
+// 30d2c87b, 2026-08-26 (built under the imasssadkh EAS project — imasssad's
+// Android quota was exhausted for the month; same local keystore, same
+// signing identity, no user-facing difference). Targets Android 16 / API 36.
+// NEW in vc22: persisted dApp connection grants (auto-reconnect on revisit)
+// and the rebuilt Discover screen — Recents + Favorites rows, category pills
+// instead of static section headers. vc21 fixed external-EVM token pricing
+// (COLLE/IMAGE/MUSA/AGII no longer default to a fabricated $1 when their live
+// price fetch misses — only USDT/USDC do). Also fixed the Send screen's asset
+// picker, which had no ScrollView and could overflow unscrollably once the
+// ecosystem token list grew — assets below the fold were unreachable ("stuck
+// on asset selection"). vc19 added custom EVM networks + tokens — Settings → Add
 // network / token, with on-chain validation (real chainId + ERC-20
 // symbol/decimals probed before saving) and add/remove for both. vc18 added
 // Android App Links —
@@ -85,7 +89,7 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/zDOMwbWqnsmmy-iIcxF3TQcYQPJmT-wVPuorRs2eafQ.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/s2d3LAugldNYxEgkJWbPQYWWpV9QG0iXITjVnK6cXZ0.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
