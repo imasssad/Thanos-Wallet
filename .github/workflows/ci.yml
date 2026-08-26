@@ -106,6 +106,12 @@ jobs:
       - run: pnpm --filter @thanos/web test
       # Auth route tests — register/login/me/refresh/logout against a mocked pg.
       - run: pnpm --filter @thanos/api test
+      # MultX adapter — manifest integrity, fail-closed route/network/cap
+      # checks, and the one most likely to cause real fund loss if wrong:
+      # a transfer is never reported RELEASED without independent
+      # destination-receipt verification, even when the bridge API itself
+      # says "completed".
+      - run: pnpm --filter multx-adapter test
 
   integration-pg:
     name: integration (api ↔ real Postgres)
