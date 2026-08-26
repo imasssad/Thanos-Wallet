@@ -137,6 +137,10 @@ import { apiClient, type AuthUser } from './lib/auth-client';
 import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { INJECTED_PROVIDER_JS, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { loadDappConnections, getGrant, grantConnection } from './lib/dapp-connections';
+import {
+  loadBrowserHistory, getRecents, getFavorites, isFavorited,
+  recordVisit, toggleFavorite, type VisitedApp,
+} from './lib/browser-history';
 import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
@@ -147,9 +151,9 @@ import {
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Star,
 } from 'lucide-react-native';
-import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, groupBySection, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
+import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
 import {
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
@@ -3215,11 +3219,32 @@ function EarnScreen({ goBack }: { goBack: () => void }) {
   );
 }
 
+/* Category pills for the Explore section — 'Featured' (= all) plus every
+   distinct EcosystemApp.category, in first-seen order. Real categories only:
+   no invented Lending/Staking/etc. pills with no apps behind them. */
+const DISCOVER_CATEGORIES: string[] = [
+  'Featured',
+  ...Array.from(new Set(ECOSYSTEM_APPS.map((a) => a.category))),
+];
+
+/* Horizontal chip used by both the Recents and Favorites rows. */
+function DiscoverChip({ app, onPress }: { app: VisitedApp; onPress: () => void }) {
+  const C = useColors();
+  return (
+    <Pressable onPress={onPress} style={{ alignItems: 'center', width: 64, marginRight: 14 }}>
+      <DappIcon id={app.id} name={app.name} color={app.color} size={52}/>
+      <Text numberOfLines={1} style={{ fontSize: 11, color: C.textSecondary, marginTop: 6, textAlign: 'center' }}>{app.name}</Text>
+    </Pressable>
+  );
+}
+
 function DiscoverScreen() {
   const C = useColors();
   const styles = useStyles();
   const openBrowser = useBrowser();
   const [q, setQ] = useState('');
+  const [cat, setCat] = useState('Featured');
+  const [, setTick] = useState(0); // browser-history is a module cache, not React state
   const query = q.trim().toLowerCase();
   const isLink = looksLikeUrl(q);
 
@@ -3229,12 +3254,28 @@ function DiscoverScreen() {
         a.category.toLowerCase().includes(query) ||
         a.description.toLowerCase().includes(query) ||
         a.section.toLowerCase().includes(query))
-    : ECOSYSTEM_APPS;
-  const groups = groupBySection(filtered);
+    : cat === 'Featured' ? ECOSYSTEM_APPS : ECOSYSTEM_APPS.filter((a) => a.category === cat);
+
+  const recents   = getRecents();
+  const favorites = getFavorites();
+
+  const visit = (app: Omit<VisitedApp, 'at'>) => {
+    recordVisit(app);
+    setTick((t) => t + 1);
+    openBrowser(app.url);
+  };
+  const openApp = (a: EcosystemApp) => visit({ id: a.id, name: a.name, url: a.url, color: a.color });
+  const starApp = (a: EcosystemApp) => {
+    toggleFavorite({ id: a.id, name: a.name, url: a.url, color: a.color });
+    setTick((t) => t + 1);
+  };
 
   const submit = () => {
     const url = normalizeUrl(q);
-    if (url) openBrowser(url);
+    if (!url) return;
+    let host = url;
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep raw url as the label */ }
+    visit({ id: host, name: host, url, color: '#6b7280' });
   };
 
   return (
@@ -3286,45 +3327,84 @@ function DiscoverScreen() {
         </Pressable>
       )}
 
-      {/* Featured hub */}
       {!query && (
-        <Pressable
-          onPress={() => openBrowser(ECOSYSTEM_HUB)}
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16,
-            borderRadius: 16, marginBottom: 20,
-            backgroundColor: C.purpleGlow, borderWidth: 1, borderColor: C.borderDefault,
-          }}
-        >
-          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
-            <Globe size={22} color={C.blue}/>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web4</Text>
-            <Text style={{ fontSize: 12, color: C.textMuted }}>Browse the full ecosystem on ecosystem.litho.ai</Text>
-          </View>
-        </Pressable>
+        <>
+          {/* Featured hub */}
+          <Pressable
+            onPress={() => openBrowser(ECOSYSTEM_HUB)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16,
+              borderRadius: 16, marginBottom: 20,
+              backgroundColor: C.purpleGlow, borderWidth: 1, borderColor: C.borderDefault,
+            }}
+          >
+            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+              <Globe size={22} color={C.blue}/>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: C.textPrimary }}>Explore Web4</Text>
+              <Text style={{ fontSize: 12, color: C.textMuted }}>Browse the full ecosystem on ecosystem.litho.ai</Text>
+            </View>
+          </Pressable>
+
+          {/* Recents — dApps actually opened from here, most recent first */}
+          {recents.length > 0 && (
+            <View style={{ marginBottom: 20 }}>
+              <Text style={styles.dateHeader}>Recents</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 8 }}>
+                {recents.map((r) => <DiscoverChip key={r.url} app={r} onPress={() => visit(r)}/>)}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Favorites — user-starred, independent of visit history */}
+          {favorites.length > 0 && (
+            <View style={{ marginBottom: 20 }}>
+              <Text style={styles.dateHeader}>Favorites</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 8 }}>
+                {favorites.map((f) => <DiscoverChip key={f.url} app={f} onPress={() => visit(f)}/>)}
+              </ScrollView>
+            </View>
+          )}
+
+          <Text style={styles.dateHeader}>Explore dApps</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8, paddingRight: 8 }} style={{ marginBottom: 4 }}>
+            {DISCOVER_CATEGORIES.map((c) => {
+              const active = cat === c;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => setCat(c)}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, marginRight: 8,
+                    backgroundColor: active ? C.blue : C.bgElevated,
+                    borderWidth: 1, borderColor: active ? C.blue : C.borderDefault,
+                  }}
+                >
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: active ? '#fff' : C.textSecondary }}>{c}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </>
       )}
 
-      {/* Grouped sections (SafePal-style) */}
-      {groups.map(({ section, apps }) => (
-        <View key={section} style={{ marginBottom: 8 }}>
-          <Text style={styles.dateHeader}>{section}</Text>
-          <View style={styles.card}>
-            {apps.map((a, i) => (
-              <Pressable key={a.id} onPress={() => openBrowser(a.url)} style={[styles.row, i < apps.length - 1 && styles.rowBorder]}>
-                <DappIcon id={a.id} name={a.name} color={a.color}/>
-                <View style={styles.rowMid}>
-                  <Text style={styles.rowSymbol}>{a.name}</Text>
-                  <Text style={styles.rowSub} numberOfLines={1}>{a.description}</Text>
-                </View>
-                <ChevronRight size={18} color={C.textMuted}/>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ))}
-      {groups.length === 0 && !isLink && (
+      {/* Flat app list — filtered by search query, or by the selected category pill */}
+      <View style={styles.card}>
+        {filtered.map((a, i) => (
+          <Pressable key={a.id} onPress={() => openApp(a)} style={[styles.row, i < filtered.length - 1 && styles.rowBorder]}>
+            <DappIcon id={a.id} name={a.name} color={a.color}/>
+            <View style={styles.rowMid}>
+              <Text style={styles.rowSymbol}>{a.name}</Text>
+              <Text style={styles.rowSub} numberOfLines={1}>{a.description}</Text>
+            </View>
+            <Pressable hitSlop={10} onPress={() => starApp(a)} style={{ padding: 4, marginRight: 2 }}>
+              <Star size={16} color={isFavorited(a.url) ? C.blue : C.textMuted} fill={isFavorited(a.url) ? C.blue : 'none'}/>
+            </Pressable>
+          </Pressable>
+        ))}
+      </View>
+      {filtered.length === 0 && !isLink && (
         <Text style={[styles.rowSub, { padding: 16 }]}>No apps match “{q}”.</Text>
       )}
 
@@ -6438,6 +6518,7 @@ function App() {
   // critical.
   useEffect(() => { void import('./lib/custom-assets').then((m) => m.loadCustomAssets()); }, []);
   useEffect(() => { void loadDappConnections(); }, []);
+  useEffect(() => { void loadBrowserHistory(); }, []);
   const [screen, setScreen] = useState<Screen>('home');
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
