@@ -661,13 +661,15 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     return () => { cancelled = true; };
   }, [address, nonce, seedKey]);
 
-  // Funded assets first (largest USD on top); zero-balance supported-network
+  // Lithosphere Mainnet (chainId 9005) always leads, regardless of balance —
+  // it's the Web4 home chain, client requirement 2026-08-27. Below that:
+  // funded assets first (largest USD on top); zero-balance supported-network
   // rows trail in their insertion order — "what I own" above "what I could hold".
   const displayAssets = useMemo(() => [...assets].sort((a, b) => {
-    const af = a.balance > 0 ? 0 : 1;
-    const bf = b.balance > 0 ? 0 : 1;
-    if (af !== bf) return af - bf;
-    return af === 0 ? b.usdValue - a.usdValue : 0;
+    const rank = (x: typeof a) => x.chainId === 9005 ? -1 : x.balance > 0 ? 0 : 1;
+    const ar = rank(a), br = rank(b);
+    if (ar !== br) return ar - br;
+    return ar === 0 ? b.usdValue - a.usdValue : 0;
   }), [assets]);
 
   // Total derived from the list itself — the old separately-tracked total
@@ -968,7 +970,11 @@ function Avatar({ symbol, color, size = 36, chainId, native, icon }: {
   const insetPx = pres ? Math.round(size * pres.inset) : 0;
   return (
     <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: pres ? pres.backdrop : color }]}>
-      <Text style={[styles.avatarText, { fontSize: size * 0.36 }]}>{symbol.slice(0, 1)}</Text>
+      {/* Letter fallback — only when there's no image to show. Previously this
+          rendered unconditionally, and an inset icon (e.g. Solana's mark,
+          which doesn't fill the full circle) left the letter visible in the
+          margin around it. */}
+      {!source && <Text style={[styles.avatarText, { fontSize: size * 0.36 }]}>{symbol.slice(0, 1)}</Text>}
       {source && (
         <Image
           source={source}

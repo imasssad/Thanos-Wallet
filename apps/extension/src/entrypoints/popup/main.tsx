@@ -245,7 +245,11 @@ function TokenAvatar({ sym, color }: { sym: string; color: string }) {
   const src = failed ? null : iconFor(sym);
   return (
     <div className="row-avatar" style={{ background: color, position: 'relative', overflow: 'hidden' }}>
-      <span>{sym.slice(0, 1)}</span>
+      {/* Letter fallback — only when there's no image. An icon with
+          transparent padding (e.g. Solana's official mark) doesn't fully
+          cover the circle, so rendering the letter unconditionally let it
+          show through around the logo. */}
+      {!src && <span>{sym.slice(0, 1)}</span>}
       {src && (
         <img
           src={src}

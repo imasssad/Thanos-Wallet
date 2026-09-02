@@ -322,6 +322,10 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           })),
           ...xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 })),
         ];
+        // Lithosphere always leads regardless of amount — the Web4 home
+        // chain, client requirement 2026-08-27. Array.sort is stable, so
+        // everything else keeps its existing relative order.
+        coins.sort((a, b) => (a.sym === 'LITHO' ? 0 : 1) - (b.sym === 'LITHO' ? 0 : 1));
 
         const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {
           const { type, pos } = txType(t.type);

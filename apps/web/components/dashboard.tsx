@@ -878,10 +878,16 @@ export function Dashboard() {
       });
     }
     if (hideSmall) list = list.filter(c => c.usdNum >= 1);
-    list = [...list].sort((a, b) =>
-      sortMode === 'name'      ? a.sym.localeCompare(b.sym)
-      : sortMode === 'value-asc' ? a.usdNum - b.usdNum
-      :                            b.usdNum - a.usdNum);
+    list = [...list].sort((a, b) => {
+      // Lithosphere always leads regardless of amount or the chosen sort
+      // mode — the Web4 home chain, client requirement 2026-08-27.
+      const al = a.sym === 'LITHO' ? 0 : 1;
+      const bl = b.sym === 'LITHO' ? 0 : 1;
+      if (al !== bl) return al - bl;
+      return sortMode === 'name'      ? a.sym.localeCompare(b.sym)
+        : sortMode === 'value-asc' ? a.usdNum - b.usdNum
+        :                            b.usdNum - a.usdNum;
+    });
     return list;
   }, [COINS, netFilter, hideSmall, sortMode]);
 

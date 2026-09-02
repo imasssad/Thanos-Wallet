@@ -162,8 +162,11 @@ export function TokenIcon({
         letterSpacing: '-0.02em',
         overflow: 'hidden',
       }}>
-        {/* Letter fallback — always rendered underneath; covered when PNG loads. */}
-        <span style={{ position: 'absolute' }}>{sym.charAt(0).toUpperCase()}</span>
+        {/* Letter fallback — only when there's no image. Previously rendered
+            unconditionally on the assumption a loaded PNG always fully covers
+            it, which breaks for any icon with transparent padding (e.g.
+            Solana's official mark) — the letter showed through around it. */}
+        {!showImage && <span style={{ position: 'absolute' }}>{sym.charAt(0).toUpperCase()}</span>}
         {showImage && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
