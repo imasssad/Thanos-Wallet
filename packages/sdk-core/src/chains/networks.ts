@@ -21,8 +21,16 @@ export const MAKALU_TESTNET: NetworkConfig = {
   }
 };
 
-// Kamet was promoted from testnet to mainnet on 2026-05-18 (chainId / state
-// unchanged). Canonical config confirmed by the Litho team 2026-06-15:
+// CORRECTION (2026-09-02, client-confirmed): Kamet is a TESTNET — the
+// "promoted to mainnet 2026-05-18" note this comment used to carry was
+// wrong (or reverted; either way, no longer true) and led straight to a
+// docs mistake (packages/connect/README.md + the /docs page called it
+// Mainnet). The `isMainnet: true` flag below was never actually read by
+// any client UI (verified — nothing imports it), so correcting it here is
+// a pure metadata fix with zero behavior change. The exported const name
+// (`KAMET_MAINNET`) is kept as-is to avoid a repo-wide rename; don't take
+// the name as a truth claim — `extras.isMainnet` is the truth claim, and
+// it's now false.
 //   • EVM chainId 900523 (0xDBDAB), Cosmos chainId lithosphere_900523-2
 //   • RPC: rpc-3.litho.ai is the SOLE canonical node. The deprecated 2-level
 //     host is removed entirely — never reference it.
@@ -43,11 +51,14 @@ export const KAMET_MAINNET: NetworkConfig = {
     wsUrl: 'wss://rpc-3.litho.ai/websocket',
     cosmosChainId: 'lithosphere_900523-2',
     bech32Prefix: 'litho',
-    isMainnet: true
+    isMainnet: false,
+    isTestnet: true
   }
 };
 
-/** @deprecated Kamet is mainnet since 2026-05-18 — use KAMET_MAINNET. Retained for back-compat. */
+/** Kamet is a testnet — kept as an alias of KAMET_MAINNET (same config,
+ *  chainId/state unchanged) since that's still the exported name everything
+ *  imports; see the correction note above. */
 export const KAMET_TESTNET = KAMET_MAINNET;
 
 // Lithosphere Mainnet — the flagship Litho L1, live 2026-08. EVM chainId 9005

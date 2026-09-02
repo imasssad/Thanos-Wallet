@@ -306,7 +306,7 @@ try {
             <tbody>
               {[
                 ['Lithosphere (Mainnet)', '9005', '0x2325', 'lithoscan.ai', 'Mainnet — flagship L1, live 2026-08'],
-                ['Lithosphere Kamet', '900523', '0xdbdab', 'explorer-3.litho.ai', 'Mainnet — sister chain, DNNS'],
+                ['Lithosphere Kamet', '900523', '0xdbdab', 'explorer-3.litho.ai', 'Testnet — sister chain, DNNS'],
                 ['Lithosphere Makalu', '700777', '0xab169', 'makalu.litho.ai', 'Testnet'],
               ].map(([name, id, hex, exp, status]) => (
                 <tr key={id}>

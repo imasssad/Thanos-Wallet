@@ -1,7 +1,7 @@
 import { KAMET_MAINNET } from '../chains/networks';
 
 /**
- * MultX bridge configuration for Kamet (mainnet).
+ * MultX bridge configuration for Kamet (testnet).
  *
  * The Kamet-side bridge contract (0x3a89…F263) was verified live on
  * 2026-06-10 (eth_getCode returned bytecode on rpc-3.litho.ai). The

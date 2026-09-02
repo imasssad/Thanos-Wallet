@@ -187,7 +187,7 @@ The wallet is a first-class citizen on three Lithosphere networks. Pick the
 | Chain | chainId | hex | Explorer | Status |
 |-------|---------|-----|----------|--------|
 | **Lithosphere** (Mainnet) | `9005` | `0x2325` | [lithoscan.ai](https://lithoscan.ai) | Mainnet — flagship L1, live 2026-08 |
-| Lithosphere Kamet | `900523` | `0xdbdab` | [explorer-3.litho.ai](https://explorer-3.litho.ai) | Mainnet — sister chain, DNNS |
+| Lithosphere Kamet | `900523` | `0xdbdab` | [explorer-3.litho.ai](https://explorer-3.litho.ai) | Testnet — sister chain, DNNS |
 | Lithosphere Makalu | `700777` | `0xab169` | [makalu.litho.ai](https://makalu.litho.ai) | Testnet |
 
 Production dApps should sign users in on **Lithosphere Mainnet (`9005`)**;
@@ -311,7 +311,7 @@ Makalu is the Lithosphere testnet — use chainId 700777:
 
 ### Kamet Explorer — https://kamet.litho.ai
 
-Kamet is the sister chain (DNNS lives here) — use chainId 900523:
+Kamet is the sister testnet chain (DNNS lives here) — use chainId 900523:
 
 ```tsx
 <ThanosConnectButton

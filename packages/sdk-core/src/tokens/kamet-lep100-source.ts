@@ -2,7 +2,7 @@ import type { TokenConfig } from '../types';
 import { KAMET_MAINNET } from '../chains/networks';
 
 /**
- * Kamet (mainnet, EVM chainId 900523) LEP100 token registry.
+ * Kamet (testnet, EVM chainId 900523) LEP100 token registry.
  *
  * Every contract address below was verified live on 2026-06-10 against
  * https://rpc-3.litho.ai (eth_getCode returned bytecode and eth_call to
