@@ -75,8 +75,20 @@ high)**, all traced to `postcss`/`sharp`/transitive deps of `next` and
 per-package breakdown is in the log (advisory IDs, affected/patched
 version ranges, dependency paths).
 
-Mobile's separate `npm audit` didn't complete in this pass — see Known
-gaps #3.
+**Mobile** (`apps/mobile`, separate `npm audit` — completed after this
+doc's first pass, see `vuln-scans/npm-audit-mobile.json`): **53
+vulnerabilities — 1 critical, 19 high, 17 moderate, 16 low.**
+
+⚠️ **The critical finding needs attention before this goes to
+auditors:** `protobufjs <=7.6.2`, pulled in transitively via
+`@cosmjs/stargate` (Cosmos Hub support). Multiple CVEs bundled under
+this one advisory: arbitrary code execution, prototype-pollution-to-
+code-generation, and several DoS vectors. A fix exists —
+`@cosmjs/stargate@0.39.0` — but it's a semver-major bump, so it needs
+a real upgrade + regression pass on the Cosmos client (`packages/sdk-core/src/clients/cosmos*`
+and mobile's `lib/cosmos.ts`), not just a blind bump. Flagging rather
+than bumping blind under audit-prep time pressure — this is exactly
+the kind of change that deserves its own verification pass.
 
 ## 7. Architecture and security documentation
 
@@ -183,8 +195,13 @@ cd apps/mobile && npm install && npm run typecheck
    extension-registration step (e.g. `CREATE EXTENSION` without `IF NOT
    EXISTS`) racing across parallel test files, not a real app bug — but
    unverified, flagging rather than assuming.
-3. Mobile's `npm audit` didn't complete in this pass (local environment
-   was misbehaving) — needs a rerun.
+3. **Mobile has a critical-severity dependency vulnerability** —
+   `protobufjs <=7.6.2` (via `@cosmjs/stargate`), covering arbitrary
+   code execution and prototype-pollution CVEs. See §6 above for the
+   fix path. This is the single highest-priority finding in this whole
+   package and should be resolved (or at minimum triaged with a
+   documented risk acceptance) before the audit starts, not left for
+   the auditors to find.
 4. `docs/architecture.md` doesn't yet have file:line-level coverage of
    mnemonic/seed generation, BIP39/44/84 derivation, EVM/Bitcoin/
    Lithosphere network handling specifics, RPC handling, or JWT/session
