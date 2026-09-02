@@ -1,0 +1,826 @@
+dependency audit (high+)	Set up job	﻿2026-09-02T12:49:21.3900752Z Current runner version: '2.336.0'
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3925951Z ##[group]Runner Image Provisioner
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3926900Z Hosted Compute Agent
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3927581Z Version: 20260819.586
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3928229Z Commit: 3cc4a88dfa507ef76119ad1bb3eccc6378bb2b76
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3928976Z Build Date: 2026-08-18T23:20:18Z
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3930165Z Worker ID: {064030b0-3cff-4816-89a3-bfe5e63f2854}
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3930936Z Azure Region: westcentralus
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3931612Z ##[endgroup]
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3933182Z ##[group]Operating System
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3933898Z Ubuntu
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3934518Z 24.04.4
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3935073Z LTS
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3935632Z ##[endgroup]
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3936213Z ##[group]Runner Image
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3936858Z Image: ubuntu-24.04
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3937488Z Version: 20260823.283.1
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3938566Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260823.283/images/ubuntu/Ubuntu2404-Readme.md
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3940599Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260823.283
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3941605Z ##[endgroup]
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3942870Z ##[group]GITHUB_TOKEN Permissions
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3944742Z Contents: read
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3945811Z Metadata: read
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3946437Z Packages: read
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3946985Z ##[endgroup]
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3949080Z Secret source: Actions
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.3950379Z Prepare workflow directory
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.4301515Z Prepare all required actions
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.4350065Z Getting action download info
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.7727650Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+dependency audit (high+)	Set up job	2026-09-02T12:49:21.9128432Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+dependency audit (high+)	Set up job	2026-09-02T12:49:22.1477998Z Complete job name: dependency audit (high+)
+dependency audit (high+)	Run actions/checkout@v4	﻿2026-09-02T12:49:22.2247024Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2255757Z ##[group]Run actions/checkout@v4
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2256536Z with:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2257005Z   repository: imasssad/Thanos-Wallet
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2261100Z   token: ***
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2261555Z   ssh-strict: true
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2262011Z   ssh-user: git
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2262466Z   persist-credentials: true
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2262958Z   clean: true
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2263405Z   sparse-checkout-cone-mode: true
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2263938Z   fetch-depth: 1
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2264374Z   fetch-tags: false
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2264833Z   show-progress: true
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2265287Z   lfs: false
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2265693Z   submodules: false
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2266192Z   set-safe-directory: true
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2266713Z   allow-unsafe-pr-checkout: false
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.2267500Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3258896Z Syncing repository: imasssad/Thanos-Wallet
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3261920Z ##[group]Getting Git version info
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3263186Z Working directory is '/home/runner/work/Thanos-Wallet/Thanos-Wallet'
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3264928Z [command]/usr/bin/git version
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3341221Z git version 2.55.0
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3398074Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3421125Z Temporarily overriding HOME='/home/runner/work/_temp/fe2794d7-3ec9-48e7-a5f3-87365afe58fd' before making global git config changes
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3423414Z Adding repository directory to the temporary git global config as a safe directory
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3425302Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Thanos-Wallet/Thanos-Wallet
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3478757Z Deleting the contents of '/home/runner/work/Thanos-Wallet/Thanos-Wallet'
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3484042Z ##[group]Initializing the repository
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3488979Z [command]/usr/bin/git init /home/runner/work/Thanos-Wallet/Thanos-Wallet
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3631377Z hint: Using 'master' as the name for the initial branch. This default branch name
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3633186Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3639504Z hint: to use in all of your new repositories, which will suppress this warning,
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3642337Z hint: call:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3643168Z hint:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3644108Z hint: 	git config --global init.defaultBranch <name>
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3645223Z hint:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3646264Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3647998Z hint: 'development'. The just-created branch can be renamed via this command:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3649589Z hint:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3650517Z hint: 	git branch -m <name>
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3651424Z hint:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3652579Z hint: Disable this message with "git config set advice.defaultBranchName false"
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3654594Z Initialized empty Git repository in /home/runner/work/Thanos-Wallet/Thanos-Wallet/.git/
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3661924Z [command]/usr/bin/git remote add origin https://github.com/imasssad/Thanos-Wallet
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3727232Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3728630Z ##[group]Disabling automatic garbage collection
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3732053Z [command]/usr/bin/git config --local gc.auto 0
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3770614Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3771783Z ##[group]Setting up auth
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3777709Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.3812778Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4223317Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4263867Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4505049Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4545767Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4789910Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4832148Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4833624Z ##[group]Fetching the repository
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:22.4844335Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +d10b031f08d7e4e5a961c858b1024b07ed84ae60:refs/remotes/origin/main
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9148316Z From https://github.com/imasssad/Thanos-Wallet
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9150178Z  * [new ref]         d10b031f08d7e4e5a961c858b1024b07ed84ae60 -> origin/main
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9167274Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9168688Z ##[group]Determining the checkout info
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9170965Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9172057Z [command]/usr/bin/git sparse-checkout disable
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9228498Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9264815Z ##[group]Checking out the ref
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:23.9272168Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:24.0833910Z Switched to a new branch 'main'
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:24.0838598Z branch 'main' set up to track 'origin/main'.
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:24.0852185Z ##[endgroup]
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:24.0899799Z [command]/usr/bin/git log -1 --format=%H
+dependency audit (high+)	Run actions/checkout@v4	2026-09-02T12:49:24.0928033Z d10b031f08d7e4e5a961c858b1024b07ed84ae60
+dependency audit (high+)	Run actions/setup-node@v4	﻿2026-09-02T12:49:24.1322753Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1329688Z ##[group]Run actions/setup-node@v4
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1330971Z with:
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1331949Z   node-version: 20
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1333012Z   always-auth: false
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1334113Z   check-latest: false
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1344498Z   token: ***
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.1345542Z ##[endgroup]
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.2778389Z Attempting to download 20...
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.2887233Z (node:2136) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:24.2892307Z (Use `node --trace-deprecation ...` to show where the warning was created)
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:25.3223168Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:26.0129593Z Extracting ...
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:26.0264884Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/228c65de-70b4-4c52-b5b9-f34207b6a757 -f /home/runner/work/_temp/125de7a1-057b-4021-bf0e-3ed2c54701b1
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:27.0144091Z Adding to the cache ...
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:28.9339804Z ##[group]Environment details
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:29.1633573Z node: v20.20.2
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:29.1634105Z npm: 10.8.2
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:29.1634392Z yarn: 1.22.22
+dependency audit (high+)	Run actions/setup-node@v4	2026-09-02T12:49:29.1635205Z ##[endgroup]
+dependency audit (high+)	Run corepack enable	﻿2026-09-02T12:49:29.1801504Z ##[group]Run corepack enable
+dependency audit (high+)	Run corepack enable	2026-09-02T12:49:29.1801883Z ^[[36;1mcorepack enable^[[0m
+dependency audit (high+)	Run corepack enable	2026-09-02T12:49:29.1846256Z shell: /usr/bin/bash -e {0}
+dependency audit (high+)	Run corepack enable	2026-09-02T12:49:29.1846550Z ##[endgroup]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	﻿2026-09-02T12:49:29.2629125Z ##[group]Run pnpm install --no-frozen-lockfile
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:29.2629915Z ^[[36;1mpnpm install --no-frozen-lockfile^[[0m
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:29.2669798Z shell: /usr/bin/bash -e {0}
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:29.2670105Z ##[endgroup]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:29.3398549Z ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.12.0.tgz
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:30.8242315Z Scope: all 13 workspace projects
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:31.0253530Z Progress: resolved 1, reused 0, downloaded 0, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:31.1897506Z  WARN  deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:31.6218356Z apps/desktop                             |  WARN  deprecated @cosmjs/crypto@0.32.4
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:32.0264742Z Progress: resolved 44, reused 0, downloaded 32, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:33.0268725Z Progress: resolved 69, reused 0, downloaded 53, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:33.5859247Z services/api                             |  WARN  deprecated prom-client@15.1.3
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:34.2163011Z Progress: resolved 92, reused 0, downloaded 71, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:35.2164514Z Progress: resolved 158, reused 0, downloaded 140, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:36.2221284Z Progress: resolved 212, reused 0, downloaded 187, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:37.2200803Z Progress: resolved 281, reused 0, downloaded 243, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:38.2189623Z Progress: resolved 393, reused 0, downloaded 361, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:39.2244742Z Progress: resolved 447, reused 0, downloaded 410, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:40.2264496Z Progress: resolved 539, reused 0, downloaded 488, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:41.2611252Z Progress: resolved 638, reused 0, downloaded 579, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:42.2695109Z Progress: resolved 745, reused 0, downloaded 661, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:43.2677292Z Progress: resolved 867, reused 0, downloaded 721, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:44.2681553Z Progress: resolved 1034, reused 0, downloaded 851, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.2832866Z Progress: resolved 1143, reused 0, downloaded 935, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.2928555Z Progress: resolved 1357, reused 0, downloaded 1112, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:47.2943715Z Progress: resolved 1419, reused 0, downloaded 1170, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.2942612Z Progress: resolved 1607, reused 0, downloaded 1337, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.3061290Z Progress: resolved 1724, reused 0, downloaded 1447, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.3057616Z Progress: resolved 1870, reused 0, downloaded 1634, added 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.8670939Z  WARN  21 deprecated subdependencies found: @confio/ics23@0.6.8, @npmcli/move-file@2.0.1, @stellar/stellar-base@14.1.0, are-we-there-yet@2.0.0, are-we-there-yet@3.0.1, boolean@3.2.0, cron-parser@4.9.0, crypto-js@4.2.0, gauge@3.0.2, gauge@4.0.4, glob@10.5.0, glob@7.2.3, glob@8.1.0, inflight@1.0.6, lodash.isequal@4.5.0, npmlog@5.0.1, npmlog@6.0.2, prebuild-install@7.1.3, rimraf@3.0.2, uuid@10.0.0, uuid@8.3.2
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.9416884Z Packages: +1721
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.9417644Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:51.3059668Z Progress: resolved 1894, reused 0, downloaded 1716, added 183
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.3060819Z Progress: resolved 1894, reused 0, downloaded 1716, added 1150
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.0541030Z Progress: resolved 1894, reused 0, downloaded 1716, added 1721, done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.4027579Z .../node_modules/bufferutil install$ node-gyp-build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.4036124Z .../esbuild@0.28.2/node_modules/esbuild postinstall$ node install.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.4043419Z .../esbuild@0.21.5/node_modules/esbuild postinstall$ node install.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.4048902Z .../node_modules/utf-8-validate install$ node-gyp-build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.4491000Z .../node_modules/electron postinstall$ node install.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.5238274Z .../node_modules/bufferutil install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.5242758Z .../esbuild@0.28.2/node_modules/esbuild postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.5269555Z .../esbuild@0.21.5/node_modules/esbuild postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.5580801Z .../node_modules/@swc/core postinstall$ node postinstall.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6070460Z .../node_modules/utf-8-validate install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6330037Z .../keccak@3.0.4/node_modules/keccak install$ node-gyp-build || exit 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6638675Z .../node_modules/@swc/core postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6733366Z .../node-hid@2.1.2/node_modules/node-hid install$ prebuild-install --runtime napi || node-gyp rebuild
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.7020951Z .../.pnpm/usb@2.18.0/node_modules/usb install$ node-gyp-build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.7340952Z .../node_modules/tiny-secp256k1 install$ npm run build || echo "secp256k1 bindings compilation fail. Pure JS implementation will be used."
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.7886329Z .../keccak@3.0.4/node_modules/keccak install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.8232981Z .../node_modules/blake-hash install$ node-gyp-build || exit 0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.8592809Z .../.pnpm/usb@2.18.0/node_modules/usb install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.9520837Z .../node_modules/tiny-secp256k1 install: > tiny-secp256k1@1.1.7 build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.9522082Z .../node_modules/tiny-secp256k1 install: > node-gyp rebuild
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.9554227Z .../node_modules/blake-hash install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.9570658Z .../node_modules/@stellar/stellar-sdk postinstall$ yarn setup || true
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.9869634Z .../keytar@7.9.0/node_modules/keytar install$ prebuild-install || npm run build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.0396110Z .../node_modules/tiny-secp256k1 install: gyp info it worked if it ends with ok
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.0430532Z .../node_modules/tiny-secp256k1 install: gyp info using node-gyp@9.4.1
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.0450564Z .../node_modules/tiny-secp256k1 install: gyp info using node@20.20.2 | linux | x64
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.0667321Z .../node_modules/@stellar/stellar-sdk postinstall: This project is configured to use pnpm because /home/runner/work/Thanos-Wallet/Thanos-Wallet/package.json has a "packageManager" field
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.0762346Z .../node_modules/@stellar/stellar-sdk postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.1406734Z .../node_modules/tiny-secp256k1 install: gyp info find Python using Python version 3.12.3 found at "/usr/bin/python3"
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.2578967Z .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.2940401Z .../node-hid@2.1.2/node_modules/node-hid install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.3323473Z .../node_modules/spawn-sync postinstall$ node postinstall
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.3661469Z .../node_modules/tiny-secp256k1 install: gyp http GET https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.3663321Z .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.4040056Z .../node_modules/spawn-sync postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.4165115Z .../sharp@0.34.5/node_modules/sharp install$ node install/check.js || npm run build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.4587052Z .../node_modules/@sentry/cli postinstall$ node ./scripts/install.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.5010680Z .../keytar@7.9.0/node_modules/keytar install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.5093352Z .../esbuild@0.27.7/node_modules/esbuild postinstall$ node install.js
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.5435058Z .../node_modules/tiny-secp256k1 install: gyp http 200 https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.5706470Z .../sharp@0.34.5/node_modules/sharp install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.5991002Z .../node_modules/@sentry/cli postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.6005169Z .../node_modules/bigint-buffer install$ npm run rebuild || echo "Couldn't build bindings. Non-native version used."
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.6350827Z .../esbuild@0.27.7/node_modules/esbuild postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.6531025Z .../node_modules/argon2 install$ node-pre-gyp install --fallback-to-build
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.7170755Z .../node_modules/msgpackr-extract install$ node-gyp-build-optional-packages
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.8222290Z .../node_modules/argon2 install: node-pre-gyp info it worked if it ends with ok
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.8267993Z .../node_modules/argon2 install: node-pre-gyp info using node-pre-gyp@1.0.11
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.8301619Z .../node_modules/argon2 install: node-pre-gyp info using node@20.20.2 | linux | x64
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.8913804Z .../node_modules/bigint-buffer install: > bigint-buffer@1.1.5 rebuild
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.8946067Z .../node_modules/bigint-buffer install: > node-gyp rebuild
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.9344808Z .../node_modules/argon2 install: node-pre-gyp info check checked for "/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/argon2@0.31.2_encoding@0.1.13/node_modules/argon2/lib/binding/napi-v3/argon2.node" (not found)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.9361080Z .../node_modules/argon2 install: node-pre-gyp http GET https://github.com/ranisalt/node-argon2/releases/download/v0.31.2/argon2-v0.31.2-napi-v3-linux-x64-glibc.tar.gz
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:54.9711311Z .../node_modules/msgpackr-extract install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.0301829Z .../node_modules/bigint-buffer install: gyp info it worked if it ends with ok
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.0331331Z .../node_modules/bigint-buffer install: gyp info using node-gyp@9.4.1
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.0362381Z .../node_modules/bigint-buffer install: gyp info using node@20.20.2 | linux | x64
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.1428652Z .../node_modules/bigint-buffer install: gyp info find Python using Python version 3.12.3 found at "/usr/bin/python3"
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.2627161Z .../node_modules/argon2 install: node-pre-gyp info install unpacking napi-v3/argon2.node
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.2748828Z .../node_modules/argon2 install: node-pre-gyp info extracted file count: 1 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.2783448Z .../node_modules/argon2 install: [argon2] Success: "/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/argon2@0.31.2_encoding@0.1.13/node_modules/argon2/lib/binding/napi-v3/argon2.node" is installed via remote
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.2799506Z .../node_modules/argon2 install: node-pre-gyp info ok 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.2840166Z .../node_modules/argon2 install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.3045838Z .../node_modules/bigint-buffer install: gyp http GET https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:55.4441521Z .../node_modules/bigint-buffer install: gyp http 200 https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8091541Z .../node_modules/tiny-secp256k1 install: gyp http GET https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8146769Z .../node_modules/electron postinstall: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8512047Z .../node_modules/tiny-secp256k1 install: gyp http 200 https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8607375Z .../node_modules/tiny-secp256k1 install: gyp info spawn /usr/bin/python3
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8610620Z .../node_modules/tiny-secp256k1 install: gyp info spawn args [
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8612932Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/gyp/gyp_main.py',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8615284Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   'binding.gyp',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8616698Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-f',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8618133Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   'make',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8619749Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-I',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8621980Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1/build/config.gypi',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8623954Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-I',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8625960Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/addon.gypi',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8627884Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-I',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8630048Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/.cache/node-gyp/20.20.2/include/node/common.gypi',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8631795Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dlibrary=shared_library',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8633221Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dvisibility=default',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8634818Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_root_dir=/home/runner/.cache/node-gyp/20.20.2',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8637122Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_gyp_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8639675Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_lib_file=/home/runner/.cache/node-gyp/20.20.2/<(target_arch)/node.lib',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8642275Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dmodule_root_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8644328Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_engine=v8',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8645630Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '--depth=.',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8651366Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '--no-parallel',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8652596Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '--generator-output',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8653839Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   'build',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8655308Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Goutput_dir=.'
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:58.8656629Z .../node_modules/tiny-secp256k1 install: gyp info spawn args ]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.4566232Z .../node_modules/bigint-buffer install: gyp http GET https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.4768381Z .../node_modules/tiny-secp256k1 install: gyp info spawn make
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.4770112Z .../node_modules/tiny-secp256k1 install: gyp info spawn args [ 'BUILDTYPE=Release', '-C', 'build' ]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.4856913Z .../node_modules/tiny-secp256k1 install: make: Entering directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1/build'
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.4876273Z .../node_modules/tiny-secp256k1 install:   CXX(target) Release/obj.target/secp256k1/native/addon.o
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.4907341Z .../node_modules/bigint-buffer install: gyp http 200 https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5011544Z .../node_modules/bigint-buffer install: gyp info spawn /usr/bin/python3
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5040684Z .../node_modules/bigint-buffer install: gyp info spawn args [
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5042864Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/gyp/gyp_main.py',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5044826Z .../node_modules/bigint-buffer install: gyp info spawn args   'binding.gyp',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5046121Z .../node_modules/bigint-buffer install: gyp info spawn args   '-f',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5047260Z .../node_modules/bigint-buffer install: gyp info spawn args   'make',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5048435Z .../node_modules/bigint-buffer install: gyp info spawn args   '-I',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5050813Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer/build/config.gypi',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5052819Z .../node_modules/bigint-buffer install: gyp info spawn args   '-I',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5054858Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/addon.gypi',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5056654Z .../node_modules/bigint-buffer install: gyp info spawn args   '-I',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5058423Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/.cache/node-gyp/20.20.2/include/node/common.gypi',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5060051Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dlibrary=shared_library',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5060910Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dvisibility=default',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5061733Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_root_dir=/home/runner/.cache/node-gyp/20.20.2',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5062943Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_gyp_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5064174Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_lib_file=/home/runner/.cache/node-gyp/20.20.2/<(target_arch)/node.lib',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5065470Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dmodule_root_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5066493Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_engine=v8',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5067092Z .../node_modules/bigint-buffer install: gyp info spawn args   '--depth=.',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5067680Z .../node_modules/bigint-buffer install: gyp info spawn args   '--no-parallel',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5068304Z .../node_modules/bigint-buffer install: gyp info spawn args   '--generator-output',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5068886Z .../node_modules/bigint-buffer install: gyp info spawn args   'build',
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5070035Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Goutput_dir=.'
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.5070613Z .../node_modules/bigint-buffer install: gyp info spawn args ]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.6728263Z .../node_modules/bigint-buffer install: gyp info spawn make
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.6729804Z .../node_modules/bigint-buffer install: gyp info spawn args [ 'BUILDTYPE=Release', '-C', 'build' ]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.6739835Z .../node_modules/bigint-buffer install: make: Entering directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer/build'
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.6749570Z .../node_modules/bigint-buffer install:   CC(target) Release/obj.target/bigint_buffer/src/bigint-buffer.o
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.9360246Z .../node_modules/bigint-buffer install:   SOLINK_MODULE(target) Release/obj.target/bigint_buffer.node
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.9889969Z .../node_modules/bigint-buffer install:   COPY Release/bigint_buffer.node
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.9939193Z .../node_modules/bigint-buffer install: make: Leaving directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer/build'
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:59.9950688Z .../node_modules/bigint-buffer install: gyp info ok 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:00.0107489Z .../node_modules/bigint-buffer install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3690478Z .../node_modules/tiny-secp256k1 install: In file included from ../../../../nan@2.28.0/node_modules/nan/nan.h:67,
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3692023Z .../node_modules/tiny-secp256k1 install:                  from ../native/addon.cpp:4:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3702077Z .../node_modules/tiny-secp256k1 install: /home/runner/.cache/node-gyp/20.20.2/include/node/node.h:1227:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3705482Z .../node_modules/tiny-secp256k1 install:  1227 |       (node::addon_register_func) (regfunc),                          \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3706887Z .../node_modules/tiny-secp256k1 install:       |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3708909Z .../node_modules/tiny-secp256k1 install: /home/runner/.cache/node-gyp/20.20.2/include/node/node.h:1261:3: note: in expansion of macro ‘NODE_MODULE_X’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3711794Z .../node_modules/tiny-secp256k1 install:  1261 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3713285Z .../node_modules/tiny-secp256k1 install:       |   ^~~~~~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3714788Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:372:1: note: in expansion of macro ‘NODE_MODULE’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3716061Z .../node_modules/tiny-secp256k1 install:   372 | NODE_MODULE(secp256k1, Init)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.3716990Z .../node_modules/tiny-secp256k1 install:       | ^~~~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4264095Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In instantiation of ‘unsigned int {anonymous}::assumeCompression(const I&, const A&) [with long unsigned int index = 2; I = Nan::FunctionCallbackInfo<v8::Value>; A = v8::Local<v8::Object>]’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4267495Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:151:41:   required from here
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4270622Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:80:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4272697Z .../node_modules/tiny-secp256k1 install:    80 |                 if (info.Length() <= index || info[index]->IsUndefined()) {
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4274047Z .../node_modules/tiny-secp256k1 install:       |                     ~~~~~~~~~~~~~~^~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4277179Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In instantiation of ‘unsigned int {anonymous}::assumeCompression(const I&, const A&) [with long unsigned int index = 1; I = Nan::FunctionCallbackInfo<v8::Value>; A = v8::Local<v8::Object>]’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4279780Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:183:41:   required from here
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4282388Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:80:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4286363Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In instantiation of ‘unsigned int {anonymous}::assumeCompression(const I&) [with long unsigned int index = 1; I = Nan::FunctionCallbackInfo<v8::Value>]’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4288531Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:198:41:   required from here
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4291236Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:92:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4293326Z .../node_modules/tiny-secp256k1 install:    92 |                 if (info.Length() <= index) return SECP256K1_EC_COMPRESSED;
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.4294714Z .../node_modules/tiny-secp256k1 install:       |                     ~~~~~~~~~~~~~~^~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.5029145Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In function ‘Nan::NAN_METHOD_RETURN_TYPE eccPrivateSub(Nan::NAN_METHOD_ARGS_TYPE)’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.5032681Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:249:36: warning: ignoring return value of ‘int secp256k1_ec_privkey_negate(const secp256k1_context*, unsigned char*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.5035255Z .../node_modules/tiny-secp256k1 install:   249 |         secp256k1_ec_privkey_negate(context, tweak_negated); // returns 1 always
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:01.5036770Z .../node_modules/tiny-secp256k1 install:       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.1994809Z .../node_modules/tiny-secp256k1 install:   CC(target) Release/obj.target/secp256k1/native/secp256k1/src/secp256k1.o
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2603247Z .../node_modules/tiny-secp256k1 install: In file included from ../native/secp256k1/src/assumptions.h:12,
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2605289Z .../node_modules/tiny-secp256k1 install:                  from ../native/secp256k1/src/secp256k1.c:10:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2607303Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_context_preallocated_clone’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2609821Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘prealloc’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2611428Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2613024Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2614429Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2615580Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2617170Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:168:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2618516Z .../node_modules/tiny-secp256k1 install:   168 |     ARG_CHECK(prealloc != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2619631Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2621066Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_parse’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2623197Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2624718Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2626222Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2627575Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2628736Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2660788Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:283:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2662511Z .../node_modules/tiny-secp256k1 install:   283 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2663441Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2665257Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘input’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2666784Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2668287Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2669857Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2671038Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2672659Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:285:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2673549Z .../node_modules/tiny-secp256k1 install:   285 |     ARG_CHECK(input != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2674104Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2674946Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_serialize’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2676147Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘output’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2677004Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2677841Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2679630Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2680819Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2682441Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:307:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2683750Z .../node_modules/tiny-secp256k1 install:   307 |     ARG_CHECK(output != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2684670Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2686462Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘outputlen’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2687980Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2689687Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2691067Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2692225Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2693816Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:303:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2695130Z .../node_modules/tiny-secp256k1 install:   303 |     ARG_CHECK(outputlen != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2696043Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2697783Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2699425Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2700914Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2702289Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2703702Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2705292Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:309:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2706607Z .../node_modules/tiny-secp256k1 install:   309 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2707519Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2709004Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_parse_der’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2711343Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2712850Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2714385Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2715773Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2716911Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2718557Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:348:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2720023Z .../node_modules/tiny-secp256k1 install:   348 |     ARG_CHECK(sig != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2720918Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2722680Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘input’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2724659Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2726216Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2727717Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2728845Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2730614Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:349:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2731965Z .../node_modules/tiny-secp256k1 install:   349 |     ARG_CHECK(input != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2732893Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2734422Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_parse_compact’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2736621Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2738130Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2739807Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2741208Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2742379Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2743956Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:366:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2745236Z .../node_modules/tiny-secp256k1 install:   366 |     ARG_CHECK(sig != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2746119Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2747894Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘input64’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2749791Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2750708Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2751503Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2752163Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2753056Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:367:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2753790Z .../node_modules/tiny-secp256k1 install:   367 |     ARG_CHECK(input64 != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2754304Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2755176Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_serialize_der’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2757155Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘output’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2758674Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2760381Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2761769Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2762910Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2764560Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:385:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2766337Z .../node_modules/tiny-secp256k1 install:   385 |     ARG_CHECK(output != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2767273Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2769148Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘outputlen’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2770870Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2772404Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2773770Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2774896Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2776491Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:386:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2777841Z .../node_modules/tiny-secp256k1 install:   386 |     ARG_CHECK(outputlen != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2778796Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2780739Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2782237Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2783722Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2785072Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2786229Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2787797Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:387:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2789167Z .../node_modules/tiny-secp256k1 install:   387 |     ARG_CHECK(sig != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2790480Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2792066Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_serialize_compact’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2794323Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘output64’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2795908Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2797401Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2798797Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2800072Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2801736Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:397:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2803094Z .../node_modules/tiny-secp256k1 install:   397 |     ARG_CHECK(output64 != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2804000Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2805741Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2807203Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2808678Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2810175Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2811320Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2813168Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:398:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2814446Z .../node_modules/tiny-secp256k1 install:   398 |     ARG_CHECK(sig != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2815318Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2816777Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_normalize’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2818906Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sigin’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2820594Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2822151Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2823516Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2824656Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2826253Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:411:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2827537Z .../node_modules/tiny-secp256k1 install:   411 |     ARG_CHECK(sigin != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2828416Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2829944Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_verify’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2832012Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2833508Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2835037Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2836673Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2837801Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2839552Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:432:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2840880Z .../node_modules/tiny-secp256k1 install:   432 |     ARG_CHECK(sig != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2841757Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2843465Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘msg32’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2844926Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2846418Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2847788Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2848917Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2850628Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:431:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2851870Z .../node_modules/tiny-secp256k1 install:   431 |     ARG_CHECK(msg32 != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2852763Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2854551Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2856048Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2857785Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2859221Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2860493Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2861944Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:433:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2863272Z .../node_modules/tiny-secp256k1 install:   433 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2864242Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2865608Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_sign’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2867665Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘signature’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2869490Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2871060Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2872462Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2873636Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2875246Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:542:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2876626Z .../node_modules/tiny-secp256k1 install:   542 |     ARG_CHECK(signature != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2877579Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2879535Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘msg32’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2881174Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2882990Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2884193Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2885431Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2887141Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:541:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2888507Z .../node_modules/tiny-secp256k1 install:   541 |     ARG_CHECK(msg32 != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2889792Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2891686Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2893345Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2894927Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2895754Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2896426Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2897329Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:543:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2898068Z .../node_modules/tiny-secp256k1 install:   543 |     ARG_CHECK(seckey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2898834Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2900465Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_verify’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2902860Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2904378Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2905857Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2907245Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2908370Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2910145Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:554:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2911460Z .../node_modules/tiny-secp256k1 install:   554 |     ARG_CHECK(seckey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2912399Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2913802Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_create’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2915904Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2917406Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2918890Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2920430Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2921565Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2923144Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:578:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2924460Z .../node_modules/tiny-secp256k1 install:   578 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2925607Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2927377Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2928904Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2930624Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2931994Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2933200Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2934806Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:581:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2936107Z .../node_modules/tiny-secp256k1 install:   581 |     ARG_CHECK(seckey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2937054Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2938464Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_negate’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2940820Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2942390Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2943889Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2945335Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2976436Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2978347Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:595:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2980061Z .../node_modules/tiny-secp256k1 install:   595 |     ARG_CHECK(seckey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2981089Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2982636Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_negate’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2984884Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2986510Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2988096Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2989860Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2991096Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2992237Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:614:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2993029Z .../node_modules/tiny-secp256k1 install:   614 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2993579Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2994396Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_tweak_add’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2995598Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2996461Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2997322Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2998435Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.2999094Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3000377Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:641:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3001143Z .../node_modules/tiny-secp256k1 install:   641 |     ARG_CHECK(seckey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3001672Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3002678Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3003547Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3004405Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3005187Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3005845Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3006726Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:642:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3007456Z .../node_modules/tiny-secp256k1 install:   642 |     ARG_CHECK(tweak != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3007984Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3008811Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_tweak_add’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3010286Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3011351Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3012254Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3013040Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3013694Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3014592Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:669:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3015348Z .../node_modules/tiny-secp256k1 install:   669 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3015877Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3016868Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3017749Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3018602Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3019584Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3020252Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3021151Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:670:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3021899Z .../node_modules/tiny-secp256k1 install:   670 |     ARG_CHECK(tweak != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3022419Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3023224Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_tweak_mul’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3024434Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3025442Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3026293Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3027059Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3027714Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3028608Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:688:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3029646Z .../node_modules/tiny-secp256k1 install:   688 |     ARG_CHECK(seckey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3030193Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3031206Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3032061Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3032900Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3033673Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3034320Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3035200Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:689:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3035923Z .../node_modules/tiny-secp256k1 install:   689 |     ARG_CHECK(tweak != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3036657Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3037477Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_tweak_mul’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3038657Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3039707Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3040555Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3041336Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3041989Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3042873Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:713:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3043623Z .../node_modules/tiny-secp256k1 install:   713 |     ARG_CHECK(pubkey != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3044151Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3045130Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3045968Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3046795Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3047561Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3048203Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3049082Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:714:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3050115Z .../node_modules/tiny-secp256k1 install:   714 |     ARG_CHECK(tweak != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3050791Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3051598Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_combine’:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3052782Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubnonce’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3053643Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3054468Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3055235Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3055886Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3056763Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:743:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3057505Z .../node_modules/tiny-secp256k1 install:   743 |     ARG_CHECK(pubnonce != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3058023Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3059009Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubnonces’ compared to NULL [-Wnonnull-compare]
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3060125Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3060991Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3061764Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3062654Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3063553Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:746:5: note: in expansion of macro ‘ARG_CHECK’
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3064301Z .../node_modules/tiny-secp256k1 install:   746 |     ARG_CHECK(pubnonces != NULL);
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:02.3064837Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:03.5681284Z .../node_modules/tiny-secp256k1 install:   SOLINK_MODULE(target) Release/obj.target/secp256k1.node
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:03.6013357Z .../node_modules/tiny-secp256k1 install:   COPY Release/secp256k1.node
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:03.6056835Z .../node_modules/tiny-secp256k1 install: make: Leaving directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1/build'
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:03.6058945Z .../node_modules/tiny-secp256k1 install: gyp info ok 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:03.6229911Z .../node_modules/tiny-secp256k1 install: Done
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4003043Z 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4003913Z devDependencies:
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4004853Z + @eslint/js 9.39.5 (10.0.1 is available)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4006007Z + @next/eslint-plugin-next 15.5.25 (16.3.4 is available)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4006951Z + @typescript-eslint/eslint-plugin 8.69.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4007777Z + eslint 9.39.5 (10.9.1 is available) deprecated
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4008553Z + eslint-plugin-jsx-a11y 6.10.2
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4009598Z + eslint-plugin-react-hooks 5.2.0 (7.1.1 is available)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4010481Z + globals 15.15.0 (17.12.0 is available)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4011095Z + tsx 4.23.13
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4011595Z + turbo 2.10.12
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4012244Z + typescript 5.9.3 (7.0.2 is available)
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4012928Z + typescript-eslint 8.69.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4013633Z + vite-plugin-node-polyfills 0.28.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4039932Z 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4077928Z  WARN  Issues with peer dependencies found
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4078440Z apps/desktop
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4078837Z ├─┬ @solana/web3.js 1.98.4
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4080173Z │ └─┬ jayson 4.3.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4080508Z │   └─┬ ws 7.5.13
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4081003Z │     └── ✕ unmet peer utf-8-validate@^5.0.2: found 6.0.6
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4081478Z └─┬ @solana/kit 2.3.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4081831Z   └─┬ @solana/rpc-subscriptions 2.3.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4082266Z     └─┬ @solana/rpc-subscriptions-channel-websocket 2.3.0
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4082705Z       └── ✕ unmet peer ws@^8.18.0: found 7.5.13
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4082912Z 
+dependency audit (high+)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:50:06.4092602Z Done in 35.9s
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	﻿2026-09-02T12:50:06.5182630Z ##[group]Run pnpm audit --audit-level=high --prod
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:06.5183063Z ^[[36;1mpnpm audit --audit-level=high --prod^[[0m
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:06.5223966Z shell: /usr/bin/bash -e {0}
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:06.5224246Z ##[endgroup]
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4422398Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4423842Z │ high                │ ws: Memory exhaustion DoS from tiny fragments and data │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4425049Z │                     │ chunks                                                 │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4426144Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4427180Z │ Package             │ ws                                                     │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4428270Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4429676Z │ Vulnerable versions │ >=8.0.0 <8.21.0                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4431038Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4432099Z │ Patched versions    │ >=8.21.0                                               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4433178Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4434228Z │ Paths               │ apps/desktop > @litho/multx-sdk@0.2.0 > ethers@5.8.0 > │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4435371Z │                     │ @ethersproject/providers@5.8.0 > ws@8.18.0             │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4436447Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4437431Z │                     │ apps/desktop > ethers@5.8.0 >                          │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4438330Z │                     │ @ethersproject/providers@5.8.0 > ws@8.18.0             │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4439173Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4440332Z │                     │ apps/extension > @litho/multx-sdk@0.2.0 > ethers@5.8.0 │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4441231Z │                     │ > @ethersproject/providers@5.8.0 > ws@8.18.0           │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4442010Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4442804Z │                     │ ... Found 6 paths, run `pnpm why ws` for more          │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4443642Z │                     │ information                                            │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4444991Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4445952Z │ More info           │ https://github.com/advisories/GHSA-96hv-2xvq-fx4p      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4447178Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4448281Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4449836Z │ high                │ sharp inherited vulnerabilities in libvips:            │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4451413Z │                     │ CVE-2026-33327, CVE-2026-33328, CVE-2026-35590,        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4452468Z │                     │ CVE-2026-35591                                         │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4453573Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4454637Z │ Package             │ sharp                                                  │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4455791Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4456844Z │ Vulnerable versions │ <0.35.0                                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4457983Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4459002Z │ Patched versions    │ >=0.35.0                                               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4460334Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4461451Z │ Paths               │ apps/web > @sentry/nextjs@10.73.0 > next@15.5.18 >     │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4462481Z │                     │ sharp@0.34.5                                           │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4463419Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4464401Z │                     │ apps/web > next@15.5.18 > sharp@0.34.5                 │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4465468Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4466611Z │ More info           │ https://github.com/advisories/GHSA-f88m-g3jw-g9cj      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4467771Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4468829Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4470156Z │ high                │ Next.js: Denial of Service in App Router using Server  │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4471189Z │                     │ Actions                                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4472303Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4473297Z │ Package             │ next                                                   │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4474358Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4475443Z │ Vulnerable versions │ >=13.0.0 <15.5.21                                      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4476871Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4477908Z │ Patched versions    │ >=15.5.21                                              │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4479019Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4480381Z │ Paths               │ apps/web > @sentry/nextjs@10.73.0 > next@15.5.18       │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4481373Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4482609Z │                     │ apps/web > next@15.5.18                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4483711Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4484798Z │ More info           │ https://github.com/advisories/GHSA-m99w-x7hq-7vfj      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4485967Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4487036Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4488082Z │ high                │ Next.js: Server-Side Request Forgery in Server Actions │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4489131Z │                     │ on custom servers                                      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4490383Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4491378Z │ Package             │ next                                                   │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4492512Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4493574Z │ Vulnerable versions │ >=14.1.1 <15.5.21                                      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4494708Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4495731Z │ Patched versions    │ >=15.5.21                                              │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4496870Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4498155Z │ Paths               │ apps/web > @sentry/nextjs@10.73.0 > next@15.5.18       │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4499133Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4500293Z │                     │ apps/web > next@15.5.18                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4501360Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4502476Z │ More info           │ https://github.com/advisories/GHSA-89xv-2m56-2m9x      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4503913Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4504980Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4506022Z │ high                │ Next.js: Server-Side Request Forgery in rewrites via   │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4507139Z │                     │ attacker-controlled destination hostname               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4508301Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4509517Z │ Package             │ next                                                   │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4510645Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4511700Z │ Vulnerable versions │ >=12.0.0 <15.5.21                                      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4512870Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4513931Z │ Patched versions    │ >=15.5.21                                              │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4515068Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4516100Z │ Paths               │ apps/web > @sentry/nextjs@10.73.0 > next@15.5.18       │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4517085Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4518351Z │                     │ apps/web > next@15.5.18                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4519651Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4520762Z │ More info           │ https://github.com/advisories/GHSA-p9j2-gv94-2wf4      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4521956Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4523023Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4524106Z │ high                │ PostCSS: Arbitrary file read and information           │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4525252Z │                     │ disclosure via attacker-controlled sourceMappingURL in │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4526295Z │                     │ CSS comments                                           │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4527390Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4528394Z │ Package             │ postcss                                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4529678Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4530753Z │ Vulnerable versions │ <=8.5.11                                               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4531898Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4532935Z │ Patched versions    │ >=8.5.12                                               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4534024Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4535348Z │ Paths               │ apps/web > @sentry/nextjs@10.73.0 > next@15.5.18 >     │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4536382Z │                     │ postcss@8.4.31                                         │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4537315Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4538278Z │                     │ apps/web > next@15.5.18 > postcss@8.4.31               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4539548Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4540678Z │ More info           │ https://github.com/advisories/GHSA-6g55-p6wh-862q      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4541811Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4542858Z ┌─────────────────────┬────────────────────────────────────────────────────────┐
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4543906Z │ high                │ PostCSS: Path Traversal in Previous Source Map         │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4545065Z │                     │ Auto-Loading (sourceMappingURL) leads to Arbitrary     │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4546105Z │                     │ .map File Disclosure                                   │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4547197Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4548178Z │ Package             │ postcss                                                │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4549782Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4550900Z │ Vulnerable versions │ <=8.5.17                                               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4552018Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4553135Z │ Patched versions    │ >=8.5.18                                               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4554258Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4555565Z │ Paths               │ apps/web > @sentry/nextjs@10.73.0 > next@15.5.18 >     │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4556592Z │                     │ postcss@8.4.31                                         │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4557545Z │                     │                                                        │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4558505Z │                     │ apps/web > next@15.5.18 > postcss@8.4.31               │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4559832Z ├─────────────────────┼────────────────────────────────────────────────────────┤
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4560926Z │ More info           │ https://github.com/advisories/GHSA-r28c-9q8g-f849      │
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4562084Z └─────────────────────┴────────────────────────────────────────────────────────┘
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4562768Z 19 vulnerabilities found
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4563309Z Severity: 1 low | 10 moderate | 8 high
+dependency audit (high+)	pnpm audit (high+ severity, prod deps only)	2026-09-02T12:50:13.4776012Z ##[error]Process completed with exit code 1.
+dependency audit (high+)	Post Run actions/checkout@v4	﻿2026-09-02T12:50:13.4925541Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.4926870Z Post job cleanup.
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.5836070Z [command]/usr/bin/git version
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.5884435Z git version 2.55.0
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.5928096Z Temporarily overriding HOME='/home/runner/work/_temp/996401ca-835e-4696-84c8-d73b2cbb0f48' before making global git config changes
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.5929849Z Adding repository directory to the temporary git global config as a safe directory
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.5935941Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Thanos-Wallet/Thanos-Wallet
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.5982431Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6023338Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6289058Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6325918Z http.https://github.com/.extraheader
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6341467Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6393653Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6678806Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+dependency audit (high+)	Post Run actions/checkout@v4	2026-09-02T12:50:13.6723942Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+dependency audit (high+)	Complete job	﻿2026-09-02T12:50:13.7179153Z Cleaning up orphan processes
+dependency audit (high+)	Complete job	2026-09-02T12:50:13.7584958Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

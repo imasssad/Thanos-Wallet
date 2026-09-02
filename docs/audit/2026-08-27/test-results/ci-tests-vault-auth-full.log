@@ -1,0 +1,794 @@
+tests (vault + auth)	Set up job	﻿2026-09-02T12:49:20.7695524Z Current runner version: '2.337.0'
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7711506Z ##[group]Runner Image Provisioner
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7712014Z Hosted Compute Agent
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7712414Z Version: 20260819.586
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7712787Z Commit: 3cc4a88dfa507ef76119ad1bb3eccc6378bb2b76
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7713190Z Build Date: 2026-08-18T23:20:18Z
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7713658Z Worker ID: {ad19d7c1-f170-4023-9ff9-56d55e1518da}
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7714083Z Azure Region: westus3
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7714443Z ##[endgroup]
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7715296Z ##[group]Operating System
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7715661Z Ubuntu
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7716012Z 24.04.4
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7716307Z LTS
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7716629Z ##[endgroup]
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7716957Z ##[group]Runner Image
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7717327Z Image: ubuntu-24.04
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7717690Z Version: 20260823.283.1
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7718294Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260823.283/images/ubuntu/Ubuntu2404-Readme.md
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7719252Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260823.283
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7719809Z ##[endgroup]
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7720742Z ##[group]GITHUB_TOKEN Permissions
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7722188Z Contents: read
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7722585Z Metadata: read
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7722936Z Packages: read
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7723274Z ##[endgroup]
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7724463Z Secret source: Actions
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7725218Z Prepare workflow directory
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7913351Z Prepare all required actions
+tests (vault + auth)	Set up job	2026-09-02T12:49:20.7941957Z Getting action download info
+tests (vault + auth)	Set up job	2026-09-02T12:49:21.0663361Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+tests (vault + auth)	Set up job	2026-09-02T12:49:21.1402475Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+tests (vault + auth)	Set up job	2026-09-02T12:49:21.2763008Z Complete job name: tests (vault + auth)
+tests (vault + auth)	Run actions/checkout@v4	﻿2026-09-02T12:49:21.3180401Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3185494Z ##[group]Run actions/checkout@v4
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3185833Z with:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3186065Z   repository: imasssad/Thanos-Wallet
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3187988Z   token: ***
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3188212Z   ssh-strict: true
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3188436Z   ssh-user: git
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3188670Z   persist-credentials: true
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3188923Z   clean: true
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3189158Z   sparse-checkout-cone-mode: true
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3189425Z   fetch-depth: 1
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3189650Z   fetch-tags: false
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3189882Z   show-progress: true
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3190113Z   lfs: false
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3190331Z   submodules: false
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3190589Z   set-safe-directory: true
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3190978Z   allow-unsafe-pr-checkout: false
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3191316Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3808543Z Syncing repository: imasssad/Thanos-Wallet
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3809551Z ##[group]Getting Git version info
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3809931Z Working directory is '/home/runner/work/Thanos-Wallet/Thanos-Wallet'
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3810496Z [command]/usr/bin/git version
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3870096Z git version 2.55.0
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3883509Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3894455Z Temporarily overriding HOME='/home/runner/work/_temp/b8826e15-94da-41a9-8851-ae6eef3b9d36' before making global git config changes
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3895649Z Adding repository directory to the temporary git global config as a safe directory
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3898757Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Thanos-Wallet/Thanos-Wallet
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3939612Z Deleting the contents of '/home/runner/work/Thanos-Wallet/Thanos-Wallet'
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3942270Z ##[group]Initializing the repository
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.3945241Z [command]/usr/bin/git init /home/runner/work/Thanos-Wallet/Thanos-Wallet
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4051652Z hint: Using 'master' as the name for the initial branch. This default branch name
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4052893Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4054383Z hint: to use in all of your new repositories, which will suppress this warning,
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4055215Z hint: call:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4055983Z hint:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4056589Z hint: 	git config --global init.defaultBranch <name>
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4057063Z hint:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4057510Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4058241Z hint: 'development'. The just-created branch can be renamed via this command:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4058816Z hint:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4059138Z hint: 	git branch -m <name>
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4059423Z hint:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4059775Z hint: Disable this message with "git config set advice.defaultBranchName false"
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4063409Z Initialized empty Git repository in /home/runner/work/Thanos-Wallet/Thanos-Wallet/.git/
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4072897Z [command]/usr/bin/git remote add origin https://github.com/imasssad/Thanos-Wallet
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4130121Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4130829Z ##[group]Disabling automatic garbage collection
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4132991Z [command]/usr/bin/git config --local gc.auto 0
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4159050Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4159732Z ##[group]Setting up auth
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4164751Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4192381Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4468775Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4497088Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4672123Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4697887Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4857829Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4885364Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4885773Z ##[group]Fetching the repository
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:21.4891248Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +d10b031f08d7e4e5a961c858b1024b07ed84ae60:refs/remotes/origin/main
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1228571Z From https://github.com/imasssad/Thanos-Wallet
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1229502Z  * [new ref]         d10b031f08d7e4e5a961c858b1024b07ed84ae60 -> origin/main
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1231925Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1232488Z ##[group]Determining the checkout info
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1234136Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1239197Z [command]/usr/bin/git sparse-checkout disable
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1279386Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1303588Z ##[group]Checking out the ref
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.1306066Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.2377564Z Switched to a new branch 'main'
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.2382211Z branch 'main' set up to track 'origin/main'.
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.2391439Z ##[endgroup]
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.2428746Z [command]/usr/bin/git log -1 --format=%H
+tests (vault + auth)	Run actions/checkout@v4	2026-09-02T12:49:23.2449549Z d10b031f08d7e4e5a961c858b1024b07ed84ae60
+tests (vault + auth)	Run actions/setup-node@v4	﻿2026-09-02T12:49:23.2636593Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2637857Z ##[group]Run actions/setup-node@v4
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2638100Z with:
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2638302Z   node-version: 20
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2638514Z   always-auth: false
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2638735Z   check-latest: false
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2640177Z   token: ***
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.2640380Z ##[endgroup]
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.3460681Z Attempting to download 20...
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.3523885Z (node:2027) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:23.3524607Z (Use `node --trace-deprecation ...` to show where the warning was created)
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:24.3385163Z Acquiring 20.20.2 - x64 from https://github.com/actions/node-versions/releases/download/20.20.2-23521894959/node-20.20.2-linux-x64.tar.gz
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:24.7959146Z Extracting ...
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:24.8047609Z [command]/usr/bin/tar xz --strip 1 --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/f8ff2969-0e87-448d-8598-78ae14297d27 -f /home/runner/work/_temp/a5164a2d-15f3-4218-9264-10b10a516ed1
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:25.5112629Z Adding to the cache ...
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:27.0090346Z ##[group]Environment details
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:27.1419355Z node: v20.20.2
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:27.1419788Z npm: 10.8.2
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:27.1419983Z yarn: 1.22.22
+tests (vault + auth)	Run actions/setup-node@v4	2026-09-02T12:49:27.1420406Z ##[endgroup]
+tests (vault + auth)	Run corepack enable	﻿2026-09-02T12:49:27.1561883Z ##[group]Run corepack enable
+tests (vault + auth)	Run corepack enable	2026-09-02T12:49:27.1562102Z ^[[36;1mcorepack enable^[[0m
+tests (vault + auth)	Run corepack enable	2026-09-02T12:49:27.1595648Z shell: /usr/bin/bash -e {0}
+tests (vault + auth)	Run corepack enable	2026-09-02T12:49:27.1595820Z ##[endgroup]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	﻿2026-09-02T12:49:27.2082683Z ##[group]Run pnpm install --no-frozen-lockfile
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:27.2082914Z ^[[36;1mpnpm install --no-frozen-lockfile^[[0m
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:27.2110060Z shell: /usr/bin/bash -e {0}
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:27.2110213Z ##[endgroup]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:27.2521324Z ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-9.12.0.tgz
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:27.9721423Z Scope: all 13 workspace projects
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:28.0979922Z Progress: resolved 1, reused 0, downloaded 0, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:28.1916212Z  WARN  deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:28.3457745Z apps/desktop                             |  WARN  deprecated @cosmjs/crypto@0.32.4
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:29.1062893Z Progress: resolved 59, reused 0, downloaded 48, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:29.4501828Z services/api                             |  WARN  deprecated prom-client@15.1.3
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:30.1186583Z Progress: resolved 121, reused 0, downloaded 110, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:31.1517313Z Progress: resolved 205, reused 0, downloaded 180, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:32.1518257Z Progress: resolved 330, reused 0, downloaded 302, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:33.1682923Z Progress: resolved 437, reused 0, downloaded 393, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:34.1683976Z Progress: resolved 555, reused 0, downloaded 505, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:35.1687515Z Progress: resolved 721, reused 0, downloaded 633, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:36.1816039Z Progress: resolved 855, reused 0, downloaded 711, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:37.1828694Z Progress: resolved 1038, reused 0, downloaded 840, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:38.1828906Z Progress: resolved 1242, reused 0, downloaded 1010, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:39.1834736Z Progress: resolved 1413, reused 0, downloaded 1165, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:40.1834636Z Progress: resolved 1561, reused 0, downloaded 1301, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:41.1928252Z Progress: resolved 1781, reused 0, downloaded 1494, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:42.1536652Z  WARN  21 deprecated subdependencies found: @confio/ics23@0.6.8, @npmcli/move-file@2.0.1, @stellar/stellar-base@14.1.0, are-we-there-yet@2.0.0, are-we-there-yet@3.0.1, boolean@3.2.0, cron-parser@4.9.0, crypto-js@4.2.0, gauge@3.0.2, gauge@4.0.4, glob@10.5.0, glob@7.2.3, glob@8.1.0, inflight@1.0.6, lodash.isequal@4.5.0, npmlog@5.0.1, npmlog@6.0.2, prebuild-install@7.1.3, rimraf@3.0.2, uuid@10.0.0, uuid@8.3.2
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:42.1992163Z Packages: +1721
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:42.1992687Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:42.2211177Z Progress: resolved 1894, reused 0, downloaded 1662, added 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:43.2215443Z Progress: resolved 1894, reused 0, downloaded 1716, added 727
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:44.2223434Z Progress: resolved 1894, reused 0, downloaded 1716, added 997
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.2225150Z Progress: resolved 1894, reused 0, downloaded 1716, added 1537
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.5324692Z Progress: resolved 1894, reused 0, downloaded 1716, added 1721, done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.6915683Z .../esbuild@0.28.2/node_modules/esbuild postinstall$ node install.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.6919517Z .../node_modules/bufferutil install$ node-gyp-build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.6922905Z .../esbuild@0.21.5/node_modules/esbuild postinstall$ node install.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.6926099Z .../node_modules/utf-8-validate install$ node-gyp-build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.6929550Z .../node_modules/electron postinstall$ node install.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.7906885Z .../esbuild@0.28.2/node_modules/esbuild postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.7928377Z .../node_modules/bufferutil install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.8030730Z .../node_modules/@swc/core postinstall$ node postinstall.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.8296137Z .../esbuild@0.21.5/node_modules/esbuild postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.8392163Z .../keccak@3.0.4/node_modules/keccak install$ node-gyp-build || exit 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.8729077Z .../node_modules/utf-8-validate install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.8773982Z .../node_modules/@swc/core postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.8809869Z .../node-hid@2.1.2/node_modules/node-hid install$ prebuild-install --runtime napi || node-gyp rebuild
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.9032033Z .../node_modules/tiny-secp256k1 install$ npm run build || echo "secp256k1 bindings compilation fail. Pure JS implementation will be used."
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.9248927Z .../.pnpm/usb@2.18.0/node_modules/usb install$ node-gyp-build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.9444394Z .../keccak@3.0.4/node_modules/keccak install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:45.9621971Z .../node_modules/blake-hash install$ node-gyp-build || exit 0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0160048Z .../.pnpm/usb@2.18.0/node_modules/usb install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0372096Z .../node_modules/tiny-secp256k1 install: > tiny-secp256k1@1.1.7 build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0381751Z .../node_modules/tiny-secp256k1 install: > node-gyp rebuild
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0527944Z .../node_modules/@stellar/stellar-sdk postinstall$ yarn setup || true
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0551742Z .../node_modules/blake-hash install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0772976Z .../keytar@7.9.0/node_modules/keytar install$ prebuild-install || npm run build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0988232Z .../node_modules/tiny-secp256k1 install: gyp info it worked if it ends with ok
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0989177Z .../node_modules/tiny-secp256k1 install: gyp info using node-gyp@9.4.1
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.0989834Z .../node_modules/tiny-secp256k1 install: gyp info using node@20.20.2 | linux | x64
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.1298947Z .../node_modules/@stellar/stellar-sdk postinstall: This project is configured to use pnpm because /home/runner/work/Thanos-Wallet/Thanos-Wallet/package.json has a "packageManager" field
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.1336842Z .../node_modules/@stellar/stellar-sdk postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.1469118Z .../node_modules/tiny-secp256k1 install: gyp info find Python using Python version 3.12.3 found at "/usr/bin/python3"
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.1811555Z .../sharp@0.34.5/node_modules/sharp install$ node install/check.js || npm run build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.2373617Z .../node_modules/tiny-secp256k1 install: gyp http GET https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.2855308Z .../sharp@0.34.5/node_modules/sharp install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.2995047Z .../node_modules/@sentry/cli postinstall$ node ./scripts/install.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.3241232Z .../node-hid@2.1.2/node_modules/node-hid install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.3406279Z .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.3642360Z .../node_modules/tiny-secp256k1 install: gyp http 200 https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.3872186Z .../node_modules/@sentry/cli postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.3944804Z .../node_modules/spawn-sync postinstall$ node postinstall
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.4210375Z .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.4556757Z .../node_modules/spawn-sync postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.4571723Z .../esbuild@0.27.7/node_modules/esbuild postinstall$ node install.js
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.4810566Z .../keytar@7.9.0/node_modules/keytar install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.4902314Z .../node_modules/bigint-buffer install$ npm run rebuild || echo "Couldn't build bindings. Non-native version used."
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.5152229Z .../node_modules/argon2 install$ node-pre-gyp install --fallback-to-build
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.5413790Z .../esbuild@0.27.7/node_modules/esbuild postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6012114Z .../node_modules/msgpackr-extract install$ node-gyp-build-optional-packages
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6298994Z .../node_modules/argon2 install: node-pre-gyp info it worked if it ends with ok
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6344066Z .../node_modules/argon2 install: node-pre-gyp info using node-pre-gyp@1.0.11
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6381676Z .../node_modules/argon2 install: node-pre-gyp info using node@20.20.2 | linux | x64
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6514259Z .../node_modules/bigint-buffer install: > bigint-buffer@1.1.5 rebuild
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6529414Z .../node_modules/bigint-buffer install: > node-gyp rebuild
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6692578Z .../node_modules/argon2 install: node-pre-gyp info check checked for "/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/argon2@0.31.2_encoding@0.1.13/node_modules/argon2/lib/binding/napi-v3/argon2.node" (not found)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.6714485Z .../node_modules/argon2 install: node-pre-gyp http GET https://github.com/ranisalt/node-argon2/releases/download/v0.31.2/argon2-v0.31.2-napi-v3-linux-x64-glibc.tar.gz
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.7149056Z .../node_modules/bigint-buffer install: gyp info it worked if it ends with ok
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.7172773Z .../node_modules/bigint-buffer install: gyp info using node-gyp@9.4.1
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.7181719Z .../node_modules/bigint-buffer install: gyp info using node@20.20.2 | linux | x64
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.7261609Z .../node_modules/msgpackr-extract install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.7632240Z .../node_modules/bigint-buffer install: gyp info find Python using Python version 3.12.3 found at "/usr/bin/python3"
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.8492162Z .../node_modules/bigint-buffer install: gyp http GET https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:46.9423589Z .../node_modules/bigint-buffer install: gyp http 200 https://nodejs.org/download/release/v20.20.2/node-v20.20.2-headers.tar.gz
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:47.0138884Z .../node_modules/argon2 install: node-pre-gyp info install unpacking napi-v3/argon2.node
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:47.1355997Z .../node_modules/argon2 install: node-pre-gyp info extracted file count: 1 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:47.1356540Z .../node_modules/argon2 install: node-pre-gyp info ok 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:47.1358851Z .../node_modules/argon2 install: [argon2] Success: "/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/argon2@0.31.2_encoding@0.1.13/node_modules/argon2/lib/binding/napi-v3/argon2.node" is installed via remote
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:47.1406696Z .../node_modules/argon2 install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3317928Z .../node_modules/tiny-secp256k1 install: gyp http GET https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3542481Z .../node_modules/tiny-secp256k1 install: gyp http 200 https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3612718Z .../node_modules/tiny-secp256k1 install: gyp info spawn /usr/bin/python3
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3613663Z .../node_modules/tiny-secp256k1 install: gyp info spawn args [
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3615079Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/gyp/gyp_main.py',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3616087Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   'binding.gyp',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3616796Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-f',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3617409Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   'make',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3618564Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-I',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3619701Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1/build/config.gypi',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3620680Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-I',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3621827Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/addon.gypi',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3622700Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-I',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3623437Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '/home/runner/.cache/node-gyp/20.20.2/include/node/common.gypi',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3623963Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dlibrary=shared_library',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3624417Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dvisibility=default',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3624914Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_root_dir=/home/runner/.cache/node-gyp/20.20.2',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3625806Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_gyp_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3626522Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_lib_file=/home/runner/.cache/node-gyp/20.20.2/<(target_arch)/node.lib',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3627286Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dmodule_root_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3627894Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Dnode_engine=v8',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3628300Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '--depth=.',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3628703Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '--no-parallel',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3629127Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '--generator-output',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3629530Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   'build',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3629919Z .../node_modules/tiny-secp256k1 install: gyp info spawn args   '-Goutput_dir=.'
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.3630291Z .../node_modules/tiny-secp256k1 install: gyp info spawn args ]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.5085387Z .../node_modules/electron postinstall: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.5772882Z .../node_modules/tiny-secp256k1 install: gyp info spawn make
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.5774274Z .../node_modules/tiny-secp256k1 install: gyp info spawn args [ 'BUILDTYPE=Release', '-C', 'build' ]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.5782776Z .../node_modules/tiny-secp256k1 install: make: Entering directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1/build'
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:48.5794573Z .../node_modules/tiny-secp256k1 install:   CXX(target) Release/obj.target/secp256k1/native/addon.o
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1964242Z .../node_modules/tiny-secp256k1 install: In file included from ../../../../nan@2.28.0/node_modules/nan/nan.h:67,
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1965241Z .../node_modules/tiny-secp256k1 install:                  from ../native/addon.cpp:4:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1970487Z .../node_modules/tiny-secp256k1 install: /home/runner/.cache/node-gyp/20.20.2/include/node/node.h:1227:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1972503Z .../node_modules/tiny-secp256k1 install:  1227 |       (node::addon_register_func) (regfunc),                          \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1973139Z .../node_modules/tiny-secp256k1 install:       |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1974050Z .../node_modules/tiny-secp256k1 install: /home/runner/.cache/node-gyp/20.20.2/include/node/node.h:1261:3: note: in expansion of macro ‘NODE_MODULE_X’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1974944Z .../node_modules/tiny-secp256k1 install:  1261 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1975511Z .../node_modules/tiny-secp256k1 install:       |   ^~~~~~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1976167Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:372:1: note: in expansion of macro ‘NODE_MODULE’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1976745Z .../node_modules/tiny-secp256k1 install:   372 | NODE_MODULE(secp256k1, Init)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.1977171Z .../node_modules/tiny-secp256k1 install:       | ^~~~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2508763Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In instantiation of ‘unsigned int {anonymous}::assumeCompression(const I&, const A&) [with long unsigned int index = 2; I = Nan::FunctionCallbackInfo<v8::Value>; A = v8::Local<v8::Object>]’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2510095Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:151:41:   required from here
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2511394Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:80:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2512346Z .../node_modules/tiny-secp256k1 install:    80 |                 if (info.Length() <= index || info[index]->IsUndefined()) {
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2512947Z .../node_modules/tiny-secp256k1 install:       |                     ~~~~~~~~~~~~~~^~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2514354Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In instantiation of ‘unsigned int {anonymous}::assumeCompression(const I&, const A&) [with long unsigned int index = 1; I = Nan::FunctionCallbackInfo<v8::Value>; A = v8::Local<v8::Object>]’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2515404Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:183:41:   required from here
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2516482Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:80:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2517932Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In instantiation of ‘unsigned int {anonymous}::assumeCompression(const I&) [with long unsigned int index = 1; I = Nan::FunctionCallbackInfo<v8::Value>]’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2518861Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:198:41:   required from here
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2519884Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:92:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2520797Z .../node_modules/tiny-secp256k1 install:    92 |                 if (info.Length() <= index) return SECP256K1_EC_COMPRESSED;
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2521567Z .../node_modules/tiny-secp256k1 install:       |                     ~~~~~~~~~~~~~~^~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2909732Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp: In function ‘Nan::NAN_METHOD_RETURN_TYPE eccPrivateSub(Nan::NAN_METHOD_ARGS_TYPE)’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2911751Z .../node_modules/tiny-secp256k1 install: ../native/addon.cpp:249:36: warning: ignoring return value of ‘int secp256k1_ec_privkey_negate(const secp256k1_context*, unsigned char*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2912908Z .../node_modules/tiny-secp256k1 install:   249 |         secp256k1_ec_privkey_negate(context, tweak_negated); // returns 1 always
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.2913594Z .../node_modules/tiny-secp256k1 install:       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.6599284Z .../node_modules/tiny-secp256k1 install:   CC(target) Release/obj.target/secp256k1/native/secp256k1/src/secp256k1.o
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7395311Z .../node_modules/tiny-secp256k1 install: In file included from ../native/secp256k1/src/assumptions.h:12,
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7396051Z .../node_modules/tiny-secp256k1 install:                  from ../native/secp256k1/src/secp256k1.c:10:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7397173Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_context_preallocated_clone’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7398285Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘prealloc’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7399058Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7399805Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7400480Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7401169Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7401976Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:168:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7402860Z .../node_modules/tiny-secp256k1 install:   168 |     ARG_CHECK(prealloc != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7403325Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7404017Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_parse’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7405039Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7405769Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7406505Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7407167Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7407729Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7408495Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:283:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7409079Z .../node_modules/tiny-secp256k1 install:   283 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7409488Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7410124Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘input’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7410739Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7411548Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7412159Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7412692Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7413616Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:285:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7414195Z .../node_modules/tiny-secp256k1 install:   285 |     ARG_CHECK(input != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7414607Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7415280Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_serialize’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7416273Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘output’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7416946Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7417626Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7418263Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7418763Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7419470Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:307:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7419894Z .../node_modules/tiny-secp256k1 install:   307 |     ARG_CHECK(output != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7420155Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7420662Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘outputlen’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7421264Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7431953Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7437032Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7437847Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7438851Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:303:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7439676Z .../node_modules/tiny-secp256k1 install:   303 |     ARG_CHECK(outputlen != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7440363Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7441393Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7441971Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7442573Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7443123Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7443618Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7444278Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:309:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7444816Z .../node_modules/tiny-secp256k1 install:   309 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7445152Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7445715Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_parse_der’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7446624Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7447204Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7447985Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7448500Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7449039Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7449719Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:348:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7450203Z .../node_modules/tiny-secp256k1 install:   348 |     ARG_CHECK(sig != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7450549Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7451267Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘input’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7451953Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7452660Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7453252Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7453785Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7454430Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:349:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7454961Z .../node_modules/tiny-secp256k1 install:   349 |     ARG_CHECK(input != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7455373Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7456084Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_parse_compact’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7457028Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7457588Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7458246Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7458865Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7459339Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7459996Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:366:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7460496Z .../node_modules/tiny-secp256k1 install:   366 |     ARG_CHECK(sig != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7461013Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7461754Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘input64’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7462483Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7463081Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7463613Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7464144Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7464873Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:367:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7465373Z .../node_modules/tiny-secp256k1 install:   367 |     ARG_CHECK(input64 != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7465735Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7466313Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_serialize_der’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7467291Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘output’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7467974Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7468596Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7469112Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7469512Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7470160Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:385:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7470738Z .../node_modules/tiny-secp256k1 install:   385 |     ARG_CHECK(output != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7471368Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7472212Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘outputlen’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7472927Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7473652Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7474292Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7474825Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7475527Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:386:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7476205Z .../node_modules/tiny-secp256k1 install:   386 |     ARG_CHECK(outputlen != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7476583Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7477307Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7478009Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7478729Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7479381Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7479925Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7480682Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:387:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7481462Z .../node_modules/tiny-secp256k1 install:   387 |     ARG_CHECK(sig != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7481905Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7482660Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_serialize_compact’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7483694Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘output64’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7484394Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7485098Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7485736Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7486274Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7487075Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:397:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7487884Z .../node_modules/tiny-secp256k1 install:   397 |     ARG_CHECK(output64 != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7488267Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7488773Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7489187Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7489606Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7489990Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7490326Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7490840Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:398:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7496129Z .../node_modules/tiny-secp256k1 install:   398 |     ARG_CHECK(sig != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7496574Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7497346Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_signature_normalize’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7498369Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sigin’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7499090Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7499832Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7501048Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7501610Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7502419Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:411:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7503035Z .../node_modules/tiny-secp256k1 install:   411 |     ARG_CHECK(sigin != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7503488Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7504154Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_verify’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7505116Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘sig’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7505830Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7506584Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7507242Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7507761Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7508285Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:432:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7508647Z .../node_modules/tiny-secp256k1 install:   432 |     ARG_CHECK(sig != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7508904Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7509636Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘msg32’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7510110Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7510740Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7511380Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7511703Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7512158Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:431:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7512524Z .../node_modules/tiny-secp256k1 install:   431 |     ARG_CHECK(msg32 != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7512786Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7513361Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7514009Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7514443Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7514831Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7515159Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7515605Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:433:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7515968Z .../node_modules/tiny-secp256k1 install:   433 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7516266Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7516825Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ecdsa_sign’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7517406Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘signature’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7517926Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7518350Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7518920Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7519270Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7520001Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:542:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7520609Z .../node_modules/tiny-secp256k1 install:   542 |     ARG_CHECK(signature != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7521150Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7521978Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘msg32’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7522575Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7523013Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7523493Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7523955Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7524672Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:541:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7525252Z .../node_modules/tiny-secp256k1 install:   541 |     ARG_CHECK(msg32 != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7525664Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7526459Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7527299Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7528023Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7528656Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7529191Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7529956Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:543:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7530591Z .../node_modules/tiny-secp256k1 install:   543 |     ARG_CHECK(seckey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7531198Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7531889Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_verify’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7532893Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7533613Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7534339Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7534995Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7535556Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7536342Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:554:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7536967Z .../node_modules/tiny-secp256k1 install:   554 |     ARG_CHECK(seckey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7537583Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7538298Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_create’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7539326Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7540091Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7541021Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7541679Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7542225Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7543001Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:578:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7543639Z .../node_modules/tiny-secp256k1 install:   578 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7544091Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7544964Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7545699Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7546454Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7547111Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7547664Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7548445Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:581:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7549085Z .../node_modules/tiny-secp256k1 install:   581 |     ARG_CHECK(seckey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7549702Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7550413Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_negate’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7551634Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7552343Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7553135Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7553801Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7554380Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7555172Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:595:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7555811Z .../node_modules/tiny-secp256k1 install:   595 |     ARG_CHECK(seckey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7556259Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7556962Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_negate’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7557995Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7558734Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7559481Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7560303Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7561038Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7561814Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:614:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7562446Z .../node_modules/tiny-secp256k1 install:   614 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7562874Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7563346Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_tweak_add’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7563945Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7564367Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7564800Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7565190Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7565514Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7565959Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:641:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7566323Z .../node_modules/tiny-secp256k1 install:   641 |     ARG_CHECK(seckey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7566587Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7567071Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7567488Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7582506Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7583192Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7583535Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7584024Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:642:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7584395Z .../node_modules/tiny-secp256k1 install:   642 |     ARG_CHECK(tweak != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7584663Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7585077Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_tweak_add’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7585690Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7586137Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7586565Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7586953Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7587281Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7587737Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:669:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7588107Z .../node_modules/tiny-secp256k1 install:   669 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7588373Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7588862Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7589381Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7589815Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7590200Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7590526Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7591102Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:670:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7591465Z .../node_modules/tiny-secp256k1 install:   670 |     ARG_CHECK(tweak != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7591731Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7592143Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_seckey_tweak_mul’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7592735Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘seckey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7593155Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7593581Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7593962Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7594286Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7594730Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:688:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7595096Z .../node_modules/tiny-secp256k1 install:   688 |     ARG_CHECK(seckey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7595359Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7595931Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7596347Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7596766Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7597144Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7597469Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7597914Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:689:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7598277Z .../node_modules/tiny-secp256k1 install:   689 |     ARG_CHECK(tweak != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7598539Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7598948Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_tweak_mul’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7599533Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubkey’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7599948Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7600368Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7600745Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7601192Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7601634Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:713:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7602084Z .../node_modules/tiny-secp256k1 install:   713 |     ARG_CHECK(pubkey != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7602347Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7602831Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘tweak’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7603244Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7603663Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7604047Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7604369Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7604821Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:714:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7605189Z .../node_modules/tiny-secp256k1 install:   714 |     ARG_CHECK(tweak != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7605445Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7605842Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c: In function ‘secp256k1_ec_pubkey_combine’:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7606428Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubnonce’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7606846Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7607265Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7607644Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7607975Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7608505Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:743:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7608871Z .../node_modules/tiny-secp256k1 install:   743 |     ARG_CHECK(pubnonce != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7609132Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7609623Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:30:16: warning: ‘nonnull’ argument ‘pubnonces’ compared to NULL [-Wnonnull-compare]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7610052Z .../node_modules/tiny-secp256k1 install:    30 |     if (EXPECT(!(cond), 0)) { \
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7610472Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/util.h:41:39: note: in definition of macro ‘EXPECT’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7610947Z .../node_modules/tiny-secp256k1 install:    41 | #define EXPECT(x,c) __builtin_expect((x),(c))
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7611286Z .../node_modules/tiny-secp256k1 install:       |                                       ^
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7611733Z .../node_modules/tiny-secp256k1 install: ../native/secp256k1/src/secp256k1.c:746:5: note: in expansion of macro ‘ARG_CHECK’
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7612102Z .../node_modules/tiny-secp256k1 install:   746 |     ARG_CHECK(pubnonces != NULL);
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:49.7612364Z .../node_modules/tiny-secp256k1 install:       |     ^~~~~~~~~
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.6539414Z .../node_modules/tiny-secp256k1 install:   SOLINK_MODULE(target) Release/obj.target/secp256k1.node
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.6858081Z .../node_modules/tiny-secp256k1 install:   COPY Release/secp256k1.node
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.6888541Z .../node_modules/tiny-secp256k1 install: make: Leaving directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/tiny-secp256k1@1.1.7/node_modules/tiny-secp256k1/build'
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.6892662Z .../node_modules/tiny-secp256k1 install: gyp info ok 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:50.7016700Z .../node_modules/tiny-secp256k1 install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:51.9983467Z .../node_modules/bigint-buffer install: gyp http GET https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0212717Z .../node_modules/bigint-buffer install: gyp http 200 https://nodejs.org/download/release/v20.20.2/SHASUMS256.txt
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0258419Z .../node_modules/bigint-buffer install: gyp info spawn /usr/bin/python3
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0259332Z .../node_modules/bigint-buffer install: gyp info spawn args [
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0260797Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/gyp/gyp_main.py',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0261924Z .../node_modules/bigint-buffer install: gyp info spawn args   'binding.gyp',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0262788Z .../node_modules/bigint-buffer install: gyp info spawn args   '-f',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0263336Z .../node_modules/bigint-buffer install: gyp info spawn args   'make',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0263913Z .../node_modules/bigint-buffer install: gyp info spawn args   '-I',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0264959Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer/build/config.gypi',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0265892Z .../node_modules/bigint-buffer install: gyp info spawn args   '-I',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0266858Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp/addon.gypi',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0267733Z .../node_modules/bigint-buffer install: gyp info spawn args   '-I',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0268505Z .../node_modules/bigint-buffer install: gyp info spawn args   '/home/runner/.cache/node-gyp/20.20.2/include/node/common.gypi',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0269294Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dlibrary=shared_library',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0269986Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dvisibility=default',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0271182Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_root_dir=/home/runner/.cache/node-gyp/20.20.2',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0272289Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_gyp_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/node-gyp@9.4.1/node_modules/node-gyp',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0273416Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_lib_file=/home/runner/.cache/node-gyp/20.20.2/<(target_arch)/node.lib',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0274631Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dmodule_root_dir=/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0275595Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Dnode_engine=v8',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0276213Z .../node_modules/bigint-buffer install: gyp info spawn args   '--depth=.',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0276834Z .../node_modules/bigint-buffer install: gyp info spawn args   '--no-parallel',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0277476Z .../node_modules/bigint-buffer install: gyp info spawn args   '--generator-output',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0278082Z .../node_modules/bigint-buffer install: gyp info spawn args   'build',
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0278677Z .../node_modules/bigint-buffer install: gyp info spawn args   '-Goutput_dir=.'
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.0279254Z .../node_modules/bigint-buffer install: gyp info spawn args ]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.1150983Z .../node_modules/bigint-buffer install: gyp info spawn make
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.1151816Z .../node_modules/bigint-buffer install: gyp info spawn args [ 'BUILDTYPE=Release', '-C', 'build' ]
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.1158343Z .../node_modules/bigint-buffer install: make: Entering directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer/build'
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.1166048Z .../node_modules/bigint-buffer install:   CC(target) Release/obj.target/bigint_buffer/src/bigint-buffer.o
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.1788149Z .../node_modules/bigint-buffer install:   SOLINK_MODULE(target) Release/obj.target/bigint_buffer.node
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.1985838Z .../node_modules/bigint-buffer install:   COPY Release/bigint_buffer.node
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.2016009Z .../node_modules/bigint-buffer install: make: Leaving directory '/home/runner/work/Thanos-Wallet/Thanos-Wallet/node_modules/.pnpm/bigint-buffer@1.1.5/node_modules/bigint-buffer/build'
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.2019316Z .../node_modules/bigint-buffer install: gyp info ok 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:52.2154845Z .../node_modules/bigint-buffer install: Done
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6016154Z 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6016621Z devDependencies:
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6016854Z + @eslint/js 9.39.5 (10.0.1 is available)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6017104Z + @next/eslint-plugin-next 15.5.25 (16.3.4 is available)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6017463Z + @typescript-eslint/eslint-plugin 8.69.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6017775Z + eslint 9.39.5 (10.9.1 is available) deprecated
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6018067Z + eslint-plugin-jsx-a11y 6.10.2
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6018387Z + eslint-plugin-react-hooks 5.2.0 (7.1.1 is available)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6018691Z + globals 15.15.0 (17.12.0 is available)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6018911Z + tsx 4.23.13
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6019076Z + turbo 2.10.12
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6019300Z + typescript 5.9.3 (7.0.2 is available)
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6019541Z + typescript-eslint 8.69.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6019792Z + vite-plugin-node-polyfills 0.28.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6019947Z 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6052739Z  WARN  Issues with peer dependencies found
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6052943Z apps/desktop
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6053143Z ├─┬ @solana/web3.js 1.98.4
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6053295Z │ └─┬ jayson 4.3.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6053424Z │   └─┬ ws 7.5.13
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6053638Z │     └── ✕ unmet peer utf-8-validate@^5.0.2: found 6.0.6
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6053848Z └─┬ @solana/kit 2.3.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6054030Z   └─┬ @solana/transaction-confirmation 2.3.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6054230Z     └─┬ @solana/rpc-subscriptions 2.3.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6054654Z       └─┬ @solana/rpc-subscriptions-channel-websocket 2.3.0
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6054886Z         └── ✕ unmet peer ws@^8.18.0: found 7.5.13
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6054996Z 
+tests (vault + auth)	Run pnpm install --no-frozen-lockfile	2026-09-02T12:49:53.6060432Z Done in 25.8s
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	﻿2026-09-02T12:49:53.7105765Z ##[group]Run pnpm --filter @thanos/sdk-core test
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.7105984Z ^[[36;1mpnpm --filter @thanos/sdk-core test^[[0m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.7136487Z shell: /usr/bin/bash -e {0}
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.7136620Z ##[endgroup]
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.9257210Z 
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.9257757Z > @thanos/sdk-core@0.2.0 test /home/runner/work/Thanos-Wallet/Thanos-Wallet/packages/sdk-core
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.9258158Z > vitest run
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:53.9258261Z 
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.1114856Z 
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.1116300Z ^[[1m^[[7m^[[36m RUN ^[[39m^[[27m^[[22m ^[[36mv2.1.9 ^[[39m^[[90m/home/runner/work/Thanos-Wallet/Thanos-Wallet/packages/sdk-core^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.1116710Z 
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.3883440Z  ^[[32m✓^[[39m src/__tests__/ignite-client.test.ts ^[[2m(^[[22m^[[2m19 tests^[[22m^[[2m)^[[22m^[[90m 54^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.4762370Z  ^[[32m✓^[[39m src/__tests__/lep100-client.test.ts ^[[2m(^[[22m^[[2m11 tests^[[22m^[[2m)^[[22m^[[90m 8^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.4763220Z  ^[[32m✓^[[39m src/__tests__/simulator.test.ts ^[[2m(^[[22m^[[2m11 tests^[[22m^[[2m)^[[22m^[[90m 24^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.7582528Z  ^[[32m✓^[[39m src/__tests__/litho-address.test.ts ^[[2m(^[[22m^[[2m18 tests^[[22m^[[2m)^[[22m^[[90m 97^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.7808427Z  ^[[32m✓^[[39m src/__tests__/gas-estimate.test.ts ^[[2m(^[[22m^[[2m8 tests^[[22m^[[2m)^[[22m^[[90m 23^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.9361564Z  ^[[32m✓^[[39m src/__tests__/multx-client.test.ts ^[[2m(^[[22m^[[2m10 tests^[[22m^[[2m)^[[22m^[[90m 8^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:54.9689908Z  ^[[32m✓^[[39m src/__tests__/price-history.test.ts ^[[2m(^[[22m^[[2m7 tests^[[22m^[[2m)^[[22m^[[90m 6^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:55.0598422Z  ^[[32m✓^[[39m src/__tests__/ecosystem.test.ts ^[[2m(^[[22m^[[2m14 tests^[[22m^[[2m)^[[22m^[[90m 5^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:55.0873053Z  ^[[32m✓^[[39m src/__tests__/bridge-status.test.ts ^[[2m(^[[22m^[[2m8 tests^[[22m^[[2m)^[[22m^[[90m 5^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:55.2037285Z  ^[[32m✓^[[39m src/__tests__/networks.test.ts ^[[2m(^[[22m^[[2m7 tests^[[22m^[[2m)^[[22m^[[90m 4^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:55.3376615Z  ^[[32m✓^[[39m src/__tests__/phishing.test.ts ^[[2m(^[[22m^[[2m7 tests^[[22m^[[2m)^[[22m^[[90m 4^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:55.4574177Z  ^[[32m✓^[[39m src/__tests__/mnemonic.test.ts ^[[2m(^[[22m^[[2m8 tests^[[22m^[[2m)^[[22m^[[90m 174^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:55.4729438Z  ^[[32m✓^[[39m src/__tests__/ignite-url.test.ts ^[[2m(^[[22m^[[2m4 tests^[[22m^[[2m)^[[22m^[[90m 3^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.0885504Z  ^[[32m✓^[[39m src/__tests__/dnns-service.test.ts ^[[2m(^[[22m^[[2m8 tests^[[22m^[[2m)^[[22m^[[33m 2393^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.0886373Z    ^[[33m^[[2m✓^[[22m^[[39m DnnsService.resolve^[[2m > ^[[22mreturns the address resolved by the lithic RPC ^[[33m1121^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.0887213Z    ^[[33m^[[2m✓^[[22m^[[39m DnnsService.resolve^[[2m > ^[[22mdegrades to zero address when the RPC returns a non-string ^[[33m786^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.0998557Z 
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.1002754Z ^[[2m Test Files ^[[22m ^[[1m^[[32m14 passed^[[39m^[[22m^[[90m (14)^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.1003402Z ^[[2m      Tests ^[[22m ^[[1m^[[32m140 passed^[[39m^[[22m^[[90m (140)^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.1003930Z ^[[2m   Start at ^[[22m 12:49:54
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.1005249Z ^[[2m   Duration ^[[22m 2.99s^[[2m (transform 272ms, setup 0ms, collect 956ms, tests 2.81s, environment 2ms, prepare 666ms)^[[22m
+tests (vault + auth)	Run pnpm --filter @thanos/sdk-core test	2026-09-02T12:49:57.1005796Z 
+tests (vault + auth)	Run pnpm --filter @thanos/web test	﻿2026-09-02T12:49:57.1275343Z ##[group]Run pnpm --filter @thanos/web test
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.1275549Z ^[[36;1mpnpm --filter @thanos/web test^[[0m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.1310169Z shell: /usr/bin/bash -e {0}
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.1310313Z ##[endgroup]
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.3492405Z 
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.3493056Z > @thanos/web@0.2.0 test /home/runner/work/Thanos-Wallet/Thanos-Wallet/apps/web
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.3493327Z > vitest run
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.3493690Z 
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.5259687Z ^[[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.5464460Z 
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.5466043Z ^[[1m^[[7m^[[36m RUN ^[[39m^[[27m^[[22m ^[[36mv2.1.9 ^[[39m^[[90m/home/runner/work/Thanos-Wallet/Thanos-Wallet/apps/web^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:57.5466398Z 
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4042127Z  ^[[32m✓^[[39m lib/vault.test.ts ^[[2m(^[[22m^[[2m13 tests^[[22m^[[2m)^[[22m^[[33m 1682^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4118321Z 
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4123686Z ^[[2m Test Files ^[[22m ^[[1m^[[32m1 passed^[[39m^[[22m^[[90m (1)^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4124250Z ^[[2m      Tests ^[[22m ^[[1m^[[32m13 passed^[[39m^[[22m^[[90m (13)^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4124713Z ^[[2m   Start at ^[[22m 12:49:57
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4125524Z ^[[2m   Duration ^[[22m 1.87s^[[2m (transform 43ms, setup 0ms, collect 42ms, tests 1.68s, environment 0ms, prepare 40ms)^[[22m
+tests (vault + auth)	Run pnpm --filter @thanos/web test	2026-09-02T12:49:59.4125942Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	﻿2026-09-02T12:49:59.4328014Z ##[group]Run pnpm --filter @thanos/api test
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.4328230Z ^[[36;1mpnpm --filter @thanos/api test^[[0m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.4357954Z shell: /usr/bin/bash -e {0}
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.4358095Z ##[endgroup]
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.6493025Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.6493774Z > @thanos/api@1.0.0 test /home/runner/work/Thanos-Wallet/Thanos-Wallet/services/api
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.6494047Z > vitest run
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.6494121Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.8276326Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.8277603Z ^[[1m^[[7m^[[36m RUN ^[[39m^[[27m^[[22m ^[[36mv2.1.9 ^[[39m^[[90m/home/runner/work/Thanos-Wallet/Thanos-Wallet/services/api^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:49:59.8277877Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:00.6582627Z {"level":40,"time":1788353400656,"pid":3195,"hostname":"runnervmgx7h7","name":"@thanos/api","name":"flaky.litho","err":"all endpoints failed","msg":"dnns on-chain resolve failed"}
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:00.6692649Z  ^[[32m✓^[[39m src/__tests__/dnns.test.ts ^[[2m(^[[22m^[[2m10 tests^[[22m^[[2m)^[[22m^[[90m 50^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:00.7427703Z  ^[[32m✓^[[39m src/__tests__/contacts.test.ts ^[[2m(^[[22m^[[2m12 tests^[[22m^[[2m)^[[22m^[[90m 53^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:00.9602253Z  ^[[2m^[[90m↓^[[39m^[[22m src/__tests__/contacts-integration.test.ts ^[[2m(^[[22m^[[2m7 tests^[[22m^[[2m | ^[[22m^[[33m7 skipped^[[39m^[[2m)^[[22m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.1511427Z  ^[[32m✓^[[39m src/__tests__/security.test.ts ^[[2m(^[[22m^[[2m10 tests^[[22m^[[2m)^[[22m^[[90m 176^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2033827Z  ^[[2m^[[90m↓^[[39m^[[22m src/__tests__/schema-integration.test.ts ^[[2m(^[[22m^[[2m4 tests^[[22m^[[2m | ^[[22m^[[33m4 skipped^[[39m^[[2m)^[[22m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2062019Z ^[[90mstdout^[[2m | src/__tests__/schema-integration.test.ts
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2084284Z ^[[22m^[[39m[schema-integration] SKIPPED — DATABASE_URL not set (set it in CI to enable)
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2084867Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2222385Z  ^[[32m✓^[[39m src/__tests__/auth.test.ts ^[[2m(^[[22m^[[2m14 tests^[[22m^[[2m)^[[22m^[[33m 464^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2422279Z 
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2442255Z ^[[2m Test Files ^[[22m ^[[1m^[[32m4 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m2 skipped^[[39m^[[90m (6)^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2444469Z ^[[2m      Tests ^[[22m ^[[1m^[[32m46 passed^[[39m^[[22m^[[2m | ^[[22m^[[33m11 skipped^[[39m^[[90m (57)^[[39m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2445001Z ^[[2m   Start at ^[[22m 12:49:59
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2445872Z ^[[2m   Duration ^[[22m 1.41s^[[2m (transform 255ms, setup 0ms, collect 2.36s, tests 743ms, environment 1ms, prepare 333ms)^[[22m
+tests (vault + auth)	Run pnpm --filter @thanos/api test	2026-09-02T12:50:01.2446230Z 
+tests (vault + auth)	Run pnpm --filter multx-adapter test	﻿2026-09-02T12:50:01.2704549Z ##[group]Run pnpm --filter multx-adapter test
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.2704768Z ^[[36;1mpnpm --filter multx-adapter test^[[0m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.2734489Z shell: /usr/bin/bash -e {0}
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.2734640Z ##[endgroup]
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.4901086Z 
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.4901625Z > multx-adapter@0.1.0-pre test /home/runner/work/Thanos-Wallet/Thanos-Wallet/packages/multx-adapter
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.4901947Z > vitest run
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.4902017Z 
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.6626141Z 
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.6633852Z ^[[1m^[[7m^[[36m RUN ^[[39m^[[27m^[[22m ^[[36mv2.1.9 ^[[39m^[[90m/home/runner/work/Thanos-Wallet/Thanos-Wallet/packages/multx-adapter^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.6634898Z 
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.8928926Z  ^[[32m✓^[[39m src/status.test.ts ^[[2m(^[[22m^[[2m5 tests^[[22m^[[2m)^[[22m^[[90m 4^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.8982155Z  ^[[32m✓^[[39m src/manifest.test.ts ^[[2m(^[[22m^[[2m7 tests^[[22m^[[2m)^[[22m^[[90m 8^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:01.9044105Z  ^[[32m✓^[[39m src/adapter.test.ts ^[[2m(^[[22m^[[2m5 tests^[[22m^[[2m)^[[22m^[[90m 8^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0223196Z  ^[[32m✓^[[39m src/preflight.test.ts ^[[2m(^[[22m^[[2m9 tests^[[22m^[[2m)^[[22m^[[90m 3^[[2mms^[[22m^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0288229Z 
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0293711Z ^[[2m Test Files ^[[22m ^[[1m^[[32m4 passed^[[39m^[[22m^[[90m (4)^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0294227Z ^[[2m      Tests ^[[22m ^[[1m^[[32m26 passed^[[39m^[[22m^[[90m (26)^[[39m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0294622Z ^[[2m   Start at ^[[22m 12:50:01
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0295964Z ^[[2m   Duration ^[[22m 366ms^[[2m (transform 138ms, setup 0ms, collect 198ms, tests 23ms, environment 1ms, prepare 194ms)^[[22m
+tests (vault + auth)	Run pnpm --filter multx-adapter test	2026-09-02T12:50:02.0296392Z 
+tests (vault + auth)	Post Run actions/setup-node@v4	﻿2026-09-02T12:50:02.0560635Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+tests (vault + auth)	Post Run actions/setup-node@v4	2026-09-02T12:50:02.0561661Z Post job cleanup.
+tests (vault + auth)	Post Run actions/setup-node@v4	2026-09-02T12:50:02.1289233Z (node:3799) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+tests (vault + auth)	Post Run actions/setup-node@v4	2026-09-02T12:50:02.1289719Z (Use `node --trace-deprecation ...` to show where the warning was created)
+tests (vault + auth)	Post Run actions/checkout@v4	﻿2026-09-02T12:50:02.1416503Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.1417134Z Post job cleanup.
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.1942024Z [command]/usr/bin/git version
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.1973731Z git version 2.55.0
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.1997626Z Temporarily overriding HOME='/home/runner/work/_temp/0ca23238-b0e0-4350-af62-1e89bb8874f6' before making global git config changes
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.1998293Z Adding repository directory to the temporary git global config as a safe directory
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2001378Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Thanos-Wallet/Thanos-Wallet
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2028537Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2052845Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2235055Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2257891Z http.https://github.com/.extraheader
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2265544Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2291894Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2472276Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+tests (vault + auth)	Post Run actions/checkout@v4	2026-09-02T12:50:02.2503109Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+tests (vault + auth)	Complete job	﻿2026-09-02T12:50:02.2774157Z Cleaning up orphan processes
+tests (vault + auth)	Complete job	2026-09-02T12:50:02.2952747Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
