@@ -55,6 +55,45 @@ export interface QuanttOverview {
   dashboard: { portfolio: QuanttPortfolio; agents: QuanttAgent[] };
 }
 
+/* ── Real, spec-verified request types (pinned against QUANTTS API 0.4.0's
+   OpenAPI schema at https://api.quantts.ai/docs/json, fetched 2026-09-02) ── */
+export type QuanttStrategy =
+  | 'buy_hold' | 'macd' | 'kdj_rsi' | 'zmr' | 'sma' | 'custom' | 'momentum'
+  | 'mean_reversion' | 'arbitrage' | 'trend_following' | 'hedging'
+  | 'fundamental' | 'technical';
+export type QuanttChain = 'arbitrum' | 'base' | 'lithosphere' | 'bnb';
+/** 'magma' = MagmaDEX (same MagmaDEX the MultX adapter integration plan
+ *  covers). 'kamet' = the Kamet-native DEX. */
+export type QuanttDexPreference = 'kamet' | 'magma';
+export type QuanttQuoteAsset = 'USDC' | 'USDT' | 'LAX';
+export type QuanttTimeframe = '5m' | '15m' | '1h' | '4h' | '1d';
+/** What POST /v1/agents/{id}/state actually accepts. */
+export type QuanttRuntimeState = 'active' | 'paused' | 'idle';
+
+export interface CreateAgentInput {
+  name: string;
+  strategy: QuanttStrategy;
+  strategyPrompt?: string | null;
+  chains: QuanttChain[];
+  tokens: string[];
+  dexPreference?: QuanttDexPreference; // default 'kamet'
+  capitalUsd: number;
+  maxPositionPct?: number;  // default 25
+  stopLoss?: number;        // default 5
+  takeProfit?: number;      // default 10
+  maxDailyLoss?: number;    // default 3.5
+  autopilot?: boolean;      // default true
+  timeframe?: QuanttTimeframe; // default '1h'
+  quoteAsset?: QuanttQuoteAsset; // default 'USDC'
+}
+export type UpdateAgentInput = Partial<CreateAgentInput>;
+
+export interface WithdrawInput {
+  amount: number;
+  /** Required if the account has TOTP enabled. */
+  totpCode?: string;
+}
+
 export type SignTypedDataFn = (typedData: Eip712TypedData) => Promise<string>;
 
 interface SessionStore {
@@ -167,13 +206,67 @@ export class QuanttClient {
     return (await res.json()) as T;
   }
 
+  /** Undocumented in the OpenAPI spec but live and verified (401s, not
+   *  404s, unauthenticated as of 2026-09-02) — kept as the primary call
+   *  since it's what's already shipped in production on all 4 clients.
+   *  `/v1/dashboard` is the documented equivalent, not yet switched to. */
   getOverview(): Promise<QuanttOverview> { return this.authed<QuanttOverview>('/v1/mobile/overview'); }
-  getAgent(id: string): Promise<unknown> { return this.authed(`/v1/mobile/agents/${encodeURIComponent(id)}`); }
-  setAgentState(id: string, state: string): Promise<unknown> {
-    return this.authed(`/v1/mobile/agents/${encodeURIComponent(id)}/state`, { method: 'POST', body: JSON.stringify({ state }) });
+
+  listAgents(): Promise<unknown> { return this.authed('/v1/agents'); }
+  getAgent(id: string): Promise<unknown> { return this.authed(`/v1/agents/${encodeURIComponent(id)}`); }
+  createAgent(body: CreateAgentInput): Promise<unknown> {
+    return this.authed('/v1/agents', { method: 'POST', body: JSON.stringify(body) });
   }
-  listAlerts(): Promise<unknown> { return this.authed('/v1/mobile/alerts'); }
-  copilot(body: unknown): Promise<unknown> { return this.authed('/v1/mobile/copilot', { method: 'POST', body: JSON.stringify(body) }); }
+  updateAgent(id: string, body: Partial<CreateAgentInput>): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
+  }
+  deleteAgent(id: string): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  /** Start / pause / stop — not the same enum as the agent's full status
+   *  field on create/update, this endpoint only accepts these three. */
+  setAgentState(id: string, status: QuanttRuntimeState): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/state`, {
+      method: 'POST', body: JSON.stringify({ status }),
+    });
+  }
+  analyzeAgent(id: string): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/analyze`, { method: 'POST' });
+  }
+  getAgentTrades(id: string, limit?: number): Promise<unknown> {
+    const qs = limit ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/trades${qs}`);
+  }
+  getAgentPositions(id: string): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/positions`);
+  }
+  getAgentWallet(id: string): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/wallet`);
+  }
+  getAgentDecisions(id: string, opts?: { cursor?: string; limit?: number }): Promise<unknown> {
+    const qs = new URLSearchParams();
+    if (opts?.cursor) qs.set('cursor', opts.cursor);
+    if (opts?.limit)  qs.set('limit', String(opts.limit));
+    const s = qs.toString();
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/decisions${s ? `?${s}` : ''}`);
+  }
+
+  /* Funding (Magma) — NO SANDBOX, these move real funds. Confirm the full
+     flow with Quantt before wiring into any UI. */
+  depositToAgent(id: string): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/deposit`, { method: 'POST' });
+  }
+  withdrawFromAgent(id: string, body: WithdrawInput): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/withdraw`, {
+      method: 'POST', body: JSON.stringify(body),
+    });
+  }
+  getAgentWithdrawals(id: string): Promise<unknown> {
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/withdrawals`);
+  }
+
+  getKillSwitch(): Promise<unknown> { return this.authed('/v1/kill-switch'); }
+  getTelemetry(): Promise<unknown> { return this.authed('/v1/telemetry'); }
 }
 
 async function safeText(res: { text(): Promise<string> }): Promise<string> {
