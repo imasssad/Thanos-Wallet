@@ -11,13 +11,15 @@
  * (eas build:view <id> → "Application Archive URL").
  */
 
-// Latest production-apk build — app version 1.1.2 (versionCode 22), EAS build
-// 30d2c87b, 2026-08-26 (built under the imasssadkh EAS project — imasssad's
-// Android quota was exhausted for the month; same local keystore, same
-// signing identity, no user-facing difference). Targets Android 16 / API 36.
-// NEW in vc22: persisted dApp connection grants (auto-reconnect on revisit)
-// and the rebuilt Discover screen — Recents + Favorites rows, category pills
-// instead of static section headers. vc21 fixed external-EVM token pricing
+// Latest production-apk build — app version 2.0.0 (versionCode 23), EAS
+// build ca3f17fa, 2026-09-03. Targets Android 16 / API 36.
+// NEW in 2.0.0: version bump to mark the current release milestone — carries
+// the Lithosphere-pin + Solana-icon-letter-bleed fix (all 4 clients), the
+// Kamet testnet-status correction, and the rebuilt Quantt client against the
+// real OpenAPI spec. versionCode 22 (previous release) added persisted dApp
+// connection grants (auto-reconnect on revisit) and the rebuilt Discover
+// screen — Recents + Favorites rows, category pills instead of static
+// section headers. vc21 fixed external-EVM token pricing
 // (COLLE/IMAGE/MUSA/AGII no longer default to a fabricated $1 when their live
 // price fetch misses — only USDT/USDC do). Also fixed the Send screen's asset
 // picker, which had no ScrollView and could overflow unscrollably once the
@@ -89,12 +91,12 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/s2d3LAugldNYxEgkJWbPQYWWpV9QG0iXITjVnK6cXZ0.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/tMqUyTskHsYGDyvrwWQGAhCY1g2IQvrADsymSfXq6Gc.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
 // v1.xx counter, so the filename matches what Play / the App Store report.
-const APK_VERSION = 'thanos-v1.1.2';
+const APK_VERSION = 'thanos-v2.0.0';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
