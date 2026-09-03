@@ -6548,6 +6548,11 @@ function App() {
   // stashed here and auto-paired once unlocked — the supported mobile connect
   // path. Works from any screen; the manual paste/scan entry lives in Settings.
   const [pendingWcUri, setPendingWcUri] = useState<string | null>(null);
+  // Header "Scan" button — a global quick-scan for a WalletConnect QR code,
+  // reusing the exact same pendingWcUri auto-pair path as a deep-link
+  // handoff. A non-WC QR just gets a clear "not a WalletConnect code" alert
+  // rather than silently doing nothing.
+  const [headerScanOpen, setHeaderScanOpen] = useState(false);
   useEffect(() => {
     const handle = (url: string | null) => {
       const wc = url ? extractWcUri(url) : null;
@@ -7178,13 +7183,42 @@ function App() {
               </Pressable>
               {/* Theme toggle intentionally lives ONLY in Settings → General →
                   Theme (client request 2026-07-14) — no top-bar shortcut. */}
+              {/* The "Synced" pill here duplicated the balance card's own
+                  Status: Live/Offline metric one screen down — client
+                  feedback 2026-09-04. Replaced with two quick actions that
+                  are actually useful from any screen: History (jumps
+                  straight to Activity) and Scan (WalletConnect pairing —
+                  same auto-pair path as a dApp's deep-link handoff). */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={styles.netPill}>
-                  <View style={styles.netDot}/>
-                  <Text style={styles.netText}>Synced</Text>
-                </View>
+                <Pressable
+                  onPress={() => setScreen('activity')}
+                  hitSlop={6}
+                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated }}
+                  accessibilityLabel="Activity history"
+                >
+                  <Clock size={18} color={colors.textSecondary}/>
+                </Pressable>
+                <Pressable
+                  onPress={() => setHeaderScanOpen(true)}
+                  hitSlop={6}
+                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated }}
+                  accessibilityLabel="Scan to connect"
+                >
+                  <ScanLine size={18} color={colors.textSecondary}/>
+                </Pressable>
               </View>
             </View>
+            <QrScannerModal
+              visible={headerScanOpen}
+              title="Scan to connect"
+              onClose={() => setHeaderScanOpen(false)}
+              onResult={(data) => {
+                setHeaderScanOpen(false);
+                const wc = extractWcUri(data.trim());
+                if (wc) setPendingWcUri(wc);
+                else Alert.alert('Not a WalletConnect code', 'Scan a WalletConnect pairing QR code from a dApp.');
+              }}
+            />
 
             {/* Body — animated screen transitions */}
             <View style={styles.body}>
@@ -7303,15 +7337,7 @@ function makeStyles(C: Colors) {
       alignItems: 'center', justifyContent: 'center',
     },
 
-    netPill: {
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      paddingHorizontal: 10, paddingVertical: 5,
-      backgroundColor: C.greenDim,
-      borderColor: 'rgba(16,185,129,0.22)', borderWidth: 1,
-      borderRadius: 999,
-    },
     netDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.green },
-    netText: { color: C.green, fontSize: 11, fontWeight: '700', letterSpacing: -0.1 },
 
     /* Premium balance card */
     balanceCard: {
