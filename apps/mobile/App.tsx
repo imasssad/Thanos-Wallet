@@ -151,7 +151,7 @@ import {
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
-  ChevronDown, ChevronUp, Star,
+  ChevronDown, ChevronUp, Star, History, Scan, Wallet as WalletIcon,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -7175,11 +7175,8 @@ function App() {
                   ],
                 )}
               >
-                <View style={styles.acctAvatar}><Text style={styles.acctAvatarText}>○</Text></View>
-                <View>
-                  <Text style={styles.acctName} numberOfLines={1}>{getAccountName(walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx : 0)}</Text>
-                  <Text style={styles.acctAddr}>{shortLitho || shortAddr}</Text>
-                </View>
+                <View style={styles.acctAvatar}><WalletIcon size={16} color="#fff" strokeWidth={2.2}/></View>
+                <Text style={styles.acctName} numberOfLines={1}>{getAccountName(walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx : 0)}</Text>
               </Pressable>
               {/* Theme toggle intentionally lives ONLY in Settings → General →
                   Theme (client request 2026-07-14) — no top-bar shortcut. */}
@@ -7196,7 +7193,7 @@ function App() {
                   style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated }}
                   accessibilityLabel="Activity history"
                 >
-                  <Clock size={18} color={colors.textSecondary}/>
+                  <History size={18} color={colors.textSecondary}/>
                 </Pressable>
                 <Pressable
                   onPress={() => setHeaderScanOpen(true)}
@@ -7204,7 +7201,7 @@ function App() {
                   style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated }}
                   accessibilityLabel="Scan to connect"
                 >
-                  <ScanLine size={18} color={colors.textSecondary}/>
+                  <Scan size={18} color={colors.textSecondary}/>
                 </Pressable>
               </View>
             </View>
@@ -7319,16 +7316,14 @@ function makeStyles(C: Colors) {
     acct: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
       backgroundColor: C.bgElevated, borderColor: C.borderDefault, borderWidth: 1,
-      borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12, paddingLeft: 4,
+      borderRadius: 999, paddingVertical: 5, paddingHorizontal: 16, paddingLeft: 5,
     },
     acctAvatar: {
-      width: 30, height: 30, borderRadius: 15,
-      backgroundColor: C.bgHover,
+      width: 32, height: 32, borderRadius: 16,
+      backgroundColor: C.blue,
       alignItems: 'center', justifyContent: 'center',
     },
-    acctAvatarText: { color: C.textMuted, fontSize: 13, fontWeight: '700' },
-    acctName: { color: C.textPrimary, fontSize: 13, fontWeight: '600', letterSpacing: -0.2 },
-    acctAddr: { color: C.textMuted, fontSize: 10, fontFamily: MONO, marginTop: 1 },
+    acctName: { color: C.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
 
     themeBtn: {
       width: 32, height: 32, borderRadius: 8,
