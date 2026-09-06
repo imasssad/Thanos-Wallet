@@ -12,8 +12,8 @@ import { Puzzle, X, Smartphone, Download } from 'lucide-react';
  *  - Desktop browser      → "Get the extension" → Chrome Web Store / AMO,
  *                           hidden once the Thanos extension is detected
  *                           (window.thanos.isThanos + EIP-6963 handshake).
- *  - iOS / iPadOS         → nothing yet (no App Store build to offer; browser
- *                           extensions don't exist on iOS Safari either).
+ *  - iOS / iPadOS         → "Download on the App Store". Browser extensions
+ *                           don't exist on iOS Safari.
  *  - Dismissible per surface; the choice is remembered in localStorage.
  *
  * Rendered once on the landing page (app/page.tsx).
@@ -24,9 +24,11 @@ const DISMISS_EXT = 'thanos_ext_prompt_dismissed';
 // the APK" to "get it on Google Play" — users who dismissed the old banner
 // should see the new store CTA once.
 const DISMISS_APK = 'thanos_play_prompt_dismissed';
+const DISMISS_IOS = 'thanos_ios_prompt_dismissed';
 
 /** Play Store listing — same package the /download APK installs (ai.thanos.wallet). */
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=ai.thanos.wallet';
+export const APP_STORE_URL = 'https://apps.apple.com/app/thanos-wallet/id6738206983';
 
 // The Chrome Web Store listing is LIVE, so the desktop "Get the extension"
 // prompt links straight to it. Brave/Edge/Opera install from the same Chrome
@@ -98,10 +100,9 @@ export function ExtensionPrompt() {
   useEffect(() => {
     const p = detectPlatform();
     setPlatform(p);
-    if (p === 'ios') return; // nothing to offer iOS yet
     if (p === 'desktop' && !EXTENSION_PUBLISHED) return; // extension not in stores yet
 
-    const key = p === 'android' ? DISMISS_APK : DISMISS_EXT;
+    const key = p === 'android' ? DISMISS_APK : p === 'ios' ? DISMISS_IOS : DISMISS_EXT;
     let dismissed = false;
     try { dismissed = localStorage.getItem(key) === '1'; } catch { /* ignore */ }
     if (dismissed) return;
@@ -114,12 +115,12 @@ export function ExtensionPrompt() {
       setBrowser(b);
     }
     // Desktop waits a beat so the extension can inject + flip `installed`
-    // before we bother showing the prompt; Android has nothing to wait for.
-    const t = setTimeout(() => setShow(true), p === 'android' ? 700 : 1200);
+    // before we bother showing the prompt; mobile has nothing to wait for.
+    const t = setTimeout(() => setShow(true), p === 'desktop' ? 1200 : 700);
     return () => clearTimeout(t);
   }, []);
 
-  if (!show || !platform || platform === 'ios') return null;
+  if (!show || !platform) return null;
 
   // ── Android → Google Play (APK stays available as the small fallback) ────
   if (platform === 'android') {
@@ -141,6 +142,29 @@ export function ExtensionPrompt() {
         </div>
         <a className="lp-ext-prompt-cta" href={PLAY_STORE_URL} target="_blank" rel="noreferrer">
           <Download size={15} style={{ marginRight: 6, verticalAlign: '-2px' }} />Google Play
+        </a>
+        <button className="lp-ext-prompt-close" onClick={dismiss} aria-label="Dismiss">
+          <X size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  // ── iOS → App Store ─────────────────────────────────────────────────────
+  if (platform === 'ios') {
+    const dismiss = () => {
+      try { localStorage.setItem(DISMISS_IOS, '1'); } catch { /* ignore */ }
+      setShow(false);
+    };
+    return (
+      <div className="lp-ext-prompt" role="dialog" aria-label="Get the Thanos Wallet app on the App Store">
+        <div className="lp-ext-prompt-icon"><Smartphone size={20} /></div>
+        <div className="lp-ext-prompt-text">
+          <strong>Get the Thanos Wallet app</strong>
+          <span>Now available for iPhone and iPad.</span>
+        </div>
+        <a className="lp-ext-prompt-cta" href={APP_STORE_URL} target="_blank" rel="noreferrer">
+          <Download size={15} style={{ marginRight: 6, verticalAlign: '-2px' }} />App Store
         </a>
         <button className="lp-ext-prompt-close" onClick={dismiss} aria-label="Dismiss">
           <X size={16} />

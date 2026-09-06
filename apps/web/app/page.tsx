@@ -518,7 +518,7 @@ const DOWNLOADS: DL[] = [
       windows: { sub: 'Windows · native Electron build', cta: 'Download for Windows', ready: false },
       linux:   { sub: 'Linux · AppImage / .deb',         cta: 'Download for Linux',   ready: false },
     } },
-  { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: '#',    ready: false, Icon: IconApple },
+  { n: '03', name: 'iOS',       sub: 'iPhone · iPad · App Store',                          cta: 'App Store',     href: 'https://apps.apple.com/app/thanos-wallet/id6738206983', ready: true, ext: true, Icon: IconApple },
   { n: '04', name: 'Android',   sub: 'Phone · Tablet · Google Play or direct APK', cta: 'Google Play', href: 'https://play.google.com/store/apps/details?id=ai.thanos.wallet', ready: true, ext: true, apk: '/download', Icon: IconAndroid },
   { n: '05', name: 'Extension', sub: 'Chrome · Brave · Edge · dApp signer for window.thanos', cta: 'Chrome Store', href: 'https://chromewebstore.google.com/detail/thanos-wallet/jajfgpnlaoakklhnnchdpiglmkkpcehj', ready: true, ext: true, Icon: IconExtension },
 ];
@@ -543,8 +543,8 @@ function PlatformSection() {
         // Only the visitor's own phone OS; hide the other one.
         if (d.name === 'iOS')     return device === 'ios';
         if (d.name === 'Android') return device === 'android';
-        // Web stays reachable but is ranked last below — it is NOT the prompt,
-        // and on iOS it's the only usable option until the App Store build ships.
+        // Web stays reachable but is ranked last below — the native-store
+        // install option is the primary choice on each mobile platform.
         return true;
       }
       return true;
@@ -572,7 +572,7 @@ function PlatformSection() {
         </h2>
         <p className="lp-lede">
           Same vault, same keys, same UX. Sign on desktop, confirm on mobile, dApp-connect from the extension.
-          Real download links go live with the public release.
+          Download Thanos Wallet from your device&apos;s app store, or use it directly on the web.
         </p>
 
         <div className="lp-dl-list">
