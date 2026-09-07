@@ -170,13 +170,11 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ╚══════════════════════════════════════════════════════════════════╝ */
 const APP_VERSION = 'thanos-v2.0';
 
-/* In-app exchange (Swap / Cross-chain / Bridge) is DISABLED on iOS.
-   Apple Guideline 3.1.5(iii) rejects crypto-exchange functionality that routes
-   through a third-party exchange API (here MultX/Ignite DEX + the Lithosphere
-   bridge) unless the publisher is a licensed exchange or partnered with one.
-   Gating on iOS removes access to those features so the app can ship; Android /
-   the other clients keep them. Flip this to re-enable once licensing lands. */
-const EXCHANGE_ENABLED = Platform.OS !== 'ios';
+/* MultX Bridge and the exchange surface are available on every Thanos client.
+   The Bridge tab executes the funded Makalu -> Kamet route in
+   MobileMakaluKametBridge; the Cross-chain tab remains visibly unavailable
+   until a supported external route is live. */
+const EXCHANGE_ENABLED = true;
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -2663,7 +2661,7 @@ function ActivityScreen() {
   // Hide the filter chip rather than offer a filter that can only ever
   // show "No swap transactions."
   const filterOptions: Array<'All' | 'Sent' | 'Received' | 'Swap'> =
-    EXCHANGE_ENABLED ? ['All', 'Sent', 'Received', 'Swap'] : ['All', 'Sent', 'Received'];
+    ['All', 'Sent', 'Received', 'Swap'];
 
   return (
     <>
