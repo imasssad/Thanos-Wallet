@@ -3712,9 +3712,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   display: flex; align-items: center; gap: 14px;
   /* `max-width` must include padding: without border-box the old 24px
      mobile gutter was consumed by padding and the banner clipped at both
-     screen edges. */
+     screen edges. Uses 100% (viewport, via the fixed-position containing
+     block), NOT 100vw — vw can include scrollbar width depending on the
+     browser, which silently made this wider than the true visible area
+     and clipped both edges symmetrically (icon cut left, close button
+     cut right) even though the centering math itself was correct. */
   box-sizing: border-box;
-  width: 460px; max-width: calc(100vw - 24px);
+  width: 460px; max-width: calc(100% - 24px);
   padding: 12px 14px;
   background: rgba(16,18,28,0.96);
   backdrop-filter: blur(10px);
@@ -3758,7 +3762,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 10px 12px;
-    width: calc(100vw - 24px);
+    width: calc(100% - 24px);
     max-width: 420px;
     padding: 14px;
   }
