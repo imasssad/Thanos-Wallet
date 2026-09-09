@@ -154,6 +154,27 @@ async function laxFetch(path: string, opts: FetchOpts = {}): Promise<{ status: n
   return { status: res.status, json };
 }
 
+/** GET /lax/status — readiness check for whoever is standing up the
+ *  dashboard config (ops, or a future settings screen), without exposing
+ *  anything secret. Reveals only which of the four env vars are SET
+ *  (never their values) and the two derived booleans every route below
+ *  actually branches on — not "is LAX_API_KEY correct," just "is it
+ *  present." No auth-gate bypass: still behind requireAuth like the rest
+ *  of this router, so this doesn't leak configuration state to anyone
+ *  who isn't already a logged-in Thanos user. */
+laxRouter.get('/status', async (_req, res: Response) => {
+  return res.json({
+    configured:           configured(),
+    configuredForIssuance: configuredForIssuance(),
+    have: {
+      apiKey:    Boolean(LAX_API_KEY),
+      apiBase:   Boolean(LAX_API_BASE),
+      widgetId:  Boolean(LAX_WIDGET_ID),
+      productId: Boolean(LAX_PRODUCT_ID),
+    },
+  });
+});
+
 /* POST /lax/account — create account / start registration.
    Body: { address?: string, referralCode?: string }.
    Pre-API: returns the hosted registration URL (with ref/address prefill) so the

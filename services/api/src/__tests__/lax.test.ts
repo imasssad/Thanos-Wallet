@@ -82,6 +82,29 @@ describe('auth gate', () => {
     expect(res.status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('rejects an unauthenticated GET /lax/status with 401', async () => {
+    const res = await request(app).get('/lax/status');
+    expect(res.status).toBe(401);
+  });
+});
+
+/* ─── status — readiness without leaking secret values ──────────────── */
+
+describe('GET /lax/status', () => {
+  it('reports configured booleans and presence flags, never the actual values', async () => {
+    const res = await request(app).get('/lax/status').set('Authorization', auth());
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      configured: true,
+      configuredForIssuance: true,
+      have: { apiKey: true, apiBase: true, widgetId: true, productId: true },
+    });
+    // The actual secret values must never appear in the response body.
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain('test-lax-key');
+    expect(body).not.toContain('lax.test.invalid');
+  });
 });
 
 /* ─── card ownership — the lax_cards scoping check ──────────────────── */
