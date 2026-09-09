@@ -1,0 +1,2015 @@
+openapi: 3.0.3
+info:
+  title: FCFpay
+  description: ''
+  version: 1.0.0
+servers:
+  -
+    url: 'https://merchant.fcfpay.com'
+paths:
+  /api/physical-cards/create-card-holder:
+    post:
+      summary: 'New Card Holder'
+      operationId: newCardHolder
+      description: "This API call will register a new CardHolder in the system. The API call will return an user ID, that will be used for all further interactions.\n\nGenderID: 0- Male / 1- Female\n\nNFT_holder: 0 / 1\n\nCard_color: Mirror black,Brushed black,Brushed red,Brushed green,Matte black (stainless),Matte black (gold),Matte white,24karat mirror gold"
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => cardHolderID\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must match the regex /^[a-zA-Z\s\-]+$/. Must be at least 3 characters. Must not be greater than 22 characters.'
+                  example: tsfnnckgzlrfwcg
+                NFT_holder:
+                  type: integer
+                  description: 'Must be at least 0. Must not be greater than 1.'
+                  example: 1
+                Card_color:
+                  type: enum
+                  description: 'in: Mirror black,Brushed black,Brushed red,Brushed green,Matte black (stainless),Matte black (gold),Matte white,24karat mirror gold.'
+                  example: '24karat mirror gold'
+                firstName:
+                  type: string
+                  description: 'Must match the regex /^[a-zA-Z\s\-]+$/. Must not be greater than 22 characters.'
+                  example: bvgycriyxbkhkjusmnuvw
+                lastName:
+                  type: string
+                  description: 'Must match the regex /^[a-zA-Z\s\-]+$/. Must not be greater than 22 characters.'
+                  example: erzoczhntskhw
+                address_line1:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: cratblqhuiadvzvgjbgfzmufbkjjkmleyjgdtaheuxwayonllosxiuiuahumnlktdjkpkyeqfiw
+                city:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: tgdkvlquhyktidlrthdgnxqxqubyjwfmhkjxfovlrburtfuwlxaesvovjnwjgdejjhzwahihkhstgps
+                state:
+                  type: string
+                  description: 'Must be at least 2 characters. Must not be greater than 2 characters.'
+                  example: g
+                country:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: yssdtrqsstndzcstnghkosfrskmopvlaswgbrxmxfmxwgmjecmycjouhgqde
+                zip:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: gnfjlxipeekuunejwhbpfewquypyqaigzlpnlvgewtlogcykaqiezlvxbahcpgwnssakhnfbphhdqt
+                phone:
+                  type: string
+                  description: 'Must be between 9 and 15 digits.'
+                  example: '85651220838'
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must match the regex /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/. Must be at least 3 characters.'
+                  example: dedric94@example.com
+                cellPhoneNumber:
+                  type: string
+                  description: 'Must be between 9 and 15 digits.'
+                  example: '004096404886511'
+                callingCode:
+                  type: string
+                  description: 'Must be 3 digits.'
+                  example: '577'
+                countryCallingCode:
+                  type: string
+                  description: 'Must be at least 2 characters. Must not be greater than 2 characters.'
+                  example: zz
+                birth_date:
+                  type: string
+                  description: 'Must be a valid date in the format <code>Y-m-d</code>.'
+                  example: '2023-06-09'
+                genderId:
+                  type: integer
+                  description: 'Must be at least 0. Must not be greater than 1.'
+                  example: 1
+              required:
+                - name
+                - firstName
+                - lastName
+                - address_line1
+                - city
+                - state
+                - country
+                - zip
+                - phone
+                - email
+                - cellPhoneNumber
+                - callingCode
+                - countryCallingCode
+                - birth_date
+                - genderId
+      security: []
+  /api/physical-cards/update-card-holder:
+    post:
+      summary: 'Update Card Holder'
+      operationId: updateCardHolder
+      description: 'This API call will edit an existing CardHolder in the system.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => response api data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_holder_id:
+                  type: string
+                  description: ''
+                  example: qui
+                name:
+                  type: string
+                  description: 'Must match the regex /^[a-zA-Z\s\-]+$/. Must be at least 3 characters. Must not be greater than 22 characters.'
+                  example: kxxbxouhmdciuf
+                firstName:
+                  type: string
+                  description: 'Must match the regex /^[a-zA-Z\s\-]+$/. Must be at least 3 characters. Must not be greater than 22 characters.'
+                  example: pyowaqzcfathwvxhpwdovs
+                lastName:
+                  type: string
+                  description: 'Must match the regex /^[a-zA-Z\s\-]+$/. Must be at least 3 characters. Must not be greater than 22 characters.'
+                  example: qfmrqedlvpkngeadksn
+                address_line1:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: yceczrchxcipfbfswejwovxicbsmljvayzeaghhuoutyoncygpmyfgxmbtxaraawrkaxkgsaccxdunidi
+                city:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: nnevkdtaxgyib
+                state:
+                  type: string
+                  description: 'Must be at least 2 characters. Must not be greater than 2 characters.'
+                  example: de
+                country:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: pwxippixbfkpopuqjwmndwgtpguvwisiukfnbybhmsmxhoftigizui
+                zip:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: yewwraobvvudjofjsfvlghnhipjgqsv
+                phone:
+                  type: string
+                  description: 'Must be between 9 and 15 digits.'
+                  example: '741595602848914'
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must match the regex /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/. Must be at least 3 characters.'
+                  example: shad95@example.org
+                cellPhoneNumber:
+                  type: string
+                  description: 'Must be between 9 and 15 digits.'
+                  example: '6862669341818'
+                birth_date:
+                  type: string
+                  description: 'Must be a valid date in the format <code>Y-m-d</code>.'
+                  example: '2023-06-09'
+                genderId:
+                  type: integer
+                  description: 'Must be at least 0. Must not be greater than 1.'
+                  example: 1
+              required:
+                - card_holder_id
+                - name
+                - firstName
+                - lastName
+                - address_line1
+                - city
+                - state
+                - country
+                - zip
+                - phone
+                - email
+                - birth_date
+                - genderId
+      security: []
+  /api/physical-cards/get-all-cardholders:
+    post:
+      summary: 'Card Holder List'
+      operationId: cardHolderList
+      description: 'This API call will return the list of all registered Card Holders along with their KYC status.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => array card holders\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      security: []
+  /api/physical-cards/send-kyc:
+    post:
+      summary: 'Send KYC'
+      operationId: sendKYC
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'KYC documents sent successfully',\n     'data' => response api data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_holder_id:
+                  type: string
+                  description: ''
+                  example: necessitatibus
+              required:
+                - card_holder_id
+      security: []
+  /api/physical-cards/submit_to_issuer:
+    post:
+      summary: 'Submit To Issuer'
+      operationId: submitToIssuer
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'Submit successfully',\n     'data' => response data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_holder_id:
+                  type: string
+                  description: ''
+                  example: qui
+              required:
+                - card_holder_id
+      security: []
+  /api/physical-cards/assign-bulk-card:
+    post:
+      summary: 'Assign Bulk Card'
+      operationId: assignBulkCard
+      description: 'This API call will assign a bulk plastic card to a Card Holder.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => response api data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_holder_id:
+                  type: string
+                  description: ''
+                  example: sint
+                CardKitNumber:
+                  type: string
+                  description: ''
+                  example: maxime
+              required:
+                - card_holder_id
+                - CardKitNumber
+      security: []
+  /api/physical-cards/set-pin:
+    post:
+      summary: 'Set Pin'
+      operationId: setPin
+      description: 'This API call will change the PIN of a card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'Pin changed'\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: vitae
+                PIN:
+                  type: string
+                  description: ''
+                  example: molestiae
+              required:
+                - card_number
+                - PIN
+      security: []
+  /api/physical-cards/get-pin:
+    post:
+      summary: 'Get Pin'
+      operationId: getPin
+      description: 'This API call will return the PIN of a physical EUR Card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 123\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: nam
+              required:
+                - card_number
+      security: []
+  /api/physical-cards/holder-address:
+    post:
+      summary: 'Holder KYC - Add Proof of Address'
+      operationId: holderKYCAddProofOfAddress
+      description: "This API call will submit the proof of address documents for a cardholder.\n\n Please use one of the accepted document types to avoid delays and cardholder application rejections.\n\n address_type_Id values:\n\nCredit Card Statement = 0, Utility Bill = 1, Bank Statement = 2, Bank Letter = 3\n\naddress_IssuedBy value: 2 letter ISO country code\n\naddress_IssuedDate format: YYYY-MM-DD\n\n address_LangId values:\n\nEnglish = 0, Spanish = 1, French = 2, Arabic = 3, Chinese = 4, Japanese = 5, Russian = 6, Portuguese = 7, German = 8, Italian = 9, Hindi = 10, Other = 11\n\nEndFragmentStartFragment\n\naddress_FrontSide & address_BackSide : BASE64 encoded graphics"
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'KYC documents sent successfully',\n     'data' => response api data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cardHolderID:
+                  type: string
+                  description: ''
+                  example: culpa
+                address_TypeId:
+                  type: string
+                  description: ''
+                  example: explicabo
+                address_IssuedBy:
+                  type: string
+                  description: ''
+                  example: natus
+                address_IssuedDate:
+                  type: string
+                  description: ''
+                  example: ut
+                address_LangId:
+                  type: string
+                  description: ''
+                  example: nesciunt
+                address_FrontSide:
+                  type: string
+                  description: ''
+                  example: minus
+                address_BackSide:
+                  type: string
+                  description: ''
+                  example: nam
+              required:
+                - cardHolderID
+                - address_TypeId
+                - address_IssuedBy
+                - address_IssuedDate
+                - address_LangId
+                - address_FrontSide
+                - address_BackSide
+      security: []
+  /api/physical-cards/holder-id-document:
+    post:
+      summary: 'Holder KYC - Add ID Document'
+      operationId: holderKYCAddIDDocument
+      description: "This API call will submit the proof of ID documents for a cardholder\n\n\nidNumber - Document number\n\nidIssuedBy value- 2 letter ISO country code\n\nIdExpDate format - YYYY-MM-DD\n\nidIssueDate format - YYYY-MM-DD\n\nidType: Passport = 0, Driver License = 1, National Id = 2\n\nidDocLang: English = 0, Spanish = 1, French = 2, Arabic = 3, Chinese = 4, Japanese = 5, Russian = 6, Portuguese = 7, German = 8, Italian = 9, Hindi = 10, Other = 11\n\nid_FrontSide & id_BackSide - BASE64 encoded graphics"
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'ID documents sent successfully',\n     'data' => response api data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cardHolderID:
+                  type: string
+                  description: ''
+                  example: et
+                idNumber:
+                  type: string
+                  description: ''
+                  example: aut
+                idIssuedBy:
+                  type: string
+                  description: ''
+                  example: accusamus
+                idExpDate:
+                  type: string
+                  description: ''
+                  example: at
+                idIssueDate:
+                  type: string
+                  description: ''
+                  example: cum
+                idType:
+                  type: string
+                  description: ''
+                  example: consequatur
+                idDocLang:
+                  type: string
+                  description: ''
+                  example: odio
+                id_FrontSide:
+                  type: string
+                  description: ''
+                  example: sunt
+                id_BackSide:
+                  type: string
+                  description: ''
+                  example: temporibus
+              required:
+                - cardHolderID
+                - idNumber
+                - idIssuedBy
+                - idExpDate
+                - idIssueDate
+                - idType
+                - idDocLang
+                - id_FrontSide
+                - id_BackSide
+      security: []
+  /api/physical-cards/load:
+    post:
+      summary: 'Load Balance'
+      operationId: loadBalance
+      description: 'This call will attempt to load the card with the amount.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => \"1045\"\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: laborum
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/.'
+                  example: '2'
+              required:
+                - card_number
+                - amount
+      security: []
+  /api/physical-cards/unload:
+    post:
+      summary: 'Unload Balance'
+      operationId: unloadBalance
+      description: 'This call will attempt to unload the amount from the card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => \"1045\"\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: et
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/.'
+                  example: '3.0'
+              required:
+                - card_number
+                - amount
+      security: []
+  /api/physical-cards/get-balance:
+    post:
+      summary: 'Get Physical Card Balance'
+      operationId: getPhysicalCardBalance
+      description: 'This API call will return the current balance of the specified card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     \"message\": \"10.00\"\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: repellat
+              required:
+                - card_number
+      security: []
+  /api/physical-cards/get-transactions-current-month:
+    post:
+      summary: 'Get Transactions Current Month'
+      operationId: getTransactionsCurrentMonth
+      description: 'This API call will return the transactions list for the specified card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => [\n         {\n             \"terminal_owner_country\": \"NA\",\n             \"base_currency\": \"840\",\n             \"terminal_type\": \"NA\",\n             \"approval_code\": \"000001\",\n             \"processing_currency\": \"840\",\n             \"card_number\": \"420849******8678\",\n             \"terminal_currency\": \"840\",\n             \"terminal_amount\": \"10.0\",\n             \"debit_credit\": \"card_to_card_transfer_money\",\n             \"type\": \"card_to_card_transfer_money\",\n             \"is_reversal\": \"NA\",\n             \"result\": \"\",\n             \"txn_id\": \"NA\",\n             \"card_holder\": \"Cardholdername\",\n             \"processing_amount\": \"+10.0\",\n             \"card_token\": \"2000001835018350\",\n             \"iso_fee\": \"\",\n             \"base_amount\": \"+10.0\",\n             \"transaction_state\": \"Settled\",\n             \"time\": \"27/01/2023\",\n             \"terminal_owner_title\": \"NA\",\n             \"cardholder_fee\": \"\",\n             \"terminal_id\": \"\"\n         }\n     ]\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: voluptatem
+              required:
+                - card_number
+      security: []
+  /api/physical-cards/get-transactions-previous-month:
+    post:
+      summary: 'Get Transactions Previous Month'
+      operationId: getTransactionsPreviousMonth
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => [\n         {\n             \"terminal_owner_country\": \"NA\",\n             \"base_currency\": \"840\",\n             \"terminal_type\": \"NA\",\n             \"approval_code\": \"000001\",\n             \"processing_currency\": \"840\",\n             \"card_number\": \"420849******8678\",\n             \"terminal_currency\": \"840\",\n             \"terminal_amount\": \"10.0\",\n             \"debit_credit\": \"card_to_card_transfer_money\",\n             \"type\": \"card_to_card_transfer_money\",\n             \"is_reversal\": \"NA\",\n             \"result\": \"\",\n             \"txn_id\": \"NA\",\n             \"card_holder\": \"Cardholdername\",\n             \"processing_amount\": \"+10.0\",\n             \"card_token\": \"2000001835018350\",\n             \"iso_fee\": \"\",\n             \"base_amount\": \"+10.0\",\n             \"transaction_state\": \"Settled\",\n             \"time\": \"27/01/2023\",\n             \"terminal_owner_title\": \"NA\",\n             \"cardholder_fee\": \"\",\n             \"terminal_id\": \"\"\n         }\n     ]\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: molestias
+                month:
+                  type: string
+                  description: 'Must be between 1 and 2 digits.'
+                  example: '1'
+                year:
+                  type: string
+                  description: 'Must be 4 digits.'
+                  example: '0120'
+              required:
+                - card_number
+                - month
+                - year
+      security: []
+  /api/physical-cards/create-new-account:
+    post:
+      summary: 'Create New Account'
+      operationId: createNewAccount
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'account_id' => 899\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: pwqmoqrlmelllnaeyhzytaqxomj
+                addressLine1:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: xhaeouhglqecbqtrveqndnpxfqxkitnkzdjidijiokosyoyeeawecxdyeveexiafkljdfmjfi
+                city:
+                  type: string
+                  description: ''
+                  example: sit
+                state:
+                  type: string
+                  description: 'Must be at least 2 characters. Must not be greater than 2 characters.'
+                  example: vo
+                zipCode:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: nejoqisksbsfrcclbqnzofwmczyhjawtwdadrnistbyqclnteiavwlvtnqkrwjpr
+                country:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: lqbwyvkuvcxuimsespqrxydudnvznnjjvstzfcykshiegzheificqmgopbyrppbomnel
+                phoneNumber:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: ehi
+                cellPhoneNumber:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: rf
+                callingCode:
+                  type: string
+                  description: 'Must be at least 1 character. Must not be greater than 1 character.'
+                  example: p
+                countryCallingCode:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: jhldqykazhtmtvrfutjluhbstzgbvapyppaaqmsswnwzygrzplthga
+                emailAdr:
+                  type: string
+                  description: 'Must be a valid email address. Must be at least 2 characters.'
+                  example: kxzyhlukseadi
+              required:
+                - name
+                - addressLine1
+                - city
+                - state
+                - zipCode
+                - country
+                - phoneNumber
+                - emailAdr
+      security: []
+  /api/physical-cards/set-password-name:
+    post:
+      summary: 'Set Password Name'
+      operationId: setPasswordName
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'userId' => 123\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: yixdimvoizgwwqeemernzkgl
+                emailAdr:
+                  type: string
+                  description: 'Must be a valid email address. Must be at least 2 characters.'
+                  example: fysmbxpuvowzyisvbmcfyeftekfswccgwkckvuhbthat
+                password:
+                  type: string
+                  description: 'Must be at least 6 characters.'
+                  example: '{^>t2wbVUZ"IDLj2Kw'
+                allowApiAccess:
+                  type: boolean
+                  description: ''
+                  example: false
+              required:
+                - name
+                - emailAdr
+                - allowApiAccess
+      security: []
+  /api/physical-cards/create-new-wallet:
+    post:
+      summary: 'Create New Wallet'
+      operationId: createNewWallet
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'walletId' => 123\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                walletName:
+                  type: string
+                  description: 'Must be at least 2 characters.'
+                  example: qnpjrpcvilfsmtjehcblaan
+              required:
+                - walletName
+      security: []
+  /api/physical-cards/get-cardholder:
+    post:
+      summary: 'Get Holder Details'
+      operationId: getHolderDetails
+      description: 'This API call will return the list of all registered Card Holders along with their KYC status.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'data' => holder details\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_holder_id:
+                  type: string
+                  description: ''
+                  example: quis
+              required:
+                - card_holder_id
+      security: []
+  /api/physical-cards/view-card:
+    post:
+      summary: 'View Card'
+      operationId: viewCard
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => response data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: a
+              required:
+                - card_number
+      security: []
+  /api/physical-cards/activate-card:
+    post:
+      summary: 'Activate Card'
+      operationId: activateCard
+      description: 'This API call will assign a bulk plastic card to a Card Holder.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'Card activated / Waiting activate card'\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: saepe
+              required:
+                - card_number
+      security: []
+  /api/physical-cards/change-card-status:
+    post:
+      summary: 'Change Card Status'
+      operationId: changeCardStatus
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => response data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: et
+              required:
+                - card_number
+      security: []
+  /api/physical-cards/enable-multi-card-assign:
+    post:
+      summary: 'Enable Multi Card Assign'
+      operationId: enableMultiCardAssign
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => response data\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Physical cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cardHolderID:
+                  type: string
+                  description: ''
+                  example: dolorem
+              required:
+                - cardHolderID
+      security: []
+  /api/cards/create-card-order-api:
+    post:
+      summary: 'Create Card Order'
+      operationId: createCardOrder
+      description: "This API call will generate an order and return the checkout page.\n\nAfter successful payment, you can issue your card."
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => 'https://checkout.fcfpay.com/pay-cards/JDJ5JDEwJE9MbjVPcGdJUFNvTHR3ZHRJaGs3YnV5WVM1RFdXczkuNEQ3VFVsR0FiYko0RmlxRzlLZi42',\n     'order_id' => 'Idjfr43',\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                iframe_id:
+                  type: integer
+                  description: ''
+                  example: 11
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 20.'
+                  example: 35
+                currency:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: hvb
+                product_id:
+                  type: integer
+                  description: ''
+                  example: 9
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must match the regex /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/. Must be at least 3 characters.'
+                  example: mhammes@example.org
+              required:
+                - iframe_id
+                - amount
+                - currency
+                - email
+      security: []
+  /api/cards/create-refill-card-order-api:
+    post:
+      summary: 'Create Refill Cards Order'
+      operationId: createRefillCardsOrder
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success' => true,\n     'checkout_page_url' => 'https://checkout.fcfpay.com/pay-cards/JDJ5JDEwJE1jTW1TNnpUZ1FQR1VMM0RiQWdNNWUxQllrSzA5em80NVlMcVpja3VNQi43Ry50cmloaTQ2',\n     'order_id' => 'D2u9fZ9pZV',\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 20.'
+                  example: 66
+                card_number:
+                  type: string
+                  description: 'Must be between 3 and 20 digits.'
+                  example: '251290559709857'
+              required:
+                - amount
+                - card_number
+      security: []
+  /api/cards/issue-card-api:
+    post:
+      summary: 'Issue Card (Virtual)'
+      operationId: issueCardVirtual
+      description: "This API call will generate a Prepaid virtual card and load it with the amount specified in the \"amount\" field.\n\nFor this API call to be successfull, you will need to have \"Allowance mode\" activated and have sufficient allowance funds.\n\nIf card_type is not sent, default value 1 will be assumed."
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message': {\n          \"card_info\": {\n             \"status\": \"Approved\",\n             \"card_number\": \"4601380590023942\",\n             \"card_exp_mth\": \"11\",\n             \"card_exp_year\": \"2023\",\n             \"card_cvv\": \"128\"\n          },\n         \"card_balance\": {\n             \"status\": \"Approved\",\n             \"balance\": 50\n         }\n         'card_id' => 1\n     },\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                iframe_id:
+                  type: integer
+                  description: ''
+                  example: 14
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 20.'
+                  example: 82
+                currency:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: sadcrcozwepmzxigwhwr
+                product_id:
+                  type: integer
+                  description: ''
+                  example: 7
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must match the regex /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/. Must be at least 3 characters.'
+                  example: maybell13@example.net
+              required:
+                - iframe_id
+                - amount
+                - currency
+                - email
+      security: []
+  /api/cards/create-card-order-deposit:
+    post:
+      summary: 'Create Card Order Deposit'
+      operationId: createCardOrderDeposit
+      description: "This API call will generate an order and return deposit address for the selected token\n\nAfter successful payment, the card will be issued. The card details will be sent by email and to the webhook URL defined in your project configuration."
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     \"data\": {\n         \"status\": \"unpaid\",\n         \"checkout_page_url\": \"https://checkout-sandbox.fcfpay.com/pay-cards/JDJ5JDEwJFNXNktTNE5kcW1vYXJzOEYzdnM4cy53c2p5TVYuMU40c3A1V1laZC9JOUZta1ZMU3NUSEQu\",\n         \"data\": {\n             \"order_id\": \"B25MsfHHMa\",\n             \"user_id\": \"\",\n             \"txs\": [],\n             \"order_amount\": \"50\",\n             \"total_fiat_amount\": 0,\n             \"fiat_currency\": \"USD\"\n         },\n         \"address\": \"0x8B67499476C0C0f6Dd48aE30D63C8fe2Ea21Cb4A\",\n         \"memo\": 0,\n         \"crypto_currency_name\": \"AVAX Testnet\",\n         \"crypto_currency_amount\": 3.743353\n     },\n     \"message\": \"Address successfully created\"\n }"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                iframe_id:
+                  type: integer
+                  description: ''
+                  example: 7
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 20.'
+                  example: 83
+                currency:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: espkogubqaec
+                product_id:
+                  type: integer
+                  description: ''
+                  example: 6
+                email:
+                  type: string
+                  description: 'Must be a valid email address. Must match the regex /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/. Must be at least 3 characters.'
+                  example: pouros.amber@example.com
+              required:
+                - iframe_id
+                - amount
+                - currency
+                - email
+      security: []
+  /api/cards/create-refill-card-order-deposit:
+    post:
+      summary: 'Create Refill Cards Order Deposit'
+      operationId: createRefillCardsOrderDeposit
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: true
+                  data:
+                    status: unpaid
+                    checkout_page_url: 'https://checkout.fcfpay.com/pay-cards/JDJ5JDEwJE9MbjVPcGdJUFNvTHR3ZHRJaGs3YnV5WVM1RFdXczkuNEQ3VFVsR0FiYko0RmlxRzlLZi42'
+                    data:
+                      order_id: JxaPRAouGh
+                      user_id: ''
+                      txs: []
+                      order_amount: 20
+                      total_fiat_amount: 0
+                      fiat_currency: USD
+                      total_fiat_amount_adjusted: 0
+                    address: '0x541Dc5094aBAcb17aEfA6C40200891b5410A8C43'
+                    memo: 0
+                    crypto_currency_name: 'AVAX Testnet'
+                    crypto_currency_amount: 1.299492
+                  message: 'Address successfully created'
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: unpaid
+                      checkout_page_url:
+                        type: string
+                        example: 'https://checkout.fcfpay.com/pay-cards/JDJ5JDEwJE9MbjVPcGdJUFNvTHR3ZHRJaGs3YnV5WVM1RFdXczkuNEQ3VFVsR0FiYko0RmlxRzlLZi42'
+                      data:
+                        type: object
+                        properties:
+                          order_id:
+                            type: string
+                            example: JxaPRAouGh
+                          user_id:
+                            type: string
+                            example: ''
+                          txs:
+                            type: array
+                            example: []
+                          order_amount:
+                            type: integer
+                            example: 20
+                          total_fiat_amount:
+                            type: integer
+                            example: 0
+                          fiat_currency:
+                            type: string
+                            example: USD
+                          total_fiat_amount_adjusted:
+                            type: integer
+                            example: 0
+                      address:
+                        type: string
+                        example: '0x541Dc5094aBAcb17aEfA6C40200891b5410A8C43'
+                      memo:
+                        type: integer
+                        example: 0
+                      crypto_currency_name:
+                        type: string
+                        example: 'AVAX Testnet'
+                      crypto_currency_amount:
+                        type: number
+                        example: 1.299492
+                  message:
+                    type: string
+                    example: 'Address successfully created'
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 20.'
+                  example: 48
+                card_number:
+                  type: string
+                  description: 'Must be between 3 and 20 digits.'
+                  example: '12788261'
+                token_symbol:
+                  type: string
+                  description: 'Must be at least 3 characters.'
+                  example: bczxiueiwnfvmwurqkyhqxecwnjoa
+              required:
+                - amount
+                - card_number
+                - token_symbol
+      security: []
+  /api/cards/get-card-transactions:
+    post:
+      summary: 'Get Card Transactions'
+      operationId: getCardTransactions
+      description: 'This API call will return the transactions list for the specified card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'data': {\n         \"status\": \"Approved\",\n         \"transactions\": {\n             \"{\\\"Merchant ID\\\":\\\"1987\\\",\\\"Supplier ID\\\":\\\"S\\\",\\\"Wallet ID\\\":\\\"2438\\\",\\\"MS Trans ID\\\":\\\"4448015\\\",\\\"MS Trans Date Inserted into db\\\":\\\"10\\\\\\/25\\\\\\/2022 7:11:25 PM\\\",\\\"Transaction Type\\\":\\\"56\\\",\\\"Transaction Result\\\":\\\"4\\\",\\\"Transaction Amount\\\":\\\"0\\\",\\\"Merchant Name who Charged card\\\":\\\"\\\",\\\"Transaction Date\\\":\\\"10\\\\\\/25\\\\\\/2022 5:21:19 PM\\\",\\\"MS Card Token\\\":\\\"d1a60b7ca754ed11a2e70050568e9483\\\",\\\"Transaction ID\\\":\\\"7CD3105B-062C-4543-A8D7-3C9E8AF56183\\\",\\\"Trans DateTime\\\":\\\"10\\\\\\/25\\\\\\/2022  5:21:19 PM\\\",\\\"Amount\\\":\\\"0.00\\\",\\\"Response Code\\\":\\\"<NULL>\\\",\\\"Response Description\\\":\\\"<NULL>\\\",\\\"Trans Type\\\":\\\"Non-Mon Update\\\",\\\"description\\\":\\\"Authorization Token 0620 Administrative Message\\\",\\\"Settlement\\\\\\/Posted Date\\\":\\\"10\\\\\\/25\\\\\\/2022\\\",\\\"Auth Code\\\":\\\"<NULL>\\\",\\\"Merchant Name\\\":\\\"<NULL>\\\",\\\"Country Name\\\":\\\"<NULL>\\\",\\\"Source Amount\\\":\\\"<NULL>\\\",\\\"Merchant Currency\\\":\\\"<NULL>\\\",\\\"MCC Code\\\":\\\"<NULL>\\\",\\\"MCC Description\\\":\\\"<NULL>\\\"}\",\n         }\n     }\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: 'Must not be greater than 20 characters. Must be at least 3 characters.'
+                  example: bnstwgngjsnrsuxksxzgjmivrttfpkybierhhwiprcxhdgjmtxfbonv
+              required:
+                - card_number
+      security: []
+  /api/cards/get-card-balance:
+    post:
+      summary: 'Get Card Balance'
+      operationId: getCardBalance
+      description: 'This API call will return the current balance of the specified card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'data': {\n         \"status\": \"Approved\",\n         \"balance\": 1000\n     }\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: 'Must not be greater than 20 characters. Must be at least 3 characters.'
+                  example: donccmuqxwyoyelocwnqfadobyxdsdncwtxtesaulnuytd
+              required:
+                - card_number
+      security: []
+  /api/cards/get-allowance:
+    post:
+      summary: 'Get Allowance'
+      operationId: getAllowance
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'virtual_allowance_balance': 100,\n     'physical_allowance_balance': 100\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      security: []
+  /api/cards/load-virtual-card:
+    post:
+      summary: 'Load Virtual Card'
+      operationId: loadVirtualCard
+      description: 'This call will attempt to load the card with the amount specified.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => status message,\n     'load_amount' => 100,\n     'allowance_used' => 0\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: 'Must not be greater than 20 characters. Must be at least 3 characters.'
+                  example: vqwnmwfsffoavnsawhspprnhorratetivshckfalsm
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 20.'
+                  example: 41
+              required:
+                - card_number
+                - amount
+      security: []
+  /api/cards/unload-virtual-card:
+    post:
+      summary: 'Unload Virtual Card'
+      operationId: unloadVirtualCard
+      description: 'This call will attempt to load the card with the amount specified.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'message' => status message,\n     'unload_amount' => 100,\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: 'Must not be greater than 20 characters. Must be at least 3 characters.'
+                  example: gvmmtaijmtvfuptpjxbtspqsgxkyyomgenbbxhtbzyhhdcmyqjemetkkcltsflommfbsvkkzrgtsngs
+                amount:
+                  type: number
+                  description: 'Must match the regex /^\d+(\.\d{1,2})?$/. Must be at least 0.'
+                  example: 27
+              required:
+                - card_number
+                - amount
+      security: []
+  /api/cards/get-my-cards:
+    post:
+      summary: 'Get My Cards'
+      operationId: getMyCards
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'cards': [{\n         'holder_name' => $holder_name,\n         'card_number' => $card_number,\n         'expiry_date' => $expiry_date,\n         'cvc' => 111,\n         'balance' => 100\n     }]\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cards_type:
+                  type: string
+                  description: ''
+                  example: atque
+              required:
+                - cards_type
+      security: []
+  /api/cards/get-card-details:
+    post:
+      summary: 'Get Card Details'
+      operationId: getCardDetails
+      description: 'This API call will return the current balance of the specified card.'
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'cards': {\n         \"status\" => Active',\n         'ExpMonth' => '06',\n         'ExpYear' => '2034',\n         'cvc' => 111\n     }\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_number:
+                  type: string
+                  description: ''
+                  example: occaecati
+              required:
+                - card_number
+      security: []
+  /api/general/available_currencies:
+    get:
+      summary: 'Available Currencies'
+      operationId: availableCurrencies
+      description: ''
+      parameters:
+        -
+          in: header
+          name: Authorization
+          description: ''
+          example: 'Bearer 5ScRiAOgI5BlgdjSwWNUbNagsj8fFCjady'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': true,\n     'data': {\n         \"ticker\" => 'BTC',\n         \"token_symbol\" => 'BTC.BTC',\n         \"name\" => 'BTC',\n         \"blockchain\" => 'Bitcoin',\n         \"block_explorer\" => 'https://www.blockchain.com/btc/tx',\n         \"image\" => image link,\n         \"isStable\" => 1/0,\n         \"enabled_on_account\" => true/false\n }\n}"
+        401:
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "{\n     'success': false,\n     'message' => 'Something went wrong!',\n}"
+      tags:
+        - 'Virtual cards api'
+      security: []
+tags:
+  -
+    name: 'Physical cards api'
+    description: ''
+  -
+    name: 'Virtual cards api'
+    description: ''
