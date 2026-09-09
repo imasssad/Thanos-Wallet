@@ -15,6 +15,14 @@ npmRebuild: false
 directories:
   output: release
 
+# Without this, electron-builder's default artifact-name template resolves
+# ${name} from package.json's "name" — "@thanos/desktop" — whose literal "/"
+# breaks output paths (the deb target tried to write to
+# release/@thanos/desktop_0.3.2_amd64.deb, a directory that doesn't exist,
+# and failed with "cannot execute"/"Parent directory does not exist").
+# ${productName} ("Thanos Wallet") has no scope character to trip over.
+artifactName: '${productName}-${version}-${arch}.${ext}'
+
 # Files included in the packaged app — dist/ holds the transpiled main process
 # and the Vite-built renderer bundle.
 files:

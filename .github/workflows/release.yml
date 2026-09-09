@@ -97,15 +97,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # electron-builder.yml sets directories.output: release — NOT the
+          # electron-builder default of "dist". These paths (and the
+          # SHA-256 step below) must match that or every platform "succeeds"
+          # while the upload step finds nothing (confirmed live in run
+          # 34350856064: all three jobs failed at "No files were found with
+          # the provided path" even though the actual build+package step had
+          # already completed — this had apparently never worked, since
+          # nothing before this session ever triggered a full release build
+          # to notice: `gh release list` was empty).
           - os:     macos-latest
             target: mac
-            artifact: 'apps/desktop/dist/*.dmg'
+            artifact: 'apps/desktop/release/*.dmg'
           - os:     windows-latest
             target: win
-            artifact: 'apps/desktop/dist/*.exe'
+            artifact: 'apps/desktop/release/*.exe'
           - os:     ubuntu-latest
             target: linux
-            artifact: 'apps/desktop/dist/*.AppImage'
+            artifact: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -170,10 +181,10 @@ jobs:
       - name: SHA-256 every artifact (operator-side verification)
         shell: bash
         run: |
-          cd apps/desktop/dist
+          cd apps/desktop/release
           # Hash every artifact regardless of platform; users on every OS
           # verify the same way.
-          for f in *.dmg *.exe *.AppImage *.zip; do
+          for f in *.dmg *.exe *.AppImage *.deb *.zip; do
             [ -e "$f" ] || continue
             sha256sum "$f" > "$f.sha256"
           done
@@ -183,7 +194,7 @@ jobs:
           name: desktop-${{ matrix.target }}
           path: |
             ${{ matrix.artifact }}
-            apps/desktop/dist/*.sha256
+            apps/desktop/release/*.sha256
           if-no-files-found: error
           retention-days: 30
 
