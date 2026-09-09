@@ -26,6 +26,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # node-gyp needs Python's distutils to compile the native crypto deps
+      # (keccak, blake-hash, tiny-secp256k1, bigint-buffer) — removed in
+      # Python 3.12, which GitHub's macOS runners default to. Pin 3.11.
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
