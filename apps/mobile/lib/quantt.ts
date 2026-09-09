@@ -144,7 +144,7 @@ export class QuanttClient {
       body: JSON.stringify({ address }),
     });
     if (!res.ok) throw new QuanttError(res.status, await safeText(res), 'typed-challenge');
-    return (await res.json()) as Eip712TypedData;
+    return safeJson<Eip712TypedData>(res, 'typed-challenge');
   }
 
   async signIn(address: string, sign: SignTypedDataFn): Promise<QuanttSession> {
@@ -156,7 +156,7 @@ export class QuanttClient {
       body: JSON.stringify({ address, signature }),
     });
     if (!res.ok) throw new QuanttError(res.status, await safeText(res), 'typed-verify');
-    const session = normalizeSession(await res.json());
+    const session = normalizeSession(await safeJson(res, 'typed-verify'));
     await this.setSession(session);
     return session;
   }
@@ -170,7 +170,15 @@ export class QuanttClient {
       body: JSON.stringify({ refreshToken: cur.refreshToken }),
     });
     if (!res.ok) { await this.setSession(null); return null; }
-    const session = normalizeSession(await res.json(), cur);
+    // refresh() never throws by contract — a malformed 200 body gets the
+    // same treatment as a failed refresh rather than an uncaught error.
+    let session: QuanttSession;
+    try {
+      session = normalizeSession(await res.json(), cur);
+    } catch {
+      await this.setSession(null);
+      return null;
+    }
     await this.setSession(session);
     return session;
   }
@@ -203,7 +211,7 @@ export class QuanttClient {
       if (refreshed) return this.authed<T>(path, init, false);
     }
     if (!res.ok) throw new QuanttError(res.status, await safeText(res), path);
-    return (await res.json()) as T;
+    return safeJson<T>(res, path);
   }
 
   /** Undocumented in the OpenAPI spec but live and verified (401s, not
@@ -271,6 +279,19 @@ export class QuanttClient {
 
 async function safeText(res: { text(): Promise<string> }): Promise<string> {
   try { return (await res.text()).slice(0, 300); } catch { return ''; }
+}
+
+/** res.json() throws an unstructured SyntaxError on a non-JSON body — a
+ *  malformed response, an HTML error/maintenance page served with a 200,
+ *  an empty body. Turns that into the same QuanttError every other failure
+ *  path already throws, so callers only ever need to handle one error type.
+ *  Mirrors packages/sdk-core/src/quantt/client.ts — keep in sync. */
+async function safeJson<T>(res: { json(): Promise<unknown>; status: number }, path: string): Promise<T> {
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new QuanttError(res.status, 'response was not valid JSON', path);
+  }
 }
 
 function normalizeSession(raw: unknown, prev?: QuanttSession): QuanttSession {
