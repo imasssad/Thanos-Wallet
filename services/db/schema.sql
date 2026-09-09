@@ -401,6 +401,26 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 
 CREATE INDEX IF NOT EXISTS push_tokens_address_idx ON push_tokens(LOWER(address));
 
+-- LAX/Zypto virtual cards — added 2026-09-09 alongside routes/lax.ts's
+-- requireAuth + ownership-check hardening. LAX's own API is scoped to our
+-- single merchant API key, not per end-user, so without this table any
+-- authenticated Thanos user could query or top up ANY card number under
+-- our LAX account, not just their own — this is what closes that gap.
+-- Written once, at issuance (POST /lax/card/issue); read on every
+-- /card/:cardNumber/* call to verify the caller owns that card.
+CREATE TABLE IF NOT EXISTS lax_cards (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  card_number     TEXT NOT NULL,
+  currency        TEXT,
+  issued_amount   NUMERIC,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS lax_cards_user_id_idx ON lax_cards(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS lax_cards_card_number_idx ON lax_cards(card_number);
+
 -- =============================================================================
 -- 12. UPDATED_AT AUTO-TRIGGER
 -- =============================================================================
@@ -421,7 +441,7 @@ BEGIN
     'users','wallets','accounts','transactions','contacts',
     'wc_sessions','wc_requests','tokens','portfolio_snapshots',
     'bridge_jobs','lep100_tokens','lep100_balances','lep100_allowances','job_audit',
-    'push_tokens'
+    'push_tokens','lax_cards'
   ] LOOP
     EXECUTE format(
       'DROP TRIGGER IF EXISTS trg_%I_updated_at ON %I;

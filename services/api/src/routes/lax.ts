@@ -48,8 +48,40 @@
  *   LAX_PRODUCT_ID — a card product's id (integer), configured in-dashboard
  *                    under Card Fees/Products — also required by
  *                    issue-card-api
+ *
+ * HARDENING (2026-09-09), added once this got read closely for exactly
+ * that purpose:
+ *   - requireAuth on the whole router — every route below previously had
+ *     NO authentication check at all, unlike every other per-user router
+ *     in this service (contactsRouter, wcSessionsRouter both do
+ *     `router.use(requireAuth)`). With no sandbox and real fund movement,
+ *     an unauthenticated /lax/card/topup was a real risk the moment keys
+ *     got configured, not a theoretical one.
+ *   - Card ownership scoping via the new lax_cards table (services/db/
+ *     schema.sql + migrations/002_lax_cards.sql). LAX's API itself is
+ *     scoped to our one shared merchant key, not per end-user — "my
+ *     cards" from LAX's point of view means "all of Thanos's cards," not
+ *     "this caller's cards." Without a local mapping, any logged-in user
+ *     could query the balance of, or load funds onto, ANY card number
+ *     under our account just by guessing/enumerating it. Recorded at
+ *     issuance, checked before balance/topup calls; a card the caller
+ *     doesn't own 404s rather than 403s, so ownership can't be probed.
+ *   - laxOpLimiter (10/hour, its own dedicated instance in rate-limit.ts)
+ *     on the two fund-moving routes, on top of the app-wide general
+ *     limiter. Deliberately NOT auth.ts's sensitiveOpLimiter — that's a
+ *     shared singleton, and express-rate-limit counts by IP across every
+ *     route a given instance is attached to, so reusing it here would
+ *     couple a user's card actions to their unrelated session-revocation
+ *     budget (and to each other).
+ *   - zod validation on every body instead of loose `as {...}` casts —
+ *     rejects negative/zero/non-finite amounts and malformed email/ids
+ *     before they reach production with no sandbox to catch a typo.
  */
-import { Router } from 'express';
+import { Router, type Response } from 'express';
+import { z } from 'zod';
+import { query, queryOne } from '../lib/db.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { laxOpLimiter } from '../middleware/rate-limit.js';
 
 const LAX_API_KEY    = process.env.LAX_API_KEY    ?? '';
 const LAX_API_BASE   = process.env.LAX_API_BASE   ?? '';
@@ -58,6 +90,7 @@ const LAX_PRODUCT_ID = process.env.LAX_PRODUCT_ID ?? '';
 const LAX_PUBLIC_REGISTER = 'https://lax.money';
 
 export const laxRouter = Router();
+laxRouter.use(requireAuth);
 
 /** True once the key and base URL are configured — enough for read-only
  *  calls (available currencies, card balance/details, transactions). */
@@ -68,6 +101,41 @@ const configured = (): boolean => Boolean(LAX_API_KEY && LAX_API_BASE);
 const configuredForIssuance = (): boolean => configured() && Boolean(LAX_WIDGET_ID && LAX_PRODUCT_ID);
 
 interface FetchOpts { method?: string; body?: string; headers?: Record<string, string> }
+
+interface LaxCardRow { id: string; user_id: string; card_number: string }
+
+const AccountSchema = z.object({
+  address:      z.string().min(1).max(200).optional(),
+  referralCode: z.string().min(1).max(64).optional(),
+});
+const TopupSchema = z.object({
+  cardNumber: z.string().min(1).max(64),
+  amount:     z.number().positive().finite(),
+});
+const IssueSchema = z.object({
+  amount:   z.number().positive().finite(),
+  currency: z.string().min(1).max(16),
+  email:    z.string().email(),
+});
+
+/** Best-effort card-number extraction from issue-card-api's response — its
+ *  shape is documented as a bare "Default Response" in the spec, never
+ *  confirmed against a live call (no sandbox exists to check against).
+ *  Tries the field names likely to hold it; if none match, the card was
+ *  still issued for real (this never blocks the response), it's just not
+ *  recorded in lax_cards yet — logged so it can be reconciled manually. */
+function extractCardNumber(json: unknown): string | null {
+  if (!json || typeof json !== 'object') return null;
+  const o = json as Record<string, unknown>;
+  const candidates = [o.card_number, o.cardNumber, o.id, o.card_id];
+  const nested = o.card && typeof o.card === 'object' ? (o.card as Record<string, unknown>) : null;
+  if (nested) candidates.push(nested.card_number, nested.number, nested.id);
+  for (const c of candidates) {
+    if (typeof c === 'string' && c) return c;
+    if (typeof c === 'number' && Number.isFinite(c)) return String(c);
+  }
+  return null;
+}
 
 /** Proxy helper — attaches the secret key to a LAX/FCFpay API call.
  *  Authorization: Bearer <key> — confirmed from the real OpenAPI spec. */
@@ -95,8 +163,10 @@ async function laxFetch(path: string, opts: FetchOpts = {}): Promise<{ status: n
    address, phone, etc.) — that's a bigger form than a single "create account"
    call, so this route stays on the external hand-off until the client UI for
    that form exists. */
-laxRouter.post('/account', async (req, res) => {
-  const { address, referralCode } = (req.body ?? {}) as { address?: string; referralCode?: string };
+laxRouter.post('/account', async (req, res: Response) => {
+  const parse = AccountSchema.safeParse(req.body ?? {});
+  if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
+  const { address, referralCode } = parse.data;
   const url = new URL(LAX_PUBLIC_REGISTER);
   if (referralCode) url.searchParams.set('ref', referralCode);
   if (address)      url.searchParams.set('address', address);
@@ -134,9 +204,18 @@ laxRouter.get('/cards', async (_req, res) => {
   }
 });
 
-/** GET /lax/card/:cardNumber/balance — POST /api/cards/get-card-balance. */
-laxRouter.get('/card/:cardNumber/balance', async (req, res) => {
+/** GET /lax/card/:cardNumber/balance — POST /api/cards/get-card-balance.
+ *  404s (not 403 — don't confirm/deny a card number's existence to a
+ *  caller who doesn't own it) for any card not recorded as this user's in
+ *  lax_cards. LAX's own API has no per-end-user scoping to fall back on. */
+laxRouter.get('/card/:cardNumber/balance', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const userId = (req as unknown as AuthRequest).userId;
+  const owned = await queryOne<LaxCardRow>(
+    `select id, user_id, card_number from lax_cards where user_id = $1 and card_number = $2`,
+    [userId, req.params.cardNumber],
+  );
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     const { status, json } = await laxFetch('/api/cards/get-card-balance', {
       method: 'POST', body: JSON.stringify({ card_number: req.params.cardNumber }),
@@ -150,11 +229,20 @@ laxRouter.get('/card/:cardNumber/balance', async (req, res) => {
 /** POST /lax/card/topup — body { cardNumber, amount }. Maps to
  *  load-virtual-card. Unload (withdraw) isn't wired yet — no client UI
  *  needs it until the load flow itself is proven, and NO SANDBOX means
- *  every one of these calls is a real fund movement from day one. */
-laxRouter.post('/card/topup', async (req, res) => {
+ *  every one of these calls is a real fund movement from day one.
+ *  laxOpLimiter + ownership check on top of the usual validation — this
+ *  moves real money with nothing to rehearse it against first. */
+laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
-  const { cardNumber, amount } = (req.body ?? {}) as { cardNumber?: string; amount?: number };
-  if (!cardNumber || !amount) return res.status(400).json({ error: 'cardNumber and amount are required' });
+  const parse = TopupSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
+  const { cardNumber, amount } = parse.data;
+  const userId = (req as unknown as AuthRequest).userId;
+  const owned = await queryOne<LaxCardRow>(
+    `select id, user_id, card_number from lax_cards where user_id = $1 and card_number = $2`,
+    [userId, cardNumber],
+  );
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     const { status, json } = await laxFetch('/api/cards/load-virtual-card', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount }),
@@ -170,11 +258,16 @@ laxRouter.post('/card/topup', async (req, res) => {
  *  taken from the client request — a user has no business choosing which
  *  widget/product a card gets issued against. 503s until both env vars
  *  exist (they don't yet — need the dashboard Widget + Card Product setup
- *  from the integration doc). */
-laxRouter.post('/card/issue', async (req, res) => {
+ *  from the integration doc). laxOpLimiter — issuing a card is a real,
+ *  no-sandbox fund-adjacent action same as topup. On success, records
+ *  (userId, cardNumber) in lax_cards so /balance and /topup above can
+ *  enforce ownership on this card going forward. */
+laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
   if (!configuredForIssuance()) return res.status(503).json({ error: 'LAX card issuance not configured yet (missing widget/product setup)' });
-  const { amount, currency, email } = (req.body ?? {}) as { amount?: number; currency?: string; email?: string };
-  if (!amount || !currency || !email) return res.status(400).json({ error: 'amount, currency and email are required' });
+  const parse = IssueSchema.safeParse(req.body);
+  if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
+  const { amount, currency, email } = parse.data;
+  const userId = (req as unknown as AuthRequest).userId;
   try {
     const { status, json } = await laxFetch('/api/cards/issue-card-api', {
       method: 'POST',
@@ -184,6 +277,19 @@ laxRouter.post('/card/issue', async (req, res) => {
         amount, currency, email,
       }),
     });
+    if (status >= 200 && status < 300) {
+      const cardNumber = extractCardNumber(json);
+      if (cardNumber) {
+        await query(
+          `insert into lax_cards (user_id, card_number, currency, issued_amount) values ($1, $2, $3, $4)
+           on conflict (card_number) do nothing`,
+          [userId, cardNumber, currency, amount],
+        );
+      } else {
+        // eslint-disable-next-line no-console
+        console.error('[lax] issue-card-api succeeded but no recognizable card number field was found in the response — ownership not recorded, reconcile lax_cards manually', { userId, responseKeys: json && typeof json === 'object' ? Object.keys(json) : null });
+      }
+    }
     return res.status(status).json(json);
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
