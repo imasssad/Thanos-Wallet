@@ -9,6 +9,13 @@
  * AUTH: the Thanos EIP-712 wallet login (challenge → sign → verify → session),
  * shapes verified against the live API 2026-08-14. The session is persisted in
  * expo-secure-store. Keys never leave the wallet — Quantt only sees a signature.
+ *
+ * NO SANDBOX, one production environment (confirmed by Quantt 2026-09-09).
+ *
+ * RATE LIMIT (confirmed by Quantt 2026-09-09): one global limit, 120
+ * requests/minute per IP, across every route including the SSE streams.
+ * Not currently enforced client-side — a 429 isn't a bug to retry through
+ * blindly, back off.
  */
 import * as SecureStore from 'expo-secure-store';
 import { HDNodeWallet } from 'ethers';
@@ -217,8 +224,32 @@ export class QuanttClient {
   /** Undocumented in the OpenAPI spec but live and verified (401s, not
    *  404s, unauthenticated as of 2026-09-02) — kept as the primary call
    *  since it's what's already shipped in production on all 4 clients.
-   *  `/v1/dashboard` is the documented equivalent, not yet switched to. */
+   *  getUserDashboardOverview() below is the spec's documented match for
+   *  this same "your own account" data. */
   getOverview(): Promise<QuanttOverview> { return this.authed<QuanttOverview>('/v1/mobile/overview'); }
+
+  /** GET /v1/dashboard/overview — the spec's documented match for
+   *  getOverview() above (fetched 2026-09-09): "Agents, trading activity,
+   *  decisions, plan limits and recent events for the authenticated user
+   *  only." Two things before switching UI over to this: PnL only covers
+   *  CLOSED positions (open positions are reported at cost, never marked
+   *  to market — no price source for held tokens exists), and the
+   *  response names an `unavailable` field for figures it can't produce —
+   *  render those as "—", not 0. Still "Default Response" in the spec, so
+   *  verify the exact shape against a live session before depending on a
+   *  specific field. */
+  getUserDashboardOverview(): Promise<unknown> { return this.authed('/v1/dashboard/overview'); }
+
+  /** GET /v1/dashboard — "Platform dashboard payload." NOT an overview
+   *  equivalent. Spec (fetched 2026-09-09): proxies the decision engine's
+   *  view, "derived from ENGINE WORKFLOW RUNS, not from the Agent table.
+   *  The ids it returns are `workflow-<n>` and cannot be passed to
+   *  /v1/agents/{id}" — every agent-scoped method here (getAgent,
+   *  setAgentState, …) expects a real agent id, which an id from here
+   *  isn't. Also 502s outright when the decision engine is unreachable,
+   *  no fallback at this layer. getUserDashboardOverview() above is the
+   *  one to reach for instead. */
+  getDashboard(): Promise<unknown> { return this.authed('/v1/dashboard'); }
 
   listAgents(): Promise<unknown> { return this.authed('/v1/agents'); }
   getAgent(id: string): Promise<unknown> { return this.authed(`/v1/agents/${encodeURIComponent(id)}`); }
@@ -258,6 +289,31 @@ export class QuanttClient {
     const s = qs.toString();
     return this.authed(`/v1/agents/${encodeURIComponent(id)}/decisions${s ? `?${s}` : ''}`);
   }
+  /** SSE URL for `decision` + `risk_rejected` events on this one agent.
+   *  This class doesn't wrap streaming, it just builds the URL — see the
+   *  auth note below, shared by all three stream endpoints. */
+  agentDecisionsStreamUrl(id: string): string {
+    return `${this.base}/v1/agents/${encodeURIComponent(id)}/decisions/stream`;
+  }
+  /** SSE URL for the UNFILTERED platform activity bus — every event, not
+   *  just this session's agents. Sends `event: snapshot` (10 most recent)
+   *  on connect, then `event: telemetry` per event — live-only, no
+   *  replay/backfill, and no heartbeat (a dead connection won't
+   *  self-announce). */
+  platformTelemetryStreamUrl(): string {
+    return `${this.base}/v1/telemetry/stream`;
+  }
+  /** SSE URL for live ticks on the given symbols (comma-separated). Omit
+   *  for the platform default set. */
+  marketStreamUrl(symbols?: string[]): string {
+    const qs = symbols?.length ? `?symbols=${encodeURIComponent(symbols.join(','))}` : '';
+    return `${this.base}/v1/market/stream${qs}`;
+  }
+  /* All three streams above declare ONLY bearerAuth in the spec — no
+     query-param/cookie alternative exists (confirmed 2026-09-09). Native
+     EventSource can't send headers at all, so a fetch-based SSE reader is
+     required (ReadableStream over an authed fetch(), or a polyfill), not
+     `new EventSource(url)`. */
 
   /* Funding (Magma) — NO SANDBOX, these move real funds. Confirm the full
      flow with Quantt before wiring into any UI. */

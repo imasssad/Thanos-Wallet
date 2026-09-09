@@ -34,6 +34,13 @@
  * state-changing call (createAgent, setAgentState, deposit, withdraw,
  * the admin kill switch) to a UI — there's no safe environment to
  * rehearse against first.
+ *
+ * RATE LIMIT (confirmed by Quantt 2026-09-09): one global limit, 120
+ * requests/minute per IP, across every route including the SSE streams.
+ * Not currently enforced client-side — a caller polling multiple agents'
+ * decisions/positions/trades in a tight loop, or several browser tabs
+ * behind the same IP (NAT, office network), can realistically hit this.
+ * A 429 here isn't a bug to retry through blindly; back off.
  */
 
 export interface Eip712TypedData {
@@ -322,13 +329,41 @@ export class QuanttClient {
   /** The verified-live, currently-shipped overview call (undocumented in
    *  the OpenAPI spec, but a real, working route — confirmed 2026-09-02 it
    *  401s rather than 404s unauthenticated). Kept as the primary method
-   *  since all 4 clients already depend on this exact shape in production. */
+   *  since all 4 clients already depend on this exact shape in production.
+   *  getUserDashboardOverview() below is now the spec's documented match
+   *  for this same "your own account" data — a real candidate if this one
+   *  is ever deprecated, unlike getDashboard() (see its warning). */
   getOverview(): Promise<QuanttOverview> { return this.authed<QuanttOverview>('/v1/mobile/overview'); }
 
-  /** The OpenAPI-documented equivalent ("Platform dashboard payload").
-   *  Response shape not yet observed against a live session — likely the
-   *  same as getOverview's, but don't assume without checking. Exists as
-   *  an option if `/v1/mobile/overview` is ever deprecated. */
+  /** GET /v1/dashboard/overview — the spec's actual documented match for
+   *  getOverview() above: "Agents, trading activity, decisions, plan limits
+   *  and recent events for the authenticated user only, computed from the
+   *  product database" (fetched 2026-09-09). Two things worth knowing
+   *  before switching UI over to this instead of getOverview():
+   *   - PnL only covers CLOSED positions; open positions are reported at
+   *     cost, never marked to market — Quantt has no price source for held
+   *     tokens. A dashboard.portfolio.pnl* figure from here isn't the same
+   *     computation as one that WAS marked-to-market, so don't assume this
+   *     response is byte-identical to getOverview()'s.
+   *   - The response names an `unavailable` field listing which figures
+   *     the product can't produce yet — render those as "—", not 0.
+   *  Response shape is still "Default Response" in the spec (no schema),
+   *  so — same rule as everywhere else here — verify against a live
+   *  session before depending on a specific field. */
+  getUserDashboardOverview(): Promise<unknown> { return this.authed('/v1/dashboard/overview'); }
+
+  /** GET /v1/dashboard — "Platform dashboard payload." NOT an overview
+   *  equivalent, despite the name and despite this client's own earlier
+   *  guess that it might be ("likely the same as getOverview's"). The spec
+   *  is explicit (fetched 2026-09-09): this proxies the decision engine's
+   *  view, "derived from ENGINE WORKFLOW RUNS, not from the Agent table.
+   *  The ids it returns are `workflow-<n>` and cannot be passed to
+   *  /v1/agents/{id}." Every agent-scoped method on this client
+   *  (getAgent, setAgentState, getAgentTrades, …) expects a real agent id
+   *  — an id from here will 404/400 there. Also 502s outright whenever the
+   *  decision engine itself is unreachable, with no fallback at this
+   *  layer. Kept only because it's a real, documented, working route;
+   *  getUserDashboardOverview() above is the one to reach for instead. */
   getDashboard(): Promise<unknown> { return this.authed('/v1/dashboard'); }
 
   /* ── agents (GET /v1/agents documents this as "for the current user") ─ */
@@ -378,12 +413,15 @@ export class QuanttClient {
   getAgentDecision(id: string, decisionId: string): Promise<unknown> {
     return this.authed(`/v1/agents/${encodeURIComponent(id)}/decisions/${encodeURIComponent(decisionId)}`);
   }
-  /** SSE URL for `decision` + `risk_rejected` events — open with EventSource
-   *  (browser) or an SSE client; this class doesn't wrap streaming, it just
-   *  builds the authenticated-fetch-compatible URL. Bearer auth on an SSE
-   *  GET typically needs a query-param or cookie fallback depending on the
-   *  client's EventSource implementation — verify against a live session
-   *  before wiring up. */
+  /** SSE URL for `decision` + `risk_rejected` events on this one agent.
+   *  This class doesn't wrap streaming, it just builds the URL. Auth note:
+   *  this and the other two SSE endpoints (telemetryStreamUrl,
+   *  marketStreamUrl below) declare ONLY bearerAuth in the spec — no
+   *  query-param or cookie alternative exists (confirmed 2026-09-09,
+   *  checked all three). Native EventSource can't send headers at all, so
+   *  a fetch-based SSE reader is required (ReadableStream over an authed
+   *  fetch(), or a polyfill like @microsoft/fetch-event-source), not
+   *  `new EventSource(url)`. */
   agentDecisionsStreamUrl(id: string): string {
     return `${this.base}/v1/agents/${encodeURIComponent(id)}/decisions/stream`;
   }
@@ -442,7 +480,13 @@ export class QuanttClient {
   /* ── telemetry ─────────────────────────────────────────────────────── */
 
   getTelemetry(): Promise<unknown> { return this.authed('/v1/telemetry'); }
-  /** SSE URL — see the decisions-stream note above re: auth over SSE. */
+  /** SSE URL for the UNFILTERED platform activity bus — every event, not
+   *  just this session's agents (spec: for one agent, use
+   *  agentDecisionsStreamUrl instead). Sends `event: snapshot` (10 most
+   *  recent) on connect, then `event: telemetry` per event after —
+   *  live-only, no replay/Last-Event-ID/backfill, so a reconnect starts
+   *  from "now." No heartbeat either — a dead connection won't
+   *  self-announce. See the decisions-stream note above re: auth over SSE. */
   telemetryStreamUrl(): string { return `${this.base}/v1/telemetry/stream`; }
 
   /* ── market data ───────────────────────────────────────────────────── */
