@@ -65,7 +65,7 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
 }
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits, randomBytes } from 'ethers';
-import { quantt, quanttSignIn, type QuanttSession, type QuanttOverview } from './lib/quantt';
+import { quantt, quanttSignIn, type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState } from './lib/quantt';
 import {
   createVault, openVault, openVaultWithKey,
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
@@ -1451,6 +1451,7 @@ function QuanttAgentsCard() {
   const [overview, setOverview] = useState<QuanttOverview | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [detailAgent, setDetailAgent] = useState<QuanttAgent | null>(null);
 
   const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
   useEffect(() => {
@@ -1502,10 +1503,14 @@ function QuanttAgentsCard() {
                 {p.activeAgents} active agents · <Text style={{ color: pos(p.pnl24h) }}>{pctv(p.pnl24h)} 24h</Text>
               </Text>
               {agents.slice(0, 3).map((a) => (
-                <View key={a.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 6 }}>
+                <Pressable
+                  key={a.id}
+                  onPress={() => setDetailAgent(a)}
+                  style={({ pressed }) => [{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 6, paddingVertical: 3 }, pressed && { opacity: 0.6 }]}
+                >
                   <Text numberOfLines={1} style={{ flex: 1, fontSize: 11, fontWeight: '600', color: C.textPrimary }}>{a.name}</Text>
                   <Text style={{ fontSize: 11, color: C.textSecondary }}>{a.chain}{a.status ? ' · ' + a.status : ''}</Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           ) : null}
@@ -1535,7 +1540,160 @@ function QuanttAgentsCard() {
           </View>
         </View>
       </View>
+      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} onStateChanged={loadOverview}/>}
     </View>
+  );
+}
+
+const QUANTT_AGENT_DETAIL_LABELS: Record<string, string> = {
+  chain: 'Network', status: 'Status', exposureUsd: 'Exposure', pnlPercent30d: '30d P&L',
+  confidence: 'Confidence', strategy: 'Strategy',
+};
+const QUANTT_TOGGLE_STATES = new Set(['active', 'paused']);
+
+/** Mirrors apps/web/components/QuanttCard.tsx's extraDetailEntries. */
+function quanttExtraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[string, string]> {
+  if (!raw || typeof raw !== 'object') return [];
+  const known = new Set(['id', 'name', ...Object.keys(QUANTT_AGENT_DETAIL_LABELS)]);
+  const out: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (known.has(k) || v == null) continue;
+    if (typeof v === 'object') continue;
+    out.push([k, String(v)]);
+  }
+  return out;
+}
+
+/** Agent detail bottom sheet — same visual pattern as TxDetailSheet. Pause/
+ *  resume calls POST /v1/agents/{id}/state, a real, confirmed, fund-adjacent
+ *  action against production with no sandbox to rehearse in, so it's a
+ *  deliberate one-tap toggle with a clear busy/error state. Mirrors
+ *  apps/web/components/QuanttCard.tsx. */
+function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
+  agent: QuanttAgent; onClose: () => void; onStateChanged: () => void;
+}) {
+  const C = useColors();
+  const [raw, setRaw] = useState<unknown>(null);
+  const [loadErr, setLoadErr] = useState(false);
+  const [wallet, setWallet] = useState<unknown>(null);
+  const [status, setStatus] = useState(agent.status);
+  const [toggling, setToggling] = useState(false);
+  const [toggleErr, setToggleErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    quantt.getAgent(agent.id).then((r) => { if (live) setRaw(r); }).catch(() => { if (live) setLoadErr(true); });
+    quantt.getAgentWallet(agent.id).then((r) => { if (live) setWallet(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [agent.id]);
+
+  const toggleState = async () => {
+    if (!status || !QUANTT_TOGGLE_STATES.has(status) || toggling) return;
+    const next: QuanttRuntimeState = status === 'active' ? 'paused' : 'active';
+    setToggling(true); setToggleErr(null);
+    try {
+      await quantt.setAgentState(agent.id, next);
+      setStatus(next);
+      onStateChanged();
+    } catch (e) {
+      setToggleErr(e instanceof Error ? e.message : 'Could not update the agent — try again.');
+    } finally { setToggling(false); }
+  };
+
+  const pct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+  const rows: Array<[string, string]> = [
+    ['chain',         agent.chain ?? '—'],
+    ['status',        status ?? '—'],
+    ['exposureUsd',   agent.exposureUsd != null ? '$' + Math.round(agent.exposureUsd).toLocaleString('en-US') : '—'],
+    ['pnlPercent30d', agent.pnlPercent30d != null ? pct(agent.pnlPercent30d) : '—'],
+    ['confidence',    agent.confidence != null ? Math.round(agent.confidence * 100) / 100 + '' : '—'],
+    ['strategy',      agent.strategy ?? '—'],
+  ].filter(([, v]) => v !== '—') as Array<[string, string]>;
+  const extra = quanttExtraDetailEntries(agent, raw);
+  const walletRows = quanttExtraDetailEntries(agent, wallet);
+  const canToggle = !!status && QUANTT_TOGGLE_STATES.has(status);
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
+        <Pressable
+          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34, maxHeight: '85%' }}
+          onPress={() => { /* swallow taps inside the sheet */ }}
+        >
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>{agent.name}</Text>
+            <Pressable hitSlop={8} onPress={onClose}>
+              <Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14 }}>
+              {rows.map(([k, v]) => (
+                <TxSheetRow key={k} C={C} label={QUANTT_AGENT_DETAIL_LABELS[k] ?? k}>
+                  <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{v}</Text>
+                </TxSheetRow>
+              ))}
+            </View>
+
+            {extra.length > 0 && (
+              <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginTop: 12 }}>
+                {extra.map(([k, v]) => (
+                  <TxSheetRow key={k} C={C} label={k}>
+                    <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{v}</Text>
+                  </TxSheetRow>
+                ))}
+              </View>
+            )}
+            {loadErr && (
+              <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>
+                Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+              </Text>
+            )}
+
+            {walletRows.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: C.textSecondary, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+                  Agent wallet
+                </Text>
+                <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14 }}>
+                  {walletRows.map(([k, v]) => (
+                    <TxSheetRow key={k} C={C} label={k}>
+                      <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{v}</Text>
+                    </TxSheetRow>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {canToggle && (
+              <View style={{ marginTop: 18 }}>
+                <Pressable
+                  onPress={toggleState}
+                  disabled={toggling}
+                  style={({ pressed }) => [
+                    {
+                      paddingVertical: 14, borderRadius: 14, alignItems: 'center',
+                      backgroundColor: status === 'active' ? 'transparent' : C.blue,
+                      borderWidth: status === 'active' ? 1 : 0,
+                      borderColor: 'rgba(239,68,68,0.4)',
+                      opacity: toggling ? 0.6 : 1,
+                    },
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <Text style={{ color: status === 'active' ? '#ef4444' : '#fff', fontSize: 14, fontWeight: '700' }}>
+                    {toggling ? 'Working…' : status === 'active' ? 'Pause agent' : 'Resume agent'}
+                  </Text>
+                </Pressable>
+                {toggleErr && <Text style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{toggleErr}</Text>}
+              </View>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 

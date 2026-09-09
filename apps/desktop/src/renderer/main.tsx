@@ -28,7 +28,7 @@ import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn } from './quantt';
 import { isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from './asset-visibility';
-import type { QuanttSession, QuanttOverview } from '@thanos/sdk-core';
+import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
 import {
@@ -493,7 +493,7 @@ function PortfolioList() {
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 
 /* Live portfolio + agents summary once connected (/v1/mobile/overview). */
-function QuanttPanel({ overview }: { overview: QuanttOverview }) {
+function QuanttPanel({ overview, onSelectAgent }: { overview: QuanttOverview; onSelectAgent: (a: QuanttAgent) => void }) {
   const p = overview?.dashboard?.portfolio;
   const agents = overview?.dashboard?.agents ?? [];
   if (!p) return null;
@@ -510,12 +510,156 @@ function QuanttPanel({ overview }: { overview: QuanttOverview }) {
         {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
       </div>
       {agents.slice(0, 3).map((a) => (
-        <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, marginTop: 7 }}>
+        <button
+          key={a.id}
+          onClick={() => onSelectAgent(a)}
+          style={{
+            display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, marginTop: 7,
+            width: '100%', background: 'transparent', border: 'none', padding: '4px 0', cursor: 'pointer', textAlign: 'left',
+          }}
+        >
           <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
           <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{a.chain}{a.status ? ' · ' + a.status : ''}</span>
-        </div>
+        </button>
       ))}
     </div>
+  );
+}
+
+const QUANTT_AGENT_DETAIL_LABELS: Record<string, string> = {
+  chain: 'Network', status: 'Status', exposureUsd: 'Exposure', pnlPercent30d: '30d P&L',
+  confidence: 'Confidence', strategy: 'Strategy',
+};
+const QUANTT_TOGGLE_STATES = new Set(['active', 'paused']);
+
+/** Renders any key the summary row doesn't already cover, from whatever the
+ *  detail/wallet calls actually return — their response shape isn't
+ *  documented (the OpenAPI leaves it as a "Default Response"), so this
+ *  degrades to plain key/value pairs instead of assuming a fixed schema.
+ *  Mirrors apps/web/components/QuanttCard.tsx's extraDetailEntries. */
+function quanttExtraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[string, string]> {
+  if (!raw || typeof raw !== 'object') return [];
+  const known = new Set(['id', 'name', ...Object.keys(QUANTT_AGENT_DETAIL_LABELS)]);
+  const out: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (known.has(k) || v == null) continue;
+    if (typeof v === 'object') continue;
+    out.push([k, String(v)]);
+  }
+  return out;
+}
+
+/** Agent detail — pause/resume calls POST /v1/agents/{id}/state, a real,
+ *  confirmed, fund-adjacent action against production with no sandbox to
+ *  rehearse in, so it's a deliberate one-tap toggle with a clear
+ *  busy/error state. Mirrors apps/web/components/QuanttCard.tsx. */
+function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
+  agent: QuanttAgent; onClose: () => void; onStateChanged: () => void;
+}) {
+  const [raw, setRaw] = useState<unknown>(null);
+  const [loadErr, setLoadErr] = useState(false);
+  const [wallet, setWallet] = useState<unknown>(null);
+  const [status, setStatus] = useState(agent.status);
+  const [toggling, setToggling] = useState(false);
+  const [toggleErr, setToggleErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    quantt.getAgent(agent.id).then((r) => { if (live) setRaw(r); }).catch(() => { if (live) setLoadErr(true); });
+    quantt.getAgentWallet(agent.id).then((r) => { if (live) setWallet(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [agent.id]);
+
+  const toggleState = async () => {
+    if (!status || !QUANTT_TOGGLE_STATES.has(status) || toggling) return;
+    const next: QuanttRuntimeState = status === 'active' ? 'paused' : 'active';
+    setToggling(true); setToggleErr(null);
+    try {
+      await quantt.setAgentState(agent.id, next);
+      setStatus(next);
+      onStateChanged();
+    } catch (e) {
+      setToggleErr(e instanceof Error ? e.message : 'Could not update the agent — try again.');
+    } finally { setToggling(false); }
+  };
+
+  const pct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+  const rows: Array<[string, string]> = [
+    ['chain',         agent.chain ?? '—'],
+    ['status',        status ?? '—'],
+    ['exposureUsd',   agent.exposureUsd != null ? '$' + Math.round(agent.exposureUsd).toLocaleString('en-US') : '—'],
+    ['pnlPercent30d', agent.pnlPercent30d != null ? pct(agent.pnlPercent30d) : '—'],
+    ['confidence',    agent.confidence != null ? Math.round(agent.confidence * 100) / 100 + '' : '—'],
+    ['strategy',      agent.strategy ?? '—'],
+  ].filter(([, v]) => v !== '—') as Array<[string, string]>;
+  const extra = quanttExtraDetailEntries(agent, raw);
+  const walletRows = quanttExtraDetailEntries(agent, wallet);
+
+  return (
+    <Modal title={agent.name} onClose={onClose}>
+      <div className="modal-body">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rows.map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{QUANTT_AGENT_DETAIL_LABELS[k] ?? k}</span>
+              <span style={{ fontWeight: 600 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        {extra.length > 0 && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-default, rgba(148,163,184,0.16))', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {extra.map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+                <span style={{ fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {loadErr && (
+          <div style={{ marginTop: 14, fontSize: 12, color: 'var(--text-secondary)' }}>
+            Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+          </div>
+        )}
+
+        {walletRows.length > 0 && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-default, rgba(148,163,184,0.16))' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+              Agent wallet
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {walletRows.map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+                  <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {status && QUANTT_TOGGLE_STATES.has(status) && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-default, rgba(148,163,184,0.16))' }}>
+            <button
+              onClick={toggleState}
+              disabled={toggling}
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10,
+                background: status === 'active' ? 'transparent' : 'var(--blue)',
+                color: status === 'active' ? '#ef4444' : '#fff',
+                border: status === 'active' ? '1px solid rgba(239,68,68,0.4)' : 'none',
+                fontSize: 13.5, fontWeight: 700, cursor: toggling ? 'default' : 'pointer',
+                opacity: toggling ? 0.6 : 1,
+              }}
+            >
+              {toggling ? 'Working…' : status === 'active' ? 'Pause agent' : 'Resume agent'}
+            </button>
+            {toggleErr && <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{toggleErr}</div>}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -530,6 +674,7 @@ function AIAssistant() {
   const [overview, setOverview] = useState<QuanttOverview | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [detailAgent, setDetailAgent] = useState<QuanttAgent | null>(null);
 
   const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
   useEffect(() => {
@@ -562,7 +707,7 @@ function AIAssistant() {
               ? 'Signed in with your wallet — your AI trading agents.'
               : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
           </div>
-          {session && overview && <QuanttPanel overview={overview} />}
+          {session && overview && <QuanttPanel overview={overview} onSelectAgent={setDetailAgent}/>}
           {err && <div style={{ fontSize: 12, color: '#ff6b6b', marginTop: 8 }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             {session ? (
@@ -583,6 +728,7 @@ function AIAssistant() {
           </div>
         </div>
       </div>
+      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} onStateChanged={loadOverview}/>}
     </div>
   );
 }
