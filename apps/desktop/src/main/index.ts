@@ -62,6 +62,32 @@ const createWindow = () => {
     headers['Access-Control-Allow-Headers'] = ['Content-Type, Accept, Origin'];
     callback({ responseHeaders: headers });
   });
+
+  /* CORS shim for the Quantt API — different root cause than the RPC shim
+     above (that's missing headers entirely; this is a header that's present
+     but scoped too narrowly), same fix. packages/sdk-core's QuanttClient
+     (apps/desktop/src/renderer/quantt.ts wraps it) calls api.quantts.ai
+     straight from this renderer, which — like the RPC nodes — enforces CORS
+     exactly like a browser. Quantt's own docs say the API replies with
+     `access-control-allow-origin: https://thanos.fi` only; a packaged
+     desktop build's renderer origin is file://, not that, so every request
+     (sign-in included) would be network-successful but CORS-blocked from
+     the JS that issued it, with no auth header set anywhere to make a
+     wildcard origin unsafe here (Bearer token, not cookies). Never caught
+     before because this class of bug is invisible outside a packaged
+     build — dev mode's localhost origin has the exact same problem, just
+     nobody's tested a from-scratch Quantt sign-in against a dev build
+     against this exact origin check either. */
+  sess.webRequest.onHeadersReceived({ urls: ['https://api.quantts.ai/*'] }, (details, callback) => {
+    const headers: Record<string, string | string[]> = { ...(details.responseHeaders ?? {}) };
+    for (const k of Object.keys(headers)) {
+      if (k.toLowerCase().startsWith('access-control-')) delete headers[k];
+    }
+    headers['Access-Control-Allow-Origin']  = ['*'];
+    headers['Access-Control-Allow-Methods'] = ['GET, POST, PATCH, DELETE, OPTIONS'];
+    headers['Access-Control-Allow-Headers'] = ['Content-Type, Accept, Origin, Authorization'];
+    callback({ responseHeaders: headers });
+  });
   sess.setPermissionRequestHandler((_wc, permission, callback) => {
     const p = String(permission);
     callback(p === 'hid' || p === 'usb');
