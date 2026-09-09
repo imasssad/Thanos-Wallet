@@ -12,10 +12,11 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title:       'Developer Docs — Thanos Wallet SDK',
   description:
-    'Add "Sign in with Thanos" to your dApp in minutes. EIP-6963 discovery, SIWE message + signature, and a session token — one class, one method.',
+    'Add "Sign in with Thanos" to your dApp in minutes: EIP-6963 discovery, SIWE message + signature, and a session token. Plus mobile deep links (thanoswallet:// custom scheme, thanos.fi/wc universal link) for handing a WalletConnect URI straight to the app.',
+  keywords: ['thanoswallet://', 'thanos.fi/wc', 'WalletConnect deep link', 'Sign in with Thanos', 'EIP-6963', 'thanos-connect'],
   openGraph: {
     title:       'Thanos Wallet — Developer Docs',
-    description: 'Drop-in "Sign in with Thanos" for any dApp. thanos-connect SDK.',
+    description: 'Drop-in "Sign in with Thanos" for any dApp, plus the thanoswallet:// deep link / WalletConnect handoff for mobile.',
     url:         'https://thanos.fi/docs',
     siteName:    'Thanos Wallet',
     type:        'article',
@@ -244,6 +245,72 @@ app.post('/api/auth/verify', async (req, res) => {
         <p style={p}>
           <span style={kbd}>parseSiweMessage()</span> and <span style={kbd}>buildSiweMessage()</span> are exported
           from the package — use them to keep the wire format identical on both sides.
+        </p>
+
+        {/* Deep links */}
+        <h2 style={h2}>Mobile deep links — opening Thanos Wallet from a link</h2>
+        <p style={p}>
+          Everything above is for a browser dApp talking to the <em>extension</em>. On mobile there is no
+          injected extension, so the connect flow is a link instead: hand a WalletConnect pairing URI to
+          Thanos via a URL and the app opens straight to the pairing screen and completes the connection —
+          no paste/scan step. The wallet&apos;s custom URL scheme is <span style={kbd}>thanoswallet://</span>.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr><th style={th}>Format</th><th style={th}>Example</th><th style={th}>When to use</th></tr>
+            </thead>
+            <tbody>
+              {[
+                ['Custom scheme', 'thanoswallet://wc?uri=<encoded wc:…>', 'iOS + Android, when you already know Thanos is installed (e.g. detected via EIP-6963 on a prior visit)'],
+                ['Universal / App Link', 'https://thanos.fi/wc?uri=<encoded>', 'A normal https link that works from anywhere — email, a QR code, another app’s browser. iOS/Android open the app directly if it’s installed and link verification has succeeded; otherwise it currently has no web fallback (see note below)'],
+                ['Raw WalletConnect URI', 'wc:8a5d1…@2?relay-protocol=…', 'Android only. Most WalletConnect v2 QR codes are already exactly this string — Android’s OS-level wc: intent filter opens Thanos with no wrapping needed'],
+              ].map(([f, e, w]) => (
+                <tr key={f}>
+                  <td style={{ ...td, fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap' }}>{f}</td>
+                  <td style={td}><span style={kbd}>{e}</span></td>
+                  <td style={td}>{w}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={p}>
+          All three carry a WalletConnect v2 pairing URI in a <span style={kbd}>uri</span> query param
+          (percent-encoded) — the exact string WalletConnect&apos;s own SDK gives you from{' '}
+          <span style={kbd}>SignClient.connect()</span>. Thanos doesn&apos;t define its own pairing protocol;
+          it just needs a way to receive a standard <span style={kbd}>wc:</span> URI.
+        </p>
+        <Code>{`import { SignClient } from '@walletconnect/sign-client';
+
+const client = await SignClient.init({ projectId: YOUR_WC_PROJECT_ID });
+const { uri } = await client.connect({ requiredNamespaces: { /* … */ } });
+
+// Universal link — works from anywhere, opens the app if it's installed
+window.location.href = \`https://thanos.fi/wc?uri=\${encodeURIComponent(uri)}\`;
+
+// Or, if you already know Thanos is installed on this device:
+window.location.href = \`thanoswallet://wc?uri=\${encodeURIComponent(uri)}\`;`}</Code>
+        <div style={callout}>
+          <strong>Note:</strong> <span style={kbd}>https://thanos.fi/wc</span> is registered as a universal
+          link (iOS AASA) / app link (Android, whole-domain) so the OS intercepts it and opens the app
+          directly — but there is currently no web page behind that path, so if the OS <em>doesn&apos;t</em>{' '}
+          intercept it (app not installed, or link verification hasn&apos;t completed) the link 404s instead
+          of showing an install prompt. Prefer <span style={kbd}>thanoswallet://wc?uri=…</span> when you can
+          confirm the app is installed, or fall back to linking to{' '}
+          <a href="https://thanos.fi/download" style={link}>thanos.fi/download</a> yourself.
+        </div>
+
+        <h3 style={h3}>Opening a page in the in-app browser</h3>
+        <p style={p}>
+          <span style={kbd}>thanoswallet://open?url=&lt;encoded https URL&gt;</span> opens a URL inside
+          Thanos&apos;s own in-app browser (used for wallet sign-in from a mobile web page — the in-app
+          browser injects the same EIP-6963 provider the desktop extension does, next to the already-unlocked
+          seed). <strong>This is allowlisted, not general-purpose</strong>: only a fixed set of partner hosts
+          are accepted — anything else is silently dropped, by design, since an arbitrary URL here would hand
+          any site a provider-armed WebView. Email{' '}
+          <a href="mailto:support@thanos.fi" style={link}>support@thanos.fi</a> to get your domain added if
+          your integration needs this.
         </p>
 
         {/* Config */}
