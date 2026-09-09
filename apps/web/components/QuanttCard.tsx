@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, X as XIcon } from 'lucide-react';
 import { quantt, quanttSignIn } from '../lib/quantt';
-import type { QuanttSession, QuanttOverview, QuanttAgent } from '@thanos/sdk-core';
+import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState } from '@thanos/sdk-core';
 
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 
@@ -73,13 +73,27 @@ function extraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[string, st
   return out;
 }
 
-/** Read-only agent detail — the summary fields are always shown (they come
- *  from the verified-live /v1/mobile/overview response); anything extra
- *  from getAgent(id) is best-effort, since that endpoint has never been
- *  confirmed against a real session. */
-function QuanttAgentDetailModal({ agent, onClose }: { agent: QuanttAgent; onClose: () => void }) {
+/** Only these two runtime states are shown as a toggle — 'idle' (an agent
+ *  that hasn't been assigned a running state yet) isn't something this
+ *  control drives into; that's a lifecycle state, not a pause/resume one. */
+const TOGGLE_STATES = new Set(['active', 'paused']);
+
+/** Agent detail — the summary fields are always shown (they come from the
+ *  verified-live /v1/mobile/overview response); anything extra from
+ *  getAgent(id) is best-effort, since that endpoint's response shape has
+ *  never been confirmed against a real session (the OpenAPI spec only
+ *  documents its request side). Pause/resume calls POST /v1/agents/{id}/state
+ *  — a real, confirmed, fund-adjacent action against production with no
+ *  sandbox to rehearse in, so it's a deliberate one-tap toggle with a clear
+ *  busy/error state, not silently auto-retried or assumed to have worked. */
+function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
+  agent: QuanttAgent; onClose: () => void; onStateChanged: () => void;
+}) {
   const [raw, setRaw] = useState<unknown>(null);
   const [loadErr, setLoadErr] = useState(false);
+  const [status, setStatus] = useState(agent.status);
+  const [toggling, setToggling] = useState(false);
+  const [toggleErr, setToggleErr] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -89,10 +103,26 @@ function QuanttAgentDetailModal({ agent, onClose }: { agent: QuanttAgent; onClos
     return () => { live = false; };
   }, [agent.id]);
 
+  const toggleState = async () => {
+    if (!status || !TOGGLE_STATES.has(status) || toggling) return;
+    const next: QuanttRuntimeState = status === 'active' ? 'paused' : 'active';
+    setToggling(true);
+    setToggleErr(null);
+    try {
+      await quantt.setAgentState(agent.id, next);
+      setStatus(next);
+      onStateChanged(); // refresh the parent's overview list so the summary row's status matches
+    } catch (e) {
+      setToggleErr(e instanceof Error ? e.message : 'Could not update the agent — try again.');
+    } finally {
+      setToggling(false);
+    }
+  };
+
   const pct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
   const rows: Array<[string, string]> = [
     ['chain',         agent.chain ?? '—'],
-    ['status',        agent.status ?? '—'],
+    ['status',        status ?? '—'],
     ['exposureUsd',   agent.exposureUsd != null ? '$' + Math.round(agent.exposureUsd).toLocaleString('en-US') : '—'],
     ['pnlPercent30d', agent.pnlPercent30d != null ? pct(agent.pnlPercent30d) : '—'],
     ['confidence',    agent.confidence != null ? Math.round(agent.confidence * 100) / 100 + '' : '—'],
@@ -138,6 +168,26 @@ function QuanttAgentDetailModal({ agent, onClose }: { agent: QuanttAgent; onClos
         {loadErr && (
           <div style={{ marginTop: 14, fontSize: 12, color: 'var(--text-muted)' }}>
             Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+          </div>
+        )}
+
+        {status && TOGGLE_STATES.has(status) && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-default)' }}>
+            <button
+              onClick={toggleState}
+              disabled={toggling}
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10,
+                background: status === 'active' ? 'transparent' : 'var(--blue)',
+                color: status === 'active' ? '#ef4444' : '#fff',
+                border: status === 'active' ? '1px solid rgba(239,68,68,0.4)' : 'none',
+                fontSize: 13.5, fontWeight: 700, cursor: toggling ? 'default' : 'pointer',
+                opacity: toggling ? 0.6 : 1,
+              }}
+            >
+              {toggling ? 'Working…' : status === 'active' ? 'Pause agent' : 'Resume agent'}
+            </button>
+            {toggleErr && <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{toggleErr}</div>}
           </div>
         )}
       </div>
@@ -211,7 +261,7 @@ export function QuanttCard() {
           </div>
         </div>
       </div>
-      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} />}
+      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} onStateChanged={loadOverview} />}
     </div>
   );
 }
