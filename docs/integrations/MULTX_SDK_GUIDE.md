@@ -1,12 +1,32 @@
 # MultX Bridge SDK — Integration Guide
 
+> **CORRECTION (2026-09-09, direct from Lithosphere):** the real, permanent
+> Lithosphere production mainnet is **chain 9005** (`lithosphere_9005-1`) —
+> NOT Kamet. Kamet (900523) is the **legacy/test environment**, despite the
+> SDK's own preset being named `KAMET_MAINNET` below and despite this guide's
+> "live and hands-off" language a few lines down. Lithosphere: "No MultX
+> production routes are live yet. Production bridge, Timelock and
+> liquidity-pool deployments are pending; we have no approved production
+> contract addresses to supply." Ethereum, BNB, Base, and LITHO (9005) are
+> "in EVM deployment planning" for MultX, not live; Solana is requested for
+> this phase but not live either.
+>
+> **This directly conflicts with what's shipped**: Thanos Wallet's Bridge tab
+> currently runs the exact Makalu→Kamet route this guide describes below as
+> production, live, in every client, for real users, right now. Whether that
+> needs to come down is an open question sent back to Lithosphere on
+> 2026-09-09 — not yet resolved as of this note. Do NOT treat anything below
+> this box as an accurate description of what's safe to ship until that's
+> answered.
+
 `@litho/multx-sdk` **v0.2.0** — TypeScript SDK for the Lithosphere **MultX cross-chain bridge**.
 Framework-agnostic core (`MultXClient`) + optional React adapter (`useMultX`).
 Ships drop-in presets for **Makalu** and **Kamet** — no address wrangling.
 
 > All contract addresses below were verified on-chain (2026-06). The bridge is
 > **live and hands-off**: lock → validators sign → an automated relayer releases
-> on the destination chain.
+> on the destination chain. **See the correction box above — this claim is now
+> disputed, not confirmed.**
 
 ---
 

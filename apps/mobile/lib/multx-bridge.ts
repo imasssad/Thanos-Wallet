@@ -18,6 +18,11 @@
  * ABIs + control-flow were lifted verbatim from the vendored SDK
  * (dist/abis.js, dist/client.js) so on-chain behaviour is byte-identical,
  * including the Ethermint stale-nonce retry that Makalu (Cosmos-SDK) needs.
+ *
+ * ⚠ UNRESOLVED (2026-09-09): Lithosphere says Kamet is legacy/test, not
+ * production mainnet (that's chain 9005) — see the correction box at the
+ * top of docs/MULTX-SDK-guide.md. Whether THIS route needs to be disabled
+ * is an open question sent back to them; not yet answered.
  */
 import {
   Contract, JsonRpcProvider, Wallet, HDNodeWallet, Mnemonic, parseUnits, formatUnits,

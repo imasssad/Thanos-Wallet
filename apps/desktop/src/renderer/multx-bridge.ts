@@ -8,6 +8,11 @@
  * JsonRpcProvider to Makalu's RPC.
  *
  * Live route (docs/MULTX-SDK-guide.md §6): Makalu (700777) -> Kamet (900523).
+ *
+ * ⚠ UNRESOLVED (2026-09-09): Lithosphere says Kamet is legacy/test, not
+ * production mainnet (that's chain 9005) — see the correction box at the
+ * top of docs/MULTX-SDK-guide.md. Whether THIS route needs to be disabled
+ * is an open question sent back to them; not yet answered.
  */
 import { MultXClient, MultXError } from '@litho/multx-sdk';
 import { MAKALU_TESTNET } from '@litho/multx-sdk/presets';

@@ -19,6 +19,12 @@
  * (900523)**, hands-off (lock -> validators sign -> relayer releases). The
  * Kamet->Sepolia/Base/BNB "Route 2" destinations are not wired yet, and the
  * Kamet preset declares no Makalu target, so we expose only Makalu->Kamet.
+ *
+ * ⚠ UNRESOLVED (2026-09-09): Lithosphere says Kamet is legacy/test, not
+ * production mainnet (that's chain 9005) — see the correction box at the
+ * top of docs/MULTX-SDK-guide.md. Whether THIS route needs to be disabled
+ * is an open question sent back to them; not yet answered. Don't remove
+ * this note until that doc's correction box is resolved.
  */
 import { MultXClient, MultXError } from '@litho/multx-sdk';
 import { MAKALU_TESTNET } from '@litho/multx-sdk/presets';
