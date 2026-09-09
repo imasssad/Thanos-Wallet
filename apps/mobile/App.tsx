@@ -7315,13 +7315,19 @@ function makeStyles(C: Colors) {
       flexDirection: 'row', alignItems: 'center', gap: 10,
       backgroundColor: C.bgElevated, borderColor: C.borderDefault, borderWidth: 1,
       borderRadius: 999, paddingVertical: 5, paddingHorizontal: 16, paddingLeft: 5,
+      // RN defaults flexShrink to 0, so without this a near-max-length
+      // (24-char) custom account name pushes the topbar's History/Scan
+      // buttons off narrow screens instead of shrinking — the acctName
+      // Text's numberOfLines={1} truncation is inert until the row it
+      // sits in is allowed to shrink below its content width.
+      flexShrink: 1, minWidth: 0,
     },
     acctAvatar: {
       width: 32, height: 32, borderRadius: 16,
       backgroundColor: C.blue,
       alignItems: 'center', justifyContent: 'center',
     },
-    acctName: { color: C.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+    acctName: { color: C.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: -0.2, flexShrink: 1 },
 
     themeBtn: {
       width: 32, height: 32, borderRadius: 8,
