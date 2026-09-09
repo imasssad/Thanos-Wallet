@@ -91,6 +91,7 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
 }) {
   const [raw, setRaw] = useState<unknown>(null);
   const [loadErr, setLoadErr] = useState(false);
+  const [wallet, setWallet] = useState<unknown>(null);
   const [status, setStatus] = useState(agent.status);
   const [toggling, setToggling] = useState(false);
   const [toggleErr, setToggleErr] = useState<string | null>(null);
@@ -100,6 +101,12 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
     quantt.getAgent(agent.id)
       .then((r) => { if (live) setRaw(r); })
       .catch(() => { if (live) setLoadErr(true); });
+    // Read-only — the on-chain + Magma-ledger balance behind this agent's
+    // exposure figure. Fails silently: the wallet section just doesn't
+    // render rather than adding a second error message next to loadErr.
+    quantt.getAgentWallet(agent.id)
+      .then((r) => { if (live) setWallet(r); })
+      .catch(() => {});
     return () => { live = false; };
   }, [agent.id]);
 
@@ -129,6 +136,7 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
     ['strategy',      agent.strategy ?? '—'],
   ].filter(([, v]) => v !== '—') as Array<[string, string]>;
   const extra = extraDetailEntries(agent, raw);
+  const walletRows = extraDetailEntries(agent, wallet);
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
@@ -168,6 +176,22 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
         {loadErr && (
           <div style={{ marginTop: 14, fontSize: 12, color: 'var(--text-muted)' }}>
             Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+          </div>
+        )}
+
+        {walletRows.length > 0 && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-default)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+              Agent wallet
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {walletRows.map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{k}</span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
