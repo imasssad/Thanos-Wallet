@@ -310,7 +310,7 @@ const overlay: React.CSSProperties = {
 };
 const sheet: React.CSSProperties = {
   background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border-default)',
-  padding: 22, width: 'min(480px, 92vw)', boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+  padding: 22, width: 'min(480px, 92%)', boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
 };
 const closeBtn: React.CSSProperties = {
   background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 22, cursor: 'pointer', padding: 0, lineHeight: 1,

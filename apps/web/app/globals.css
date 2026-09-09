@@ -1160,7 +1160,10 @@ button:focus:not(:focus-visible),
 }
 .modal-box {
   background: var(--bg-card); border: 1px solid var(--border-default);
-  border-radius: 16px; width: 400px; max-width: 92vw;
+  /* max-width in % not vw — .modal-backdrop is already viewport-bound via
+     `inset: 0`, so % resolves identically minus the scrollbar-inclusion
+     quirk vw carries in some browsers (see the mobile override below). */
+  border-radius: 16px; width: 400px; max-width: 92%;
   box-shadow: 0 24px 64px rgba(0,0,0,0.5);
 }
 .modal-header {
@@ -1952,8 +1955,13 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   .coin-icon { width: 24px !important; height: 24px !important; font-size: 11px !important; }
   .btn-exchange { height: 38px !important; font-size: 13px !important; }
 
-  /* Modals on phone — full-width sheet */
-  .modal-box { width: calc(100vw - 24px) !important; max-width: 100% !important; }
+  /* Modals on phone — full-width sheet. % not vw: the parent
+     .modal-backdrop is sized via `inset: 0` (properly viewport-bound,
+     scrollbar-safe); vw can include scrollbar width in some browsers,
+     which made this box wider than its actual flex container and let it
+     overflow/clip past both edges — same bug class as the mobile install
+     banner (see the .lp-ext-prompt fix note above). */
+  .modal-box { width: calc(100% - 24px) !important; max-width: 100% !important; }
   /* 16px is mandatory on mobile to suppress iOS Safari's focus
      auto-zoom; do NOT drop below this. Padding stays tight. */
   .field-input, .field-select { font-size: 16px !important; padding: 10px 11px !important; }

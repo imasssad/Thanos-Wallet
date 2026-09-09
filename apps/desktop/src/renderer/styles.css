@@ -679,7 +679,10 @@ button { font-family: inherit; cursor: pointer; }
 }
 .modal-box {
   background: var(--bg-card); border: 1px solid var(--border-default);
-  border-radius: 16px; width: 400px; max-width: 92vw;
+  /* max-width in % not vw — same fix as apps/web/app/globals.css: the
+     backdrop is already viewport-bound via `inset: 0`, so % resolves the
+     same way without vw's scrollbar-inclusion quirk. */
+  border-radius: 16px; width: 400px; max-width: 92%;
   box-shadow: 0 24px 64px rgba(0,0,0,0.5);
 }
 .modal-header {
