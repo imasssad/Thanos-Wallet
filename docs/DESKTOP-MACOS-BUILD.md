@@ -3,9 +3,15 @@
 > **For Claude Code / agents running on the Mac:** this is the authoritative
 > procedure for producing a macOS build of `apps/desktop`. Follow the numbered
 > steps in order. Do **not** invent an Xcode project — there isn't one (see
-> below). Do **not** submit to the App Store or publish a GitHub Release: per a
-> standing client instruction, macOS/Windows stay unreleased until the other
-> open issues are cleared. Local `.dmg` builds for testing are fine.
+> below).
+>
+> **Release hold (2026-09):** the client wants macOS/Windows to go *live* only
+> after the other open issues are cleared. Building, uploading a `.pkg` to App
+> Store Connect, and running it through Apple review are all fine as prep — but
+> do **not** click *"Release this version"* in ASC after approval, and do **not**
+> publish a GitHub Release, until that hold is lifted. Mac App Store submission
+> is now in progress (separate ASC record, bundle id `ai.thanos.wallet`) — see
+> [`DESKTOP-MACOS-APP-STORE.md`](./DESKTOP-MACOS-APP-STORE.md).
 
 ## What this is
 
@@ -158,19 +164,33 @@ CI) is what turns it on.
 
 ### 4c. Mac App Store `.pkg`
 
-See [`DESKTOP-MACOS-APP-STORE.md`](./DESKTOP-MACOS-APP-STORE.md) for the full
-procedure and the entitlement/sandbox caveats. Short version, once the certs +
-`apps/desktop/build/thanos-mas.provisionprofile` are in place:
+**This is the active submission path** — see
+[`DESKTOP-MACOS-APP-STORE.md`](./DESKTOP-MACOS-APP-STORE.md) for the full
+procedure, the Apple-account checklist, and the entitlement/sandbox caveats.
+Short version, once the Apple Distribution + Mac Installer Distribution certs are
+in the login keychain and the profile is at
+`apps/desktop/build/thanos-mas.provisionprofile`:
 
 ```bash
+bash apps/desktop/scripts/build-macos.sh --mas
+# equivalently, by hand:
 cd apps/desktop
-MAS_BUILD=1 pnpm --filter @thanos/desktop build   # dead-code-eliminates HW-wallet UI
+MAS_BUILD=1 pnpm --filter @thanos/desktop build   # dead-code-eliminates HW-wallet UI + auto-updater
 npx electron-builder --mac mas --publish never
-# → apps/desktop/release/Thanos Wallet-<version>.pkg
-# upload with the Transporter app, or:
-xcrun altool --upload-app -f "release/Thanos Wallet-<version>.pkg" -t macos \
-  -u "$APPLE_ID" -p "$APPLE_APP_SPECIFIC_PASSWORD"
+# → apps/desktop/release/mas/Thanos Wallet-<version>.pkg
 ```
+
+Upload to the (already-created) separate macOS ASC record — drag into the
+**Transporter** app, or reuse the EAS iOS **App Store Connect API key**:
+
+```bash
+xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos Wallet-<version>.pkg" \
+  -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+```
+
+Or, no Mac needed for the build: add the `MAS_*` repo secrets and run
+**Actions → "Desktop Mac App Store build"**, download `thanos-desktop-mas-pkg`,
+upload that.
 
 ---
 

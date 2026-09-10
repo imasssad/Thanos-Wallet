@@ -1,9 +1,19 @@
 # Thanos Desktop → Mac App Store (Path 2)
 
 Publishing the **Electron desktop app** to the Mac App Store. This is a real
-project, not an EAS build — EAS only builds iOS/Android. The Mac build runs on
-GitHub's macOS runners; the hard part is **App Sandbox compliance**, which the
-Store requires.
+project, not an EAS build — EAS only builds iOS/Android. The build runs on
+GitHub's macOS runners *or* locally on a Mac
+(`bash apps/desktop/scripts/build-macos.sh --mas`); the hard part is **App
+Sandbox compliance**, which the Store requires.
+
+**Status (2026-09):** submission in progress. The separate macOS record exists
+in App Store Connect (bundle id `ai.thanos.wallet`). Remaining work is the
+Apple-account setup in the runbook below. Everything in the repo is ready.
+
+**Release hold:** the client wants macOS/Windows to go *live* only after the
+other open issues clear. Uploading the `.pkg` and going through review is fine —
+just do not click *"Release this version"* in ASC after approval until the hold
+is lifted.
 
 ## The two product decisions the Store forces
 
@@ -44,31 +54,55 @@ The MAS provisioning profile (below) must be created for `ai.thanos.wallet`.
 (The empty macOS slot on the iOS "Thanos Wallet" record is unrelated and can be
 removed — that was for the abandoned Catalyst path.)
 
-## What the client must obtain from Apple (only they can)
+## Runbook — Apple-account setup (only the client can do this)
 
-From the Apple Developer account (team JEYAFQ92YG), create and export:
+From the Apple Developer account (team `JEYAFQ92YG`):
 
-1. **Apple Distribution** (a.k.a. Mac App Distribution) certificate → `.p12`
-2. **Mac Installer Distribution** certificate → `.p12`
-   (bundle BOTH into one `.p12` for `MAS_CSC_LINK`)
-3. **App ID** for the chosen bundle id with the **Keychain Sharing** +
-   **App Sandbox** capabilities enabled
-4. **Mac App Store provisioning profile** for that App ID → `.provisionprofile`
-5. **App-specific password** (or an ASC API key) for the upload step
+1. **App Store Connect → macOS app record** — DONE. Separate record, bundle id
+   `ai.thanos.wallet` (not a slot on the iOS "Thanos Wallet" record — bundle ids
+   differ). If the iOS record shows an empty macOS slot, remove it.
+2. **Identifiers → App ID `ai.thanos.wallet`** — enable **App Sandbox** +
+   **Keychain Sharing** capabilities.
+3. **Certificates** — create **Apple Distribution** (signs the `.app`) *and*
+   **Mac Installer Distribution** (signs the `.pkg`). Export **both into one
+   `.p12`**.
+4. **Profiles → Mac App Store provisioning profile** for `ai.thanos.wallet`,
+   tied to the Apple Distribution cert → download the `.provisionprofile`.
+5. **Upload credential** — reuse the **App Store Connect API key** already set up
+   for EAS iOS submit (Issuer ID + Key ID + `.p8`), or an app-specific password.
 
-Add as GitHub repo secrets (Settings → Secrets → Actions):
-`MAS_CSC_LINK`, `MAS_CSC_KEY_PASSWORD`, `MAS_PROVISION_PROFILE`, `APPLE_TEAM_ID`.
-(`base64 -i cert.p12 | pbcopy` to produce the secret values.)
+Then, to build in CI, add as GitHub repo secrets (Settings → Secrets → Actions):
+`MAS_CSC_LINK` (`base64 -i certs.p12`), `MAS_CSC_KEY_PASSWORD`,
+`MAS_PROVISION_PROFILE` (`base64 -i profile.provisionprofile`),
+`APPLE_TEAM_ID` = `JEYAFQ92YG`.
+
+To build locally on a Mac instead: double-click the `.p12` to import both certs
+into the login keychain, put the profile at
+`apps/desktop/build/thanos-mas.provisionprofile`, then
+`bash apps/desktop/scripts/build-macos.sh --mas`.
 
 ## The build
 
-Once the secrets are in:
+Once the certs/profile exist:
 
-- **Actions → "Desktop Mac App Store build" → Run workflow** → produces a
-  signed, sandboxed **`.pkg`** artifact (arm64 + x64).
-- Download it, then on a Mac upload to App Store Connect with **Transporter**
-  (or `xcrun altool --upload-app`). It lands in the macOS App slot → complete
-  the metadata → submit for review.
+- **CI:** add the `MAS_*` repo secrets, then **Actions → "Desktop Mac App Store
+  build" → Run workflow** → produces a signed, sandboxed **`.pkg`** artifact
+  (`thanos-desktop-mas-pkg`). Download it.
+- **Local (Mac):** `bash apps/desktop/scripts/build-macos.sh --mas` →
+  `apps/desktop/release/mas/Thanos Wallet-<version>.pkg`.
+
+Then on a Mac, upload to the macOS ASC record with **Transporter** (drag the
+`.pkg` in) or:
+
+```bash
+xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos Wallet-<version>.pkg" \
+  -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+```
+
+The build shows up under the macOS record → complete metadata + macOS
+screenshots (1280×800 or 2560×1600) + the 3.1.5(b) crypto answers → submit for
+review. **Do not "Release this version" after approval until the release hold
+clears.**
 
 The build config is staged and committed:
 - `apps/desktop/build/entitlements.mas.plist` + `.inherit.plist` (sandboxed)
@@ -87,10 +121,15 @@ one-shot approval.
 
 ## Phase checklist
 
-- [ ] Client: confirm bundle-ID option (A vs B)
-- [ ] Client: create + export the 2 certs, App ID, provisioning profile
-- [ ] Client: add the 4 repo secrets
+- [x] Bundle id decided: `ai.thanos.wallet`, separate desktop record
+- [x] Client: create the macOS app record in App Store Connect (done 2026-09)
 - [x] Us: `MAS_BUILD` flag — disable auto-updater + HW-wallet UI (done 2026-07-18)
-- [ ] Us: run the MAS workflow → get the `.pkg`
-- [ ] Client (on a Mac): Transporter upload → ASC macOS slot
+- [x] Us: `mas:` target, entitlements, CI workflow, `build-macos.sh --mas` (staged)
+- [ ] Client: App ID `ai.thanos.wallet` — enable App Sandbox + Keychain Sharing
+- [ ] Client: create + export the 2 certs (one `.p12`) + MAS provisioning profile
+- [ ] Client: add the 4 repo secrets *(CI path)* — or install cert+profile on the Mac *(local path)*
+- [ ] Build the `.pkg` (CI workflow or `build-macos.sh --mas`)
+- [ ] Client (on a Mac): Transporter / `altool` upload → macOS ASC record
+- [ ] Complete metadata + macOS screenshots + 3.1.5(b) answers → submit for review
 - [ ] Iterate on review feedback until approved
+- [ ] **Hold:** do not "Release this version" until the macOS/Windows release hold clears
