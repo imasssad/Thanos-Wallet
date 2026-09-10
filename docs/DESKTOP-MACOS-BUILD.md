@@ -11,9 +11,20 @@
 
 `apps/desktop` is an **Electron** app (Electron 33, TypeScript main process +
 Vite-built renderer). It is packaged with **`electron-builder`**, not Xcode.
-There is no `.xcodeproj`. Xcode's *Command Line Tools* are still a prerequisite
-— they provide `codesign`, `xcrun notarytool`, `git`, and the C toolchain that
-`node-gyp` needs — but you never open the Xcode GUI.
+There is no `.xcodeproj`.
+
+**You do not need the Xcode IDE** (the ~15 GB App Store download). You *do* need
+the **Xcode Command Line Tools** — a separate ~1–2 GB install via
+`xcode-select --install` — because the build shells out to them: `clang`/`make`
+for `node-gyp` to compile the native crypto deps, and `codesign` +
+`xcrun notarytool` + `git`. That's the only Apple-toolchain requirement, for
+every variant below including the signed/notarized `.dmg` and the Mac App Store
+`.pkg`.
+
+**Any editor + terminal works** — VS Code's integrated terminal, iTerm, plain
+Terminal.app. Nothing here opens a GUI. VS Code does not replace the Command
+Line Tools; you need both (the toolchain, plus something to run the commands
+in).
 
 Two macOS build flavors:
 
