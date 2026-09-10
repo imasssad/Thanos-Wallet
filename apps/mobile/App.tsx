@@ -161,7 +161,6 @@ import {
   type TokenHistory, type TokenMarketDetails, type TokenRange,
 } from './lib/price-history';
 import { fetchOnchainTxDetails, type OnchainTxDetails } from './lib/tx-details';
-import { laxCreateAccount } from './lib/lax';
 import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal, notifyIfEnabled } from './lib/notifications';
 
 /* ╔══════════════════════════════════════════════════════════════════╗
@@ -1102,95 +1101,402 @@ const LAX_BENEFITS = [
   'Accepted worldwide where Visa™ is accepted',
 ];
 
-/* LAX "Create Account" bottom sheet — SafePal-style registration entry.
-   Shows the KYC requirements notice, a Terms agreement, and an optional
-   referral code, then routes "Next" through the backend LAX proxy
-   (lib/lax.ts → services/api /lax/account). Until the partner API is wired the
-   proxy returns the hosted registration URL, which we open. */
-function LaxCreateAccountSheet({ address, onClose }: { address?: string; onClose: () => void }) {
-  const C = useColors();
-  const openBrowser = useBrowser();
-  const [agreed, setAgreed]   = useState(false);
-  const [showRef, setShowRef] = useState(false);
-  const [refCode, setRefCode] = useState('');
-  const [busy, setBusy]       = useState(false);
+/* ─── LAX card flow ──────────────────────────────────────────────────────
+ * Full-screen multi-step: Intro → Create Account → Dashboard → Top Up →
+ * Success. Every data call goes through lib/lax.ts → the Thanos backend
+ * /lax/* proxy, which 503s until LAX_API_BASE/LAX_API_KEY are set on the
+ * VPS — so `status` from /lax/status drives an honest "not live yet"
+ * banner instead of a dead screen. Screen 3 registers a Thanos account
+ * (the identity every /lax/* call authenticates as). Card Details, Manage,
+ * Transactions, Physical card and More are reachable placeholders for now.
+ */
+type LaxView = 'intro' | 'create' | 'dashboard' | 'topup' | 'success' | 'soon';
 
-  const onNext = async () => {
-    if (!agreed || busy) return;
+function LaxCardFlow({ onClose }: { onClose: () => void }) {
+  const C = useColors();
+  const styles = useStyles();
+  const openBrowser = useBrowser();
+
+  const [view, setView]       = useState<LaxView>('intro');
+  const [booting, setBooting] = useState(true);
+  const [status, setStatus]   = useState<import('./lib/lax').LaxStatus | null>(null);
+  const [cards, setCards]     = useState<import('./lib/lax').LaxCard[]>([]);
+  const [card, setCard]       = useState<import('./lib/lax').LaxCard | null>(null);
+  const [txns, setTxns]       = useState<import('./lib/lax').LaxTxn[]>([]);
+  const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
+
+  const cardNo = card ? (require('./lib/lax').cardNumberOf(card) as string | undefined) : undefined;
+  const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
+
+  const refresh = async () => {
+    const lax = require('./lib/lax') as typeof import('./lib/lax');
+    try {
+      const st = await lax.laxStatus();
+      setStatus(st);
+      if (st.configured) {
+        const list = await lax.laxCards();
+        setCards(list);
+        if (list[0]) {
+          setCard(list[0]);
+          const cn = lax.cardNumberOf(list[0]);
+          if (cn) { lax.laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+        }
+      }
+    } catch { /* leave status null — treated as not-live */ }
+  };
+
+  useEffect(() => {
+    (async () => {
+      await refresh();
+      setBooting(false);
+    })();
+  }, []);
+
+  // Land on the dashboard when the user already has a card.
+  useEffect(() => {
+    if (!booting && cards.length > 0 && view === 'intro') setView('dashboard');
+  }, [booting, cards.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const notLive = !status?.configured;
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
+      <View style={{ flex: 1, backgroundColor: C.bgBase }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 }}>
+          <Pressable hitSlop={12} onPress={() => (view === 'intro' || view === 'dashboard') ? onClose() : setView('dashboard')} style={{ padding: 8 }}>
+            <ChevronLeft size={22} color={C.textPrimary}/>
+          </Pressable>
+          <Text style={{ flex: 1, textAlign: 'center', color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>
+            {view === 'intro' ? 'LAX Card' : view === 'create' ? 'Create Your LAX Card'
+              : view === 'topup' ? 'Top Up LAX Card' : view === 'success' ? '' : 'LAX Card'}
+          </Text>
+          <Pressable hitSlop={12} onPress={onClose} style={{ padding: 8 }}>
+            <Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text>
+          </Pressable>
+        </View>
+
+        {booting ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator color={C.blue}/>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+            {view === 'intro'    && <LaxIntro C={C} styles={styles} notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => openBrowser('https://lax.money')}/>}
+            {view === 'soon'     && <LaxComingSoon C={C} styles={styles} have={status?.have} onClose={onClose} onLearn={() => openBrowser('https://lax.money')}/>}
+            {view === 'create'   && <LaxCreate C={C} styles={styles} status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
+            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')}/>}
+            {view === 'topup'    && cardNo && <LaxTopUp C={C} styles={styles} cardNo={cardNo} onDone={(amt: number, cur: string) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
+            {view === 'success'  && <LaxSuccess C={C} styles={styles} last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+/** Card art reused across the LAX flow — matches the home-screen promo. */
+function LaxCardArt({ height = 190, last4, active }: { height?: number; last4?: string; active?: boolean }) {
+  return (
+    <View style={{ width: '100%', aspectRatio: 1.586, maxHeight: height, borderRadius: 16, overflow: 'hidden', backgroundColor: '#0a0d18', borderWidth: 1, borderColor: 'rgba(59,122,247,0.28)', padding: 16, justifyContent: 'space-between' }}>
+      <SvgXml xml={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 317 200" preserveAspectRatio="none"><defs><radialGradient id="g" cx="50%" cy="-10%" r="130%"><stop offset="0%" stop-color="#1b3a8f"/><stop offset="55%" stop-color="#0e2050"/><stop offset="100%" stop-color="#081536"/></radialGradient></defs><rect width="317" height="200" fill="url(#g)"/></svg>'} width="100%" height="100%" style={StyleSheet.absoluteFill}/>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+        <Image source={require('./assets/images/tokens/lax.png')} style={{ width: '44%', aspectRatio: 1, opacity: 0.5 }} resizeMode="contain"/>
+      </View>
+      <Text style={{ color: '#dbe6ff', fontSize: 20, fontWeight: '800', letterSpacing: 6 }}>LAX</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <Text style={{ color: '#9db8ff', fontSize: 13, fontWeight: '600', letterSpacing: 2 }}>{last4 ? `•••• ${last4}` : ''}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', fontStyle: 'italic' }}>VISA</Text>
+          <Text style={{ color: '#9db8ff', fontSize: 10, fontWeight: '500' }}>{active ? 'Virtual' : 'Algorithmic'}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const LAX_INTRO_BENEFITS = ['Free virtual card', 'Top up with crypto', 'No hidden fees', 'Accepted worldwide'];
+
+function LaxIntro({ C, styles, notLive, onStart, onLearn }: any) {
+  return (
+    <View style={{ gap: 14 }}>
+      <LaxCardArt/>
+      <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center' }}>Own Your Crypto{'\n'}In The Real World</Text>
+      <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+        The LAX Card lets you spend your crypto globally, anywhere Visa™ is accepted.
+      </Text>
+      <View style={{ gap: 10, marginTop: 4 }}>
+        {LAX_INTRO_BENEFITS.map((b: string) => (
+          <View key={b} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Check size={16} color={C.blue} strokeWidth={2.6}/>
+            <Text style={{ color: C.textSecondary, fontSize: 13 }}>{b}</Text>
+          </View>
+        ))}
+      </View>
+      <Pressable onPress={onStart} style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', marginTop: 8 }, pressed && { opacity: 0.85 }]}>
+        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Get Started</Text>
+      </Pressable>
+      <Pressable onPress={onLearn} style={{ alignItems: 'center', paddingVertical: 8 }}>
+        <Text style={{ color: C.blue, fontSize: 13, fontWeight: '600' }}>Learn more</Text>
+      </Pressable>
+      {notLive && (
+        <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
+          Native card issuance is rolling out — you can still explore the flow.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function LaxComingSoon({ C, styles, have, onClose, onLearn }: any) {
+  return (
+    <View style={{ gap: 14, alignItems: 'center', paddingTop: 20 }}>
+      <LaxCardArt/>
+      <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 }}>LAX cards aren&apos;t live yet</Text>
+      <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+        Native issuance, top-ups and balance land as soon as the LAX partner setup is finished. Until then you can apply on the LAX site.
+      </Text>
+      <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 6 }, pressed && { opacity: 0.85 }]}>
+        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Apply on lax.money ↗</Text>
+      </Pressable>
+      <Pressable onPress={onClose} style={{ paddingVertical: 8 }}>
+        <Text style={{ color: C.textSecondary, fontSize: 13 }}>Not now</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const LAX_KYC_STEPS = [
+  { t: 'Prepare your Passport or ID card' },
+  { t: 'Be at your home' },
+  { t: 'Allow location access' },
+  { t: 'Take a selfie' },
+];
+
+function LaxCreate({ C, styles, status, onDone }: any) {
+  const [email, setEmail]   = useState('');
+  const [pwd, setPwd]       = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState<string | null>(null);
+
+  const submit = async () => {
+    setErr(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
+    if (pwd.length < 8) { setErr('Password must be at least 8 characters.'); return; }
     setBusy(true);
     try {
-      const r = await laxCreateAccount({ address, referralCode: refCode.trim() || undefined });
-      if (r.registrationUrl) openBrowser(r.registrationUrl);
-      onClose();
+      const lax = require('./lib/lax') as typeof import('./lib/lax');
+      if (!(await lax.hasThanosAccount())) {
+        await lax.laxRegisterThanosAccount({ email: email.trim(), password: pwd });
+      }
+      onDone();
+    } catch (e: any) {
+      setErr(e?.message || 'Could not create your account — try again.');
     } finally { setBusy(false); }
   };
 
-  const Requirement = ({ Icon, label }: { Icon: React.ElementType; label: string }) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 }}>
-      <Icon size={19} color={C.textSecondary} />
-      <Text style={{ color: C.textPrimary, fontSize: 14 }}>{label}</Text>
+  return (
+    <View style={{ gap: 14 }}>
+      {/* step rail */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10 }}>
+        {['Account', 'Verify', 'Complete'].map((s, i) => (
+          <React.Fragment key={s}>
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: i === 0 ? C.blue : C.bgElevated }}>
+                <Text style={{ color: i === 0 ? '#fff' : C.textMuted, fontSize: 12, fontWeight: '800' }}>{i + 1}</Text>
+              </View>
+              <Text style={{ color: i === 0 ? C.textPrimary : C.textMuted, fontSize: 11 }}>{s}</Text>
+            </View>
+            {i < 2 && <View style={{ flex: 1, height: 1, backgroundColor: C.borderSubtle, marginHorizontal: 6 }}/>}
+          </React.Fragment>
+        ))}
+      </View>
+
+      <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, padding: 14, gap: 12 }}>
+        <Text style={{ color: C.textSecondary, fontSize: 12 }}>During verification you will need to:</Text>
+        {LAX_KYC_STEPS.map((s) => (
+          <View key={s.t} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Check size={15} color={C.blue} strokeWidth={2.4}/>
+            <Text style={{ color: C.textPrimary, fontSize: 13 }}>{s.t}</Text>
+          </View>
+        ))}
+      </View>
+
+      <TextInput value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={C.textMuted}
+        autoCapitalize="none" keyboardType="email-address" autoCorrect={false}
+        style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14 }}/>
+      <TextInput value={pwd} onChangeText={setPwd} placeholder="Password (min 8 chars)" placeholderTextColor={C.textMuted}
+        secureTextEntry autoCapitalize="none"
+        style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14 }}/>
+
+      <Pressable onPress={() => setAgreed(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: agreed ? C.blue : C.borderDefault, backgroundColor: agreed ? C.blue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+          {agreed && <Check size={13} color="#fff" strokeWidth={3}/>}
+        </View>
+        <Text style={{ color: C.textSecondary, fontSize: 12, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</Text>
+      </Pressable>
+
+      {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
+
+      <Pressable onPress={submit} disabled={!agreed || busy}
+        style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: (!agreed || busy) ? 0.5 : 1 }, pressed && { opacity: 0.85 }]}>
+        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Creating…' : 'Next'}</Text>
+      </Pressable>
+      <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
+        {status?.configuredForIssuance
+          ? 'Next opens ID verification (Sumsub), then your virtual card is issued.'
+          : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
+      </Text>
     </View>
   );
+}
+
+function LaxDashboard({ C, styles, card, last4, txns, notLive, onTopUp, onSoon }: any) {
+  const balance = card?.balance != null ? Number(card.balance) : null;
+  const actions = [
+    { icon: Plus,       label: 'Top Up',       onPress: notLive ? onSoon : onTopUp },
+    { icon: CreditCard, label: 'Card Details', onPress: onSoon },
+    { icon: Shield,     label: 'Freeze',       onPress: onSoon },
+    { icon: XIcon,      label: 'More',         onPress: onSoon },
+  ];
+  return (
+    <View style={{ gap: 14 }}>
+      <LaxCardArt active last4={last4}/>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: card ? '#22c55e' : C.textMuted }}/>
+        <Text style={{ color: C.textSecondary, fontSize: 12 }}>{card ? (String(card.status || 'Active')) : 'No card yet'}</Text>
+      </View>
+      <View>
+        <Text style={{ color: C.textSecondary, fontSize: 12 }}>Card Balance</Text>
+        <Text style={{ color: C.textPrimary, fontSize: 30, fontWeight: '800' }}>
+          {balance != null ? `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+        </Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {actions.map(a => (
+          <Pressable key={a.label} onPress={a.onPress} style={({ pressed }: any) => [{ alignItems: 'center', gap: 6, flex: 1 }, pressed && { opacity: 0.6 }]}>
+            <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+              <a.icon size={18} color={C.blue}/>
+            </View>
+            <Text style={{ color: C.textSecondary, fontSize: 11 }}>{a.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {notLive && (
+        <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, padding: 12, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+          <AlertTriangle size={15} color="#f59e0b"/>
+          <Text style={{ color: C.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>
+            LAX isn&apos;t live yet — balance and actions will work once the partner setup is finished.
+          </Text>
+        </View>
+      )}
+
+      <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '800', marginTop: 4 }}>Recent Transactions</Text>
+      {txns.length === 0 ? (
+        <Text style={{ color: C.textMuted, fontSize: 12 }}>No transactions yet.</Text>
+      ) : txns.slice(0, 6).map((t: import('./lib/lax').LaxTxn, i: number) => (
+        <View key={t.id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: i < 5 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{t.merchant || t.type || 'Transaction'}</Text>
+            {t.date ? <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.date}</Text> : null}
+          </View>
+          {t.amount != null ? (
+            <Text style={{ color: t.amount < 0 ? C.textPrimary : '#22c55e', fontSize: 13, fontWeight: '700' }}>
+              {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: (t.currency || 'USD') })}
+            </Text>
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const LAX_TOPUP_QUICK = [50, 100, 200, 500];
+
+function LaxTopUp({ C, styles, cardNo, onDone }: any) {
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('USDT');
+  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await (require('./lib/lax') as typeof import('./lib/lax')).laxCurrencies();
+        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
+        if (Array.isArray(arr) && arr.length) {
+          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
+        }
+      } catch { /* keep the fallback list */ }
+    })();
+  }, []);
+
+  const submit = async () => {
+    setErr(null);
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
+    setBusy(true);
+    try {
+      await (require('./lib/lax') as typeof import('./lib/lax')).laxTopUp({ cardNumber: cardNo, amount: amt });
+      onDone(amt, currency);
+    } catch (e: any) {
+      setErr(e?.message || 'Top up failed — try again.');
+    } finally { setBusy(false); }
+  };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
-        <Pressable
-          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34 }}
-          onPress={() => { /* swallow taps inside the sheet */ }}
-        >
-          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: '800' }}>Create Account</Text>
-            <Pressable hitSlop={8} onPress={onClose}><XIcon size={22} color={C.textSecondary} /></Pressable>
-          </View>
-
-          <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, padding: 16, marginBottom: 18 }}>
-            <Text style={{ color: C.textSecondary, fontSize: 14, marginBottom: 4 }}>During the registration process you will need to:</Text>
-            <Requirement Icon={BookUser} label="Prepare your Passport" />
-            <Requirement Icon={Home}     label="Be at your home" />
-            <Requirement Icon={MapPin}   label="Allow location access" />
-            <Pressable hitSlop={6} onPress={() => openBrowser('https://lax.money')}>
-              <Text style={{ color: C.blue, fontSize: 13, fontWeight: '600', marginTop: 6 }}>Learn more</Text>
-            </Pressable>
-          </View>
-
-          <Pressable onPress={() => setAgreed(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <View style={{ width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: agreed ? C.blue : 'transparent', borderWidth: agreed ? 0 : 1.5, borderColor: C.borderDefault }}>
-              {agreed && <Check size={15} color="#fff" strokeWidth={3} />}
-            </View>
-            <Text style={{ color: C.textPrimary, fontSize: 14 }}>
-              I agree to <Text style={{ color: C.blue, fontWeight: '600' }} onPress={() => openBrowser('https://lax.money')}>Terms &amp; Conditions</Text>
-            </Text>
+    <View style={{ gap: 14 }}>
+      <Text style={{ color: C.textSecondary, fontSize: 12 }}>Select crypto to top up with</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {currencies.map(cur => (
+          <Pressable key={cur} onPress={() => setCurrency(cur)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: currency === cur ? C.blue : C.borderDefault, backgroundColor: currency === cur ? C.blueDim : 'transparent' }}>
+            <Avatar symbol={cur} color={ASSET_COLORS[cur.toUpperCase()] ?? C.blue} size={18}/>
+            <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>{cur}</Text>
           </Pressable>
+        ))}
+      </View>
 
-          {showRef && (
-            <TextInput
-              value={refCode}
-              onChangeText={setRefCode}
-              placeholder="Referral code"
-              placeholderTextColor={C.textMuted}
-              autoCapitalize="characters"
-              style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14, marginBottom: 12 }}
-            />
-          )}
-
-          <Pressable
-            onPress={onNext}
-            disabled={!agreed || busy}
-            style={{ height: 50, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: (!agreed || busy) ? 0.45 : 1 }}
-          >
-            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Please wait…' : 'Next'}</Text>
+      <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>Top up amount (USD)</Text>
+      <TextInput value={amount} onChangeText={setAmount} placeholder="0.00" placeholderTextColor={C.textMuted} keyboardType="decimal-pad"
+        style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, color: C.textPrimary, fontSize: 22, fontWeight: '800', textAlign: 'center' }}/>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {LAX_TOPUP_QUICK.map(q => (
+          <Pressable key={q} onPress={() => setAmount(String(q))} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}>
+            <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>${q}</Text>
           </Pressable>
+        ))}
+      </View>
 
-          {!showRef && (
-            <Pressable onPress={() => setShowRef(true)} style={{ height: 50, borderRadius: 14, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
-              <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>I have a referral code</Text>
-            </Pressable>
-          )}
-        </Pressable>
+      {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
+
+      <Pressable onPress={submit} disabled={busy}
+        style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.5 : 1, marginTop: 4 }, pressed && { opacity: 0.85 }]}>
+        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Processing…' : 'Top Up'}</Text>
       </Pressable>
-    </Modal>
+    </View>
+  );
+}
+
+function LaxSuccess({ C, styles, last4, topUp, onDone }: any) {
+  return (
+    <View style={{ gap: 16, alignItems: 'center', paddingTop: 24 }}>
+      <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(34,197,94,0.14)', alignItems: 'center', justifyContent: 'center' }}>
+        <Check size={40} color="#22c55e" strokeWidth={3}/>
+      </View>
+      <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800' }}>Top Up Successful!</Text>
+      {topUp && (
+        <Text style={{ color: C.textSecondary, fontSize: 14, textAlign: 'center' }}>
+          <Text style={{ color: C.textPrimary, fontWeight: '800' }}>${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text> in {topUp.currency} has been added to your LAX Card •••• {last4}
+        </Text>
+      )}
+      <Pressable onPress={onDone} style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 12 }, pressed && { opacity: 0.85 }]}>
+        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Done</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -1434,7 +1740,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
           user authenticates without leaving the app. */}
       <QuanttAgentsCard/>
     </ScrollView>
-    {laxCreate && <LaxCreateAccountSheet address={addr} onClose={() => setLaxCreate(false)} />}
+    {laxCreate && <LaxCardFlow onClose={() => setLaxCreate(false)} />}
     </>
   );
 }
