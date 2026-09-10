@@ -1675,8 +1675,8 @@ function SettingsScreen({
         <button className="set-row" onClick={onOpenRecoveryPhrase} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
           <div className="set-icon" style={{ color: 'var(--red)' }}><AlertTriangle size={15}/></div>
           <div style={{ flex: 1 }}>
-            <div className="set-label" style={{ color: 'var(--red)' }}>Recovery phrase</div>
-            <div className="set-sub">View your 12 / 24-word seed</div>
+            <div className="set-label" style={{ color: 'var(--red)' }}>Export keys</div>
+            <div className="set-sub">Recovery phrase or this account&apos;s private key</div>
           </div>
           <ChevronRight size={15} color="var(--text-muted)"/>
         </button>
@@ -3289,10 +3289,13 @@ type Modal = 'send' | 'receive' | 'swap' | 'walletconnect' | 'address-book' | 'p
 function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
   const [pwd, setPwd] = useState('');
   const [words, setWords] = useState<string[] | null>(null);
+  const [pk, setPk] = useState<string | null>(null);
+  const [tab, setTab] = useState<'phrase' | 'pk'>('phrase');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(true);
   const [copied, setCopied] = useState(false);
+  const acctIdx = getActiveAccountIndex();
   const reveal = async () => {
     setBusy(true); setErr('');
     try {
@@ -3300,45 +3303,75 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
       if (!v) { setErr('No wallet found on this device.'); return; }
       const r = await openVault(v, pwd);
       if (!r) { setErr('Wrong password.'); return; }
-      setWords(r.mnemonic.trim().split(/\s+/));
+      const mnemonic = r.mnemonic.trim();
+      setWords(mnemonic.split(/\s+/));
+      try {
+        setPk(HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(mnemonic), `m/44'/60'/0'/0/${acctIdx}`).privateKey);
+      } catch { /* leave pk null */ }
     } catch { setErr('Could not open the vault.'); }
     finally { setBusy(false); }
   };
-  const copyPhrase = async () => {
-    if (!words) return;
-    try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* blocked */ }
+  const copyOut = async () => {
+    const text = tab === 'phrase' ? (words ?? []).join(' ') : (pk ?? '');
+    if (!text) return;
+    try { await navigator.clipboard.writeText(text); } catch { /* blocked */ }
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <Modal title="Recovery phrase" onClose={onClose}>
+    <Modal title="Export keys" onClose={onClose}>
       <div className="modal-body" style={{ padding: 14 }}>
         {!words ? (
           <>
-            <p className="onb-sub" style={{ marginBottom: 10 }}>Enter your password to reveal your secret recovery phrase. Anyone with these words has full access to your wallet — never share them.</p>
+            <p className="onb-sub" style={{ marginBottom: 10 }}>Enter your password to reveal your secret recovery phrase or this account&apos;s private key. Anyone with either has full access to your wallet — never share them.</p>
             <input className="field" type="password" placeholder="Password" autoFocus value={pwd}
               onChange={(e) => setPwd(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && pwd && !busy) reveal(); }} />
             {err && <div className="onb-err">{err}</div>}
-            <button className="btn-primary" style={{ marginTop: 10 }} disabled={!pwd || busy} onClick={reveal}>{busy ? 'Verifying…' : 'Reveal phrase'}</button>
+            <button className="btn-primary" style={{ marginTop: 10 }} disabled={!pwd || busy} onClick={reveal}>{busy ? 'Verifying…' : 'Reveal'}</button>
           </>
         ) : (
           <>
-            <div className="seed-grid" style={{ position: 'relative' }}>
-              {words.map((w, i) => (
-                <div key={i} className="seed-cell">
-                  <span className="seed-num">{i + 1}.</span>
-                  <span style={{ userSelect: 'text', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
-                </div>
-              ))}
-              {hidden && (
-                <button type="button" onClick={() => setHidden(false)}
-                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  Tap to reveal
+            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 9, border: '1px solid var(--border-default)', marginBottom: 10 }}>
+              {(['phrase', 'pk'] as const).map(t => (
+                <button key={t} type="button" onClick={() => { setTab(t); setHidden(true); }}
+                  style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
+                  {t === 'phrase' ? 'Phrase' : `Private key · acct ${acctIdx}`}
                 </button>
-              )}
+              ))}
             </div>
-            <button className="btn-link" disabled={hidden} onClick={copyPhrase}>
-              {copied ? <><Check size={13}/> Copied</> : <><Copy size={13}/> Copy phrase</>}
+            {tab === 'phrase' ? (
+              <div className="seed-grid" style={{ position: 'relative' }}>
+                {words.map((w, i) => (
+                  <div key={i} className="seed-cell">
+                    <span className="seed-num">{i + 1}.</span>
+                    <span style={{ userSelect: 'text', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
+                  </div>
+                ))}
+                {hidden && (
+                  <button type="button" onClick={() => setHidden(false)}
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    Tap to reveal
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ position: 'relative', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, wordBreak: 'break-all', userSelect: 'text', color: 'var(--text-primary)', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>
+                  {pk ?? 'Private-key export unavailable for this wallet.'}
+                </div>
+                {hidden && pk && (
+                  <button type="button" onClick={() => setHidden(false)}
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    Tap to reveal
+                  </button>
+                )}
+              </div>
+            )}
+            <p className="onb-sub" style={{ marginTop: 8, fontSize: 11 }}>
+              {tab === 'pk' ? `EVM key for account ${acctIdx} — imports that one account elsewhere.` : 'Restores the whole wallet and every account.'}
+            </p>
+            <button className="btn-link" disabled={hidden || (tab === 'pk' && !pk)} onClick={copyOut}>
+              {copied ? <><Check size={13}/> Copied</> : <><Copy size={13}/> {tab === 'phrase' ? 'Copy phrase' : 'Copy private key'}</>}
             </button>
           </>
         )}

@@ -4138,9 +4138,9 @@ function SettingsScreen() {
     { label: 'Change password',   desc: 'Update wallet password',          Icon: Key,
       onPress: () => setChangePwdOpen(true) },
     isPrivateKeyWallet(seed)
-      ? { label: 'Private key',      desc: 'View this account’s private key', Icon: AlertTriangle, danger: true,
+      ? { label: 'Private key',   desc: 'View this account’s private key',              Icon: AlertTriangle, danger: true,
           onPress: () => setRevealOpen(true) }
-      : { label: 'Recovery phrase',  desc: 'View your 12 / 24-word seed',     Icon: AlertTriangle, danger: true,
+      : { label: 'Export keys',   desc: 'Recovery phrase or this account’s private key', Icon: AlertTriangle, danger: true,
           onPress: () => setRevealOpen(true) },
   ];
   const NETWORK_OPTS: SettingItem[] = [
@@ -4851,6 +4851,8 @@ function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClo
   const [err, setErr]       = useState('');
   const [busy, setBusy]     = useState(false);
   const [bio, setBio]       = useState<{ kind: BiometricKind; on: boolean }>({ kind: 'none', on: false });
+  const [tab, setTab]       = useState<'phrase' | 'pk'>('phrase');
+  const acctIdx = getActiveAccountIndex();
 
   // Block screenshots / screen-recording the whole time this sheet is open —
   // it renders the seed phrase or raw private key once unlocked.
@@ -4869,6 +4871,13 @@ function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClo
   // Private-key wallets have no recovery phrase — reveal the raw key instead.
   const isPk = seed.length === 1 && /^0x[0-9a-fA-F]{64}$/.test((seed[0] ?? '').trim());
   const noun = isPk ? 'private key' : 'recovery phrase';
+  // HD wallets can also export the active account's derived key.
+  const hdPk = (!isPk && shown) ? (() => {
+    try { return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${acctIdx}`).privateKey; } catch { return null; }
+  })() : null;
+  const showTabs = shown && !isPk;
+  const onPkTab = isPk || tab === 'pk';
+  const shownKey = isPk ? seed[0] : hdPk;
 
   // ── Gate: prove ownership (password or biometric) before anything is shown ──
   const verifyPassword = async () => {
@@ -4927,22 +4936,33 @@ function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClo
   }
 
   return (
-    <SheetShell title={isPk ? 'Private key' : 'Recovery phrase'} onClose={onClose}>
+    <SheetShell title={isPk ? 'Private key' : 'Export keys'} onClose={onClose}>
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
         <AlertTriangle size={16} color="#f59e0b"/>
         <Text style={{ flex: 1, fontSize: 12, color: C.textSecondary, lineHeight: 18 }}>
-          Anyone with your {noun} controls your funds. Never share it, and make sure no one is watching your screen.
+          Anyone with your {noun} or private key controls your funds. Never share it, and make sure no one is watching your screen.
         </Text>
       </View>
       {!shown ? (
         <Pressable onPress={() => setShown(true)} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>{isPk ? 'Reveal private key' : 'Reveal phrase'}</Text>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{isPk ? 'Reveal private key' : 'Reveal'}</Text>
         </Pressable>
       ) : (
         <>
-          {isPk ? (
+          {showTabs && (
+            <View style={{ flexDirection: 'row', gap: 4, backgroundColor: C.bgElevated, padding: 4, borderRadius: 10, borderWidth: 1, borderColor: C.borderDefault }}>
+              {(['phrase', 'pk'] as const).map(t => (
+                <Pressable key={t} onPress={() => setTab(t)} style={{ flex: 1, paddingVertical: 7, borderRadius: 7, alignItems: 'center', backgroundColor: tab === t ? C.blue : 'transparent' }}>
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: tab === t ? '#fff' : C.textSecondary }}>{t === 'phrase' ? 'Recovery phrase' : `Private key · acct ${acctIdx}`}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          {onPkTab ? (
             <View style={{ backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12 }}>
-              <Text selectable style={{ color: C.textPrimary, fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>{seed[0]}</Text>
+              <Text selectable style={{ color: C.textPrimary, fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                {shownKey ?? 'Private-key export unavailable for this wallet.'}
+              </Text>
             </View>
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -4955,11 +4975,14 @@ function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClo
             </View>
           )}
           <Pressable
-            onPress={() => { Clipboard.setStringAsync(seed.join(' ')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1600); }}
+            onPress={() => { Clipboard.setStringAsync(onPkTab ? (shownKey ?? '') : seed.join(' ')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1600); }}
             style={{ paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}
           >
-            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied' : (isPk ? 'Copy private key' : 'Copy phrase')}</Text>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied' : (onPkTab ? 'Copy private key' : 'Copy phrase')}</Text>
           </Pressable>
+          {onPkTab && !isPk && (
+            <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center' }}>EVM key for account {acctIdx} — imports that one account elsewhere.</Text>
+          )}
         </>
       )}
     </SheetShell>

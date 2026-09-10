@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ethers } from 'ethers';
 import { TOKENS } from '../lib/tokens';
@@ -12,7 +12,8 @@ import {
   FX_CURRENCIES, type DisplayCurrency,
 } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
-import { loadVault, openVault, setSeedBackedUp, isSeedBackedUp, clearVault } from '../lib/vault';
+import { loadVault, openVault, setSeedBackedUp, isSeedBackedUp, clearVault, getActiveAccountIndex } from '../lib/vault';
+import { walletFromSeed } from '../lib/signer';
 import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
 import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
@@ -1160,6 +1161,15 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const isPk = !seed.length && !!privateKey;
+  /** HD wallets can also export the active account's derived key. */
+  const acctIdx = getActiveAccountIndex();
+  const [tab, setTab] = useState<'phrase' | 'pk'>('phrase');
+  const derivedPk = useMemo(() => {
+    if (isPk || !seed.length || !revealed) return null;
+    try { return walletFromSeed(seed, undefined, acctIdx).privateKey; } catch { return null; }
+  }, [isPk, seed, revealed, acctIdx]);
+  const showTabs = revealed && !isPk && seed.length > 0;
+  const shownPk = isPk ? privateKey : derivedPk;
 
   const verify = async () => {
     if (busy || !pwd) return;
@@ -1178,7 +1188,7 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
   };
 
   const copy = () => {
-    const text = isPk ? (privateKey ?? '') : seed.join(' ');
+    const text = (isPk || tab === 'pk') ? (shownPk ?? '') : seed.join(' ');
     navigator.clipboard?.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
@@ -1196,7 +1206,7 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
             <Shield size={18}/>
           </div>
           <div style={{ fontSize: 17, fontWeight: 800 }}>
-            {isPk ? 'Export private key' : 'Recovery phrase'}
+            {isPk ? 'Export private key' : 'Export keys'}
           </div>
         </div>
 
@@ -1226,12 +1236,22 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
           </>
         ) : (
           <>
-            {isPk ? (
+            {showTabs && (
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)', marginBottom: 12 }}>
+                {(['phrase', 'pk'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setTab(t)}
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
+                    {t === 'phrase' ? 'Recovery phrase' : `Private key · acct ${acctIdx}`}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(isPk || tab === 'pk') ? (
               <div style={{
                 wordBreak: 'break-all', fontFamily: 'Geist Mono, monospace', fontSize: 13,
                 background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
                 borderRadius: 10, padding: 14, lineHeight: 1.6,
-              }}>{privateKey}</div>
+              }}>{shownPk ?? 'Private-key export unavailable for this wallet.'}</div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {seed.map((w, i) => (
@@ -1534,8 +1554,8 @@ export function SettingsView() {
             </button>
           </Row>
           <Row
-            label={wallet?.privateKey && !wallet?.seed?.length ? 'Export private key' : 'Backup seed phrase'}
-            sub={wallet?.privateKey && !wallet?.seed?.length ? 'Reveal your raw private key' : 'Export your 12/24-word recovery phrase'}
+            label={wallet?.privateKey && !wallet?.seed?.length ? 'Export private key' : 'Export keys'}
+            sub={wallet?.privateKey && !wallet?.seed?.length ? 'Reveal your raw private key' : 'Recovery phrase or this account’s private key'}
           >
             <button className="settings-btn settings-btn-danger" onClick={() => setRevealOpen(true)}>
               <Download size={14}/> Export

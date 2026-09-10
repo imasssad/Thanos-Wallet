@@ -1248,15 +1248,21 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* Reveal / export the secret recovery phrase — re-prompts the password and
-   decrypts the STORED vault before showing the words (blurred until clicked). */
+/* Reveal / export the secret recovery phrase AND the active account's
+   private key — re-prompts the password and decrypts the STORED vault
+   before showing anything (blurred until clicked). The private key is
+   derived in-memory from the mnemonic at the active BIP-44 index; it's
+   never stored. */
 function ExportSeedModal({ onClose }: { onClose: () => void }) {
   const [pwd, setPwd]     = useState('');
   const [words, setWords] = useState<string[] | null>(null);
+  const [pk, setPk]       = useState<string | null>(null);
+  const [tab, setTab]     = useState<'phrase' | 'pk'>('phrase');
   const [err, setErr]     = useState('');
   const [busy, setBusy]   = useState(false);
   const [hidden, setHidden] = useState(true);
   const [copied, setCopied] = useState(false);
+  const acctIdx = getActiveAccountIndex();
   const reveal = async () => {
     setBusy(true); setErr('');
     try {
@@ -1264,43 +1270,76 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
       if (!v) { setErr('No wallet found on this device.'); return; }
       const r = await openVault(v, pwd);
       if (!r) { setErr('Wrong password.'); return; }
-      setWords(r.mnemonic.trim().split(/\s+/));
+      const mnemonic = r.mnemonic.trim();
+      setWords(mnemonic.split(/\s+/));
+      try {
+        const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(mnemonic), `m/44'/60'/0'/0/${acctIdx}`);
+        setPk(w.privateKey);
+      } catch { /* leave pk null — phrase still works */ }
     } catch { setErr('Could not open the vault.'); }
     finally { setBusy(false); }
   };
-  const copyPhrase = async () => {
-    if (!words) return;
-    await copyText(words.join(' '));
+  const copyOut = async () => {
+    const text = tab === 'phrase' ? (words ?? []).join(' ') : (pk ?? '');
+    if (!text) return;
+    await copyText(text);
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <Modal title="Recovery phrase" onClose={onClose}>
+    <Modal title="Export keys" onClose={onClose}>
       <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {!words ? (
           <>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Enter your password to reveal your secret recovery phrase. Anyone with these words has full control of your wallet — never share them.</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Enter your password to reveal your secret recovery phrase or this account&apos;s private key. Anyone with either has full control of the wallet — never share them.</p>
             <input className="field-input" type="password" placeholder="Password" autoFocus value={pwd} onChange={e => setPwd(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && pwd && !busy) reveal(); }} />
             {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 13 }}>{err}</div>}
-            <button className="settings-btn settings-btn-danger" disabled={!pwd || busy} onClick={reveal}>{busy ? 'Verifying…' : 'Reveal phrase'}</button>
+            <button className="settings-btn settings-btn-danger" disabled={!pwd || busy} onClick={reveal}>{busy ? 'Verifying…' : 'Reveal'}</button>
           </>
         ) : (
           <>
-            <div className="seed-grid" style={{ position: 'relative' }}>
-              {words.map((w, i) => (
-                <div key={i} className="seed-word">
-                  <span className="seed-num">{i + 1}.</span>
-                  <span style={{ filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
-                </div>
-              ))}
-              {hidden && (
-                <button onClick={() => setHidden(false)}
-                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(2px)', border: 'none', borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
-                  Click to reveal
+            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)' }}>
+              {(['phrase', 'pk'] as const).map(t => (
+                <button key={t} onClick={() => { setTab(t); setHidden(true); }}
+                  style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
+                  {t === 'phrase' ? 'Recovery phrase' : `Private key · acct ${acctIdx}`}
                 </button>
-              )}
+              ))}
             </div>
-            <button className="settings-btn" disabled={hidden} onClick={copyPhrase}>{copied ? 'Copied ✓' : 'Copy phrase'}</button>
+            {tab === 'phrase' ? (
+              <div className="seed-grid" style={{ position: 'relative' }}>
+                {words.map((w, i) => (
+                  <div key={i} className="seed-word">
+                    <span className="seed-num">{i + 1}.</span>
+                    <span style={{ filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>{w}</span>
+                  </div>
+                ))}
+                {hidden && (
+                  <button onClick={() => setHidden(false)}
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(2px)', border: 'none', borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
+                    Click to reveal
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ position: 'relative', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontFamily: 'Geist Mono, ui-monospace, monospace', fontSize: 12, wordBreak: 'break-all', color: 'var(--text-primary)', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>
+                  {pk ?? 'Private-key export unavailable for this wallet.'}
+                </div>
+                {hidden && pk && (
+                  <button onClick={() => setHidden(false)}
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(2px)', border: 'none', borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
+                    Click to reveal
+                  </button>
+                )}
+              </div>
+            )}
+            <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              {tab === 'pk'
+                ? `EVM private key for account ${acctIdx} (m/44'/60'/0'/0/${acctIdx}) — imports that one account into MetaMask etc.`
+                : 'These words restore the whole wallet and every account.'}
+            </p>
+            <button className="settings-btn" disabled={hidden || (tab === 'pk' && !pk)} onClick={copyOut}>{copied ? 'Copied ✓' : (tab === 'phrase' ? 'Copy phrase' : 'Copy private key')}</button>
           </>
         )}
       </div>
@@ -2918,7 +2957,7 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
           <Row label="Change password" sub="Update your wallet password">
             <button className="settings-btn" onClick={() => setChangePwdOpen(true)}><KeyIcon size={14}/> Change</button>
           </Row>
-          <Row label="Backup seed phrase" sub="Export your 12/24-word recovery phrase">
+          <Row label="Export keys" sub="Reveal your recovery phrase or this account's private key">
             <button className="settings-btn settings-btn-danger" onClick={() => setExportSeedOpen(true)}><Download2 size={14}/> Export</button>
           </Row>
           {/* Hidden in the Mac App Store build — the sandbox blocks the USB/HID
