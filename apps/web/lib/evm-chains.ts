@@ -83,7 +83,7 @@ export const EVM_CHAINS: readonly EvmChain[] = [
     chainId:      56,
     name:         'BNB Chain',
     slug:         'bsc',
-    rpcUrl:       'https://bsc-dataseed.binance.org',
+    rpcUrl:       'https://bsc-dataseed.bnbchain.org',
     nativeSymbol: 'BNB',
     nativeName:   'BNB',
     decimals:     18,

@@ -28,7 +28,7 @@ export interface ExtEvmChain {
 export const EXT_EVM_CHAINS: readonly ExtEvmChain[] = [
   { chainId: 9005,  name: 'Lithosphere', slug: 'lithosphere', rpcUrl: 'https://rpc-mainnet.litho.ai',           nativeSymbol: 'LITHO', nativeName: 'Lithosphere',       explorerUrl: 'https://lithoscan.ai',            color: '#22c55e' },
   { chainId: 1,     name: 'Ethereum',  slug: 'ethereum',  rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',  nativeName: 'Ether',              explorerUrl: 'https://etherscan.io',            color: '#627eea' },
-  { chainId: 56,    name: 'BNB Chain', slug: 'bsc',       rpcUrl: 'https://bsc-dataseed.binance.org',        nativeSymbol: 'BNB',  nativeName: 'BNB',                explorerUrl: 'https://bscscan.com',             color: '#f3ba2f' },
+  { chainId: 56,    name: 'BNB Chain', slug: 'bsc',       rpcUrl: 'https://bsc-dataseed.bnbchain.org',       nativeSymbol: 'BNB',  nativeName: 'BNB',                explorerUrl: 'https://bscscan.com',             color: '#f3ba2f' },
   { chainId: 137,   name: 'Polygon',   slug: 'polygon',   rpcUrl: 'https://polygon-bor-rpc.publicnode.com',  nativeSymbol: 'POL',  nativeName: 'Polygon',            explorerUrl: 'https://polygonscan.com',         color: '#8247e5' },
   { chainId: 8453,  name: 'Base',      slug: 'base',      rpcUrl: 'https://mainnet.base.org',                nativeSymbol: 'ETH',  nativeName: 'Ether (Base)',       explorerUrl: 'https://basescan.org',            color: '#0052ff' },
   { chainId: 42161, name: 'Arbitrum',  slug: 'arbitrum',  rpcUrl: 'https://arb1.arbitrum.io/rpc',            nativeSymbol: 'ETH',  nativeName: 'Ether (Arbitrum)',   explorerUrl: 'https://arbiscan.io',             color: '#28a0f0' },

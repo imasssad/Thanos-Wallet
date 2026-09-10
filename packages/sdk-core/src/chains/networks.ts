@@ -102,7 +102,7 @@ export const BSC: NetworkConfig = {
   chainId: 56,
   name: 'BNB Smart Chain',
   kind: 'evm',
-  rpcUrls: ['https://bsc-dataseed.binance.org'],
+  rpcUrls: ['https://bsc-dataseed.bnbchain.org', 'https://bsc-dataseed.binance.org'],
   blockExplorerUrl: 'https://bscscan.com',
   nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }
 };
