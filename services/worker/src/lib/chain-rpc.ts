@@ -24,7 +24,13 @@ const RPC_URLS: Record<number, string[]> = {
                'https://rpc-3.litho.ai'),
   // Public chains
   1:     ['https://ethereum.publicnode.com', 'https://eth.merkle.io'],
-  56:    ['https://bsc-dataseed.binance.org'],
+  // BNB_RPC_PRIMARY (a keyed provider URL — Alchemy/QuickNode/etc.) takes
+  // over when set, with the public dataseed kept as the fallback entry.
+  56:    urls(
+          process.env.BNB_RPC_PRIMARY &&
+            `${process.env.BNB_RPC_PRIMARY},${process.env.BNB_RPC_FALLBACK ?? 'https://bsc-dataseed.bnbchain.org'}`,
+          'https://bsc-dataseed.bnbchain.org',
+        ),
   137:   ['https://polygon-bor-rpc.publicnode.com'],
   8453:  ['https://mainnet.base.org'],
   42161: ['https://arb1.arbitrum.io/rpc'],
