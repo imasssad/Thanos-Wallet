@@ -24,9 +24,10 @@
  * that doesn't exist in the spec; corrected here). Request bodies below
  * match the spec's documented schemas. RESPONSE bodies are still undocumented
  * in the spec itself ("Default Response" on every 200) — response types are
- * therefore only pinned where actually observed against a live session
- * (currently: getOverview's dashboard/agents shape, verified 2026-08-14);
- * everything else returns `unknown` until observed.
+ * therefore only pinned where actually observed against a live session, and
+ * getOverview() now normalises defensively (see normalizeOverview) since it
+ * moved to /v1/dashboard/overview on 2026-09-10 and that response has not
+ * been seen live; everything else returns `unknown` until observed.
  *
  * NO SANDBOX: Quantt confirmed (2026-09) there is no hosted staging
  * environment with test accounts — every call here hits the single
@@ -326,31 +327,28 @@ export class QuanttClient {
 
   /* ── dashboard / overview ─────────────────────────────────────────── */
 
-  /** The verified-live, currently-shipped overview call (undocumented in
-   *  the OpenAPI spec, but a real, working route — confirmed 2026-09-02 it
-   *  401s rather than 404s unauthenticated). Kept as the primary method
-   *  since all 4 clients already depend on this exact shape in production.
-   *  getUserDashboardOverview() below is now the spec's documented match
-   *  for this same "your own account" data — a real candidate if this one
-   *  is ever deprecated, unlike getDashboard() (see its warning). */
-  getOverview(): Promise<QuanttOverview> { return this.authed<QuanttOverview>('/v1/mobile/overview'); }
-
-  /** GET /v1/dashboard/overview — the spec's actual documented match for
-   *  getOverview() above: "Agents, trading activity, decisions, plan limits
-   *  and recent events for the authenticated user only, computed from the
-   *  product database" (fetched 2026-09-09). Two things worth knowing
-   *  before switching UI over to this instead of getOverview():
-   *   - PnL only covers CLOSED positions; open positions are reported at
-   *     cost, never marked to market — Quantt has no price source for held
-   *     tokens. A dashboard.portfolio.pnl* figure from here isn't the same
-   *     computation as one that WAS marked-to-market, so don't assume this
-   *     response is byte-identical to getOverview()'s.
-   *   - The response names an `unavailable` field listing which figures
-   *     the product can't produce yet — render those as "—", not 0.
-   *  Response shape is still "Default Response" in the spec (no schema),
-   *  so — same rule as everywhere else here — verify against a live
-   *  session before depending on a specific field. */
-  getUserDashboardOverview(): Promise<unknown> { return this.authed('/v1/dashboard/overview'); }
+  /** The signed-in user's own portfolio + agents.
+   *
+   *  Hits GET /v1/dashboard/overview — the spec's documented per-user
+   *  route ("Agents, trading activity, decisions, plan limits and recent
+   *  events for the authenticated user only, computed from the product
+   *  database"). Switched here 2026-09-10: the old call, /v1/mobile/overview
+   *  (undocumented), was returning what looked like a platform-wide /
+   *  seeded-demo snapshot rather than the caller's real portfolio — clients
+   *  flagged "$17M, 12 identical agents" for a fresh account.
+   *
+   *  The response shape is "Default Response" in the OpenAPI (unverified),
+   *  so normalizeOverview() below is deliberately loose: it accepts the
+   *  fields nested under `dashboard` OR at the top level, and returns
+   *  `null` (→ the card hides) rather than a wrong shape if it can't find a
+   *  `portfolio` with a numeric `equity`. A real empty account
+   *  (equity 0, agents []) still renders — that's correct, not a failure.
+   *  Notes from the spec: PnL covers CLOSED positions only (open positions
+   *  at cost, no mark-to-market — no price source), and an `unavailable`
+   *  field names figures the product can't produce yet. */
+  async getOverview(): Promise<QuanttOverview | null> {
+    return normalizeOverview(await this.authed('/v1/dashboard/overview'));
+  }
 
   /** GET /v1/dashboard — "Platform dashboard payload." NOT an overview
    *  equivalent, despite the name and despite this client's own earlier
@@ -363,7 +361,8 @@ export class QuanttClient {
    *  — an id from here will 404/400 there. Also 502s outright whenever the
    *  decision engine itself is unreachable, with no fallback at this
    *  layer. Kept only because it's a real, documented, working route;
-   *  getUserDashboardOverview() above is the one to reach for instead. */
+   *  getOverview() above (/v1/dashboard/overview) is the one to reach for
+   *  instead. */
   getDashboard(): Promise<unknown> { return this.authed('/v1/dashboard'); }
 
   /* ── agents (GET /v1/agents documents this as "for the current user") ─ */
@@ -568,6 +567,26 @@ async function safeJson<T>(res: Response, path: string): Promise<T> {
   } catch {
     throw new QuanttError(res.status, 'response was not valid JSON', path);
   }
+}
+
+/** /v1/dashboard/overview's shape isn't in the spec. Pull a portfolio +
+ *  agents out of it whether they're nested under `dashboard` or sit at the
+ *  top level, and return null (→ the card renders nothing) rather than a
+ *  half-formed object if there's no `portfolio` with a numeric `equity`.
+ *  A genuinely empty account — equity 0, no agents — still passes. */
+function normalizeOverview(raw: unknown): QuanttOverview | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const scope = (r.dashboard && typeof r.dashboard === 'object')
+    ? (r.dashboard as Record<string, unknown>)
+    : r;
+  const portfolio = scope.portfolio;
+  if (!portfolio || typeof portfolio !== 'object'
+      || typeof (portfolio as Record<string, unknown>).equity !== 'number') {
+    return null;
+  }
+  const agents = Array.isArray(scope.agents) ? scope.agents : [];
+  return { dashboard: { portfolio, agents } } as QuanttOverview;
 }
 
 /** The typed-verify / refresh responses are undocumented, so accept the common

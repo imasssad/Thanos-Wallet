@@ -221,24 +221,18 @@ export class QuanttClient {
     return safeJson<T>(res, path);
   }
 
-  /** Undocumented in the OpenAPI spec but live and verified (401s, not
-   *  404s, unauthenticated as of 2026-09-02) — kept as the primary call
-   *  since it's what's already shipped in production on all 4 clients.
-   *  getUserDashboardOverview() below is the spec's documented match for
-   *  this same "your own account" data. */
-  getOverview(): Promise<QuanttOverview> { return this.authed<QuanttOverview>('/v1/mobile/overview'); }
-
-  /** GET /v1/dashboard/overview — the spec's documented match for
-   *  getOverview() above (fetched 2026-09-09): "Agents, trading activity,
-   *  decisions, plan limits and recent events for the authenticated user
-   *  only." Two things before switching UI over to this: PnL only covers
-   *  CLOSED positions (open positions are reported at cost, never marked
-   *  to market — no price source for held tokens exists), and the
-   *  response names an `unavailable` field for figures it can't produce —
-   *  render those as "—", not 0. Still "Default Response" in the spec, so
-   *  verify the exact shape against a live session before depending on a
-   *  specific field. */
-  getUserDashboardOverview(): Promise<unknown> { return this.authed('/v1/dashboard/overview'); }
+  /** The signed-in user's own portfolio + agents. Hits GET
+   *  /v1/dashboard/overview — the spec's documented per-user route.
+   *  Switched here 2026-09-10 from the undocumented /v1/mobile/overview,
+   *  which was returning a platform-wide / seeded-demo snapshot ("$17M,
+   *  12 identical agents" for a fresh account) instead of real data.
+   *  Response shape is unverified ("Default Response" in the spec), so
+   *  normalizeOverview() is loose: fields under `dashboard` OR top-level,
+   *  and null (→ card hides) if there's no `portfolio` with a numeric
+   *  `equity`. An empty account (equity 0, agents []) still renders. */
+  async getOverview(): Promise<QuanttOverview | null> {
+    return normalizeOverview(await this.authed('/v1/dashboard/overview'));
+  }
 
   /** GET /v1/dashboard — "Platform dashboard payload." NOT an overview
    *  equivalent. Spec (fetched 2026-09-09): proxies the decision engine's
@@ -247,8 +241,8 @@ export class QuanttClient {
    *  /v1/agents/{id}" — every agent-scoped method here (getAgent,
    *  setAgentState, …) expects a real agent id, which an id from here
    *  isn't. Also 502s outright when the decision engine is unreachable,
-   *  no fallback at this layer. getUserDashboardOverview() above is the
-   *  one to reach for instead. */
+   *  no fallback at this layer. getOverview() above (/v1/dashboard/overview)
+   *  is the one to reach for instead. */
   getDashboard(): Promise<unknown> { return this.authed('/v1/dashboard'); }
 
   listAgents(): Promise<unknown> { return this.authed('/v1/agents'); }
@@ -348,6 +342,25 @@ async function safeJson<T>(res: { json(): Promise<unknown>; status: number }, pa
   } catch {
     throw new QuanttError(res.status, 'response was not valid JSON', path);
   }
+}
+
+/** /v1/dashboard/overview's shape isn't in the spec. Pull portfolio +
+ *  agents from under `dashboard` or the top level; return null (→ card
+ *  hides) if there's no `portfolio` with a numeric `equity`. An empty
+ *  account (equity 0, agents []) still passes. Mirrors sdk-core. */
+function normalizeOverview(raw: unknown): QuanttOverview | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const scope = (r.dashboard && typeof r.dashboard === 'object')
+    ? (r.dashboard as Record<string, unknown>)
+    : r;
+  const portfolio = scope.portfolio;
+  if (!portfolio || typeof portfolio !== 'object'
+      || typeof (portfolio as Record<string, unknown>).equity !== 'number') {
+    return null;
+  }
+  const agents = Array.isArray(scope.agents) ? scope.agents : [];
+  return { dashboard: { portfolio, agents } } as QuanttOverview;
 }
 
 function normalizeSession(raw: unknown, prev?: QuanttSession): QuanttSession {
