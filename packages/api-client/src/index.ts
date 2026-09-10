@@ -245,6 +245,13 @@ export class ThanosApiClient {
     return (await this.storage.get(ACCESS_KEY)) !== null;
   }
 
+  /** Generic authed request against the Thanos backend, with the same
+   *  Bearer-token + 401-refresh handling as every method above. For
+   *  feature modules (LAX, …) that don't each warrant a bespoke method. */
+  async apiRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return this.req<T>(method, path, body, true);
+  }
+
   /* Internal ----------------------------------------------------------- */
 
   private async req<T>(
