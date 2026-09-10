@@ -1063,7 +1063,7 @@ export function Dashboard() {
                         : t === 'nfts'   ? 'NFTs'
                         : t === 'activity' ? 'Activity'
                         : t === 'cards'  ? 'Cards'
-                        : 'Quantt';
+                        : 'Quantts';
             return (
               <button
                 key={t}

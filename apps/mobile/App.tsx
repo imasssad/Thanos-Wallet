@@ -1486,7 +1486,7 @@ function QuanttAgentsCard() {
           <Sparkles size={17} color={C.blue}/>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Quantt Agents</Text>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Quantts Agents</Text>
           <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 }}>
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
@@ -1521,7 +1521,7 @@ function QuanttAgentsCard() {
             {session ? (
               <>
                 <Pressable onPress={() => openBrowser(QUANTT_AGENTS_URL)} style={({ pressed }) => [{ backgroundColor: C.blue, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 }, pressed && { opacity: 0.85 }]}>
-                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Open Quantt ↗</Text>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Open Quantts ↗</Text>
                 </Pressable>
                 <Pressable onPress={disconnect} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: divider }, pressed && { opacity: 0.7 }]}>
                   <Text style={{ color: C.textSecondary, fontSize: 13, fontWeight: '700' }}>Disconnect</Text>
@@ -1648,7 +1648,7 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
             )}
             {loadErr && (
               <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>
-                Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+                Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
               </Text>
             )}
 

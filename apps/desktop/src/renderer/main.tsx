@@ -619,7 +619,7 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
         )}
         {loadErr && (
           <div style={{ marginTop: 14, fontSize: 12, color: 'var(--text-secondary)' }}>
-            Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+            Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
           </div>
         )}
 
@@ -701,7 +701,7 @@ function AIAssistant() {
       <div className="ai-body">
         <div className="ai-icon"><Bot size={17}/></div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="ai-title">Quantt Agents</div>
+          <div className="ai-title">Quantts Agents</div>
           <div className="ai-sub">
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
@@ -712,8 +712,8 @@ function AIAssistant() {
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             {session ? (
               <>
-                <button onClick={() => open(QUANTT_AGENTS_URL, 'Quantt Agents')}
-                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' }}>Open Quantt ↗</button>
+                <button onClick={() => open(QUANTT_AGENTS_URL, 'Quantts Agents')}
+                  style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' }}>Open Quantts ↗</button>
                 <button onClick={disconnect}
                   style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default, rgba(148,163,184,0.28))' }}>Disconnect</button>
               </>
@@ -721,7 +721,7 @@ function AIAssistant() {
               <>
                 <button onClick={connect} disabled={disabled}
                   style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, border: 'none', cursor: disabled ? 'default' : 'pointer', background: 'var(--blue)', color: '#fff', opacity: disabled ? 0.6 : 1 }}>{busy ? 'Connecting…' : 'Connect with Thanos'}</button>
-                <button onClick={() => open(QUANTT_AGENTS_URL, 'Quantt Agents')}
+                <button onClick={() => open(QUANTT_AGENTS_URL, 'Quantts Agents')}
                   style={{ fontSize: 13, fontWeight: 700, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default, rgba(148,163,184,0.28))' }}>Open ↗</button>
               </>
             )}

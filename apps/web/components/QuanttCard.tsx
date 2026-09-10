@@ -175,7 +175,7 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
         )}
         {loadErr && (
           <div style={{ marginTop: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-            Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+            Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
           </div>
         )}
 
@@ -260,7 +260,7 @@ export function QuanttCard() {
       <div className="ai-body">
         <div className="ai-icon"><Sparkles size={16}/></div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="ai-title">Quantt Agents</div>
+          <div className="ai-title">Quantts Agents</div>
           <div className="ai-sub">
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
@@ -271,7 +271,7 @@ export function QuanttCard() {
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             {session ? (
               <>
-                <a href={QUANTT_AGENTS_URL} target="_blank" rel="noopener noreferrer" style={primary}>Open Quantt ↗</a>
+                <a href={QUANTT_AGENTS_URL} target="_blank" rel="noopener noreferrer" style={primary}>Open Quantts ↗</a>
                 <button onClick={disconnect} style={ghost}>Disconnect</button>
               </>
             ) : (

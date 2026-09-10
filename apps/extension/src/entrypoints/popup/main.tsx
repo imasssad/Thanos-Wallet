@@ -873,7 +873,7 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
         )}
         {loadErr && (
           <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-            Couldn&apos;t load additional details from Quantt — showing what&apos;s already known.
+            Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
           </div>
         )}
 
@@ -970,7 +970,7 @@ function AIAssistant() {
           <Sparkles size={16}/>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>Quantt Agents</div>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>Quantts Agents</div>
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
@@ -984,7 +984,7 @@ function AIAssistant() {
                 <button
                   onClick={() => browser.tabs.create({ url: QUANTT_AGENTS_URL })}
                   style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' }}
-                >Open Quantt ↗</button>
+                >Open Quantts ↗</button>
                 <button
                   onClick={disconnect}
                   style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border, rgba(148,163,184,0.28))' }}
