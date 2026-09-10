@@ -5154,7 +5154,7 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
 type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'assets' | 'nfts';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
-  { key: 'home',     label: 'Home',     Icon: Home },
+  { key: 'home',     label: 'Wallet',   Icon: Home },
   { key: 'market',   label: 'Market',   Icon: TrendingUp },
   { key: 'discover', label: 'Discover', Icon: Compass },
   { key: 'activity', label: 'Activity', Icon: Clock },
