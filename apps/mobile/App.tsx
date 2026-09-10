@@ -167,7 +167,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
    ║  so testers can confirm at a glance which build is installed.      ║
    ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v2.0';
+const APP_VERSION = 'thanos-v2.0.1';
 
 /* EXCHANGE_ENABLED gates the whole Swap surface. Swap (same-chain) and
    Cross-chain ship in release builds; only the Bridge tab is dev-build
@@ -4317,7 +4317,7 @@ function SettingsScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.versionText}>Thanos Wallet · {APP_VERSION} · Makalu</Text>
+      <Text style={styles.versionText}>Thanos Wallet · {APP_VERSION} · Lithosphere</Text>
 
       {/* WalletConnect pairing + connected-dApp management. */}
       <WalletConnectModal
