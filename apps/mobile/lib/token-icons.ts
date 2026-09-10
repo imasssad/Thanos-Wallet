@@ -156,8 +156,7 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   ignite: require('../assets/images/dapps/ignite.png'),
   atua:   require('../assets/images/dapps/atua.png'),
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
-  'makalu-explorer': require('../assets/images/dapps/makalu-explorer.png'),
-  'kamet-explorer':  require('../assets/images/dapps/kamet-explorer.png'),
+  // lithoscan has no bundled mark yet — falls back to the letter badge.
   'litho-deals':     require('../assets/images/dapps/litho-deals.png'),
 };
 

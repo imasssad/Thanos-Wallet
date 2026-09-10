@@ -31,8 +31,7 @@ const WEB_ICONS: Record<string, string> = {
   ignite: '/images/dapps/ignite.png', // reuses the token logo
   atua:   '/images/dapps/atua.png',   // sourced from atua.ai brand kit
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
-  'makalu-explorer': '/images/dapps/makalu-explorer.png',
-  'kamet-explorer':  '/images/dapps/kamet-explorer.png',
+  // lithoscan has no bundled mark yet — falls back to the letter badge.
   'litho-deals':     '/images/dapps/litho-deals.png', // the double-struck 𝕃 mark
 };
 
