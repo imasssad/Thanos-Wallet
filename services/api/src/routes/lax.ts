@@ -104,6 +104,18 @@ interface FetchOpts { method?: string; body?: string; headers?: Record<string, s
 
 interface LaxCardRow { id: string; user_id: string; card_number: string }
 
+/** True iff `cardNumber` is recorded as this user's in lax_cards. Every
+ *  card-scoped route below gates on this — LAX's own API has no per-end-user
+ *  scoping, so the mapping we record at issue time is the only thing that
+ *  stops one Thanos user reading/topping-up another's card. */
+async function ownsCard(userId: string, cardNumber: string): Promise<boolean> {
+  const row = await queryOne<LaxCardRow>(
+    `select id from lax_cards where user_id = $1 and card_number = $2`,
+    [userId, cardNumber],
+  );
+  return Boolean(row);
+}
+
 const AccountSchema = z.object({
   address:      z.string().min(1).max(200).optional(),
   referralCode: z.string().min(1).max(64).optional(),
@@ -311,6 +323,66 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
         console.error('[lax] issue-card-api succeeded but no recognizable card number field was found in the response — ownership not recorded, reconcile lax_cards manually', { userId, responseKeys: json && typeof json === 'object' ? Object.keys(json) : null });
       }
     }
+    return res.status(status).json(json);
+  } catch {
+    return res.status(502).json({ error: 'LAX upstream unreachable' });
+  }
+});
+
+/** GET /lax/card/:cardNumber/transactions — POST /api/cards/get-card-transactions.
+ *  Upstream returns a stringified-JSON blob (text/plain), forwarded as-is;
+ *  the client parses. Ownership-gated like the rest. */
+laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const userId = (req as unknown as AuthRequest).userId;
+  const cardNumber = String(req.params.cardNumber);
+  if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  try {
+    const { status, json } = await laxFetch('/api/cards/get-card-transactions', {
+      method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
+    });
+    return res.status(status).json(json);
+  } catch {
+    return res.status(502).json({ error: 'LAX upstream unreachable' });
+  }
+});
+
+/** GET /lax/card/:cardNumber/details — POST /api/cards/get-card-details.
+ *  Sensitive: the spec's response carries expiry + CVC. Ownership-gated AND
+ *  laxOpLimiter'd so a compromised session can't scrape card secrets in a
+ *  loop. Never logged here. */
+laxRouter.get('/card/:cardNumber/details', laxOpLimiter, async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const userId = (req as unknown as AuthRequest).userId;
+  const cardNumber = String(req.params.cardNumber);
+  if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  try {
+    const { status, json } = await laxFetch('/api/cards/get-card-details', {
+      method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
+    });
+    return res.status(status).json(json);
+  } catch {
+    return res.status(502).json({ error: 'LAX upstream unreachable' });
+  }
+});
+
+/** POST /lax/card/:cardNumber/status — freeze / unfreeze. Maps to
+ *  POST /api/physical-cards/change-card-status. The spec documents only
+ *  `card_number` in the body (no explicit state field), so this forwards
+ *  an optional `status` too if the client sends one — to be confirmed
+ *  against the live API ("errors we can correct together" — Robert). */
+laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const userId = (req as unknown as AuthRequest).userId;
+  const cardNumber = String(req.params.cardNumber);
+  if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  const { status: desired } = (req.body ?? {}) as { status?: string };
+  const body: Record<string, unknown> = { card_number: cardNumber };
+  if (typeof desired === 'string' && desired) body.status = desired;
+  try {
+    const { status, json } = await laxFetch('/api/physical-cards/change-card-status', {
+      method: 'POST', body: JSON.stringify(body),
+    });
     return res.status(status).json(json);
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
