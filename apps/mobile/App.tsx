@@ -172,11 +172,8 @@ const APP_VERSION = 'thanos-v2.0';
 
 /* MultX Bridge and the exchange surface are available on every Thanos client.
    The Bridge tab executes the funded Makalu -> Kamet route in
-   MobileMakaluKametBridge (testnet chains only); the Cross-chain tab remains
-   visibly unavailable until a supported external route is live. Both tabs
-   are dev-build only (see the Mode-tabs __DEV__ filter in SwapScreen) — a
-   store build must not ship testnet fund-moving UI or a permanently
-   disabled "bridge offline" button. */
+   MobileMakaluKametBridge; the Cross-chain tab remains visibly unavailable
+   until a supported external route is live. */
 const EXCHANGE_ENABLED = true;
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -404,7 +401,7 @@ const ASSET_COLORS: Record<string, string> = {
   ETH: '#627eea', SOL: '#14f195', USDC: '#2775ca', USDT: '#26a17b',
   BNB: '#f3ba2f', JOT: '#ef4444', IMAGE: '#22d3ee', LAX: '#2f6bff',
   FGPT: '#a855f7', MUSA: '#a855f7', COLLE: '#29b6d8', AGII: '#8b7df7',
-  BLDR: '#f97316', AVAX: '#e84142', POL: '#8247e5',
+  BLDR: '#f97316',
 };
 function assetColor(sym: string): string {
   return ASSET_COLORS[(sym || '').toUpperCase()] ?? '#8b7df7';
@@ -2926,12 +2923,10 @@ function DappIcon({ id, name, color, size = 44 }: { id: string; name: string; co
 
 /* Swap — quotes MultX + Ignite in parallel, picks the better route,
    executes + polls bridge/DEX status. Same model as web SwapModal. */
-/* Cross-chain swap (mobile) — mirrors the web Cross-chain/Bridge tabs. The
-   network is picked via NetworkPickerSheet below (a real icon list, not the
-   plain-text Alert this used before); the token stays an Alert sheet (the RN
-   idiom used elsewhere here) — only the network row carries per-chain marks.
-   Live indicative rate from CoinGecko; execution is gated on the MultX bridge
-   being online (offline today), so the CTA is honest until then. */
+/* Cross-chain swap (mobile) — mirrors the web Cross-chain/Bridge tabs. Chain +
+   token are picked via Alert sheets (the RN idiom used elsewhere here). Live
+   indicative rate from CoinGecko; execution is gated on the MultX bridge being
+   online (offline today), so the CTA is honest until then. */
 const MOBILE_CROSS_CHAINS: Array<{ id: string; name: string; sym: string; tokens: string[] }> = [
   { id: 'ethereum',  name: 'Ethereum',    sym: 'ETH',   tokens: ['ETH', 'USDC', 'USDT', 'DAI'] },
   { id: 'polygon',   name: 'Polygon',     sym: 'POL',   tokens: ['POL', 'USDC', 'USDT', 'DAI'] },
@@ -2939,37 +2934,6 @@ const MOBILE_CROSS_CHAINS: Array<{ id: string; name: string; sym: string; tokens
   { id: 'avalanche', name: 'Avalanche',   sym: 'AVAX',  tokens: ['AVAX', 'USDC', 'USDT'] },
   { id: 'makalu',    name: 'Lithosphere', sym: 'LITHO', tokens: ['LITHO', 'LAX', 'LitBTC'] },
 ];
-
-/** Bottom sheet for picking a network, with the same real per-network icon
- *  (Avatar + networkIconSource/tokenIconSource) as the Receive flow's
- *  Select-network screen — replaces a plain-text Alert.alert list. */
-function NetworkPickerSheet({ onSelect, onClose }: { onSelect: (id: string) => void; onClose: () => void }) {
-  const C = useColors();
-  return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
-        <Pressable
-          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, maxHeight: '70%' }}
-          onPress={() => { /* swallow taps inside the sheet */ }}
-        >
-          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }}/>
-          <Text style={{ color: C.textPrimary, fontSize: 17, fontWeight: '800', marginBottom: 8, textAlign: 'center' }}>Select network</Text>
-          <ScrollView>
-            {MOBILE_CROSS_CHAINS.map((c, i) => (
-              <Pressable key={c.id} onPress={() => onSelect(c.id)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
-                         borderBottomWidth: i < MOBILE_CROSS_CHAINS.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
-                <Avatar symbol={c.sym} color={ASSET_COLORS[c.sym.toUpperCase()] ?? C.blue} size={36} icon={networkIconSource(c.id) ?? undefined}/>
-                <Text style={{ flex: 1, color: C.textPrimary, fontWeight: '700', fontSize: 15 }}>{c.name}</Text>
-                <ChevronRight size={18} color={C.textMuted}/>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
 
 function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   const C = useColors();
@@ -2996,10 +2960,10 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   const rate = price(fromTok) && price(toTok) ? price(fromTok) / price(toTok) : 0;
   const outv = rate * amtNum;
 
-  // Which side ('from' | 'to') the network sheet below is picking for, or
-  // null when closed. A picked network resets that side's asset if needed
-  // (handled by the two effects above).
-  const [networkPickerFor, setNetworkPickerFor] = useState<'from' | 'to' | null>(null);
+  const pickChain = (setter: (id: string) => void) => Alert.alert('Select network', undefined, [
+    ...MOBILE_CROSS_CHAINS.map(c => ({ text: c.name, onPress: () => setter(c.id) })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
   const pickTok = (tokens: string[], setter: (t: string) => void) => Alert.alert('Select asset', undefined, [
     ...tokens.map(t => ({ text: t, onPress: () => setter(t) })),
     { text: 'Cancel', style: 'cancel' as const },
@@ -3009,11 +2973,8 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   return (
     <View style={{ paddingHorizontal: 16, gap: 10 }}>
       <Text style={styles.fieldLabel}>FROM</Text>
-      <Pressable onPress={() => setNetworkPickerFor('from')} style={[styles.input, chip]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Avatar symbol={fromChain.sym} color={ASSET_COLORS[fromChain.sym.toUpperCase()] ?? C.blue} size={22} icon={networkIconSource(fromChain.id) ?? undefined}/>
-          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromChain.name}</Text>
-        </View>
+      <Pressable onPress={() => pickChain(setFromId)} style={[styles.input, chip]}>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromChain.name}</Text>
         <Text style={{ color: C.textMuted }}>▾</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -3029,11 +2990,8 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
       </Pressable>
 
       <Text style={styles.fieldLabel}>TO</Text>
-      <Pressable onPress={() => setNetworkPickerFor('to')} style={[styles.input, chip]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Avatar symbol={toChain.sym} color={ASSET_COLORS[toChain.sym.toUpperCase()] ?? C.blue} size={22} icon={networkIconSource(toChain.id) ?? undefined}/>
-          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toChain.name}</Text>
-        </View>
+      <Pressable onPress={() => pickChain(setToId)} style={[styles.input, chip]}>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toChain.name}</Text>
         <Text style={{ color: C.textMuted }}>▾</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -3045,13 +3003,6 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
           <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{outv > 0 ? outv.toFixed(6) : '—'}</Text>
         </View>
       </View>
-
-      {networkPickerFor && (
-        <NetworkPickerSheet
-          onSelect={(id) => { (networkPickerFor === 'from' ? setFromId : setToId)(id); setNetworkPickerFor(null); }}
-          onClose={() => setNetworkPickerFor(null)}
-        />
-      )}
 
       <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>
         {rate > 0 ? `1 ${fromTok} ≈ ${rate.toFixed(6)} ${toTok}` : 'Fetching rate…'}  ·  {fromChain.name} → {toChain.name}
@@ -3303,29 +3254,17 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         <View style={{ width: 28 }}/>
       </View>
 
-      {/* Mode tabs — Swap (same-chain) · Cross-chain · Bridge. The latter two
-          are testnet/not-live-yet (Cross-chain's own CTA says "bridge
-          offline"; Bridge moves real funds but only between the Lithosphere
-          Makalu/Kamet TESTNETS) — dev-build only, so a store build never
-          ships a tab whose only function is a disabled button, or testnet
-          fund-moving UI in a production financial app. */}
-      {(() => {
-        const visibleModeTabs = ([['swap', 'Swap', false], ['cross', 'Cross-chain', true], ['bridge', 'Bridge', true]] as const)
-          .filter(([, , devOnly]) => __DEV__ || !devOnly);
-        if (visibleModeTabs.length < 2) return null;
-        return (
-          <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
-            {visibleModeTabs.map(([id, label]) => {
-              const sel = mode === id;
-              return (
-                <Pressable key={id} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent' }}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        );
-      })()}
+      {/* Mode tabs — Swap (same-chain) · Cross-chain · Bridge */}
+      <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
+        {([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const).map(([id, label]) => {
+          const sel = mode === id;
+          return (
+            <Pressable key={id} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {mode === 'bridge' ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : (
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
@@ -5174,7 +5113,7 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
 type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'assets' | 'nfts';
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
-  { key: 'home',     label: 'Wallet',   Icon: Home },
+  { key: 'home',     label: 'Home',     Icon: Home },
   { key: 'market',   label: 'Market',   Icon: TrendingUp },
   { key: 'discover', label: 'Discover', Icon: Compass },
   { key: 'activity', label: 'Activity', Icon: Clock },
