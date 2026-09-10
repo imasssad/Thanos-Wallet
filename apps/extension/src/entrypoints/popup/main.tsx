@@ -2979,33 +2979,33 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
 
   return (
     <Modal title="Swap" onClose={onClose}>
-      {/* Cross-chain has no live route, Bridge is Makalu<->Kamet TESTNET —
-          dev-build only (import.meta.env.DEV is false in a production build),
-          so a shipped extension is same-chain swap only. */}
-      {import.meta.env.DEV && (
-        <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
-          {(['swap', 'cross', 'bridge'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)} style={{
-              flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-              background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
-              color: mode === m ? '#fff' : 'var(--text-secondary)',
-            }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain' : 'Bridge'}</button>
-          ))}
-        </div>
-      )}
-      {(import.meta.env.DEV && mode === 'bridge') ? <ExtMakaluKametBridge seed={seed}/> : (import.meta.env.DEV && mode === 'cross') ? <ExtCrossChainSwap bridge={false}/> : (
+      {/* Swap (same-chain) and Cross-chain ship; only Bridge (Makalu<->Kamet
+          TESTNET) is dev-only — import.meta.env.DEV is false in a production
+          build, so a shipped extension shows Swap + Cross-chain. */}
+      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
+        {(import.meta.env.DEV ? (['swap', 'cross', 'bridge'] as const) : (['swap', 'cross'] as const)).map(m => (
+          <button key={m} onClick={() => setMode(m)} style={{
+            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+            background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
+            color: mode === m ? '#fff' : 'var(--text-secondary)',
+          }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain' : 'Bridge'}</button>
+        ))}
+      </div>
+      {(import.meta.env.DEV && mode === 'bridge') ? <ExtMakaluKametBridge seed={seed}/> : mode === 'cross' ? <ExtCrossChainSwap bridge={false}/> : (
       <div className="modal-body">
         <label className="field-label">FROM</label>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <select className="field" style={{ width: 80 }} value={from} onChange={e => setFrom(e.target.value)}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <TokenAvatar sym={from} color="var(--blue, #3b7af7)"/>
+          <select className="field" style={{ width: 78 }} value={from} onChange={e => setFrom(e.target.value)}>
             {SWAP_SYMBOLS.map(s => <option key={s}>{s}</option>)}
           </select>
           <input className="field" type="number" value={amt} onChange={e => setAmt(e.target.value)} style={{ flex: 1 }}/>
         </div>
         <div style={{ textAlign: 'center', margin: '8px 0' }}>↓</div>
         <label className="field-label">TO</label>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <select className="field" style={{ width: 80 }} value={to} onChange={e => setTo(e.target.value)}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <TokenAvatar sym={to} color="var(--blue, #3b7af7)"/>
+          <select className="field" style={{ width: 78 }} value={to} onChange={e => setTo(e.target.value)}>
             {SWAP_SYMBOLS.map(s => <option key={s}>{s}</option>)}
           </select>
           <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>

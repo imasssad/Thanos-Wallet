@@ -170,10 +170,11 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ╚══════════════════════════════════════════════════════════════════╝ */
 const APP_VERSION = 'thanos-v2.0';
 
-/* EXCHANGE_ENABLED gates the whole Swap surface. The same-chain Swap tab
-   ships in release builds; the Cross-chain and Bridge tabs are dev-build
-   only (see SWAP_MODE_TABS) — Cross-chain has no live route and Bridge is
-   Makalu<->Kamet TESTNET, neither of which can ship to the App Store. */
+/* EXCHANGE_ENABLED gates the whole Swap surface. Swap (same-chain) and
+   Cross-chain ship in release builds; only the Bridge tab is dev-build
+   only (see SWAP_MODE_TABS) — it moves funds between the Lithosphere
+   Makalu/Kamet TESTNETS, which the App Store won't take and which the
+   client called useless anyway. */
 const EXCHANGE_ENABLED = true;
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -3010,7 +3011,10 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Pressable onPress={() => pickTok(fromChain.tokens, setFromTok)} style={[styles.input, chip, { flex: 0.5 }]}>
-          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromTok}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Avatar symbol={fromTok} color={ASSET_COLORS[fromTok.toUpperCase()] ?? C.blue} size={20}/>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromTok}</Text>
+          </View>
           <Text style={{ color: C.textMuted }}>▾</Text>
         </Pressable>
         <TextInput style={[styles.input, { flex: 1, color: C.textPrimary }]} value={amt} onChangeText={setAmt} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={C.textMuted}/>
@@ -3030,7 +3034,10 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Pressable onPress={() => pickTok(toChain.tokens, setToTok)} style={[styles.input, chip, { flex: 0.5 }]}>
-          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toTok}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Avatar symbol={toTok} color={ASSET_COLORS[toTok.toUpperCase()] ?? C.blue} size={20}/>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toTok}</Text>
+          </View>
           <Text style={{ color: C.textMuted }}>▾</Text>
         </Pressable>
         <View style={[styles.input, { flex: 1, justifyContent: 'center' }]}>
@@ -3139,7 +3146,10 @@ function MobileMakaluKametBridge() {
       </View>
       <Text style={styles.fieldLabel}>ASSET</Text>
       <Pressable onPress={pickTok} style={[styles.input, chip]}>
-        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{token.symbol}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Avatar symbol={token.symbol} color={ASSET_COLORS[token.symbol.toUpperCase()] ?? C.blue} size={20}/>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{token.symbol}</Text>
+        </View>
         <Text style={{ color: C.textMuted }}>▾</Text>
       </Pressable>
       <Text style={styles.fieldLabel}>AMOUNT</Text>
@@ -3168,11 +3178,10 @@ function MobileMakaluKametBridge() {
   );
 }
 
-/** Swap-screen mode tabs. In a release build only 'swap' (same-chain)
- *  survives — 'cross' and 'bridge' are testnet/not-live and are stripped
- *  so a store build never shows them. */
+/** Swap-screen mode tabs. Swap (same-chain) and Cross-chain ship; only
+ *  'bridge' (Makalu<->Kamet TESTNET) is stripped from release builds. */
 const SWAP_MODE_TABS = ([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const)
-  .filter(([id]) => __DEV__ || id === 'swap');
+  .filter(([id]) => __DEV__ || id !== 'bridge');
 
 function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?: string }) {
   const C = useColors();
@@ -3301,12 +3310,10 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         <View style={{ width: 28 }}/>
       </View>
 
-      {/* Mode tabs. Cross-chain and Bridge are dev-build only: Cross-chain's
-          only action today is a disabled "bridge offline" button, and Bridge
-          moves funds only between the Lithosphere Makalu/Kamet TESTNETS —
-          neither ships in a store build (Apple won't approve testnet
-          fund-moving UI). __DEV__ is true in Expo dev / dev-client builds and
-          false in any EAS release build. */}
+      {/* Mode tabs. Only the Bridge tab is dev-build only — it moves funds
+          between the Lithosphere Makalu/Kamet TESTNETS (App Store won't
+          take it; client called it useless). Swap and Cross-chain ship.
+          __DEV__ is false in any EAS release build. */}
       {SWAP_MODE_TABS.length > 1 && (
         <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
           {SWAP_MODE_TABS.map(([id, label]) => {
@@ -3320,11 +3327,12 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         </View>
       )}
 
-      {(__DEV__ && mode === 'bridge') ? <MobileMakaluKametBridge/> : (__DEV__ && mode === 'cross') ? <MobileCrossChainSwap bridge={false}/> : (
+      {(__DEV__ && mode === 'bridge') ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : (
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
         <Text style={styles.fieldLabel}>FROM</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={[styles.input, { flex: 0.4, paddingVertical: 0, justifyContent: 'center' }]}>
+          <View style={[styles.input, { flex: 0.4, paddingVertical: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+            <Avatar symbol={from} color={ASSET_COLORS[from.toUpperCase()] ?? C.blue} size={20}/>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{from}</Text>
           </View>
           <TextInput
@@ -3343,7 +3351,8 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
 
         <Text style={styles.fieldLabel}>TO</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={[styles.input, { flex: 0.4, paddingVertical: 0, justifyContent: 'center' }]}>
+          <View style={[styles.input, { flex: 0.4, paddingVertical: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+            <Avatar symbol={to} color={ASSET_COLORS[to.toUpperCase()] ?? C.blue} size={20}/>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{to}</Text>
           </View>
           <View style={[styles.input, { flex: 1, justifyContent: 'center' }]}>
