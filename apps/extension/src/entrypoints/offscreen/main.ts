@@ -152,7 +152,7 @@ function projectSession(s: SessionTypes.Struct) {
  *   sign.evm-erc20-transfer  { seed, hdPath, tokenAddress, to, amount } → { hash }
  */
 async function handleSignMessage(msg: { type: string; [k: string]: unknown }): Promise<unknown> {
-  const { Mnemonic, HDNodeWallet, Contract, getBytes } = await import('ethers');
+  const { Mnemonic, HDNodeWallet, Wallet, Contract, getBytes } = await import('ethers');
   // NOTE: @thanos/sdk-core is imported lazily INSIDE the branches that need it
   // (evm-tx / erc20-transfer, for getMakaluProvider). personal_sign and
   // typed-data must not depend on it loading — if that import ever throws in
@@ -165,8 +165,10 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
   const hdPath  = String(msg.hdPath ?? "m/44'/60'/0'/0/0");
   if (!seed) throw new Error('seed required');
 
-  const mnemonic = Mnemonic.fromPhrase(seed);
-  const wallet   = HDNodeWallet.fromMnemonic(mnemonic, hdPath);
+  // A raw 0x-hex key is a single EVM account — hdPath doesn't apply.
+  const wallet = /^0x[0-9a-fA-F]{64}$/.test(seed.trim())
+    ? new Wallet(seed.trim())
+    : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed), hdPath);
 
   try {
     switch (msg.type) {

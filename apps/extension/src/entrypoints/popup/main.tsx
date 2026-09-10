@@ -22,7 +22,7 @@ import {
   getAccountCount,       setAccountCount,
   getAccountName, getCustomAccountName, setAccountName,
   getVisibleAccountIndices, hideAccount,
-  MAX_ACCOUNTS,
+  MAX_ACCOUNTS, isPrivateKeyWallet, isPrivateKeyString,
 } from '../../lib/vault';
 import {
   persistSessionKey, loadPersistedSessionKey, clearPersistedSessionKey,
@@ -169,8 +169,11 @@ function isValidMnemonic(p: string) {
   catch { return false; }
 }
 function deriveEvm(seed: string[], idx = 0): string {
-  try { return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${idx}`).address; }
-  catch { return '0x0000000000000000000000000000000000000000'; }
+  try {
+    return isPrivateKeyWallet(seed)
+      ? new Wallet(seed[0].trim()).address
+      : HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${idx}`).address;
+  } catch { return '0x0000000000000000000000000000000000000000'; }
 }
 
 /* ──────────────────────── Token icon ──────────────────────── */
@@ -355,20 +358,29 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   };
   const finishImport = async () => {
     if (password !== password2 || password.length < 8 || busy) return;
-    const words = importInput.trim().toLowerCase().split(/\s+/);
+    const raw = importInput.trim();
+    // A raw 64-hex key (with or without 0x) imports one EVM account.
+    const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(raw);
     // Inline errors — alert() in an MV3 popup opens an OS dialog that
     // visually detaches from the 360px popup and looks broken.
-    if (![12, 15, 18, 21, 24].includes(words.length)) { setFormErr('Phrase must be 12, 15, 18, 21 or 24 words'); return; }
-    if (!isValidMnemonic(words.join(' '))) { setFormErr('Invalid recovery phrase — check for typos'); return; }
+    let secret: string;
+    if (isPk) {
+      secret = raw.startsWith('0x') ? raw : `0x${raw}`;
+    } else {
+      const words = raw.toLowerCase().split(/\s+/);
+      if (![12, 15, 18, 21, 24].includes(words.length)) { setFormErr('Enter a 12/15/18/21/24-word phrase or a private key'); return; }
+      if (!isValidMnemonic(words.join(' '))) { setFormErr('Invalid recovery phrase — check for typos'); return; }
+      secret = words.join(' ');
+    }
     setFormErr('');
     setBusy(true);
     try {
-      const vault = await createVault(words.join(' '), password);
+      const vault = await createVault(secret, password);
       saveVault(vault);
-      setSeedBackedUp(true); // imported — user already holds the phrase
+      setSeedBackedUp(true); // imported — user already holds the secret
       const opened = await openVault(vault, password);
       if (opened) { cacheSessionKey(opened.key); void persistSessionKey(opened.key); }
-      onComplete(words);
+      onComplete(isPk ? [secret] : secret.split(/\s+/));
     } finally { setBusy(false); }
   };
   const tryUnlock = async () => {
@@ -570,17 +582,26 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
         {step === 'import' && <>
           <h1 className="onb-title">Import wallet</h1>
-          <p className="onb-sub">Paste your recovery phrase (12-24 words).</p>
-          <textarea className="field field-textarea" placeholder="word1 word2…" value={importInput} onChange={e => setImportInput(e.target.value)}/>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-            {importInput.trim().split(/\s+/).filter(Boolean).length} words
-          </div>
-          <div className="row-btns">
-            <button className="btn-outline" onClick={() => setStep('welcome')}>Back</button>
-            <button className="btn-primary"
-              disabled={![12,15,18,21,24].includes(importInput.trim().split(/\s+/).filter(Boolean).length)}
-              onClick={() => setStep('import-pwd')}>Continue</button>
-          </div>
+          <p className="onb-sub">Paste a 12-24 word recovery phrase, or a single account&apos;s private key.</p>
+          <textarea className="field field-textarea" placeholder="word1 word2…   or   0x…" value={importInput} onChange={e => setImportInput(e.target.value)}/>
+          {(() => {
+            const v = importInput.trim();
+            const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(v);
+            const wc = v.split(/\s+/).filter(Boolean).length;
+            return (
+              <>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                  {isPk ? 'Private key — one EVM account' : `${wc} words`}
+                </div>
+                <div className="row-btns">
+                  <button className="btn-outline" onClick={() => setStep('welcome')}>Back</button>
+                  <button className="btn-primary"
+                    disabled={!isPk && ![12,15,18,21,24].includes(wc)}
+                    onClick={() => setStep('import-pwd')}>Continue</button>
+                </div>
+              </>
+            );
+          })()}
         </>}
 
         {step === 'unlock' && <>
@@ -1013,7 +1034,7 @@ function AIAssistant() {
 
 function HomeScreen({
   onAction, onLock, onOpenSettings, onOpenToken,
-  activeIdx, accountCount, onSwitch, onAddAccount, onRenameAccount, onDeleteAccount,
+  activeIdx, accountCount, singleAccount, onSwitch, onAddAccount, onRenameAccount, onDeleteAccount,
 }: {
   onAction:      (m: 'send'|'receive'|'swap') => void;
   onLock:        () => void;
@@ -1021,6 +1042,8 @@ function HomeScreen({
   onOpenToken:   (sym: string, chainId?: number) => void;
   activeIdx:     number;
   accountCount:  number;
+  /** true for a raw-key wallet — no derivation, so no add-account. */
+  singleAccount: boolean;
   onSwitch:      (idx: number) => void;
   onAddAccount:  () => void;
   onRenameAccount: (idx: number) => void;
@@ -1123,7 +1146,7 @@ function HomeScreen({
                     </div>
                   );
                 })}
-                {accountCount < MAX_ACCOUNTS && (
+                {!singleAccount && accountCount < MAX_ACCOUNTS && (
                   <button
                     onClick={() => { onAddAccount(); setAcctMenu(false); }}
                     style={{
@@ -2359,6 +2382,8 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
     // resolve after the Receive sheet closes or the chain switches, and a
     // post-unmount setState is both a React warning and a wasted derivation.
     let cancelled = false;
+    // A raw-key wallet is EVM-only — no BTC/SOL/Cosmos derivation.
+    if (isPrivateKeyWallet(seed)) return;
     if (chain === 'btc' && !btcAddr && seed.length) {
       void import('../../lib/bitcoin').then(m => { if (!cancelled) setBtcAddr(m.getBitcoinAddress(seed.join(' '))); })
         .catch(() => { if (!cancelled) setBtcAddr(''); });
@@ -3290,6 +3315,7 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
   const [pwd, setPwd] = useState('');
   const [words, setWords] = useState<string[] | null>(null);
   const [pk, setPk] = useState<string | null>(null);
+  const [pkOnly, setPkOnly] = useState(false); // imported from a raw key — no phrase
   const [tab, setTab] = useState<'phrase' | 'pk'>('phrase');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3303,10 +3329,11 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
       if (!v) { setErr('No wallet found on this device.'); return; }
       const r = await openVault(v, pwd);
       if (!r) { setErr('Wrong password.'); return; }
-      const mnemonic = r.mnemonic.trim();
-      setWords(mnemonic.split(/\s+/));
+      const secret = r.mnemonic.trim();
+      if (isPrivateKeyString(secret)) { setPkOnly(true); setPk(secret); setTab('pk'); setWords([]); return; }
+      setWords(secret.split(/\s+/));
       try {
-        setPk(HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(mnemonic), `m/44'/60'/0'/0/${acctIdx}`).privateKey);
+        setPk(HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(secret), `m/44'/60'/0'/0/${acctIdx}`).privateKey);
       } catch { /* leave pk null */ }
     } catch { setErr('Could not open the vault.'); }
     finally { setBusy(false); }
@@ -3331,15 +3358,17 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <>
-            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 9, border: '1px solid var(--border-default)', marginBottom: 10 }}>
-              {(['phrase', 'pk'] as const).map(t => (
-                <button key={t} type="button" onClick={() => { setTab(t); setHidden(true); }}
-                  style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
-                  {t === 'phrase' ? 'Phrase' : `Private key · acct ${acctIdx}`}
-                </button>
-              ))}
-            </div>
-            {tab === 'phrase' ? (
+            {!pkOnly && (
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 9, border: '1px solid var(--border-default)', marginBottom: 10 }}>
+                {(['phrase', 'pk'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => { setTab(t); setHidden(true); }}
+                    style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
+                    {t === 'phrase' ? 'Phrase' : `Private key · acct ${acctIdx}`}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(tab === 'phrase' && !pkOnly) ? (
               <div className="seed-grid" style={{ position: 'relative' }}>
                 {words.map((w, i) => (
                   <div key={i} className="seed-cell">
@@ -3560,10 +3589,12 @@ function App() {
   // back on change. Default 0 / 1 for a fresh vault.
   const [activeIdx,    setActiveIdx]    = useState(0);
   const [accountCount, setAccountCountState] = useState(1);
+  // A raw-key wallet is a single EVM account — no derivation, no adding.
+  const pkWallet = isPrivateKeyWallet(seed);
   useEffect(() => {
-    setActiveIdx(getActiveAccountIndex());
-    setAccountCountState(getAccountCount());
-  }, [unlocked]);
+    setActiveIdx(pkWallet ? 0 : getActiveAccountIndex());
+    setAccountCountState(pkWallet ? 1 : getAccountCount());
+  }, [unlocked, pkWallet]);
 
   const evmAddr   = seed.length ? deriveEvm(seed, activeIdx) : '';
   const lithoAddr = useMemo(() => { try { return evmAddr ? evmToLitho(evmAddr) : ''; } catch { return evmAddr; } }, [evmAddr]);
@@ -4048,7 +4079,7 @@ function App() {
             key={nameTick}
             onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}
             onOpenToken={openToken}
-            activeIdx={activeIdx} accountCount={accountCount}
+            activeIdx={activeIdx} accountCount={accountCount} singleAccount={pkWallet}
             onSwitch={switchAccount} onAddAccount={addAccount}
             onRenameAccount={renameAccount}
             onDeleteAccount={(i) => { void deleteAccount(i); }}

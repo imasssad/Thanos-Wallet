@@ -9,11 +9,11 @@
  * reused from there rather than re-implemented.
  */
 import { createContext, useContext } from 'react';
-import { HDNodeWallet, Interface, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
+import { HDNodeWallet, Wallet, Interface, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
 import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
 import { sendViaLedger, type LedgerConnection } from './ledger-sign';
 import { sendViaTrezor, type TrezorConnection } from './trezor-sign';
-import { getActiveAccountIndex } from './vault';
+import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
 
 /** HD path for the active EVM account. Read at sign time so a TopNav
  *  switch takes effect on the very next send. */
@@ -188,9 +188,10 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     }
 
     // Legacy in-renderer signing fallback.
-    const wallet = HDNodeWallet
-      .fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), path)
-      .connect(getMakaluProvider());
+    const wallet = (isPrivateKeyWallet(args.seed)
+      ? new Wallet(args.seed[0].trim())
+      : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), path)
+    ).connect(getMakaluProvider());
     if (args.tokenAddress) {
       const token = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
       const sent = await token.transfer(args.to, value);

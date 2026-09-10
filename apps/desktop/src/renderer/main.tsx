@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { HDNodeWallet, Mnemonic, JsonRpcProvider, formatEther } from 'ethers';
+import { HDNodeWallet, Mnemonic, Wallet, JsonRpcProvider, formatEther } from 'ethers';
 import './styles.css';
 import {
   createVault, openVault, openVaultWithKey,
@@ -12,7 +12,7 @@ import {
   getAccountCount,       setAccountCount,
   getAccountName, getCustomAccountName, setAccountName,
   getVisibleAccountIndices, hideAccount,
-  MAX_ACCOUNTS,
+  MAX_ACCOUNTS, isPrivateKeyWallet, isPrivateKeyString,
   hydrateVaultFromKeychain,
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
@@ -1257,6 +1257,7 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
   const [pwd, setPwd]     = useState('');
   const [words, setWords] = useState<string[] | null>(null);
   const [pk, setPk]       = useState<string | null>(null);
+  const [pkOnly, setPkOnly] = useState(false); // wallet was imported from a raw key — no phrase
   const [tab, setTab]     = useState<'phrase' | 'pk'>('phrase');
   const [err, setErr]     = useState('');
   const [busy, setBusy]   = useState(false);
@@ -1270,10 +1271,14 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
       if (!v) { setErr('No wallet found on this device.'); return; }
       const r = await openVault(v, pwd);
       if (!r) { setErr('Wrong password.'); return; }
-      const mnemonic = r.mnemonic.trim();
-      setWords(mnemonic.split(/\s+/));
+      const secret = r.mnemonic.trim();
+      if (isPrivateKeyString(secret)) {
+        setPkOnly(true); setPk(secret); setTab('pk'); setWords([]);
+        return;
+      }
+      setWords(secret.split(/\s+/));
       try {
-        const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(mnemonic), `m/44'/60'/0'/0/${acctIdx}`);
+        const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(secret), `m/44'/60'/0'/0/${acctIdx}`);
         setPk(w.privateKey);
       } catch { /* leave pk null — phrase still works */ }
     } catch { setErr('Could not open the vault.'); }
@@ -1298,15 +1303,17 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <>
-            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)' }}>
-              {(['phrase', 'pk'] as const).map(t => (
-                <button key={t} onClick={() => { setTab(t); setHidden(true); }}
-                  style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
-                  {t === 'phrase' ? 'Recovery phrase' : `Private key · acct ${acctIdx}`}
-                </button>
-              ))}
-            </div>
-            {tab === 'phrase' ? (
+            {!pkOnly && (
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)' }}>
+                {(['phrase', 'pk'] as const).map(t => (
+                  <button key={t} onClick={() => { setTab(t); setHidden(true); }}
+                    style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
+                    {t === 'phrase' ? 'Recovery phrase' : `Private key · acct ${acctIdx}`}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(tab === 'phrase' && !pkOnly) ? (
               <div className="seed-grid" style={{ position: 'relative' }}>
                 {words.map((w, i) => (
                   <div key={i} className="seed-word">
@@ -2133,6 +2140,8 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   // Lazy derivation — BTC/SOL/ATOM addresses are computed only when the
   // user picks that tab. Avoids loading 4 chain libs at modal open.
   useEffect(() => {
+    // A raw-key wallet is EVM-only — no BTC/SOL/Cosmos derivation.
+    if (isPrivateKeyWallet(seed)) return;
     if (chain === 'btc' && !btcAddr && seed.length) {
       void import('./bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
         .catch(() => setBtcAddr(''));
@@ -3392,9 +3401,7 @@ function DesktopAllowancesPanel({ seed }: { seed: string[] }) {
     setLoading(true); setErr(null);
     try {
       const { fetchMakaluAllowances, getMakaluProvider } = await import('@thanos/sdk-core');
-      const { HDNodeWallet, Mnemonic } = await import('ethers');
-      const idx = getActiveAccountIndex();
-      const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${idx}`);
+      const w = evmWalletFromSeed(seed, getActiveAccountIndex());
       setRows(await fetchMakaluAllowances({ walletAddress: w.address, provider: getMakaluProvider() }));
     } catch (e) {
       setErr((e as Error).message); setRows([]);
@@ -3408,10 +3415,7 @@ function DesktopAllowancesPanel({ seed }: { seed: string[] }) {
     setBusy(k); setErr(null);
     try {
       const { revokeAllowance, getMakaluProvider } = await import('@thanos/sdk-core');
-      const { HDNodeWallet, Mnemonic } = await import('ethers');
-      const idx = getActiveAccountIndex();
-      const w = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${idx}`)
-        .connect(getMakaluProvider());
+      const w = evmWalletFromSeed(seed, getActiveAccountIndex()).connect(getMakaluProvider());
       const tx = await revokeAllowance({ signer: w, tokenAddress: row.tokenAddress, spender: row.spender });
       await tx.wait();
       void load();
@@ -3552,9 +3556,10 @@ function deriveAddressesFromSeed(seed: string[], accountIdx = 0): DerivedAddress
   const phrase = seed.join(' ');
   let evm = '0x0000000000000000000000000000000000000000';
   try {
-    // Real EVM address from BIP44 m/44'/60'/0'/0/{idx}
-    const evmNode = HDNodeWallet.fromPhrase(phrase, undefined, `m/44'/60'/0'/0/${accountIdx}`);
-    evm = evmNode.address;
+    // A raw-key wallet is a single EVM account — no BIP44 path.
+    evm = isPrivateKeyWallet(seed)
+      ? new Wallet(seed[0].trim()).address
+      : HDNodeWallet.fromPhrase(phrase, undefined, `m/44'/60'/0'/0/${accountIdx}`).address;
   } catch (e) { console.warn('EVM derivation failed:', e); }
   // BTC + SOL + ATOM addresses are derived lazily inside ReceiveModal /
   // SendModal using their respective chain-specific modules (bitcoin.ts,
@@ -3567,6 +3572,14 @@ function deriveAddressesFromSeed(seed: string[], accountIdx = 0): DerivedAddress
 
 function deriveAddressFromSeed(seed: string[]): string {
   return deriveAddressesFromSeed(seed).evm;
+}
+
+/** An ethers wallet for the given seed at the active/derived index —
+ *  a raw-key wallet ignores the index (single account). */
+function evmWalletFromSeed(seed: string[], accountIdx = 0): HDNodeWallet | Wallet {
+  return isPrivateKeyWallet(seed)
+    ? new Wallet(seed[0].trim())
+    : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${accountIdx}`);
 }
 
 async function fetchEthBalance(addr: string): Promise<string | null> {
@@ -3678,16 +3691,23 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 
   const finishImport = async () => {
     if (password !== password2 || password.length < 8 || vaultBusy) return;
-    const words = importInput.trim().toLowerCase().split(/\s+/);
-    if (![12, 15, 18, 21, 24].includes(words.length)) return;
+    const raw = importInput.trim();
+    // A raw 64-hex key (with or without 0x) imports one EVM account;
+    // anything else is a mnemonic.
+    const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(raw);
+    const secret = isPk ? (raw.startsWith('0x') ? raw : `0x${raw}`) : raw.toLowerCase();
+    if (!isPk) {
+      const words = secret.split(/\s+/);
+      if (![12, 15, 18, 21, 24].includes(words.length)) return;
+    }
     setVaultBusy(true);
     try {
-      const vault = await createVault(words.join(' '), password);
+      const vault = await createVault(secret, password);
       saveVault(vault);
-      setSeedBackedUp(true); // imported — user already holds the phrase
+      setSeedBackedUp(true); // imported — user already holds the secret
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
-      onComplete(words, password);
+      onComplete(isPk ? [secret] : secret.split(/\s+/), password);
     } finally {
       setVaultBusy(false);
     }
@@ -3898,19 +3918,29 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
         {step === 'import' && (
           <>
             <h1 className="onboard-title">Import wallet</h1>
-            <p className="onboard-sub">Paste your 12, 15, 18, 21, or 24-word recovery phrase.</p>
+            <p className="onboard-sub">Paste a 12/15/18/21/24-word recovery phrase, or a single account&apos;s private key (64-hex, with or without 0x).</p>
             <textarea
               className="field-input"
               style={{ height: 90, resize: 'none', fontFamily: 'Geist Mono, monospace', fontSize: 12 }}
-              placeholder="word1 word2 word3 …"
+              placeholder="word1 word2 word3 …   or   0x…"
               value={importInput}
               onChange={e => setImportInput(e.target.value)}
             />
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{importInput.trim().split(/\s+/).filter(Boolean).length} words</div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('welcome')}>Back</button>
-              <button className="btn-primary" style={{ flex: 1 }} disabled={![12,15,18,21,24].includes(importInput.trim().split(/\s+/).filter(Boolean).length)} onClick={() => setStep('import-password')}>Continue</button>
-            </div>
+            {(() => {
+              const v = importInput.trim();
+              const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(v);
+              const wc = v.split(/\s+/).filter(Boolean).length;
+              const ok = isPk || [12, 15, 18, 21, 24].includes(wc);
+              return (
+                <>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{isPk ? 'Private key — imports one EVM account' : `${wc} words`}</div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                    <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('welcome')}>Back</button>
+                    <button className="btn-primary" style={{ flex: 1 }} disabled={!ok} onClick={() => setStep('import-password')}>Continue</button>
+                  </div>
+                </>
+              );
+            })()}
           </>
         )}
 
@@ -4274,11 +4304,13 @@ function App() {
   // Multi-account state — mirrors web. Storage helpers live in vault.ts.
   const [activeIdx, setActiveIdx]            = useState(0);
   const [accountCount, setAccountCountState] = useState(1);
+  // A raw-key wallet is a single EVM account — no derivation, no adding.
+  const pkWallet = isPrivateKeyWallet(walletSeed);
   useEffect(() => {
     if (!unlocked) return;
-    setActiveIdx(getActiveAccountIndex());
-    setAccountCountState(getAccountCount());
-  }, [unlocked]);
+    setActiveIdx(pkWallet ? 0 : getActiveAccountIndex());
+    setAccountCountState(pkWallet ? 1 : getAccountCount());
+  }, [unlocked, pkWallet]);
 
   const addrs = walletSeed.length > 0
     ? deriveAddressesFromSeed(walletSeed, activeIdx)
@@ -4290,7 +4322,7 @@ function App() {
     setActiveIdx(idx);
   };
   const addAccount = () => {
-    if (accountCount >= MAX_ACCOUNTS) return;
+    if (pkWallet || accountCount >= MAX_ACCOUNTS) return;
     const next = accountCount;
     setAccountCount(next + 1);
     setAccountCountState(next + 1);
@@ -4625,7 +4657,7 @@ function App() {
                           </div>
                         );
                       })}
-                      {accountCount < MAX_ACCOUNTS && (
+                      {!pkWallet && accountCount < MAX_ACCOUNTS && (
                         <button
                           className="menu-item"
                           onClick={() => { addAccount(); setAccountMenu(false); }}

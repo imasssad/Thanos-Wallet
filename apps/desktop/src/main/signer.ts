@@ -18,7 +18,7 @@
  * process holds it in a closure-scoped variable that gets cleared on
  * lock, on window close, or on app quit.
  */
-import { HDNodeWallet, Mnemonic, Contract, JsonRpcProvider, FallbackProvider } from 'ethers';
+import { HDNodeWallet, Mnemonic, Wallet, Contract, JsonRpcProvider, FallbackProvider } from 'ethers';
 
 let _seed: string | null = null;
 let _provider: JsonRpcProvider | FallbackProvider | null = null;
@@ -57,8 +57,15 @@ export function hasSeed(): boolean {
   return _seed !== null;
 }
 
-function unlockedWallet(hdPath: string): HDNodeWallet {
+/** A wallet imported from a raw key stores the 0x-hex string in _seed
+ *  instead of a mnemonic; it's a single EVM account, so hdPath is ignored. */
+function isRawKey(s: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(s.trim());
+}
+
+function unlockedWallet(hdPath: string): HDNodeWallet | Wallet {
   if (!_seed) throw new Error('Wallet is locked — call signer:set-seed first');
+  if (isRawKey(_seed)) return new Wallet(_seed.trim());
   return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(_seed), hdPath);
 }
 

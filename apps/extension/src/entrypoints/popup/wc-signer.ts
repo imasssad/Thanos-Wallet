@@ -10,9 +10,9 @@
  * The pure-display helpers (summariseRequest, account / chain-id
  * lookups) stay local — they don't need to sign anything.
  */
-import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic } from 'ethers';
+import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic, Wallet } from 'ethers';
 import { bytesLikeToHex } from '../../lib/bytes-normalize';
-import { getActiveAccountIndex } from '../../lib/vault';
+import { getActiveAccountIndex, isPrivateKeyWallet } from '../../lib/vault';
 import { dappChainByHex, dappChainById, toChainHex, MAKALU_CHAIN_ID, type DappChain } from '../../lib/dapp-chains';
 import {
   signAndBroadcastTx, signPersonalMessage, signTypedData,
@@ -41,7 +41,9 @@ export class WcSignerError extends Error {
 /** Derive only the address — no private key materialised, no signing.
  *  Used for eth_accounts / eth_requestAccounts. */
 function deriveAddress(seed: string[]): string {
-  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath()).address;
+  return isPrivateKeyWallet(seed)
+    ? new Wallet(seed[0].trim()).address
+    : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath()).address;
 }
 
 export function summariseRequest(method: string, params: unknown): string {

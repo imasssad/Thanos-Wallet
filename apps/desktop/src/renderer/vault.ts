@@ -193,6 +193,19 @@ export function setSeedBackedUp(backedUp: boolean): void {
   else          { localStorage.removeItem(STORAGE_KEYS.seedBackedUp); removeFromKeychain(STORAGE_KEYS.seedBackedUp); }
 }
 
+/* ─── Private-key wallets ────────────────────────────────────────────
+ * A wallet imported from a raw key stores the 0x-hex string where a
+ * mnemonic wallet stores space-separated words. `seed` in the renderer
+ * is always string[]: [word, word, …] for HD, ['0x…64'] for a PK wallet.
+ * A PK wallet is EVM-only (a bare secp256k1 key can't derive BTC/SOL/
+ * Cosmos) and has exactly one account. */
+export function isPrivateKeyString(s: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(s.trim());
+}
+export function isPrivateKeyWallet(seed: string[]): boolean {
+  return seed.length === 1 && isPrivateKeyString(seed[0] ?? '');
+}
+
 /* ─── Multi-account derivation index ─────────────────────────────── */
 const STORAGE_KEY_ACTIVE_IDX = 'thanos.active_account_idx';
 const STORAGE_KEY_ACCT_COUNT = 'thanos.account_count';
