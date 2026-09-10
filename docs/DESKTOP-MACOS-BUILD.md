@@ -64,6 +64,23 @@ Use this unless you specifically need to iterate on a Mac.
 
 ## Option B — build locally on the Mac
 
+### The whole thing in one command
+
+After the one-time prerequisites below, this script does install → build →
+package and prints where the artifacts landed:
+
+```bash
+bash apps/desktop/scripts/build-macos.sh                 # unsigned .dmg + .zip, arm64 (default)
+bash apps/desktop/scripts/build-macos.sh --arch both     # arm64 + x64
+bash apps/desktop/scripts/build-macos.sh --signed        # sign + notarize (needs APPLE_* env, see 4b)
+bash apps/desktop/scripts/build-macos.sh --mas           # Mac App Store .pkg (needs certs + profile, see 4c)
+bash apps/desktop/scripts/build-macos.sh --skip-install  # reuse an existing node_modules
+```
+
+It checks Node / pnpm / Python 3.11 / Command Line Tools up front and stops with
+a clear message if something's missing. The manual steps below are the same
+thing spelled out, for when you want to run them one at a time.
+
 ### 1. Prerequisites (one time per machine)
 
 ```bash
@@ -170,6 +187,8 @@ xcrun altool --upload-app -f "release/Thanos Wallet-<version>.pkg" -t macos \
 
 ## Reference
 
+- `apps/desktop/scripts/build-macos.sh` — the one-command wrapper for Option B
+- `apps/desktop/scripts/verify-signing.sh` — post-build Gatekeeper / codesign check
 - `apps/desktop/electron-builder.yml` — all targets, signing, entitlements, GitHub auto-update channel (`imasssad/Thanos-Wallet` releases)
 - `apps/desktop/build/entitlements.mac.plist` — direct-download entitlements
 - `apps/desktop/build/entitlements.mas.plist` + `entitlements.mas.inherit.plist` — sandboxed MAS entitlements
