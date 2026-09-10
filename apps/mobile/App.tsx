@@ -401,7 +401,7 @@ const ASSET_COLORS: Record<string, string> = {
   ETH: '#627eea', SOL: '#14f195', USDC: '#2775ca', USDT: '#26a17b',
   BNB: '#f3ba2f', JOT: '#ef4444', IMAGE: '#22d3ee', LAX: '#2f6bff',
   FGPT: '#a855f7', MUSA: '#a855f7', COLLE: '#29b6d8', AGII: '#8b7df7',
-  BLDR: '#f97316',
+  BLDR: '#f97316', POL: '#8247e5', AVAX: '#e84142',
 };
 function assetColor(sym: string): string {
   return ASSET_COLORS[(sym || '').toUpperCase()] ?? '#8b7df7';
@@ -2933,6 +2933,38 @@ const MOBILE_CROSS_CHAINS: Array<{ id: string; name: string; sym: string; tokens
   { id: 'makalu',    name: 'Lithosphere', sym: 'LITHO', tokens: ['LITHO', 'LAX', 'LitBTC'] },
 ];
 
+/** Network picker for the Cross-chain swap — a themed bottom sheet with a
+ *  real per-network icon per row (same Avatar + networkIconSource pattern
+ *  as the Receive flow's Select-network step), replacing the plain-text
+ *  Alert.alert list. */
+function NetworkPickerSheet({ onSelect, onClose }: { onSelect: (id: string) => void; onClose: () => void }) {
+  const C = useColors();
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
+        <Pressable
+          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, maxHeight: '72%' }}
+          onPress={() => { /* swallow taps inside the sheet */ }}
+        >
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }}/>
+          <Text style={{ color: C.textPrimary, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: 6 }}>Select network</Text>
+          <ScrollView>
+            {MOBILE_CROSS_CHAINS.map((c, i) => (
+              <Pressable key={c.id} onPress={() => onSelect(c.id)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
+                         borderBottomWidth: i < MOBILE_CROSS_CHAINS.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
+                <Avatar symbol={c.sym} color={ASSET_COLORS[c.sym.toUpperCase()] ?? C.blue} size={36} icon={networkIconSource(c.id) ?? undefined}/>
+                <Text style={{ flex: 1, color: C.textPrimary, fontWeight: '700', fontSize: 15 }}>{c.name}</Text>
+                <ChevronRight size={18} color={C.textMuted}/>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   const C = useColors();
   const styles = useStyles();
@@ -2947,6 +2979,8 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   const [recipientOn, setRecipientOn] = useState(false);
   const [recipient, setRecipient]     = useState('');
   const [prices, setPrices]   = useState<Record<string, number>>({});
+  /** Which side the network sheet is picking for, or null when closed. */
+  const [networkPickerFor, setNetworkPickerFor] = useState<'from' | 'to' | null>(null);
 
   useEffect(() => { fetchEcosystemPrices().then(setPrices).catch(() => {}); }, []);
   useEffect(() => { if (!fromChain.tokens.includes(fromTok)) setFromTok(fromChain.tokens[0]); /* eslint-disable-next-line */ }, [fromId]);
@@ -2958,10 +2992,6 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   const rate = price(fromTok) && price(toTok) ? price(fromTok) / price(toTok) : 0;
   const outv = rate * amtNum;
 
-  const pickChain = (setter: (id: string) => void) => Alert.alert('Select network', undefined, [
-    ...MOBILE_CROSS_CHAINS.map(c => ({ text: c.name, onPress: () => setter(c.id) })),
-    { text: 'Cancel', style: 'cancel' as const },
-  ]);
   const pickTok = (tokens: string[], setter: (t: string) => void) => Alert.alert('Select asset', undefined, [
     ...tokens.map(t => ({ text: t, onPress: () => setter(t) })),
     { text: 'Cancel', style: 'cancel' as const },
@@ -2971,8 +3001,11 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   return (
     <View style={{ paddingHorizontal: 16, gap: 10 }}>
       <Text style={styles.fieldLabel}>FROM</Text>
-      <Pressable onPress={() => pickChain(setFromId)} style={[styles.input, chip]}>
-        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromChain.name}</Text>
+      <Pressable onPress={() => setNetworkPickerFor('from')} style={[styles.input, chip]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Avatar symbol={fromChain.sym} color={ASSET_COLORS[fromChain.sym.toUpperCase()] ?? C.blue} size={22} icon={networkIconSource(fromChain.id) ?? undefined}/>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{fromChain.name}</Text>
+        </View>
         <Text style={{ color: C.textMuted }}>▾</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2988,8 +3021,11 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
       </Pressable>
 
       <Text style={styles.fieldLabel}>TO</Text>
-      <Pressable onPress={() => pickChain(setToId)} style={[styles.input, chip]}>
-        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toChain.name}</Text>
+      <Pressable onPress={() => setNetworkPickerFor('to')} style={[styles.input, chip]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Avatar symbol={toChain.sym} color={ASSET_COLORS[toChain.sym.toUpperCase()] ?? C.blue} size={22} icon={networkIconSource(toChain.id) ?? undefined}/>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{toChain.name}</Text>
+        </View>
         <Text style={{ color: C.textMuted }}>▾</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -3023,6 +3059,13 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
       <Pressable style={[styles.btnPrimary, { opacity: 0.5 }]} disabled>
         <Text style={styles.btnPrimaryText}>{bridge ? 'Bridge offline' : 'Cross-chain swap · bridge offline'}</Text>
       </Pressable>
+
+      {networkPickerFor && (
+        <NetworkPickerSheet
+          onSelect={(id) => { (networkPickerFor === 'from' ? setFromId : setToId)(id); setNetworkPickerFor(null); }}
+          onClose={() => setNetworkPickerFor(null)}
+        />
+      )}
     </View>
   );
 }
