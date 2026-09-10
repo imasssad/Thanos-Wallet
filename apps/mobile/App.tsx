@@ -1814,7 +1814,6 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
   const styles = useStyles();
   const addr = useWalletAddr();
   const seed = useWalletSeed();
-  const openBrowser = useBrowser();
   const { assets, loading } = usePortfolio(addr);
   // Private-key wallets are EVM-only (a bare EVM key can't derive BTC/SOL/
   // Cosmos keys) — pin the chain to 'evm' and hide the chain selector.
@@ -2248,7 +2247,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
                 <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 12 }}>
                   {sentInfo.amount} {sentInfo.sym} broadcast on {sentInfo.network}.
                 </Text>
-                <Pressable onPress={() => openBrowser(sentInfo.explorerUrl)} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
+                <Pressable onPress={() => { Linking.openURL(sentInfo.explorerUrl).catch(() => {}); }} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
                   <Text style={{ color: C.blue, fontSize: 11, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) }}>
                     {sentInfo.hash.slice(0, 14)}…{sentInfo.hash.slice(-10)}
                   </Text>
@@ -2713,7 +2712,6 @@ function TxSheetRow({ C, label, children }: { C: ReturnType<typeof useColors>; l
 
 function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: () => void }) {
   const C = useColors();
-  const openBrowser = useBrowser();
   const d = txDisplay(item.type);
   const amountNum = parseFloat(String(item.amount ?? '').replace(/^[+-]/, '')) || 0;
   const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
@@ -2759,7 +2757,7 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <Pressable hitSlop={8} onPress={() => explorer && openBrowser(explorer)}>
+            <Pressable hitSlop={8} onPress={() => { if (explorer) Share.share({ message: explorer }).catch(() => {}); }}>
               <Share2 size={20} color={C.textSecondary} />
             </Pressable>
             <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>{d.label}</Text>
@@ -2793,7 +2791,7 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
           )}
 
           {explorer ? (
-            <Pressable onPress={() => openBrowser(explorer)}
+            <Pressable onPress={() => { Linking.openURL(explorer).catch(() => {}); }}
               style={{ paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
               <Text style={{ color: C.green, fontSize: 14, fontWeight: '700' }}>View on block explorer</Text>
             </Pressable>
