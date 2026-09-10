@@ -2016,11 +2016,18 @@ const CROSS_CHAINS: Array<{ id: string; name: string; color: string; tokens: str
   { id: 'makalu',    name: 'Lithosphere', color: '#3b7af7', tokens: ['LITHO', 'LAX', 'LitBTC'] },
 ];
 
+/* Cross-chain has no live route and Bridge is Makalu<->Kamet TESTNET —
+   both are dev-only, stripped from a production build so the Swap modal
+   ships as same-chain swap only. */
+const SWAP_MODE_TABS: Array<['swap' | 'cross' | 'bridge', string]> =
+  ([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as Array<['swap' | 'cross' | 'bridge', string]>)
+    .filter(([id]) => process.env.NODE_ENV !== 'production' || id === 'swap');
+
 function SwapTabs({ mode, setMode }: { mode: string; setMode: (m: 'swap' | 'cross' | 'bridge') => void }) {
-  const tabs: Array<['swap' | 'cross' | 'bridge', string]> = [['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']];
+  if (SWAP_MODE_TABS.length < 2) return null;
   return (
     <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-default)' }}>
-      {tabs.map(([id, label]) => (
+      {SWAP_MODE_TABS.map(([id, label]) => (
         <button
           key={id} type="button" onClick={() => setMode(id)}
           style={{
@@ -2570,7 +2577,8 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
     <Modal title="Swap" onClose={onClose} fullScreen={fullScreen}>
       <div className="modal-body">
         <SwapTabs mode={mode} setMode={setMode}/>
-        {mode === 'bridge' ? <MakaluKametBridge/> : mode === 'cross' ? <CrossChainSwap bridge={false}/> : (<>
+        {(process.env.NODE_ENV !== 'production' && mode === 'bridge') ? <MakaluKametBridge/>
+          : (process.env.NODE_ENV !== 'production' && mode === 'cross') ? <CrossChainSwap bridge={false}/> : (<>
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: '0 0 130px' }}>

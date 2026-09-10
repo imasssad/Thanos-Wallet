@@ -2365,14 +2365,19 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
   return (
     <Modal title="Swap" onClose={onClose}>
       <div className="modal-body">
-        <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)' }}>
-          {(['swap', 'bridge'] as const).map(m => (
-            <button key={m} type="button" onClick={() => setMode(m)} style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent', color: mode === m ? '#fff' : 'var(--text-secondary)' }}>
-              {m === 'swap' ? 'Swap' : 'Bridge'}
-            </button>
-          ))}
-        </div>
-        {mode === 'bridge' ? <DesktopBridgePanel seed={seed}/> : (<>
+        {/* Bridge is Makalu<->Kamet TESTNET — dev-build only (import.meta.env.DEV
+            is false in a `vite build`), so a shipped desktop app is same-chain
+            swap only and the tab strip is dropped. */}
+        {import.meta.env.DEV && (
+          <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)' }}>
+            {(['swap', 'bridge'] as const).map(m => (
+              <button key={m} type="button" onClick={() => setMode(m)} style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent', color: mode === m ? '#fff' : 'var(--text-secondary)' }}>
+                {m === 'swap' ? 'Swap' : 'Bridge'}
+              </button>
+            ))}
+          </div>
+        )}
+        {(import.meta.env.DEV && mode === 'bridge') ? <DesktopBridgePanel seed={seed}/> : (<>
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <CoinSelect

@@ -170,10 +170,10 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    ╚══════════════════════════════════════════════════════════════════╝ */
 const APP_VERSION = 'thanos-v2.0';
 
-/* MultX Bridge and the exchange surface are available on every Thanos client.
-   The Bridge tab executes the funded Makalu -> Kamet route in
-   MobileMakaluKametBridge; the Cross-chain tab remains visibly unavailable
-   until a supported external route is live. */
+/* EXCHANGE_ENABLED gates the whole Swap surface. The same-chain Swap tab
+   ships in release builds; the Cross-chain and Bridge tabs are dev-build
+   only (see SWAP_MODE_TABS) — Cross-chain has no live route and Bridge is
+   Makalu<->Kamet TESTNET, neither of which can ship to the App Store. */
 const EXCHANGE_ENABLED = true;
 
 /* ─────────────────────────── Theme ─────────────────────────── */
@@ -3168,6 +3168,12 @@ function MobileMakaluKametBridge() {
   );
 }
 
+/** Swap-screen mode tabs. In a release build only 'swap' (same-chain)
+ *  survives — 'cross' and 'bridge' are testnet/not-live and are stripped
+ *  so a store build never shows them. */
+const SWAP_MODE_TABS = ([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const)
+  .filter(([id]) => __DEV__ || id === 'swap');
+
 function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?: string }) {
   const C = useColors();
   const styles = useStyles();
@@ -3295,19 +3301,26 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         <View style={{ width: 28 }}/>
       </View>
 
-      {/* Mode tabs — Swap (same-chain) · Cross-chain · Bridge */}
-      <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
-        {([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const).map(([id, label]) => {
-          const sel = mode === id;
-          return (
-            <Pressable key={id} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent' }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Mode tabs. Cross-chain and Bridge are dev-build only: Cross-chain's
+          only action today is a disabled "bridge offline" button, and Bridge
+          moves funds only between the Lithosphere Makalu/Kamet TESTNETS —
+          neither ships in a store build (Apple won't approve testnet
+          fund-moving UI). __DEV__ is true in Expo dev / dev-client builds and
+          false in any EAS release build. */}
+      {SWAP_MODE_TABS.length > 1 && (
+        <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
+          {SWAP_MODE_TABS.map(([id, label]) => {
+            const sel = mode === id;
+            return (
+              <Pressable key={id} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent' }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
-      {mode === 'bridge' ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : (
+      {(__DEV__ && mode === 'bridge') ? <MobileMakaluKametBridge/> : (__DEV__ && mode === 'cross') ? <MobileCrossChainSwap bridge={false}/> : (
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
         <Text style={styles.fieldLabel}>FROM</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>

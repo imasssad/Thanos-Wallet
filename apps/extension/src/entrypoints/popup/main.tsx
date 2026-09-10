@@ -2979,16 +2979,21 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
 
   return (
     <Modal title="Swap" onClose={onClose}>
-      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
-        {(['swap', 'cross', 'bridge'] as const).map(m => (
-          <button key={m} onClick={() => setMode(m)} style={{
-            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
-            background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
-            color: mode === m ? '#fff' : 'var(--text-secondary)',
-          }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain' : 'Bridge'}</button>
-        ))}
-      </div>
-      {mode === 'bridge' ? <ExtMakaluKametBridge seed={seed}/> : mode === 'cross' ? <ExtCrossChainSwap bridge={false}/> : (
+      {/* Cross-chain has no live route, Bridge is Makalu<->Kamet TESTNET —
+          dev-build only (import.meta.env.DEV is false in a production build),
+          so a shipped extension is same-chain swap only. */}
+      {import.meta.env.DEV && (
+        <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
+          {(['swap', 'cross', 'bridge'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)} style={{
+              flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+              background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
+              color: mode === m ? '#fff' : 'var(--text-secondary)',
+            }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain' : 'Bridge'}</button>
+          ))}
+        </div>
+      )}
+      {(import.meta.env.DEV && mode === 'bridge') ? <ExtMakaluKametBridge seed={seed}/> : (import.meta.env.DEV && mode === 'cross') ? <ExtCrossChainSwap bridge={false}/> : (
       <div className="modal-body">
         <label className="field-label">FROM</label>
         <div style={{ display: 'flex', gap: 6 }}>
