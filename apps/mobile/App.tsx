@@ -2107,6 +2107,27 @@ function useHiddenAssets() {
  *  Used to route sends + skip the Makalu-only pre-send simulation. */
 const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
 
+/** Display name per chainId, for the Send screen's pre-send "Network" row —
+ *  mirrors lib/evm-external-meta EXT_EVM_CHAINS' `name` field. A plain data
+ *  mirror (not a lib/evm-external import) so this stays synchronous: that
+ *  module is dynamic-imported elsewhere in this file specifically to keep
+ *  its heavier send-path deps out of the eager bundle. Lithosphere Mainnet
+ *  (9005) included since the wallet defaults there now, not Makalu. */
+const EXT_EVM_CHAIN_NAMES: Record<number, string> = {
+  9005: 'Lithosphere', 1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon',
+  8453: 'Base', 42161: 'Arbitrum', 59144: 'Linea', 10: 'Optimism', 43114: 'Avalanche',
+};
+/** Network name for the Send screen's FROM coin — was hardcoded to "Makalu"
+ *  regardless of which chain was actually selected (client-reported: sending
+ *  USDT on BNB Chain still showed "Network: Makalu"). Falls back to
+ *  "Lithosphere Makalu" for the native chain (chainId 700777, or unset on
+ *  older portfolio rows), and to the chain id itself for anything unmapped
+ *  rather than silently lying about which network it is. */
+function sendNetworkName(chainId?: number): string {
+  if (chainId == null || chainId === 700777) return 'Lithosphere Makalu';
+  return EXT_EVM_CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
+}
+
 /** Chain-appropriate tx-explorer URL — mirrors the web Send modal's routing.
  *  URLs duplicate lib/{bitcoin,solana,cosmos}.ts constants on purpose: those
  *  modules are lazy-loaded (heavy chain SDKs), and importing them here just
@@ -2578,7 +2599,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
         <View style={[styles.feeRowCard]}>
           <View style={styles.feeRow}>
             <Text style={styles.feeText}>Network</Text>
-            <Text style={styles.feeTextValue}>Makalu</Text>
+            <Text style={styles.feeTextValue}>{chain === 'evm' ? sendNetworkName(coin?.chainId) : CHAIN_META[chain].label}</Text>
           </View>
           <View style={styles.feeRow}>
             <Text style={styles.feeText}>Network fee</Text>
