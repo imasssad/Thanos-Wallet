@@ -32,7 +32,8 @@ import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState } f
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
 import {
-  evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
+  evmToLitho, preferredAddressFormat, DUAL_ADDRESS_CHAIN_IDS,
+  ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
   fetchPortfolioHistory, type Holding, type PortfolioHistory, type Range,
   fetchTokenHistory, fetchTokenMarketDetails,
@@ -2126,8 +2127,14 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   // keyed by the broad kind; the network picker is just the web-style chooser.
   const chain: 'evm'|'btc'|'sol'|'atom' =
     network.kind === 'bitcoin' ? 'btc' : network.kind === 'solana' ? 'sol' : network.kind === 'cosmos' ? 'atom' : 'evm';
+  // Genuine Lithosphere chains (Mainnet/Makalu/Kamet) show litho1 by default,
+  // with 0x as the alternate — external EVM chains (Ethereum/BNB/…) show 0x
+  // only, since a litho1-encoding of e.g. an Ethereum address is technically
+  // derivable (bech32 is chain-agnostic) but meaningless: no exchange or
+  // third-party wallet recognises it as a valid deposit address.
+  const isDualAddressNetwork = DUAL_ADDRESS_CHAIN_IDS.has(network.chainId ?? -1);
   const [copied, setCopied] = useState(false);
-  const [showAlt, setShowAlt] = useState(false);   // EVM tab: false=litho1, true=0x
+  const [showAlt, setShowAlt] = useState(() => preferredAddressFormat(network.chainId ?? -1) === 'litho');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [btcAddr, setBtcAddr] = useState<string>('');
   const [solAddr, setSolAddr] = useState<string>('');
@@ -2188,11 +2195,14 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
     return () => { cancelled = true; };
   }, [chain, btcAddr, solAddr, atomAddr]);
 
-  // Reset the dual-format toggle when switching chains.
-  useEffect(() => { setShowAlt(false); }, [chain]);
+  // Reset the dual-format toggle whenever the selected network changes —
+  // litho1-default on Lithosphere chains, 0x-only elsewhere.
+  useEffect(() => {
+    setShowAlt(preferredAddressFormat(network.chainId ?? -1) === 'litho');
+  }, [networkId]); // eslint-disable-line react-hooks/exhaustive-deps -- network is a pure fn of networkId
 
   const meta = {
-    evm:  { label: 'Lithosphere / EVM', network: 'Lithosphere Makalu + every EVM chain', color: '#627eea' },
+    evm:  { label: 'Lithosphere / EVM', network: 'Lithosphere Mainnet, Makalu + every EVM chain', color: '#627eea' },
     btc:  { label: 'Bitcoin',           network: 'Mainnet · Native SegWit (BIP84)',      color: '#f7931a' },
     sol:  { label: 'Solana',            network: 'Mainnet-Beta · ed25519',               color: '#14f195' },
     atom: { label: 'Cosmos Hub',        network: 'cosmoshub-4',                          color: '#2e3148' },
@@ -2237,8 +2247,9 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
           />
         </div>
 
-        {/* Lithosphere dual-format toggle — only on the EVM tab. */}
-        {chain === 'evm' && lithoAddr && (
+        {/* Lithosphere dual-format toggle — only for genuine Lithosphere
+            chains, not external EVM chains (see isDualAddressNetwork). */}
+        {chain === 'evm' && lithoAddr && isDualAddressNetwork && (
           <div style={{
             display: 'inline-flex',
             background: 'var(--bg-elevated)',
