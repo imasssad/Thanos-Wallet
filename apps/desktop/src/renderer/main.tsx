@@ -1646,8 +1646,11 @@ function getDesktopNetworks(): DesktopNetwork[] {
   ];
 }
 const networkById = (id: string): DesktopNetwork => getDesktopNetworks().find(n => n.id === id) ?? getDesktopNetworks()[0];
+// Default EVM network is Lithosphere Mainnet (chain 9005, slug 'lithosphere'
+// from EXT_EVM_CHAINS) — Makalu is testnet and stays selectable, just not
+// the default anymore. See docs/MULTX-SDK-guide.md correction box.
 const initialNetworkId = (chain?: DesktopSendChain): string =>
-  chain === 'bitcoin' ? 'bitcoin' : chain === 'solana' ? 'solana' : chain === 'cosmos' ? 'cosmos' : 'makalu';
+  chain === 'bitcoin' ? 'bitcoin' : chain === 'solana' ? 'solana' : chain === 'cosmos' ? 'cosmos' : 'lithosphere';
 
 /* External-EVM assets share a symbol across networks — ETH lives on
    Ethereum, Base, Arbitrum, Optimism and Linea all at once. Keying the
@@ -2117,7 +2120,7 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
   void addresses; // legacy prop — addresses are now derived lazily from the unlocked seed
   const seed = useContext(WalletSeedContext);
   const evmAddr = useMemo(() => seed.length ? deriveAddressesFromSeed(seed).evm : '', [seed]);
-  const [networkId, setNetworkId] = useState<string>('makalu');
+  const [networkId, setNetworkId] = useState<string>('lithosphere'); // Mainnet default — see initialNetworkId
   const network = networkById(networkId);
   // EVM networks all share the same 0x address, so the address logic stays
   // keyed by the broad kind; the network picker is just the web-style chooser.
