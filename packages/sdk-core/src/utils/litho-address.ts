@@ -22,7 +22,7 @@ import { bech32 } from 'bech32';
 export const LITHO_BECH32_PREFIX = 'litho';
 
 /** Chain IDs that use the dual-address model */
-export const DUAL_ADDRESS_CHAIN_IDS = new Set([700777, 900523]); // Makalu, Kamet
+export const DUAL_ADDRESS_CHAIN_IDS = new Set([9005, 700777, 900523]); // Mainnet, Makalu, Kamet
 
 // ─── Type guards ────────────────────────────────────────────────────────────
 

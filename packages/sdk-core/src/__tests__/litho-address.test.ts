@@ -125,11 +125,16 @@ describe('truncateLithoAddress', () => {
 });
 
 describe('chain-aware helpers', () => {
-  it('prefers litho on Lithosphere chains (Makalu, Kamet) and evm everywhere else', () => {
+  it('prefers litho on Lithosphere chains (Mainnet, Makalu, Kamet) and evm everywhere else', () => {
+    expect(preferredAddressFormat(9005)).toBe('litho');
     expect(preferredAddressFormat(700777)).toBe('litho');
     expect(preferredAddressFormat(900523)).toBe('litho');
     expect(preferredAddressFormat(1)).toBe('evm');
     expect(preferredAddressFormat(56)).toBe('evm');
+  });
+
+  it('formatAddressForChain converts EVM → litho1 on Lithosphere Mainnet too', () => {
+    expect(formatAddressForChain(EVM, 9005)).toBe(evmToLitho(EVM));
   });
 
   it('formatAddressForChain converts EVM → litho1 on Lithosphere; returns input unchanged on other chains', () => {
