@@ -20,7 +20,15 @@ let keytar: typeof import('keytar') | null = null;
 try { keytar = require('keytar'); } catch (e) { console.warn('keytar unavailable:', e); }
 
 const createWindow = () => {
+  // macOS app name is "Thanos" (client request, macOS only — see
+  // electron-builder.yml's --config.productName override at package time).
+  // That flag only renames the packaged .app/Dock/Finder label though; the
+  // title BAR text comes from index.html's <title> ("Thanos Wallet") unless
+  // overridden here, so set it explicitly per-platform to match. Windows/
+  // Linux keep "Thanos Wallet" from index.html untouched.
+  const windowTitle = process.platform === 'darwin' ? 'Thanos' : 'Thanos Wallet';
   const win = new BrowserWindow({
+    title: windowTitle,
     width: 1280,
     height: 860,
     minWidth: 1100,
@@ -35,6 +43,9 @@ const createWindow = () => {
       zoomFactor: 1.1,
     }
   });
+  // The renderer's own <title> (index.html, "Thanos Wallet") would otherwise
+  // clobber the option above on load/navigation — pin it explicitly.
+  win.on('page-title-updated', (e) => { e.preventDefault(); });
 
   /* Hardware-wallet USB / HID transport — Electron denies device access
      by default. We allow Ledger / Trezor vendor IDs only so the
