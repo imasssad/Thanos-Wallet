@@ -46,6 +46,14 @@ Both are gated and WIRED (2026-07-18):
 Verified: `MAS_BUILD=1 pnpm build` produces a bundle with no HW-wallet UI
 strings and no eager WebHID import; a normal build keeps them.
 
+## App name — DECIDED: "Thanos" (not "Thanos Wallet")
+
+The Mac app's display name is **"Thanos"** — client request, macOS only.
+Every mac build path (`build-macos.sh`, both CI workflows, `release.yml`'s mac
+leg) already passes `--config.productName=Thanos`; Windows/Linux keep "Thanos
+Wallet". No further action needed for this — it's just why the `.pkg`/`.dmg`
+filenames and the installed `.app` read "Thanos".
+
 ## Bundle-ID decision — DECIDED: `ai.thanos.wallet` (separate desktop record)
 
 The desktop app ships under its **own** ASC record, bundle id
@@ -89,13 +97,13 @@ Once the certs/profile exist:
   build" → Run workflow** → produces a signed, sandboxed **`.pkg`** artifact
   (`thanos-desktop-mas-pkg`). Download it.
 - **Local (Mac):** `bash apps/desktop/scripts/build-macos.sh --mas` →
-  `apps/desktop/release/mas/Thanos Wallet-<version>.pkg`.
+  `apps/desktop/release/mas/Thanos-<version>.pkg`.
 
 Then on a Mac, upload to the macOS ASC record with **Transporter** (drag the
 `.pkg` in) or:
 
 ```bash
-xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos Wallet-<version>.pkg" \
+xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos-<version>.pkg" \
   -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 ```
 

@@ -50,6 +50,9 @@ jobs:
 
       # Builds BOTH architectures: Apple Silicon (arm64) + Intel (x64).
       # --publish never: artifacts are uploaded to the run, not to a release.
+      # --config.productName=Thanos: the Mac app's display name is "Thanos",
+      # not "Thanos Wallet" (client request, macOS only — Windows/Linux keep
+      # the electron-builder.yml default).
       - name: Package .dmg + .zip
         working-directory: apps/desktop
         env:
@@ -58,7 +61,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never --config.productName=Thanos
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

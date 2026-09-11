@@ -103,24 +103,30 @@ case "$ARCH" in
   *)     die "--arch must be arm64 | x64 | both" ;;
 esac
 
+# The Mac app's display name is "Thanos" (not "Thanos Wallet") — client
+# request, macOS only. Windows/Linux builds (release.yml) keep "Thanos
+# Wallet" from electron-builder.yml's top-level productName; this CLI
+# override touches only the invocation happening here.
+MAC_NAME_FLAG=(--config.productName=Thanos)
+
 case "$MODE" in
   unsigned)
-    say "Packaging unsigned .dmg + .zip  (v$VERSION, $ARCH)"
-    npx electron-builder --mac dmg zip "${ARCH_FLAGS[@]}" --publish never
+    say "Packaging unsigned .dmg + .zip  (v$VERSION, $ARCH) as \"Thanos\""
+    npx electron-builder --mac dmg zip "${ARCH_FLAGS[@]}" --publish never "${MAC_NAME_FLAG[@]}"
     ;;
   signed)
     : "${APPLE_ID:?set APPLE_ID for a signed build}"
     : "${APPLE_APP_SPECIFIC_PASSWORD:?set APPLE_APP_SPECIFIC_PASSWORD for a signed build}"
     : "${APPLE_TEAM_ID:?set APPLE_TEAM_ID for a signed build (JEYAFQ92YG)}"
-    say "Packaging signed + notarized .dmg + .zip  (v$VERSION, $ARCH, team $APPLE_TEAM_ID)"
+    say "Packaging signed + notarized .dmg + .zip  (v$VERSION, $ARCH, team $APPLE_TEAM_ID) as \"Thanos\""
     npx electron-builder --mac dmg zip "${ARCH_FLAGS[@]}" --publish never \
-      --config.mac.notarize.teamId="$APPLE_TEAM_ID"
+      --config.mac.notarize.teamId="$APPLE_TEAM_ID" "${MAC_NAME_FLAG[@]}"
     ;;
   mas)
-    say "Packaging Mac App Store .pkg  (v$VERSION) — see docs/DESKTOP-MACOS-APP-STORE.md"
+    say "Packaging Mac App Store .pkg  (v$VERSION) as \"Thanos\" — see docs/DESKTOP-MACOS-APP-STORE.md"
     [ -f build/thanos-mas.provisionprofile ] || \
       die "build/thanos-mas.provisionprofile missing — download the MAS provisioning profile first"
-    npx electron-builder --mac mas --publish never
+    npx electron-builder --mac mas --publish never "${MAC_NAME_FLAG[@]}"
     ;;
 esac
 

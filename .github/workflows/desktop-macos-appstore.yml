@@ -61,13 +61,15 @@ jobs:
           MAS_BUILD: '1' # compile-time flag: no auto-updater, no HW-wallet
         run: pnpm build
 
+      # --config.productName=Thanos: the Mac app's display name is "Thanos",
+      # not "Thanos Wallet" (client request, macOS only).
       - name: Package .pkg for the App Store
         working-directory: apps/desktop
         env:
           CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder --mac mas --publish never
+        run: npx electron-builder --mac mas --publish never --config.productName=Thanos
 
       - name: Upload .pkg artifact
         uses: actions/upload-artifact@v4

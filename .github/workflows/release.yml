@@ -151,7 +151,10 @@ jobs:
             unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
-          pnpm --filter @thanos/desktop exec electron-builder --mac --publish never
+          # --config.productName=Thanos: Mac app display name is "Thanos", not
+          # "Thanos Wallet" (client request, macOS only — win/linux below keep
+          # the electron-builder.yml default).
+          pnpm --filter @thanos/desktop exec electron-builder --mac --publish never --config.productName=Thanos
         env:
           # When these are unset, electron-builder produces an unsigned build
           # instead of failing — useful for preview tags. Real releases set all
