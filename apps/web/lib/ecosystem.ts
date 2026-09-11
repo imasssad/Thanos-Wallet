@@ -31,8 +31,8 @@ const WEB_ICONS: Record<string, string> = {
   ignite: '/images/dapps/ignite.png', // reuses the token logo
   atua:   '/images/dapps/atua.png',   // sourced from atua.ai brand kit
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
-  // lithoscan has no bundled mark yet — falls back to the letter badge.
   'litho-deals':     '/images/dapps/litho-deals.png', // the double-struck 𝕃 mark
+  lithoscan:         '/images/dapps/lithoscan.png',   // client-supplied 2026-09-11
 };
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = BASE_APPS.map(a => ({

@@ -156,8 +156,8 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   ignite: require('../assets/images/dapps/ignite.png'),
   atua:   require('../assets/images/dapps/atua.png'),
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
-  // lithoscan has no bundled mark yet — falls back to the letter badge.
   'litho-deals':     require('../assets/images/dapps/litho-deals.png'),
+  lithoscan:         require('../assets/images/dapps/lithoscan.png'), // client-supplied 2026-09-11
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */
