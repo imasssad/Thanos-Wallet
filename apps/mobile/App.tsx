@@ -1197,7 +1197,12 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
 /** Card art reused across the LAX flow — matches the home-screen promo. */
 function LaxCardArt({ height = 190, last4, active }: { height?: number; last4?: string; active?: boolean }) {
   return (
-    <View style={{ width: '100%', aspectRatio: 1.586, maxHeight: height, borderRadius: 16, overflow: 'hidden', backgroundColor: '#0a0d18', borderWidth: 1, borderColor: 'rgba(59,122,247,0.28)', padding: 16, justifyContent: 'space-between' }}>
+    // alignSelf: 'center' — width:'100%' + aspectRatio + maxHeight together
+    // can make Yoga shrink the resolved width below the parent's, once the
+    // height cap kicks in; a shrunk child with no explicit alignSelf then
+    // sits at the start (left) of a default-stretch column instead of
+    // centered, which is what made the card hug the left edge.
+    <View style={{ width: '100%', aspectRatio: 1.586, maxHeight: height, alignSelf: 'center', borderRadius: 16, overflow: 'hidden', backgroundColor: '#0a0d18', borderWidth: 1, borderColor: 'rgba(59,122,247,0.28)', padding: 16, justifyContent: 'space-between' }}>
       <SvgXml xml={'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 317 200" preserveAspectRatio="none"><defs><radialGradient id="g" cx="50%" cy="-10%" r="130%"><stop offset="0%" stop-color="#1b3a8f"/><stop offset="55%" stop-color="#0e2050"/><stop offset="100%" stop-color="#081536"/></radialGradient></defs><rect width="317" height="200" fill="url(#g)"/></svg>'} width="100%" height="100%" style={StyleSheet.absoluteFill}/>
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
         <Image source={require('./assets/images/tokens/lax.png')} style={{ width: '44%', aspectRatio: 1, opacity: 0.5 }} resizeMode="contain"/>
@@ -3973,7 +3978,7 @@ function SettingsScreen() {
         : 'You have NOT backed up your recovery phrase.\n\nIf you delete this wallet now, these funds are gone permanently — nobody can recover them.',
       [
         { text: 'Cancel', style: 'cancel' },
-        ...(backedUp ? [] : [{ text: 'Back up first', onPress: () => setRevealOpen(true) }]),
+        ...(backedUp ? [] : [{ text: 'Back up first', onPress: () => { setRevealTab('phrase'); setRevealOpen(true); } }]),
         {
           text: 'Delete wallet',
           style: 'destructive' as const,
@@ -3997,6 +4002,10 @@ function SettingsScreen() {
 
   // Modal flags for the settings actions.
   const [revealOpen, setRevealOpen]     = useState(false);
+  // Which tab RevealPhraseModal opens on — Settings has separate "Recovery
+  // phrase" and "Export private key" rows (both still real, distinct entry
+  // points — not one merged behind a single "Export keys" label).
+  const [revealTab, setRevealTab]       = useState<'phrase' | 'pk'>('phrase');
   const [changePwdOpen, setChangePwdOpen] = useState(false);
   const [autoLockOpen, setAutoLockOpen] = useState(false);
   const [rpcOpen, setRpcOpen]           = useState(false);
@@ -4137,11 +4146,15 @@ function SettingsScreen() {
       Icon: Clock, onPress: () => setAutoLockOpen(true) },
     { label: 'Change password',   desc: 'Update wallet password',          Icon: Key,
       onPress: () => setChangePwdOpen(true) },
-    isPrivateKeyWallet(seed)
-      ? { label: 'Private key',   desc: 'View this account’s private key',              Icon: AlertTriangle, danger: true,
-          onPress: () => setRevealOpen(true) }
-      : { label: 'Export keys',   desc: 'Recovery phrase or this account’s private key', Icon: AlertTriangle, danger: true,
-          onPress: () => setRevealOpen(true) },
+    ...(isPrivateKeyWallet(seed)
+      ? [{ label: 'Private key',       desc: 'View this account’s private key', Icon: AlertTriangle, danger: true,
+           onPress: () => { setRevealTab('pk'); setRevealOpen(true); } }]
+      : [
+          { label: 'Recovery phrase',    desc: 'Back up your 12–24 word phrase',   Icon: AlertTriangle, danger: true,
+            onPress: () => { setRevealTab('phrase'); setRevealOpen(true); } },
+          { label: 'Export private key', desc: 'This account’s private key',       Icon: AlertTriangle, danger: true,
+            onPress: () => { setRevealTab('pk'); setRevealOpen(true); } },
+        ]),
   ];
   const NETWORK_OPTS: SettingItem[] = [
     {
@@ -4326,7 +4339,7 @@ function SettingsScreen() {
         evmAddress={walletAddr}
       />
 
-      <RevealPhraseModal visible={revealOpen} onClose={() => setRevealOpen(false)} seed={seed}/>
+      <RevealPhraseModal visible={revealOpen} onClose={() => setRevealOpen(false)} seed={seed} initialTab={revealTab}/>
       <ChangePasswordModal visible={changePwdOpen} onClose={() => setChangePwdOpen(false)} seed={seed}/>
       <AutoLockModal
         visible={autoLockOpen}
@@ -4842,7 +4855,7 @@ function CustomAssetsModal({ visible, onClose }: { visible: boolean; onClose: ()
   );
 }
 
-function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClose: () => void; seed: string[] }) {
+function RevealPhraseModal({ visible, onClose, seed, initialTab }: { visible: boolean; onClose: () => void; seed: string[]; initialTab?: 'phrase' | 'pk' }) {
   const C = useColors();
   const [authed, setAuthed] = useState(false);
   const [shown, setShown]   = useState(false);
@@ -4860,12 +4873,15 @@ function RevealPhraseModal({ visible, onClose, seed }: { visible: boolean; onClo
 
   useEffect(() => {
     if (!visible) { setAuthed(false); setShown(false); setCopied(false); setPwd(''); setErr(''); setBusy(false); return; }
+    // Settings has separate "Recovery phrase" / "Export private key" rows —
+    // land on the tab the caller opened, not whatever was left from last time.
+    setTab(initialTab ?? 'phrase');
     (async () => {
       const cap = await getBiometricCapability();
       const on  = await isBiometricUnlockEnabled();
       setBio({ kind: cap.kind, on: on && cap.hasHardware && cap.isEnrolled });
     })();
-  }, [visible]);
+  }, [visible, initialTab]);
 
   if (!visible) return null;
   // Private-key wallets have no recovery phrase — reveal the raw key instead.
