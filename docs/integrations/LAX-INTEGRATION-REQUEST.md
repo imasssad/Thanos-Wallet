@@ -124,11 +124,11 @@ Our dashboard account exists and is populated (Project "LAX Card", user
 LaxCash, `admin@lax.money`, status active). Where each `.env` value comes
 from, confirmed via screenshots + Robert:
 
-- **`LAX_API_KEY`** — Project List row → **"Get api key"** button. **The
-  value pasted in chat earlier (and again 2026-09-13) is burned** — it's been
-  shared in plaintext chat twice now, in a session whose repo is public.
-  **Rotate it via the same row's "Refresh Key" button before using it for
-  anything real** — don't configure the leaked one.
+- **`LAX_API_KEY`** — Project List row → **"Get api key"** button (also
+  visible via "Refresh Key" if ever rotated). The value pasted in chat was
+  flagged as exposed (shared in plaintext chat, public repo); **client's
+  explicit call (2026-09-13): keep using it as-is, no rotation** — noted and
+  respected, not re-flagged going forward.
 - **`LAX_API_BASE`** — Robert: *"base url is your dashboard."* That's the
   dashboard's own root, `https://dashboard.lax.money` — NOT the per-project
   "Domain" field (see below).
