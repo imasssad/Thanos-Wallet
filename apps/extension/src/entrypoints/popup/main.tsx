@@ -68,8 +68,9 @@ import { setContactEncryptionKey } from '../../lib/contact-crypto';
 import { addLocalActivity } from '../../lib/local-activity';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
-  hasThanosAccount, laxRegisterThanosAccount, cardNumberOf,
-  type LaxStatus, type LaxCard as LaxCard_, type LaxTxn,
+  hasThanosAccount, laxRegisterThanosAccount, laxAccountEmail, cardNumberOf,
+  laxIssueCard, laxCardDetails, laxSetCardStatus, extractLaxRedirectUrl,
+  type LaxStatus, type LaxCard as LaxCard_, type LaxTxn, type LaxCardDetails,
 } from '../../lib/lax';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
@@ -857,7 +858,7 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
               {view === 'intro'     && <LaxIntro notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
               {view === 'soon'      && <LaxComingSoon onClose={onClose} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
               {view === 'create'    && <LaxCreate status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
-              {view === 'dashboard' && <LaxDashboard card={card} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')}/>}
+              {view === 'dashboard' && <LaxDashboard card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
               {view === 'topup'     && cardNo && <LaxTopUp cardNo={cardNo} onDone={(amt, cur) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
               {view === 'success'   && <LaxSuccess last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
             </>
@@ -922,94 +923,263 @@ const LAX_KYC_STEPS = [
   'Take a selfie',
 ];
 
+type LaxCreateStep = 'checking' | 'account' | 'amount' | 'verify' | 'complete';
+const LAX_CREATE_RAIL: Array<{ step: LaxCreateStep; label: string }> = [
+  { step: 'account', label: 'Account' },
+  { step: 'amount',  label: 'Amount' },
+  { step: 'verify',  label: 'Verify' },
+  { step: 'complete', label: 'Complete' },
+];
+const LAX_ISSUE_QUICK = [50, 100, 200, 500];
+
 function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () => void }) {
+  const [step, setStep]     = useState<LaxCreateStep>('checking');
+
   const [email, setEmail]   = useState('');
   const [pwd, setPwd]       = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [busy, setBusy]     = useState(false);
-  const [err, setErr]       = useState<string | null>(null);
 
-  const submit = async () => {
+  const [amount, setAmount]         = useState('');
+  const [currency, setCurrency]     = useState('USDT');
+  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
+
+  const [verifyUrl, setVerifyUrl] = useState<string | null>(null);
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState<string | null>(null);
+
+  // Skip the account step entirely when this device already has a Thanos
+  // session — carry over the account email for the issue-card call.
+  useEffect(() => {
+    (async () => {
+      if (await hasThanosAccount()) {
+        const existing = await laxAccountEmail();
+        if (existing) setEmail(existing);
+        setStep('amount');
+      } else {
+        setStep('account');
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'amount') return;
+    (async () => {
+      try {
+        const raw = await laxCurrencies();
+        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
+        if (Array.isArray(arr) && arr.length) {
+          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
+        }
+      } catch { /* keep the fallback list */ }
+    })();
+  }, [step]);
+
+  const submitAccount = async () => {
     setErr(null);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
     if (pwd.length < 8) { setErr('Password must be at least 8 characters.'); return; }
     setBusy(true);
     try {
-      if (!(await hasThanosAccount())) {
-        await laxRegisterThanosAccount({ email: email.trim(), password: pwd });
-      }
-      onDone();
+      await laxRegisterThanosAccount({ email: email.trim(), password: pwd });
+      setStep('amount');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not create your account — try again.');
     } finally { setBusy(false); }
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* step rail */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px' }}>
-        {['Account', 'Verify', 'Complete'].map((s, i) => (
-          <React.Fragment key={s}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{
-                width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: i === 0 ? 'var(--blue)' : 'var(--bg-elevated)',
-              }}>
-                <span style={{ color: i === 0 ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-              </div>
-              <span style={{ color: i === 0 ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 10 }}>{s}</span>
+  const submitAmount = async () => {
+    setErr(null);
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
+    if (!status?.configuredForIssuance) { onDone(); return; }
+    setBusy(true);
+    try {
+      const res = await laxIssueCard({ amount: amt, currency, email: email.trim() });
+      const url = extractLaxRedirectUrl(res);
+      if (url) {
+        try { browser.tabs.create({ url }); } catch { /* no tabs API — ignore */ }
+        setVerifyUrl(url);
+        setStep('verify');
+      } else {
+        setStep('complete');
+        onDone();
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not issue your card — try again.');
+    } finally { setBusy(false); }
+  };
+
+  const railIdx = step === 'checking' ? 0 : LAX_CREATE_RAIL.findIndex(r => r.step === step);
+
+  const rail = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px' }}>
+      {LAX_CREATE_RAIL.map((r, i) => (
+        <React.Fragment key={r.step}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <div style={{
+              width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: i <= railIdx ? 'var(--blue)' : 'var(--bg-elevated)',
+            }}>
+              {i < railIdx
+                ? <Check size={12} color="#fff" strokeWidth={3}/>
+                : <span style={{ color: i === railIdx ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 800 }}>{i + 1}</span>}
             </div>
-            {i < 2 && <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)', margin: '0 6px' }}/>}
-          </React.Fragment>
-        ))}
-      </div>
-
-      <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>During verification you will need to:</div>
-        {LAX_KYC_STEPS.map(s => (
-          <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <Check size={14} color="var(--blue)" strokeWidth={2.4}/>
-            <span style={{ color: 'var(--text-primary)', fontSize: 12 }}>{s}</span>
+            <span style={{ color: i === railIdx ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 10 }}>{r.label}</span>
           </div>
-        ))}
-      </div>
-
-      <input className="field" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoCapitalize="off" autoCorrect="off"/>
-      <input className="field" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="Password (min 8 chars)" type="password" autoCapitalize="off"/>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }} onClick={() => setAgreed(v => !v)}>
-        <div style={{
-          width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${agreed ? 'var(--blue)' : 'var(--border-default)'}`,
-          background: agreed ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
-          {agreed && <Check size={12} color="#fff" strokeWidth={3}/>}
-        </div>
-        <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</span>
-      </div>
-
-      {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
-
-      <button className="btn-primary" disabled={!agreed || busy} onClick={submit}>
-        {busy ? 'Creating…' : 'Next'}
-      </button>
-      <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
-        {status?.configuredForIssuance
-          ? 'Next opens ID verification (Sumsub), then your virtual card is issued.'
-          : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
-      </div>
+          {i < LAX_CREATE_RAIL.length - 1 && <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)', margin: '0 6px' }}/>}
+        </React.Fragment>
+      ))}
     </div>
   );
+
+  if (step === 'checking') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {rail}
+        <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center', padding: 20 }}>Loading…</div>
+      </div>
+    );
+  }
+
+  if (step === 'account') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {rail}
+        <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>During verification you will need to:</div>
+          {LAX_KYC_STEPS.map(s => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <Check size={14} color="var(--blue)" strokeWidth={2.4}/>
+              <span style={{ color: 'var(--text-primary)', fontSize: 12 }}>{s}</span>
+            </div>
+          ))}
+        </div>
+
+        <input className="field" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoCapitalize="off" autoCorrect="off"/>
+        <input className="field" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="Password (min 8 chars)" type="password" autoCapitalize="off"/>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }} onClick={() => setAgreed(v => !v)}>
+          <div style={{
+            width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${agreed ? 'var(--blue)' : 'var(--border-default)'}`,
+            background: agreed ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            {agreed && <Check size={12} color="#fff" strokeWidth={3}/>}
+          </div>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</span>
+        </div>
+
+        {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+
+        <button className="btn-primary" disabled={!agreed || busy} onClick={submitAccount}>
+          {busy ? 'Creating…' : 'Next'}
+        </button>
+        <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+          {status?.configuredForIssuance
+            ? 'Next you’ll pick a starting balance, then ID verification if it’s required.'
+            : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'amount') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {rail}
+        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Fund your new card with</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {currencies.map(cur => (
+            <button key={cur} onClick={() => setCurrency(cur)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
+              border: `1px solid ${currency === cur ? 'var(--blue)' : 'var(--border-default)'}`,
+              background: currency === cur ? 'var(--blue-dim)' : 'transparent', cursor: 'pointer',
+            }}>
+              <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}>{cur}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 2 }}>Starting balance (USD)</div>
+        <input className="field" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
+          style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', height: 52 }}/>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {LAX_ISSUE_QUICK.map(q => (
+            <button key={q} onClick={() => setAmount(String(q))} style={{
+              flex: 1, padding: '9px 0', borderRadius: 9, border: '1px solid var(--border-default)',
+              background: 'transparent', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            }}>${q}</button>
+          ))}
+        </div>
+
+        {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-outline" style={{ flex: 1 }} disabled={busy} onClick={() => setStep('account')}>Back</button>
+          <button className="btn-primary" style={{ flex: 2 }} disabled={busy} onClick={submitAmount}>
+            {busy ? 'Issuing…' : status?.configuredForIssuance ? 'Issue Card' : 'Finish'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'verify') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', paddingTop: 12 }}>
+        {rail}
+        <div style={{ width: 64, height: 64, borderRadius: 32, background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
+          <Shield size={28} color="var(--blue)"/>
+        </div>
+        <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800, textAlign: 'center' }}>Verification opened in a new tab</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
+          Complete verification in the new tab, then come back — your card will appear here once it&apos;s ready.
+        </div>
+        {verifyUrl && (
+          <button className="btn-link" onClick={() => browser.tabs.create({ url: verifyUrl })}>Reopen verification tab</button>
+        )}
+        <button className="btn-primary" style={{ alignSelf: 'stretch' }} onClick={onDone}>Continue</button>
+      </div>
+    );
+  }
+
+  // 'complete' — onDone() already fired the transition out of this modal.
+  return null;
 }
 
-function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
-  card: LaxCard_ | null; last4: string; txns: LaxTxn[]; notLive: boolean; onTopUp: () => void; onSoon: () => void;
+function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onRefresh }: {
+  card: LaxCard_ | null; cardNo?: string; last4: string; txns: LaxTxn[]; notLive: boolean;
+  onTopUp: () => void; onSoon: () => void; onRefresh: () => Promise<void> | void;
 }) {
+  const [modal, setModal] = useState<'details' | 'more' | null>(null);
+  const [freezeBusy, setFreezeBusy] = useState(false);
+  const [freezeErr, setFreezeErr]   = useState<string | null>(null);
+
   const balance = card?.balance != null ? Number(card.balance) : null;
+  const frozen = String(card?.status ?? '').toLowerCase().includes('froz');
+
+  const toggleFreeze = async () => {
+    if (!cardNo || freezeBusy) return;
+    const msg = frozen
+      ? 'Unfreeze this card? It will be usable for purchases again.'
+      : "Freeze this card? You won't be able to use it for purchases until you unfreeze it.";
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(msg)) return;
+    setFreezeErr(null);
+    setFreezeBusy(true);
+    try {
+      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await onRefresh();
+    } catch (e) {
+      setFreezeErr(e instanceof Error ? e.message : 'Could not update card status — try again.');
+    } finally { setFreezeBusy(false); }
+  };
+
   const actions: Array<{ icon: typeof Plus; label: string; onPress: () => void }> = [
-    { icon: Plus,       label: 'Top Up',       onPress: notLive ? onSoon : onTopUp },
-    { icon: CreditCard, label: 'Card Details', onPress: onSoon },
-    { icon: Shield,     label: 'Freeze',       onPress: onSoon },
-    { icon: Maximize2,  label: 'More',         onPress: onSoon },
+    { icon: Plus,       label: 'Top Up',                    onPress: notLive ? onSoon : onTopUp },
+    { icon: CreditCard, label: 'Card Details',               onPress: (notLive || !cardNo) ? onSoon : () => setModal('details') },
+    { icon: Shield,     label: frozen ? 'Unfreeze' : 'Freeze', onPress: (notLive || !cardNo) ? onSoon : () => { void toggleFreeze(); } },
+    { icon: Maximize2,  label: 'More',                       onPress: (notLive || !cardNo) ? onSoon : () => setModal('more') },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1035,6 +1205,8 @@ function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
           </button>
         ))}
       </div>
+      {freezeBusy && <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center' }}>Updating card status…</div>}
+      {freezeErr && <div style={{ color: '#ef4444', fontSize: 11.5, textAlign: 'center' }}>{freezeErr}</div>}
 
       {notLive && (
         <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: 11, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
@@ -1048,21 +1220,173 @@ function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
       <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 800, marginTop: 2 }}>Recent Transactions</div>
       {txns.length === 0 ? (
         <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
-      ) : txns.slice(0, 6).map((t, i) => (
-        <div key={t.id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < 5 ? '1px solid var(--border-subtle)' : 'none' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {t.merchant || t.type || 'Transaction'}
+      ) : txns.slice(0, 6).map((t, i) => <LaxTxnRow key={t.id || i} t={t} last={i === Math.min(txns.length, 6) - 1}/>)}
+
+      {modal === 'details' && cardNo && <LaxCardDetailsModal cardNo={cardNo} onClose={() => setModal(null)}/>}
+      {modal === 'more' && cardNo && <LaxMoreModal cardNo={cardNo} onClose={() => setModal(null)}/>}
+    </div>
+  );
+}
+
+/** One transaction row — shared between the dashboard's truncated recent
+ *  list and the "More → Full Transaction History" scrollable list. */
+function LaxTxnRow({ t, last }: { t: LaxTxn; last: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: last ? 'none' : '1px solid var(--border-subtle)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {t.merchant || t.type || 'Transaction'}
+        </div>
+        {t.date && <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>{t.date}</div>}
+      </div>
+      {t.amount != null && (
+        <span style={{ color: t.amount < 0 ? 'var(--text-primary)' : '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
+          {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: t.currency || 'USD' })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** "Card Details" action — PAN/expiry/CVC, GET /lax/card/:n/details. Sensitive:
+ *  blurred behind a tap-to-reveal gate (mirrors RecoveryPhraseModal's reveal
+ *  UX) and cleared from state the moment this modal unmounts. */
+function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+  const [details, setDetails] = useState<LaxCardDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr]         = useState<string | null>(null);
+  const [hidden, setHidden]   = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const d = await laxCardDetails(cardNo);
+        if (live) setDetails(d);
+      } catch (e) {
+        if (live) setErr(e instanceof Error ? e.message : 'Could not load card details.');
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
+    // Clear sensitive data the instant this modal goes away, regardless of
+    // how — close button, backdrop click, or unmount.
+    return () => { live = false; setDetails(null); };
+  }, [cardNo]);
+
+  const close = () => { setDetails(null); onClose(); };
+
+  return (
+    <div className="modal-back" onClick={close}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <button className="modal-back-btn" onClick={close}><ChevronLeft size={18}/></button>
+          <span className="modal-title">Card Details</span>
+          <div style={{ width: 28 }}/>
+        </div>
+        <div className="modal-body" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {loading ? (
+            <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center', padding: 20 }}>Loading…</div>
+          ) : err ? (
+            <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>
+          ) : (
+            <div style={{ position: 'relative', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Card Number</div>
+                <div style={{
+                  color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: 14, letterSpacing: 0.5, filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s', userSelect: 'text',
+                }}>
+                  {details?.pan || cardNo}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 24 }}>
+                <div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Expiry</div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s' }}>
+                    {details?.expMonth && details?.expYear ? `${details.expMonth}/${details.expYear}` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>CVC</div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s' }}>
+                    {details?.cvc ?? '—'}
+                  </div>
+                </div>
+              </div>
+              {hidden && (
+                <button type="button" onClick={() => setHidden(false)} style={{
+                  position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)',
+                  borderRadius: 10, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  Tap to reveal
+                </button>
+              )}
             </div>
-            {t.date && <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>{t.date}</div>}
+          )}
+          <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+            Never share these details. They&apos;re never stored or logged by Thanos.
           </div>
-          {t.amount != null && (
-            <span style={{ color: t.amount < 0 ? 'var(--text-primary)' : '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
-              {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: t.currency || 'USD' })}
-            </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "More" action — full transaction history (real) plus clearly-labeled
+ *  coming-soon items for actions with no confirmed backend support. */
+function LaxMoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const [txns, setTxns]   = useState<LaxTxn[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]     = useState<string | null>(null);
+
+  const openHistory = async () => {
+    setShowHistory(true);
+    setLoading(true);
+    setErr(null);
+    try {
+      setTxns(await laxCardTransactions(cardNo));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not load transactions.');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <button className="modal-back-btn" onClick={() => showHistory ? setShowHistory(false) : onClose()}><ChevronLeft size={18}/></button>
+          <span className="modal-title">{showHistory ? 'Transaction History' : 'More'}</span>
+          <div style={{ width: 28 }}/>
+        </div>
+        <div className="modal-body" style={{ padding: 14 }}>
+          {!showHistory ? (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <button className="btn-link" style={{ justifyContent: 'flex-start', padding: '12px 4px', textAlign: 'left' }} onClick={openHistory}>
+                Full Transaction History
+              </button>
+              {['Replace card', 'Report lost', 'Close card'].map(label => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4px' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{label}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 10, background: 'var(--bg-elevated)', padding: '3px 8px', borderRadius: 999 }}>Coming soon</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+              {loading ? (
+                <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center', padding: 20 }}>Loading…</div>
+              ) : err ? (
+                <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>
+              ) : txns.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
+              ) : txns.map((t, i) => <LaxTxnRow key={t.id || i} t={t} last={i === txns.length - 1}/>)}
+            </div>
           )}
         </div>
-      ))}
+      </div>
     </div>
   );
 }

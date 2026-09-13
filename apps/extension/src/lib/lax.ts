@@ -68,6 +68,16 @@ export async function hasThanosAccount(): Promise<boolean> {
   return apiClient.isAuthenticated();
 }
 
+/** Best-effort email for the signed-in Thanos account. Used by the Create
+ *  flow's amount step when account creation was skipped (an account already
+ *  existed) but /lax/card/issue still wants an email. Never throws. */
+export async function laxAccountEmail(): Promise<string | undefined> {
+  try {
+    const me = await apiClient.me();
+    return me?.email || undefined;
+  } catch { return undefined; }
+}
+
 /** Legacy external hand-off — POST /lax/account still returns the hosted
  *  lax.money registration URL while native issuance isn't wired. Kept as a
  *  fallback for "Learn more" / the pre-KYC path. */
@@ -157,6 +167,28 @@ export async function laxIssueCard(input: { amount: number; currency: string; em
  *  unconfirmed upstream; send what the backend forwards. */
 export async function laxSetCardStatus(cardNumber: string, status: 'active' | 'frozen' | string): Promise<unknown> {
   return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/status`, { status });
+}
+
+/** Loosely pull a KYC/verification redirect URL out of an issue-card
+ *  response. The shape is genuinely unconfirmed upstream (no sandbox to
+ *  test against) — check every plausible key, at the top level and nested
+ *  under `data`/`kyc`, and never throw on an unexpected shape. Returns
+ *  undefined (treat the card as issued directly) when none are present. */
+export function extractLaxRedirectUrl(raw: unknown): string | undefined {
+  const KEYS = [
+    'kyc_url', 'kycUrl', 'redirect_url', 'redirectUrl',
+    'verification_url', 'verificationUrl', 'url',
+  ];
+  const fromObj = (o: Record<string, unknown> | null): string | undefined => {
+    if (!o) return undefined;
+    for (const k of KEYS) {
+      const v = o[k];
+      if (typeof v === 'string' && /^https?:\/\//i.test(v)) return v;
+    }
+    return undefined;
+  };
+  const o = asObj(raw);
+  return fromObj(o) ?? fromObj(asObj(o?.data)) ?? fromObj(asObj(o?.kyc));
 }
 
 /* ── loose parse helpers ────────────────────────────────────────────── */
