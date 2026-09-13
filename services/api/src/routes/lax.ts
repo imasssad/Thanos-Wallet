@@ -37,6 +37,13 @@
  * virtual card) stay 503 even once the key/base are set, until those two
  * dashboard-created values exist too — see configuredForIssuance() below.
  *
+ * WEBHOOKS (2026-09-13): laxWebhookRouter (bottom of this file, mounted at
+ * /lax-webhook in app.ts, NOT under /lax's requireAuth) receives Zypto's
+ * dashboard-configured webhook calls and logs every payload to
+ * lax_webhook_events (migration 003) — see that router's own comment for
+ * why it doesn't verify a signature yet. Configure the webhook URL in
+ * dash.zypto.com/webhooks as https://<api-host>/lax-webhook.
+ *
  * ENV (set on the VPS `.env`, gitignored — NEVER commit the value):
  *   LAX_API_KEY    — partner secret, generated (and rotatable) from the
  *                    dashboard's owner/admin Project-creation page
@@ -399,4 +406,52 @@ laxRouter.get('/account', async (_req, res) => {
 });
 laxRouter.get('/card', async (_req, res) => {
   return res.status(501).json({ error: 'use /lax/card/:cardNumber/balance or /lax/cards' });
+});
+
+/* ── webhook receiver ─────────────────────────────────────────────────
+ * Separate, UNAUTHENTICATED router — Zypto's servers calling in have no
+ * Thanos session, so this can't sit behind laxRouter's requireAuth (or
+ * under the /lax mount at all, to keep it clearly distinct). Mounted at
+ * /lax-webhook in app.ts.
+ *
+ * Event names/payload shapes are dashboard-configured
+ * (dash.zypto.com/webhooks) and not in the OpenAPI spec, and there's no
+ * confirmed signature scheme to verify the caller with yet — Robert's
+ * guidance was naming convention only ("following the same naming
+ * convention as your product or the general term, such as 'user
+ * deposit'"), nothing about auth. So this deliberately does NOT reject
+ * unrecognized payloads or unverified callers: every request is logged to
+ * lax_webhook_events (migration 003) for reconciliation, and a 200 is
+ * returned quickly (most webhook senders retry on non-2xx, which we don't
+ * want for a shape we can't fully validate yet). Add real HMAC/signature
+ * verification the moment Zypto documents one — this is a starting point,
+ * not the final state.
+ */
+export const laxWebhookRouter = Router();
+
+laxWebhookRouter.post('/', async (req, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  // Best-effort field extraction — same "try the likely names" approach as
+  // extractCardNumber above, since the real shape is unconfirmed.
+  const eventType =
+    (typeof body.event === 'string' && body.event) ||
+    (typeof body.event_type === 'string' && body.event_type) ||
+    (typeof body.type === 'string' && body.type) ||
+    null;
+  const cardNumber =
+    (typeof body.card_number === 'string' && body.card_number) ||
+    (typeof body.cardNumber === 'string' && body.cardNumber) ||
+    null;
+  try {
+    await query(
+      `insert into lax_webhook_events (event_type, card_number, payload) values ($1, $2, $3)`,
+      [eventType, cardNumber, JSON.stringify(body)],
+    );
+  } catch (e) {
+    // Never fail the webhook response over our own logging — log server-side
+    // and still ack, so Zypto doesn't retry-storm us over a DB hiccup.
+    // eslint-disable-next-line no-console
+    console.error('[lax] failed to persist webhook event', e);
+  }
+  return res.status(200).json({ received: true });
 });

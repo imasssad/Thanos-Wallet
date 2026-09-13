@@ -421,6 +421,22 @@ CREATE TABLE IF NOT EXISTS lax_cards (
 CREATE INDEX IF NOT EXISTS lax_cards_user_id_idx ON lax_cards(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS lax_cards_card_number_idx ON lax_cards(card_number);
 
+-- Raw log of every inbound LAX/Zypto webhook call (migration
+-- 003_lax_webhook_events). Event names/payload shapes are
+-- dashboard-configured and undocumented, and there's no confirmed
+-- signature scheme yet, so every payload is captured as-received for
+-- reconciliation rather than guessed at or dropped.
+CREATE TABLE IF NOT EXISTS lax_webhook_events (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type    TEXT,
+  card_number   TEXT,
+  payload       JSONB NOT NULL,
+  received_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS lax_webhook_events_card_number_idx ON lax_webhook_events(card_number);
+CREATE INDEX IF NOT EXISTS lax_webhook_events_received_at_idx ON lax_webhook_events(received_at DESC);
+
 -- =============================================================================
 -- 12. UPDATED_AT AUTO-TRIGGER
 -- =============================================================================
