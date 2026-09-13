@@ -115,10 +115,47 @@ dashboard's webhook config UI actually offers.
   errors out. Not yet confirmed.
 - **A SendGrid/Elastic Email account** for Zypto's transactional emails —
   still don't have one.
-- **`product_id` values** — need to actually create a card product in the
-  dashboard to get one; not documented as a fixed enum anywhere.
 - **The missed call** — reschedule via Robert's Calendly
   (calendly.com/robert-zypto/30min); nobody joined the last one.
+
+## 8. UPDATE 2026-09-13 — all 4 values now locatable; Robert answered the rest
+
+Our dashboard account exists and is populated (Project "LAX Card", user
+LaxCash, `admin@lax.money`, status active). Where each `.env` value comes
+from, confirmed via screenshots + Robert:
+
+- **`LAX_API_KEY`** — Project List row → **"Get api key"** button. **The
+  value pasted in chat earlier (and again 2026-09-13) is burned** — it's been
+  shared in plaintext chat twice now, in a session whose repo is public.
+  **Rotate it via the same row's "Refresh Key" button before using it for
+  anything real** — don't configure the leaked one.
+- **`LAX_API_BASE`** — Robert: *"base url is your dashboard."* That's the
+  dashboard's own root, `https://dashboard.lax.money` — NOT the per-project
+  "Domain" field (see below).
+- **`LAX_WIDGET_ID`** — Widgets list → **`13524`**, title "LAX Card Main",
+  type "Global", owner `LAXCash/71509` — this is our project's widget (the
+  other rows — Bamram2429, Kamprett — belong to different owners sharing the
+  same platform, not us).
+- **`LAX_PRODUCT_ID`** — NOT a static dashboard field and not in the OpenAPI
+  spec as a list endpoint either. Robert: fetched via the **"Get Products"
+  label in the dashboard's Virtual Cards API section** — a UI action, not
+  something to hardcode from a screenshot. Do this once the key + base URL
+  are live.
+- **The Project "Domain" field** (shows "LAX.money") — Robert: *"being
+  sunset, not important during creation but still mandatory, any domain
+  will fill this field and work correctly."* It's a vestigial required field,
+  not the API base — don't confuse it with `LAX_API_BASE` above.
+- **Multiple widgets/keys under one account** — Robert clarified this is
+  normal: *"same access regardless of different key if created by
+  admin/owner."* Only the one Project (612 / LaxCash) and its widget (13524)
+  matter for us.
+
+**Net: LAX is now fully unblocked except for the key rotation**, which only
+the client can do (self-serve, same "Refresh Key" button). Once a fresh key
++ the base URL + widget ID are in the VPS `.env`, card issuance still needs
+one more dashboard visit for the product ID via "Get Products," then
+everything in `services/api/src/routes/lax.ts` goes live with no code
+changes needed — it already reads all four from the environment.
 
 ---
 
