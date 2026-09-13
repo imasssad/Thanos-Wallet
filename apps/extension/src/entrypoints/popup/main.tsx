@@ -66,6 +66,11 @@ import {
 } from '../../lib/address-book';
 import { setContactEncryptionKey } from '../../lib/contact-crypto';
 import { addLocalActivity } from '../../lib/local-activity';
+import {
+  laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
+  hasThanosAccount, laxRegisterThanosAccount, cardNumberOf,
+  type LaxStatus, type LaxCard as LaxCard_, type LaxTxn,
+} from '../../lib/lax';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -704,14 +709,11 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
 }
 
 /* LAX virtual card + Quantt Agents — same offer the web/desktop clients show.
-   Native LAX issuance is gated on the partner API, so "Get Started" opens the
-   LAX application (lax.money) in a real tab. QUANTT_AGENTS_URL points at the
-   live Quantt product site. */
-// LAX application page (dashboard register — supports ?address=<0x…> prefill;
-// address plumbing to this card is a queued follow-up).
-// Public site only until the LAX integration is approved (client request
-// 2026-07-19) — the dashboard.lax.money register link is pre-approval.
-const LAX_APPLY_URL = 'https://lax.money';
+   LAX is now a fully native flow (intro → create/coming-soon → dashboard →
+   top up → success), backed by the /lax/* proxy (see ../../lib/lax.ts) —
+   no more hand-off to lax.money except as a "Learn more" fallback link.
+   QUANTT_AGENTS_URL points at the live Quantt product site. */
+const LAX_LEARN_MORE_URL = 'https://lax.money';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
@@ -719,8 +721,9 @@ const LAX_BENEFITS = [
   'Accepted worldwide where Visa™ is accepted',
 ];
 
-/* CSS recreation of the LAX Visa card art (self-contained — no image asset). */
-function LaxCardArt() {
+/* CSS recreation of the LAX Visa card art (self-contained — no image asset).
+   `last4` + `active` drive the dashboard state (issued card, not just promo). */
+function LaxCardArt({ last4, active }: { last4?: string; active?: boolean } = {}) {
   return (
     <div style={{
       position: 'relative', width: '100%', aspectRatio: '1.586 / 1',
@@ -738,19 +741,25 @@ function LaxCardArt() {
         background: 'linear-gradient(90deg,#5b8cff,#9bb0ff)', WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent', backgroundClip: 'text',
       }}>LAX</div>
+      {last4 && (
+        <div style={{ position: 'absolute', bottom: '10%', left: '7%', color: '#9db8ff', fontSize: 11, fontWeight: 600, letterSpacing: 1.5 }}>
+          •••• {last4}
+        </div>
+      )}
       <div style={{ position: 'absolute', bottom: '10%', right: '7%', textAlign: 'right', lineHeight: 1 }}>
         <div style={{
           fontSize: 23, fontWeight: 800, fontStyle: 'italic',
           background: 'linear-gradient(90deg,#1a3fd6,#3b7af7)', WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent', backgroundClip: 'text',
         }}>VISA</div>
-        <div style={{ fontSize: 9, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>Algorithmic</div>
+        <div style={{ fontSize: 9, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>{active ? 'Virtual' : 'Algorithmic'}</div>
       </div>
     </div>
   );
 }
 
 function LaxCard() {
+  const [showFlow, setShowFlow] = useState(false);
   return (
     <div className="card" style={{ padding: 16, marginTop: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700 }}>
@@ -768,9 +777,381 @@ function LaxCard() {
           </li>
         ))}
       </ul>
-      <button className="btn-primary" onClick={() => browser.tabs.create({ url: LAX_APPLY_URL })}>
+      <button className="btn-primary" onClick={() => setShowFlow(true)}>
         Get Started
       </button>
+      {showFlow && <LaxCardFlowModal onClose={() => setShowFlow(false)}/>}
+    </div>
+  );
+}
+
+/* ── LAX card flow — native modal, ported from apps/mobile/App.tsx's
+   LaxCardFlow (view-state machine: intro → soon/create → dashboard → topup
+   → success). Same copy/logic; rebuilt with the extension's own modal
+   chrome (.modal-back/.modal/.modal-header, matching Modal() above) instead
+   of RN <Modal>. ── */
+type LaxView = 'intro' | 'soon' | 'create' | 'dashboard' | 'topup' | 'success';
+
+const LAX_VIEW_TITLES: Record<LaxView, string> = {
+  intro: 'LAX Card', soon: 'LAX Card', create: 'Create Your LAX Card',
+  dashboard: 'LAX Card', topup: 'Top Up LAX Card', success: '',
+};
+
+function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
+  const [view, setView]           = useState<LaxView>('intro');
+  const [booting, setBooting]     = useState(true);
+  const [status, setStatus]       = useState<LaxStatus | null>(null);
+  const [cards, setCards]         = useState<LaxCard_[]>([]);
+  const [card, setCard]           = useState<LaxCard_ | null>(null);
+  const [txns, setTxns]           = useState<LaxTxn[]>([]);
+  const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
+
+  const cardNo = card ? cardNumberOf(card) : undefined;
+  const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
+
+  const refresh = async () => {
+    try {
+      const st = await laxStatus();
+      setStatus(st);
+      if (st.configured) {
+        const list = await laxCards();
+        setCards(list);
+        if (list[0]) {
+          setCard(list[0]);
+          const cn = cardNumberOf(list[0]);
+          if (cn) { laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+        }
+      }
+    } catch { /* leave status null — treated as not-live */ }
+  };
+
+  useEffect(() => {
+    (async () => { await refresh(); setBooting(false); })();
+  }, []);
+
+  // Land on the dashboard when the user already has a card.
+  useEffect(() => {
+    if (!booting && cards.length > 0 && view === 'intro') setView('dashboard');
+  }, [booting, cards.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const notLive = !status?.configured;
+  const canBack = view === 'intro' || view === 'dashboard';
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <button className="modal-back-btn" onClick={() => canBack ? onClose() : setView('dashboard')}>
+            <ChevronLeft size={18}/>
+          </button>
+          <span className="modal-title">{LAX_VIEW_TITLES[view]}</span>
+          <div style={{ width: 28 }}/>
+        </div>
+        <div className="modal-body">
+          {booting ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>
+              Loading…
+            </div>
+          ) : (
+            <>
+              {view === 'intro'     && <LaxIntro notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
+              {view === 'soon'      && <LaxComingSoon onClose={onClose} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
+              {view === 'create'    && <LaxCreate status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
+              {view === 'dashboard' && <LaxDashboard card={card} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')}/>}
+              {view === 'topup'     && cardNo && <LaxTopUp cardNo={cardNo} onDone={(amt, cur) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
+              {view === 'success'   && <LaxSuccess last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const LAX_INTRO_BENEFITS = ['Free virtual card', 'Top up with crypto', 'No hidden fees', 'Accepted worldwide'];
+
+function LaxIntro({ notLive, onStart, onLearn }: { notLive: boolean; onStart: () => void; onLearn: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <LaxCardArt/>
+      <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', lineHeight: 1.3 }}>
+        Own Your Crypto{'\n'}In The Real World
+      </div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
+        The LAX Card lets you spend your crypto globally, anywhere Visa™ is accepted.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 2 }}>
+        {LAX_INTRO_BENEFITS.map(b => (
+          <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Check size={15} color="var(--blue)" strokeWidth={2.6}/>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12.5 }}>{b}</span>
+          </div>
+        ))}
+      </div>
+      <button className="btn-primary" onClick={onStart}>Get Started</button>
+      <button className="btn-link" onClick={onLearn}>Learn more</button>
+      {notLive && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+          Native card issuance is rolling out — you can still explore the flow.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 20 }}>
+      <LaxCardArt/>
+      <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 800, textAlign: 'center', marginTop: 8 }}>
+        LAX cards aren&apos;t live yet
+      </div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
+        Native issuance, top-ups and balance land as soon as the LAX partner setup is finished. Until then you can apply on the LAX site.
+      </div>
+      <button className="btn-primary" style={{ marginTop: 6 }} onClick={onLearn}>Apply on lax.money ↗</button>
+      <button className="btn-link" onClick={onClose}>Not now</button>
+    </div>
+  );
+}
+
+const LAX_KYC_STEPS = [
+  'Prepare your Passport or ID card',
+  'Be at your home',
+  'Allow location access',
+  'Take a selfie',
+];
+
+function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () => void }) {
+  const [email, setEmail]   = useState('');
+  const [pwd, setPwd]       = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState<string | null>(null);
+
+  const submit = async () => {
+    setErr(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
+    if (pwd.length < 8) { setErr('Password must be at least 8 characters.'); return; }
+    setBusy(true);
+    try {
+      if (!(await hasThanosAccount())) {
+        await laxRegisterThanosAccount({ email: email.trim(), password: pwd });
+      }
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not create your account — try again.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* step rail */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px' }}>
+        {['Account', 'Verify', 'Complete'].map((s, i) => (
+          <React.Fragment key={s}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: i === 0 ? 'var(--blue)' : 'var(--bg-elevated)',
+              }}>
+                <span style={{ color: i === 0 ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
+              </div>
+              <span style={{ color: i === 0 ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 10 }}>{s}</span>
+            </div>
+            {i < 2 && <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)', margin: '0 6px' }}/>}
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>During verification you will need to:</div>
+        {LAX_KYC_STEPS.map(s => (
+          <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Check size={14} color="var(--blue)" strokeWidth={2.4}/>
+            <span style={{ color: 'var(--text-primary)', fontSize: 12 }}>{s}</span>
+          </div>
+        ))}
+      </div>
+
+      <input className="field" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoCapitalize="off" autoCorrect="off"/>
+      <input className="field" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="Password (min 8 chars)" type="password" autoCapitalize="off"/>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }} onClick={() => setAgreed(v => !v)}>
+        <div style={{
+          width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${agreed ? 'var(--blue)' : 'var(--border-default)'}`,
+          background: agreed ? 'var(--blue)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          {agreed && <Check size={12} color="#fff" strokeWidth={3}/>}
+        </div>
+        <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</span>
+      </div>
+
+      {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+
+      <button className="btn-primary" disabled={!agreed || busy} onClick={submit}>
+        {busy ? 'Creating…' : 'Next'}
+      </button>
+      <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+        {status?.configuredForIssuance
+          ? 'Next opens ID verification (Sumsub), then your virtual card is issued.'
+          : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
+      </div>
+    </div>
+  );
+}
+
+function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
+  card: LaxCard_ | null; last4: string; txns: LaxTxn[]; notLive: boolean; onTopUp: () => void; onSoon: () => void;
+}) {
+  const balance = card?.balance != null ? Number(card.balance) : null;
+  const actions: Array<{ icon: typeof Plus; label: string; onPress: () => void }> = [
+    { icon: Plus,       label: 'Top Up',       onPress: notLive ? onSoon : onTopUp },
+    { icon: CreditCard, label: 'Card Details', onPress: onSoon },
+    { icon: Shield,     label: 'Freeze',       onPress: onSoon },
+    { icon: Maximize2,  label: 'More',         onPress: onSoon },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <LaxCardArt active last4={last4}/>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ width: 7, height: 7, borderRadius: 4, background: card ? '#22c55e' : 'var(--text-muted)' }}/>
+        <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>{card ? String(card.status || 'Active') : 'No card yet'}</span>
+      </div>
+      <div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Card Balance</div>
+        <div style={{ color: 'var(--text-primary)', fontSize: 26, fontWeight: 800 }}>
+          {balance != null ? `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        {actions.map(a => (
+          <button key={a.label} onClick={a.onPress} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1, background: 'none', border: 'none', cursor: 'pointer' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <a.icon size={16} color="var(--blue)"/>
+            </div>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 10.5 }}>{a.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {notLive && (
+        <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: 11, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+          <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }}/>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, lineHeight: 1.45 }}>
+            LAX isn&apos;t live yet — balance and actions will work once the partner setup is finished.
+          </span>
+        </div>
+      )}
+
+      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 800, marginTop: 2 }}>Recent Transactions</div>
+      {txns.length === 0 ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
+      ) : txns.slice(0, 6).map((t, i) => (
+        <div key={t.id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < 5 ? '1px solid var(--border-subtle)' : 'none' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t.merchant || t.type || 'Transaction'}
+            </div>
+            {t.date && <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>{t.date}</div>}
+          </div>
+          {t.amount != null && (
+            <span style={{ color: t.amount < 0 ? 'var(--text-primary)' : '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
+              {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: t.currency || 'USD' })}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const LAX_TOPUP_QUICK = [50, 100, 200, 500];
+
+function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cur: string) => void }) {
+  const [amount, setAmount]       = useState('');
+  const [currency, setCurrency]   = useState('USDT');
+  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
+  const [busy, setBusy]           = useState(false);
+  const [err, setErr]             = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await laxCurrencies();
+        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
+        if (Array.isArray(arr) && arr.length) {
+          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
+        }
+      } catch { /* keep the fallback list */ }
+    })();
+  }, []);
+
+  const submit = async () => {
+    setErr(null);
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
+    setBusy(true);
+    try {
+      await laxTopUp({ cardNumber: cardNo, amount: amt });
+      onDone(amt, currency);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Top up failed — try again.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Select crypto to top up with</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {currencies.map(cur => (
+          <button key={cur} onClick={() => setCurrency(cur)} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
+            border: `1px solid ${currency === cur ? 'var(--blue)' : 'var(--border-default)'}`,
+            background: currency === cur ? 'var(--blue-dim)' : 'transparent', cursor: 'pointer',
+          }}>
+            <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}>{cur}</span>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 2 }}>Top up amount (USD)</div>
+      <input className="field" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
+        style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', height: 52 }}/>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {LAX_TOPUP_QUICK.map(q => (
+          <button key={q} onClick={() => setAmount(String(q))} style={{
+            flex: 1, padding: '9px 0', borderRadius: 9, border: '1px solid var(--border-default)',
+            background: 'transparent', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          }}>${q}</button>
+        ))}
+      </div>
+
+      {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+
+      <button className="btn-primary" disabled={busy} onClick={submit}>
+        {busy ? 'Processing…' : 'Top Up'}
+      </button>
+    </div>
+  );
+}
+
+function LaxSuccess({ last4, topUp, onDone }: { last4: string; topUp: { amount: number; currency: string } | null; onDone: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', paddingTop: 24 }}>
+      <div style={{ width: 72, height: 72, borderRadius: 36, background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Check size={34} color="#22c55e" strokeWidth={3}/>
+      </div>
+      <div style={{ color: 'var(--text-primary)', fontSize: 19, fontWeight: 800 }}>Top Up Successful!</div>
+      {topUp && (
+        <div style={{ color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>
+            ${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </span> in {topUp.currency} has been added to your LAX Card •••• {last4}
+        </div>
+      )}
+      <button className="btn-primary" style={{ marginTop: 8, alignSelf: 'stretch' }} onClick={onDone}>Done</button>
     </div>
   );
 }
