@@ -46,9 +46,6 @@ pnpm-debug.log*
 *.swp
 *.swo
 
-# Lockfile (project preference)
-pnpm-lock.yaml
-
 # Loose design assets (not source)
 *.fig
 19SHPQjQ.png
