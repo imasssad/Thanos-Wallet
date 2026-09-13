@@ -55,8 +55,9 @@ import {
 import { setContactEncryptionKey } from './contact-crypto';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
-  laxRegisterThanosAccount, hasThanosAccount, cardNumberOf,
-  type LaxStatus, type LaxCard as LaxCardData, type LaxTxn,
+  laxRegisterThanosAccount, hasThanosAccount, laxAccountEmail, cardNumberOf,
+  laxIssueCard, laxCardDetails, laxSetCardStatus, extractKycUrl,
+  type LaxStatus, type LaxCard as LaxCardData, type LaxTxn, type LaxCardDetails,
 } from './lax';
 
 type SignerChoice = 'seed' | 'ledger' | 'trezor';
@@ -180,6 +181,8 @@ const Lock2     = Ic(<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
 const ChevRight2 = Ic(<polyline points="9 18 15 12 9 6"/>);
 const User      = Ic(<><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></>);
 const Trash     = Ic(<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></>);
+const Unlock2   = Ic(<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></>);
+const ListIc    = Ic(<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>);
 
 
 /** Address with highlighted head + tail — visual-confirmation pattern
@@ -841,6 +844,10 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const [card, setCard]       = useState<LaxCardData | null>(null);
   const [txns, setTxns]       = useState<LaxTxn[]>([]);
   const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
+  const [freezing, setFreezing]   = useState(false);
+  const [freezeErr, setFreezeErr] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [moreOpen, setMoreOpen]       = useState(false);
 
   const cardNo = card ? cardNumberOf(card) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
@@ -873,12 +880,30 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const notLive = !status?.configured;
   const openLearn = () => window.open(LAX_LEARN_URL, '_blank', 'noopener,noreferrer');
 
+  const toggleFreeze = async () => {
+    if (!cardNo) return;
+    const frozen = String(card?.status || '').toLowerCase() === 'frozen';
+    const confirmMsg = frozen
+      ? `Unfreeze card •••• ${last4}? It will be usable for new transactions again immediately.`
+      : `Freeze card •••• ${last4}? It will be blocked from all new transactions until you unfreeze it.`;
+    if (!window.confirm(confirmMsg)) return;
+    setFreezeErr(null);
+    setFreezing(true);
+    try {
+      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await refresh();
+    } catch (e) {
+      setFreezeErr((e as Error)?.message || `Could not ${frozen ? 'unfreeze' : 'freeze'} the card — try again.`);
+    } finally { setFreezing(false); }
+  };
+
   const title = view === 'create' ? 'Create Your LAX Card'
     : view === 'topup' ? 'Top Up LAX Card'
     : view === 'success' ? '' : 'LAX Card';
   const showBack = view !== 'intro' && view !== 'dashboard' && view !== 'success';
 
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440, width: '100%', maxHeight: '86vh', overflowY: 'auto' }}>
         <div className="modal-header">
@@ -900,7 +925,16 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
               {view === 'intro'     && <LaxIntro notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={openLearn}/>}
               {view === 'soon'      && <LaxComingSoon onClose={onClose} onLearn={openLearn}/>}
               {view === 'create'    && <LaxCreate status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
-              {view === 'dashboard' && <LaxDashboard card={card} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')}/>}
+              {view === 'dashboard' && (
+                <LaxDashboard
+                  card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive}
+                  freezing={freezing} freezeErr={freezeErr}
+                  onTopUp={() => setView('topup')} onSoon={() => setView('soon')}
+                  onFreeze={toggleFreeze}
+                  onOpenDetails={() => setDetailsOpen(true)}
+                  onOpenMore={() => setMoreOpen(true)}
+                />
+              )}
               {view === 'topup'     && cardNo && <LaxTopUp cardNo={cardNo} onDone={(amt: number, cur: string) => { setLastTopUp({ amount: amt, currency: cur }); void refresh(); setView('success'); }}/>}
               {view === 'success'   && <LaxSuccess last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
             </>
@@ -908,6 +942,9 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+    {detailsOpen && cardNo && <LaxCardDetailsModal cardNumber={cardNo} onClose={() => setDetailsOpen(false)}/>}
+    {moreOpen && cardNo && <LaxMoreModal cardNumber={cardNo} last4={last4} onClose={() => setMoreOpen(false)}/>}
+    </>
   );
 }
 
@@ -954,14 +991,57 @@ function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () 
   );
 }
 
+type LaxCreateStep = 'account' | 'amount' | 'redirect';
+
+/** Account → Amount → Verify (if the issue-card response carries a KYC
+ *  redirect) → Complete. Skips straight to the amount step when a Thanos
+ *  session already exists (e.g. the user backed out of a previous run). */
 function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () => void }) {
+  const canIssue = !!status?.configuredForIssuance;
+
+  const [ready, setReady] = useState(false);
+  const [step, setStep]   = useState<LaxCreateStep>('account');
+
   const [email, setEmail]   = useState('');
   const [pwd, setPwd]       = useState('');
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState<string | null>(null);
 
-  const submit = async () => {
+  const [amount, setAmount]         = useState('');
+  const [currency, setCurrency]     = useState('USDT');
+  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
+  const [issuing, setIssuing]       = useState(false);
+  const [issueErr, setIssueErr]     = useState<string | null>(null);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (await hasThanosAccount()) {
+          const e = await laxAccountEmail();
+          if (e) setEmail(e);
+          if (canIssue) { setStep('amount'); } else { onDone(); return; }
+        }
+      } finally { setReady(true); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'amount') return;
+    (async () => {
+      try {
+        const raw = await laxCurrencies();
+        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
+        if (Array.isArray(arr) && arr.length) {
+          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
+        }
+      } catch { /* keep the fallback list */ }
+    })();
+  }, [step]);
+
+  const submitAccount = async () => {
     setErr(null);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
     if (pwd.length < 8) { setErr('Password must be at least 8 characters.'); return; }
@@ -970,77 +1050,162 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
       if (!(await hasThanosAccount())) {
         await laxRegisterThanosAccount({ email: email.trim(), password: pwd });
       }
-      onDone();
+      if (canIssue) setStep('amount'); else onDone();
     } catch (e) {
       setErr((e as Error)?.message || 'Could not create your account — try again.');
     } finally { setBusy(false); }
   };
 
+  const submitAmount = async () => {
+    setIssueErr(null);
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setIssueErr('Enter an amount.'); return; }
+    setIssuing(true);
+    try {
+      const res = await laxIssueCard({ amount: amt, currency, email: email.trim() });
+      const url = extractKycUrl(res);
+      if (url) {
+        setRedirectUrl(url);
+        void window.thanosDesktop?.openExternal?.(url);
+        setStep('redirect');
+      } else {
+        onDone();
+      }
+    } catch (e) {
+      setIssueErr((e as Error)?.message || 'Could not issue your card — try again.');
+    } finally { setIssuing(false); }
+  };
+
+  if (!ready) {
+    return <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>;
+  }
+
+  const railLabels = ['Account', 'Amount', step === 'redirect' ? 'Verify' : 'Complete'];
+  const stepIdx = step === 'account' ? 0 : step === 'amount' ? 1 : 2;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* step rail */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px' }}>
-        {['Account', 'Verify', 'Complete'].map((s, i) => (
+        {railLabels.map((s, i) => (
           <React.Fragment key={s}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: i === 0 ? 'var(--blue)' : 'var(--bg-elevated)' }}>
-                <span style={{ color: i === 0 ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
+              <div style={{ width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: i <= stepIdx ? 'var(--blue)' : 'var(--bg-elevated)' }}>
+                <span style={{ color: i <= stepIdx ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
               </div>
-              <span style={{ color: i === 0 ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 10 }}>{s}</span>
+              <span style={{ color: i <= stepIdx ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 10 }}>{s}</span>
             </div>
-            {i < 2 && <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)', margin: '0 6px' }}/>}
+            {i < railLabels.length - 1 && <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)', margin: '0 6px' }}/>}
           </React.Fragment>
         ))}
       </div>
 
-      <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>During verification you will need to:</div>
-        {LAX_KYC_STEPS.map(s => (
-          <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ color: 'var(--blue)', fontWeight: 700, fontSize: 13 }}>✓</span>
-            <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{s}</span>
+      {step === 'account' && (
+        <>
+          <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>During verification you may need to:</div>
+            {LAX_KYC_STEPS.map(s => (
+              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ color: 'var(--blue)', fontWeight: 700, fontSize: 13 }}>✓</span>
+                <span style={{ color: 'var(--text-primary)', fontSize: 13 }}>{s}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <input className="field-input" type="email" placeholder="Email" autoComplete="off" value={email} onChange={e => setEmail(e.target.value)}/>
-      <input className="field-input" type="password" placeholder="Password (min 8 chars)" value={pwd} onChange={e => setPwd(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && agreed && !busy) submit(); }}/>
+          <input className="field-input" type="email" placeholder="Email" autoComplete="off" value={email} onChange={e => setEmail(e.target.value)}/>
+          <input className="field-input" type="password" placeholder="Password (min 8 chars)" value={pwd} onChange={e => setPwd(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && agreed && !busy) submitAccount(); }}/>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setAgreed(v => !v)}>
-        <span style={{
-          width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-          border: `1.5px solid ${agreed ? 'var(--blue)' : 'var(--border-default)'}`,
-          background: agreed ? 'var(--blue)' : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          {agreed && <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>✓</span>}
-        </span>
-        <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>I agree to the LAX Terms &amp; Conditions</span>
-      </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setAgreed(v => !v)}>
+            <span style={{
+              width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+              border: `1.5px solid ${agreed ? 'var(--blue)' : 'var(--border-default)'}`,
+              background: agreed ? 'var(--blue)' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {agreed && <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>✓</span>}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>I agree to the LAX Terms &amp; Conditions</span>
+          </label>
 
-      {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12 }}>{err}</div>}
+          {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12 }}>{err}</div>}
 
-      <button className="btn-primary" disabled={!agreed || busy} onClick={submit}>{busy ? 'Creating…' : 'Next'}</button>
-      <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
-        {status?.configuredForIssuance
-          ? 'Next opens ID verification (Sumsub), then your virtual card is issued.'
-          : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
-      </div>
+          <button className="btn-primary" disabled={!agreed || busy} onClick={submitAccount}>{busy ? 'Creating…' : 'Next'}</button>
+          <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
+            {canIssue
+              ? 'Next you\'ll choose an amount to fund your new card with.'
+              : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
+          </div>
+        </>
+      )}
+
+      {step === 'amount' && (
+        <>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Fund your card with</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {currencies.map(cur => (
+              <button key={cur} onClick={() => setCurrency(cur)} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
+                border: `1px solid ${currency === cur ? 'var(--blue)' : 'var(--border-default)'}`,
+                background: currency === cur ? 'rgba(59,122,247,0.14)' : 'transparent',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                <TokenAvatar sym={cur} color={coinColor(cur)} className="tx-avatar" label={cur.slice(0, 1)} style={{ width: 18, height: 18, fontSize: 9 }}/>
+                <span style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{cur}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 2 }}>Initial card amount (USD)</div>
+          <input className="field-input" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
+            style={{ fontSize: 22, fontWeight: 800, textAlign: 'center', padding: '14px 12px' }}/>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {LAX_TOPUP_QUICK.map(q => (
+              <button key={q} onClick={() => setAmount(String(q))} className="btn-outline" style={{ flex: 1, textAlign: 'center' }}>${q}</button>
+            ))}
+          </div>
+
+          {issueErr && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12 }}>{issueErr}</div>}
+
+          <button className="btn-primary" disabled={issuing} onClick={submitAmount} style={{ marginTop: 2 }}>{issuing ? 'Issuing…' : 'Issue Card'}</button>
+          <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
+            This is a real card issuance — there is no sandbox. If ID verification is required you&apos;ll be sent to it next.
+          </div>
+        </>
+      )}
+
+      {step === 'redirect' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 8, textAlign: 'center' }}>
+          <div style={{ width: 48, height: 48, borderRadius: 24, background: 'rgba(59,122,247,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <KeyIcon size={20} color="var(--blue)"/>
+          </div>
+          <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800 }}>Complete verification in your browser</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
+            We opened identity verification in your browser. Complete it there, then come back — your card will appear here once it&apos;s ready.
+          </div>
+          {redirectUrl && (
+            <button className="settings-btn-link" onClick={() => { void window.thanosDesktop?.openExternal?.(redirectUrl); }}>Reopen verification link</button>
+          )}
+          <button className="btn-primary" onClick={onDone} style={{ marginTop: 2 }}>Done</button>
+        </div>
+      )}
     </div>
   );
 }
 
-function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
-  card: LaxCardData | null; last4: string; txns: LaxTxn[]; notLive: boolean;
-  onTopUp: () => void; onSoon: () => void;
+function LaxDashboard({ card, cardNo, last4, txns, notLive, freezing, freezeErr, onTopUp, onSoon, onFreeze, onOpenDetails, onOpenMore }: {
+  card: LaxCardData | null; cardNo?: string; last4: string; txns: LaxTxn[]; notLive: boolean;
+  freezing: boolean; freezeErr: string | null;
+  onTopUp: () => void; onSoon: () => void; onFreeze: () => void; onOpenDetails: () => void; onOpenMore: () => void;
 }) {
   const balance = card?.balance != null ? Number(card.balance) : null;
-  const actions: { icon: (p: { size?: number; color?: string }) => React.ReactElement; label: string; onPress: () => void }[] = [
+  const frozen = String(card?.status || '').toLowerCase() === 'frozen';
+  const haveCard = notLive ? false : !!cardNo;
+  const actions: { icon: (p: { size?: number; color?: string }) => React.ReactElement; label: string; onPress: () => void; disabled?: boolean }[] = [
     { icon: PlusIc,       label: 'Top Up',       onPress: notLive ? onSoon : onTopUp },
-    { icon: CreditCardIc, label: 'Card Details', onPress: onSoon },
-    { icon: Shield,       label: 'Freeze',       onPress: onSoon },
-    { icon: AlertTriangleIc, label: 'More',      onPress: onSoon },
+    { icon: CreditCardIc, label: 'Card Details', onPress: haveCard ? onOpenDetails : onSoon },
+    { icon: frozen ? Unlock2 : Lock2, label: freezing ? '…' : (frozen ? 'Unfreeze' : 'Freeze'), onPress: haveCard ? onFreeze : onSoon, disabled: freezing },
+    { icon: ListIc,       label: 'More',         onPress: haveCard ? onOpenMore : onSoon },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1058,9 +1223,10 @@ function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
 
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         {actions.map(a => (
-          <button key={a.label} onClick={a.onPress} style={{
+          <button key={a.label} onClick={a.onPress} disabled={a.disabled} style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1,
-            background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+            background: 'none', border: 'none', cursor: a.disabled ? 'default' : 'pointer', fontFamily: 'inherit',
+            opacity: a.disabled ? 0.55 : 1,
           }}>
             <span style={{ width: 42, height: 42, borderRadius: 21, background: 'rgba(59,122,247,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <a.icon size={17} color="var(--blue)"/>
@@ -1069,6 +1235,8 @@ function LaxDashboard({ card, last4, txns, notLive, onTopUp, onSoon }: {
           </button>
         ))}
       </div>
+
+      {freezeErr && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12 }}>{freezeErr}</div>}
 
       {notLive && (
         <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -1161,6 +1329,133 @@ function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cu
 
       <button className="btn-primary" disabled={busy} onClick={submit} style={{ marginTop: 2 }}>{busy ? 'Processing…' : 'Top Up'}</button>
     </div>
+  );
+}
+
+/** PAN / expiry / CVC — genuinely sensitive. Never persisted outside this
+ *  modal's own state, cleared the moment it closes; blurred-by-default with
+ *  a click-to-reveal gate (same pattern as ExportSeedModal's phrase/key). */
+function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onClose: () => void }) {
+  const [details, setDetails] = useState<LaxCardDetails | null>(null);
+  const [hidden, setHidden]   = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr]         = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await laxCardDetails(cardNumber);
+        if (!cancelled) setDetails(d);
+      } catch (e) {
+        if (!cancelled) setErr((e as Error)?.message || 'Could not load card details — try again.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [cardNumber]);
+
+  const close = () => { setDetails(null); onClose(); };
+
+  const Row = ({ label, value }: { label: string; value: string }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0' }}>
+      <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{label}</span>
+      <span style={{
+        fontFamily: 'Geist Mono, ui-monospace, monospace', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)',
+        filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s',
+      }}>{value}</span>
+    </div>
+  );
+
+  return (
+    <Modal title="Card Details" onClose={close}>
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {loading ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>Loading…</div>
+        ) : err ? (
+          <div style={{ color: 'var(--red, #ef4444)', fontSize: 13 }}>{err}</div>
+        ) : (
+          <div style={{ position: 'relative', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, padding: '2px 14px' }}>
+            <Row label="Card number" value={details?.pan || '—'}/>
+            <Row label="Expiry" value={details?.expMonth && details?.expYear ? `${details.expMonth}/${details.expYear}` : '—'}/>
+            <Row label="CVC" value={details?.cvc != null ? String(details.cvc) : '—'}/>
+            {hidden && (
+              <button onClick={() => setHidden(false)}
+                style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(2px)', border: 'none', borderRadius: 10, color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
+                Click to reveal
+              </button>
+            )}
+          </div>
+        )}
+        <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>Never stored on this device — cleared as soon as you close this window.</p>
+      </div>
+    </Modal>
+  );
+}
+
+const LAX_MORE_SOON = ['Replace card', 'Report lost', 'Close card'];
+
+/** "More" actions — full (untruncated) transaction history is real and
+ *  reuses laxCardTransactions(); replace/lost/close have no confirmed
+ *  backend support yet, so they stay clearly-labeled coming-soon rows. */
+function LaxMoreModal({ cardNumber, last4, onClose }: { cardNumber: string; last4: string; onClose: () => void }) {
+  const [view, setView]       = useState<'menu' | 'history'>('menu');
+  const [txns, setTxns]       = useState<LaxTxn[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState<string | null>(null);
+
+  const openHistory = async () => {
+    setView('history');
+    if (txns) return;
+    setLoading(true); setErr(null);
+    try {
+      setTxns(await laxCardTransactions(cardNumber));
+    } catch (e) {
+      setErr((e as Error)?.message || 'Could not load transactions.');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Modal title={view === 'history' ? `Transactions •••• ${last4}` : 'More'} onClose={onClose}>
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {view === 'menu' ? (
+          <>
+            <button onClick={openHistory} className="settings-btn" style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-start' }}>
+              <ListIc size={15}/> Full Transaction History
+            </button>
+            {LAX_MORE_SOON.map(label => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', opacity: 0.55 }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{label}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 6, background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>Coming soon</span>
+              </div>
+            ))}
+          </>
+        ) : (
+          <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {loading ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>Loading…</div>
+            ) : err ? (
+              <div style={{ color: 'var(--red, #ef4444)', fontSize: 13 }}>{err}</div>
+            ) : !txns || txns.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', padding: '20px 0' }}>No transactions yet.</div>
+            ) : txns.map((t, i) => (
+              <div key={t.id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < txns.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.merchant || t.type || 'Transaction'}</div>
+                  {t.date ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{t.date}</div> : null}
+                </div>
+                {t.amount != null ? (
+                  <span style={{ color: t.amount < 0 ? 'var(--text-primary)' : '#22c55e', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: t.currency || 'USD' })}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

@@ -70,6 +70,13 @@ export async function hasThanosAccount(): Promise<boolean> {
   return apiClient.isAuthenticated();
 }
 
+/** Best-effort account email — used when the create screen skips the
+ *  account step (already signed in) but still needs an email for
+ *  laxIssueCard(). Never throws; undefined just means "ask the user". */
+export async function laxAccountEmail(): Promise<string | undefined> {
+  try { return (await apiClient.me()).email; } catch { return undefined; }
+}
+
 /** Legacy external hand-off — POST /lax/account still returns the hosted
  *  lax.money registration URL while native issuance isn't wired. Kept as a
  *  fallback for "Learn more" / the pre-KYC path. */
@@ -244,6 +251,29 @@ function parseTxBlob(raw: unknown): LaxTxn[] {
       raw:      e,
     };
   });
+}
+
+/** Loosely pull a KYC/verification redirect URL out of an issue-card
+ *  response. The exact key is unconfirmed upstream, so this checks every
+ *  likely spelling at the top level and nested under `data`/`kyc`. Never
+ *  throws — returns undefined for any shape it doesn't recognise, which
+ *  the caller treats as "card issued directly, no redirect needed". */
+const KYC_URL_KEYS = [
+  'kyc_url', 'kycUrl', 'redirect_url', 'redirectUrl',
+  'verification_url', 'verificationUrl', 'url',
+];
+export function extractKycUrl(raw: unknown): string | undefined {
+  const isUrl = (v: unknown): v is string => typeof v === 'string' && /^https?:\/\//i.test(v);
+  const fromObj = (src: Record<string, unknown> | null): string | undefined => {
+    if (!src) return undefined;
+    for (const k of KYC_URL_KEYS) {
+      if (isUrl(src[k])) return src[k] as string;
+    }
+    return undefined;
+  };
+  const o = asObj(raw);
+  if (!o) return undefined;
+  return fromObj(o) ?? fromObj(asObj(o.data)) ?? fromObj(asObj(o.kyc));
 }
 
 /** card_number of a card object regardless of key spelling. */
