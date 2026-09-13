@@ -1183,8 +1183,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
             {view === 'intro'    && <LaxIntro C={C} styles={styles} notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => openBrowser('https://lax.money')}/>}
             {view === 'soon'     && <LaxComingSoon C={C} styles={styles} have={status?.have} onClose={onClose} onLearn={() => openBrowser('https://lax.money')}/>}
-            {view === 'create'   && <LaxCreate C={C} styles={styles} status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
-            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')}/>}
+            {view === 'create'   && <LaxCreate C={C} styles={styles} status={status} openBrowser={openBrowser} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
+            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
             {view === 'topup'    && cardNo && <LaxTopUp C={C} styles={styles} cardNo={cardNo} onDone={(amt: number, cur: string) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
             {view === 'success'  && <LaxSuccess C={C} styles={styles} last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
           </ScrollView>
@@ -1277,14 +1277,42 @@ const LAX_KYC_STEPS = [
   { t: 'Take a selfie' },
 ];
 
-function LaxCreate({ C, styles, status, onDone }: any) {
+const LAX_CREATE_QUICK = [50, 100, 200, 500];
+
+/** Multi-step: Account (email/password) → Amount (card funding, only when
+ *  issuance is configured) → Verify (only if issue-card hands back a KYC
+ *  redirect) → Complete. issue-card's response shape is unconfirmed
+ *  upstream (no sandbox) — see findKycRedirectUrl()'s header note; this
+ *  never throws on an unexpected shape, it just treats the card as issued
+ *  directly when no redirect URL is found. */
+function LaxCreate({ C, styles, status, openBrowser, onDone }: any) {
+  const [step, setStep] = useState<'account' | 'amount' | 'kyc'>('account');
   const [email, setEmail]   = useState('');
   const [pwd, setPwd]       = useState('');
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy]     = useState(false);
   const [err, setErr]       = useState<string | null>(null);
 
-  const submit = async () => {
+  const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('USDT');
+  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
+
+  const canIssue = !!status?.configuredForIssuance;
+
+  useEffect(() => {
+    if (step !== 'amount') return;
+    (async () => {
+      try {
+        const raw = await (require('./lib/lax') as typeof import('./lib/lax')).laxCurrencies();
+        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
+        if (Array.isArray(arr) && arr.length) {
+          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
+        }
+      } catch { /* keep the fallback list */ }
+    })();
+  }, [step]);
+
+  const submitAccount = async () => {
     setErr(null);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
     if (pwd.length < 8) { setErr('Password must be at least 8 characters.'); return; }
@@ -1294,81 +1322,207 @@ function LaxCreate({ C, styles, status, onDone }: any) {
       if (!(await lax.hasThanosAccount())) {
         await lax.laxRegisterThanosAccount({ email: email.trim(), password: pwd });
       }
-      onDone();
+      if (canIssue) setStep('amount'); else onDone();
     } catch (e: any) {
       setErr(e?.message || 'Could not create your account — try again.');
     } finally { setBusy(false); }
   };
 
+  const submitAmount = async () => {
+    setErr(null);
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
+    setBusy(true);
+    try {
+      const lax = require('./lib/lax') as typeof import('./lib/lax');
+      const res = await lax.laxIssueCard({ amount: amt, currency, email: email.trim() });
+      const kycUrl = lax.findKycRedirectUrl(res);
+      if (kycUrl) {
+        openBrowser?.(kycUrl);
+        setStep('kyc');
+      } else {
+        await onDone();
+      }
+    } catch (e: any) {
+      setErr(e?.message || 'Could not issue your card — try again.');
+    } finally { setBusy(false); }
+  };
+
+  const railSteps = canIssue ? ['Account', 'Amount', 'Complete'] : ['Account', 'Complete'];
+  const railIdx = step === 'account' ? 0 : step === 'amount' ? 1 : railSteps.length - 1;
+
   return (
     <View style={{ gap: 14 }}>
       {/* step rail */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10 }}>
-        {['Account', 'Verify', 'Complete'].map((s, i) => (
+        {railSteps.map((s, i) => (
           <React.Fragment key={s}>
             <View style={{ alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: i === 0 ? C.blue : C.bgElevated }}>
-                <Text style={{ color: i === 0 ? '#fff' : C.textMuted, fontSize: 12, fontWeight: '800' }}>{i + 1}</Text>
+              <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: i <= railIdx ? C.blue : C.bgElevated }}>
+                {i < railIdx ? <Check size={13} color="#fff" strokeWidth={3}/> : <Text style={{ color: i === railIdx ? '#fff' : C.textMuted, fontSize: 12, fontWeight: '800' }}>{i + 1}</Text>}
               </View>
-              <Text style={{ color: i === 0 ? C.textPrimary : C.textMuted, fontSize: 11 }}>{s}</Text>
+              <Text style={{ color: i <= railIdx ? C.textPrimary : C.textMuted, fontSize: 11 }}>{s}</Text>
             </View>
-            {i < 2 && <View style={{ flex: 1, height: 1, backgroundColor: C.borderSubtle, marginHorizontal: 6 }}/>}
+            {i < railSteps.length - 1 && <View style={{ flex: 1, height: 1, backgroundColor: i < railIdx ? C.blue : C.borderSubtle, marginHorizontal: 6 }}/>}
           </React.Fragment>
         ))}
       </View>
 
-      <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, padding: 14, gap: 12 }}>
-        <Text style={{ color: C.textSecondary, fontSize: 12 }}>During verification you will need to:</Text>
-        {LAX_KYC_STEPS.map((s) => (
-          <View key={s.t} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Check size={15} color={C.blue} strokeWidth={2.4}/>
-            <Text style={{ color: C.textPrimary, fontSize: 13 }}>{s.t}</Text>
+      {step === 'account' && (
+        <>
+          <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, padding: 14, gap: 12 }}>
+            <Text style={{ color: C.textSecondary, fontSize: 12 }}>During verification you will need to:</Text>
+            {LAX_KYC_STEPS.map((s) => (
+              <View key={s.t} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Check size={15} color={C.blue} strokeWidth={2.4}/>
+                <Text style={{ color: C.textPrimary, fontSize: 13 }}>{s.t}</Text>
+              </View>
+            ))}
           </View>
-        ))}
-      </View>
 
-      <TextInput value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={C.textMuted}
-        autoCapitalize="none" keyboardType="email-address" autoCorrect={false}
-        style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14 }}/>
-      <TextInput value={pwd} onChangeText={setPwd} placeholder="Password (min 8 chars)" placeholderTextColor={C.textMuted}
-        secureTextEntry autoCapitalize="none"
-        style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14 }}/>
+          <TextInput value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor={C.textMuted}
+            autoCapitalize="none" keyboardType="email-address" autoCorrect={false}
+            style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14 }}/>
+          <TextInput value={pwd} onChangeText={setPwd} placeholder="Password (min 8 chars)" placeholderTextColor={C.textMuted}
+            secureTextEntry autoCapitalize="none"
+            style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14 }}/>
 
-      <Pressable onPress={() => setAgreed(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: agreed ? C.blue : C.borderDefault, backgroundColor: agreed ? C.blue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-          {agreed && <Check size={13} color="#fff" strokeWidth={3}/>}
+          <Pressable onPress={() => setAgreed(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: agreed ? C.blue : C.borderDefault, backgroundColor: agreed ? C.blue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              {agreed && <Check size={13} color="#fff" strokeWidth={3}/>}
+            </View>
+            <Text style={{ color: C.textSecondary, fontSize: 12, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</Text>
+          </Pressable>
+
+          {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
+
+          <Pressable onPress={submitAccount} disabled={!agreed || busy}
+            style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: (!agreed || busy) ? 0.5 : 1 }, pressed && { opacity: 0.85 }]}>
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Creating…' : 'Next'}</Text>
+          </Pressable>
+          <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
+            {canIssue
+              ? 'Next, choose how much to fund your card with. ID verification (if required) happens after.'
+              : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
+          </Text>
+        </>
+      )}
+
+      {step === 'amount' && (
+        <>
+          <Text style={{ color: C.textSecondary, fontSize: 12 }}>Fund your new card with crypto</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {currencies.map(cur => (
+              <Pressable key={cur} onPress={() => setCurrency(cur)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: currency === cur ? C.blue : C.borderDefault, backgroundColor: currency === cur ? C.blueDim : 'transparent' }}>
+                <Avatar symbol={cur} color={ASSET_COLORS[cur.toUpperCase()] ?? C.blue} size={18}/>
+                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>{cur}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>Card funding amount (USD)</Text>
+          <TextInput value={amount} onChangeText={setAmount} placeholder="0.00" placeholderTextColor={C.textMuted} keyboardType="decimal-pad"
+            style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, color: C.textPrimary, fontSize: 22, fontWeight: '800', textAlign: 'center' }}/>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {LAX_CREATE_QUICK.map(q => (
+              <Pressable key={q} onPress={() => setAmount(String(q))} style={{ flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}>
+                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>${q}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
+
+          <Pressable onPress={submitAmount} disabled={busy}
+            style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.5 : 1, marginTop: 4 }, pressed && { opacity: 0.85 }]}>
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Issuing card…' : 'Issue My Card'}</Text>
+          </Pressable>
+        </>
+      )}
+
+      {step === 'kyc' && (
+        <View style={{ gap: 14, alignItems: 'center', paddingTop: 12 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+            <Shield size={28} color={C.blue}/>
+          </View>
+          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center' }}>Finish verification in your browser</Text>
+          <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+            Complete verification in your browser, then come back — your card will appear here once it&apos;s ready.
+          </Text>
+          <Pressable onPress={() => onDone()} style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 8 }, pressed && { opacity: 0.85 }]}>
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Continue</Text>
+          </Pressable>
         </View>
-        <Text style={{ color: C.textSecondary, fontSize: 12, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</Text>
-      </Pressable>
-
-      {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
-
-      <Pressable onPress={submit} disabled={!agreed || busy}
-        style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', opacity: (!agreed || busy) ? 0.5 : 1 }, pressed && { opacity: 0.85 }]}>
-        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>{busy ? 'Creating…' : 'Next'}</Text>
-      </Pressable>
-      <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
-        {status?.configuredForIssuance
-          ? 'Next opens ID verification (Sumsub), then your virtual card is issued.'
-          : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
-      </Text>
+      )}
     </View>
   );
 }
 
-function LaxDashboard({ C, styles, card, last4, txns, notLive, onTopUp, onSoon }: any) {
+/** One transaction row — shared between the dashboard's "Recent" preview
+ *  and the full-history sheet so the two never drift apart visually. */
+function LaxTxnRow({ t, C, last }: { t: import('./lib/lax').LaxTxn; C: any; last: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: last ? 0 : 1, borderBottomColor: C.borderSubtle }}>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{t.merchant || t.type || 'Transaction'}</Text>
+        {t.date ? <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.date}</Text> : null}
+      </View>
+      {t.amount != null ? (
+        <Text style={{ color: t.amount < 0 ? C.textPrimary : '#22c55e', fontSize: 13, fontWeight: '700' }}>
+          {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: (t.currency || 'USD') })}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, onSoon, onRefresh }: any) {
   const balance = card?.balance != null ? Number(card.balance) : null;
+  const isFrozen = String(card?.status || '').toLowerCase() === 'frozen';
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [moreOpen, setMoreOpen]       = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [freezeBusy, setFreezeBusy]   = useState(false);
+
+  const toggleFreeze = () => {
+    if (!cardNo || freezeBusy) return;
+    const next = isFrozen ? 'active' : 'frozen';
+    Alert.alert(
+      isFrozen ? 'Unfreeze card?' : 'Freeze card?',
+      isFrozen
+        ? 'Your card will be usable again immediately.'
+        : 'Your card will be blocked from all transactions until you unfreeze it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isFrozen ? 'Unfreeze' : 'Freeze', style: isFrozen ? 'default' : 'destructive',
+          onPress: async () => {
+            setFreezeBusy(true);
+            try {
+              const lax = require('./lib/lax') as typeof import('./lib/lax');
+              await lax.laxSetCardStatus(cardNo, next);
+              await onRefresh?.();
+            } catch (e: any) {
+              Alert.alert('Could not update card', e?.message || 'Try again.');
+            } finally { setFreezeBusy(false); }
+          },
+        },
+      ],
+    );
+  };
+
   const actions = [
     { icon: Plus,       label: 'Top Up',       onPress: notLive ? onSoon : onTopUp },
-    { icon: CreditCard, label: 'Card Details', onPress: onSoon },
-    { icon: Shield,     label: 'Freeze',       onPress: onSoon },
-    { icon: XIcon,      label: 'More',         onPress: onSoon },
+    { icon: CreditCard, label: 'Card Details', onPress: notLive ? onSoon : () => setDetailsOpen(true) },
+    { icon: Shield,     label: isFrozen ? 'Unfreeze' : 'Freeze', onPress: notLive ? onSoon : toggleFreeze },
+    { icon: XIcon,      label: 'More',         onPress: notLive ? onSoon : () => setMoreOpen(true) },
   ];
   return (
     <View style={{ gap: 14 }}>
       <LaxCardArt active last4={last4}/>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: card ? '#22c55e' : C.textMuted }}/>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isFrozen ? '#f59e0b' : card ? '#22c55e' : C.textMuted }}/>
         <Text style={{ color: C.textSecondary, fontSize: 12 }}>{card ? (String(card.status || 'Active')) : 'No card yet'}</Text>
       </View>
       <View>
@@ -1380,7 +1534,7 @@ function LaxDashboard({ C, styles, card, last4, txns, notLive, onTopUp, onSoon }
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
         {actions.map(a => (
-          <Pressable key={a.label} onPress={a.onPress} style={({ pressed }: any) => [{ alignItems: 'center', gap: 6, flex: 1 }, pressed && { opacity: 0.6 }]}>
+          <Pressable key={a.label} onPress={a.onPress} disabled={freezeBusy && a.label !== 'Top Up'} style={({ pressed }: any) => [{ alignItems: 'center', gap: 6, flex: 1 }, pressed && { opacity: 0.6 }]}>
             <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
               <a.icon size={18} color={C.blue}/>
             </View>
@@ -1402,19 +1556,132 @@ function LaxDashboard({ C, styles, card, last4, txns, notLive, onTopUp, onSoon }
       {txns.length === 0 ? (
         <Text style={{ color: C.textMuted, fontSize: 12 }}>No transactions yet.</Text>
       ) : txns.slice(0, 6).map((t: import('./lib/lax').LaxTxn, i: number) => (
-        <View key={t.id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: i < 5 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
-          <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{t.merchant || t.type || 'Transaction'}</Text>
-            {t.date ? <Text style={{ color: C.textMuted, fontSize: 11 }}>{t.date}</Text> : null}
-          </View>
-          {t.amount != null ? (
-            <Text style={{ color: t.amount < 0 ? C.textPrimary : '#22c55e', fontSize: 13, fontWeight: '700' }}>
-              {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: (t.currency || 'USD') })}
-            </Text>
-          ) : null}
-        </View>
+        <LaxTxnRow key={t.id || i} t={t} C={C} last={i === Math.min(txns.length, 6) - 1}/>
       ))}
+
+      <LaxCardDetailsSheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} cardNumber={cardNo}/>
+      <LaxMoreSheet visible={moreOpen} onClose={() => setMoreOpen(false)} onHistory={() => setHistoryOpen(true)}/>
+      <LaxTxnHistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} txns={txns}/>
     </View>
+  );
+}
+
+/** "Card Details" — PAN / expiry / CVC via GET /lax/card/:n/details.
+ *  Financial secret data: fetched fresh each open, never persisted past
+ *  this sheet's lifetime, and hidden behind a tap-to-reveal gate (mirrors
+ *  RevealPhraseModal's reveal button) instead of shown plaintext on open. */
+function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolean; onClose: () => void; cardNumber?: string }) {
+  const C = useColors();
+  const [details, setDetails] = useState<import('./lib/lax').LaxCardDetails | null>(null);
+  const [shown, setShown]     = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState<string | null>(null);
+
+  useScreenProtect(visible && shown);
+
+  useEffect(() => {
+    if (!visible) { setDetails(null); setShown(false); setErr(null); return; }
+    if (!cardNumber) return;
+    setLoading(true); setErr(null);
+    (async () => {
+      try {
+        const lax = require('./lib/lax') as typeof import('./lib/lax');
+        const d = await lax.laxCardDetails(cardNumber);
+        setDetails(d);
+      } catch (e: any) {
+        setErr(e?.message || 'Could not load card details — try again.');
+      } finally { setLoading(false); }
+    })();
+  }, [visible, cardNumber]);
+
+  if (!visible) return null;
+  return (
+    <SheetShell title="Card Details" onClose={onClose}>
+      {loading ? (
+        <ActivityIndicator color={C.blue}/>
+      ) : err ? (
+        <Text style={{ color: '#ef4444', fontSize: 13 }}>{err}</Text>
+      ) : (
+        <View style={{ gap: 14 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <Shield size={16} color={C.textSecondary}/>
+            <Text style={{ flex: 1, fontSize: 12, color: C.textSecondary, lineHeight: 18 }}>
+              Anyone with these details can spend from your card. Make sure no one is watching your screen.
+            </Text>
+          </View>
+          {!shown ? (
+            <Pressable onPress={() => setShown(true)} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Reveal card details</Text>
+            </Pressable>
+          ) : (
+            <View style={{ gap: 10 }}>
+              <View style={{ backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12 }}>
+                <Text style={{ color: C.textMuted, fontSize: 11 }}>Card number</Text>
+                <Text selectable style={{ color: C.textPrimary, fontSize: 16, fontWeight: '700', letterSpacing: 1, marginTop: 2, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                  {details?.pan ?? '—'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12 }}>
+                  <Text style={{ color: C.textMuted, fontSize: 11 }}>Expiry</Text>
+                  <Text selectable style={{ color: C.textPrimary, fontSize: 16, fontWeight: '700', marginTop: 2 }}>
+                    {details?.expMonth && details?.expYear ? `${details.expMonth}/${details.expYear}` : '—'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12 }}>
+                  <Text style={{ color: C.textMuted, fontSize: 11 }}>CVC</Text>
+                  <Text selectable style={{ color: C.textPrimary, fontSize: 16, fontWeight: '700', marginTop: 2 }}>
+                    {details?.cvc != null ? String(details.cvc) : '—'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+    </SheetShell>
+  );
+}
+
+/** "More" — a simple action sheet. Only full transaction history has real
+ *  backend support today; the rest are clearly-labeled "Coming soon" so we
+ *  never pretend to wire an endpoint that doesn't exist. */
+function LaxMoreSheet({ visible, onClose, onHistory }: { visible: boolean; onClose: () => void; onHistory: () => void }) {
+  const C = useColors();
+  if (!visible) return null;
+  const soon = (label: string) => Alert.alert(label, 'Coming soon.');
+  const rows: { label: string; onPress: () => void }[] = [
+    { label: 'Full Transaction History', onPress: () => { onClose(); onHistory(); } },
+    { label: 'Replace card', onPress: () => soon('Replace card') },
+    { label: 'Report lost', onPress: () => soon('Report lost') },
+    { label: 'Close card', onPress: () => soon('Close card') },
+  ];
+  return (
+    <SheetShell title="More" onClose={onClose}>
+      {rows.map((r, i) => (
+        <Pressable key={r.label} onPress={r.onPress} style={{ paddingVertical: 14, borderTopWidth: i ? 1 : 0, borderTopColor: C.borderSubtle }}>
+          <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '600' }}>{r.label}</Text>
+        </Pressable>
+      ))}
+    </SheetShell>
+  );
+}
+
+/** Full scrollable transaction history — same row rendering as the
+ *  dashboard's "Recent Transactions" preview, just unsliced. */
+function LaxTxnHistorySheet({ visible, onClose, txns }: { visible: boolean; onClose: () => void; txns: import('./lib/lax').LaxTxn[] }) {
+  const C = useColors();
+  if (!visible) return null;
+  return (
+    <SheetShell title="Transaction History" onClose={onClose}>
+      <ScrollView style={{ maxHeight: 460 }}>
+        {txns.length === 0 ? (
+          <Text style={{ color: C.textMuted, fontSize: 12 }}>No transactions yet.</Text>
+        ) : txns.map((t, i) => (
+          <LaxTxnRow key={t.id || i} t={t} C={C} last={i === txns.length - 1}/>
+        ))}
+      </ScrollView>
+    </SheetShell>
   );
 }
 

@@ -154,6 +154,26 @@ export async function laxSetCardStatus(cardNumber: string, status: 'active' | 'f
   return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/status`, { status });
 }
 
+/** issue-card's response shape is genuinely unconfirmed upstream (no
+ *  sandbox to test against) — some accounts may come back needing a KYC /
+ *  identity-verification redirect before the card is usable. Loosely probe
+ *  the common key spellings, at the top level or nested under data/kyc,
+ *  and never throw on an unexpected shape. Returns undefined (treat the
+ *  card as issued directly) when nothing that looks like a URL is found. */
+export function findKycRedirectUrl(raw: unknown): string | undefined {
+  const KEYS = ['kyc_url', 'kycUrl', 'redirect_url', 'redirectUrl', 'verification_url', 'verificationUrl', 'url'];
+  const check = (o: Record<string, unknown> | null): string | undefined => {
+    if (!o) return undefined;
+    for (const k of KEYS) {
+      const v = o[k];
+      if (typeof v === 'string' && /^https?:\/\//i.test(v)) return v;
+    }
+    return undefined;
+  };
+  const o = asObj(raw);
+  return check(o) ?? check(asObj(o?.data)) ?? check(asObj(o?.kyc));
+}
+
 /* ── loose parse helpers ────────────────────────────────────────────── */
 
 function asObj(v: unknown): Record<string, unknown> | null {
