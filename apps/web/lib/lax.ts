@@ -248,3 +248,23 @@ function parseTxBlob(raw: unknown): LaxTxn[] {
 export function cardNumberOf(c: LaxCard): string | undefined {
   return (c.card_number ?? c.cardNumber ?? c.number) as string | undefined;
 }
+
+/** Best-effort hunt for a KYC/verification redirect URL in the issue-card
+ *  response. The upstream shape for that call is unconfirmed (no sandbox
+ *  exists to test against), so this checks every plausible key at the top
+ *  level and one level deep under `data`/`kyc` — never throws on a shape it
+ *  doesn't recognise, just returns undefined and callers treat the card as
+ *  issued directly. */
+export function findKycUrl(raw: unknown): string | undefined {
+  const KEYS = ['kyc_url', 'kycUrl', 'redirect_url', 'redirectUrl', 'verification_url', 'verificationUrl', 'url'];
+  const lookIn = (o: Record<string, unknown> | null): string | undefined => {
+    if (!o) return undefined;
+    for (const k of KEYS) {
+      const v = o[k];
+      if (typeof v === 'string' && /^https?:\/\//i.test(v)) return v;
+    }
+    return undefined;
+  };
+  const top = asObj(raw);
+  return lookIn(top) ?? lookIn(asObj(top?.data)) ?? lookIn(asObj(top?.kyc));
+}
