@@ -51,7 +51,10 @@ export function createApp(): express.Express {
     credentials: true,
   }));
 
-  app.use(express.json({ limit: '1mb' }));
+  // Keep webhook and proxy payloads small. LAX sends compact card events;
+  // accepting megabyte-sized unauthenticated bodies only increases the DoS
+  // surface before the webhook secret can be checked.
+  app.use(express.json({ limit: '256kb' }));
   app.use(generalLimiter);
 
   app.use('/auth', authRouter);
@@ -77,6 +80,24 @@ export function createApp(): express.Express {
       res.json({ ok: true, dispatched: true });
     });
   }
+
+  /** GET /app-version — the latest published mobile app version, for the
+   *  in-app "update available" banner. Unauthenticated (checked before
+   *  login, and it's not sensitive). Driven entirely by env vars set on
+   *  the VPS — nothing here knows the real App Store / Play Store state,
+   *  so these MUST be bumped by hand after every mobile release:
+   *    LATEST_IOS_VERSION        e.g. "2.0.1"  (matches app.json's version)
+   *    LATEST_ANDROID_VERSION    e.g. "2.0.1"
+   *  Left unset, the field is omitted and the client treats it as
+   *  "nothing to compare against" — never a false "update available".
+   */
+  app.get('/app-version', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      ios:     process.env.LATEST_IOS_VERSION || null,
+      android: process.env.LATEST_ANDROID_VERSION || null,
+    });
+  });
 
   app.get('/health', async (_req, res) => {
     const [db, cache] = await Promise.all([
