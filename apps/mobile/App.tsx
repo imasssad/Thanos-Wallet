@@ -113,7 +113,7 @@ initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
-import { fetchNativeLithoActivity, fetchKametNativeActivity, mergeActivityFeeds } from './lib/makalu-explorer';
+import { fetchNativeLithoActivity, fetchKametNativeActivity, fetchMainnetNativeActivity, mergeActivityFeeds } from './lib/makalu-explorer';
 import {
   formatFiat, initDisplayCurrency, applyDisplayCurrency, persistDisplayCurrency,
   convertFromUsd, withCurrencyAffix,
@@ -802,20 +802,25 @@ function useActivity(address: string): ActivityState {
     if (!address) { setItems([]); setLoading(false); setOffline(false); return; }
     let cancelled = false;
     setLoading(true); setOffline(false);
-    // Three feeds, fetched in parallel and merged (deduped by tx hash):
-    //   indexer         → LEP100 token transfers on Makalu (MUSA, JOT, …)
-    //   Makalu explorer → NATIVE LITHO transfers (no logs → never reach the
-    //                     indexer; the "received 70,000 LITHO, no row" bug)
-    //   Kamet explorer  → native LITHO on Kamet (same explorer codebase)
-    // The indexer stays the primary for the offline flag; the explorer feed
-    // is best-effort extra coverage.
-    Promise.allSettled([getActivity(address), fetchNativeLithoActivity(address), fetchKametNativeActivity(address)])
-      .then(([idx, nat, kam]) => {
+    // Four feeds, fetched in parallel and merged (deduped by tx hash):
+    //   indexer          → LEP100 token transfers on Makalu (MUSA, JOT, …)
+    //   Makalu explorer  → NATIVE LITHO transfers (no logs → never reach the
+    //                      indexer; the "received 70,000 LITHO, no row" bug)
+    //   Kamet explorer   → native LITHO on Kamet (same explorer codebase)
+    //   Mainnet explorer → native LITHO on Lithosphere Mainnet (the wallet's
+    //                      default chain) — without this, Mainnet sends never
+    //                      resolved past the optimistic local "Pending" row,
+    //                      since nothing else ever reported them as confirmed.
+    // The indexer stays the primary for the offline flag; the explorer feeds
+    // are best-effort extra coverage.
+    Promise.allSettled([getActivity(address), fetchNativeLithoActivity(address), fetchKametNativeActivity(address), fetchMainnetNativeActivity(address)])
+      .then(([idx, nat, kam, main]) => {
         if (cancelled) return;
         const idxItems = idx.status === 'fulfilled' ? idx.value : null;
         const natItems = [
           ...(nat.status === 'fulfilled' ? nat.value : []),
           ...(kam.status === 'fulfilled' ? kam.value : []),
+          ...(main.status === 'fulfilled' ? main.value : []),
         ];
         if (idxItems === null && natItems.length === 0) {
           // PRESERVE offline contract: keep whatever items we have, flag offline.
@@ -1128,7 +1133,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const cardNo = card ? (require('./lib/lax').cardNumberOf(card) as string | undefined) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
-  const refresh = async () => {
+  const refresh = async (): Promise<import('./lib/lax').LaxStatus | null> => {
     const lax = require('./lib/lax') as typeof import('./lib/lax');
     try {
       const st = await lax.laxStatus();
@@ -1142,7 +1147,9 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
           if (cn) { lax.laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
         }
       }
+      return st;
     } catch { /* leave status null — treated as not-live */ }
+    return null;
   };
 
   useEffect(() => {
@@ -1183,7 +1190,18 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
             {view === 'intro'    && <LaxIntro C={C} styles={styles} notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => openBrowser('https://lax.money')}/>}
             {view === 'soon'     && <LaxComingSoon C={C} styles={styles} have={status?.have} onClose={onClose} onLearn={() => openBrowser('https://lax.money')}/>}
-            {view === 'create'   && <LaxCreate C={C} styles={styles} status={status} openBrowser={openBrowser} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
+            {view === 'create' && (
+              <LaxCreate
+                C={C}
+                styles={styles}
+                status={status}
+                openBrowser={openBrowser}
+                onDone={async () => {
+                  const st = await refresh();
+                  setView(st?.configuredForIssuance ? 'dashboard' : 'soon');
+                }}
+              />
+            )}
             {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
             {view === 'topup'    && cardNo && <LaxTopUp C={C} styles={styles} cardNo={cardNo} onDone={(amt: number, cur: string) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
             {view === 'success'  && <LaxSuccess C={C} styles={styles} last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
@@ -1223,13 +1241,13 @@ const LAX_INTRO_BENEFITS = ['Free virtual card', 'Top up with crypto', 'No hidde
 
 function LaxIntro({ C, styles, notLive, onStart, onLearn }: any) {
   return (
-    <View style={{ gap: 14 }}>
+      <View style={{ gap: 14 }}>
       <LaxCardArt/>
       <Text style={{ color: C.textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center' }}>Own Your Crypto{'\n'}In The Real World</Text>
       <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
         The LAX Card lets you spend your crypto globally, anywhere Visa™ is accepted.
       </Text>
-      <View style={{ gap: 10, marginTop: 4 }}>
+      <View style={{ gap: 10, marginTop: 4, backgroundColor: C.bgElevated, borderRadius: 16, padding: 14 }}>
         {LAX_INTRO_BENEFITS.map((b: string) => (
           <View key={b} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Check size={16} color={C.blue} strokeWidth={2.6}/>
@@ -1243,11 +1261,12 @@ function LaxIntro({ C, styles, notLive, onStart, onLearn }: any) {
       <Pressable onPress={onLearn} style={{ alignItems: 'center', paddingVertical: 8 }}>
         <Text style={{ color: C.blue, fontSize: 13, fontWeight: '600' }}>Learn more</Text>
       </Pressable>
-      {notLive && (
-        <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
-          Native card issuance is rolling out — you can still explore the flow.
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', justifyContent: 'center' }}>
+        <Shield size={14} color={C.textMuted}/>
+        <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16, flex: 1 }}>
+          Your card details stay protected by Thanos authentication.
         </Text>
-      )}
+      </View>
     </View>
   );
 }
@@ -1512,11 +1531,12 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
     );
   };
 
+  const hasCard = Boolean(cardNo);
   const actions = [
-    { icon: Plus,       label: 'Top Up',       onPress: notLive ? onSoon : onTopUp },
-    { icon: CreditCard, label: 'Card Details', onPress: notLive ? onSoon : () => setDetailsOpen(true) },
-    { icon: Shield,     label: isFrozen ? 'Unfreeze' : 'Freeze', onPress: notLive ? onSoon : toggleFreeze },
-    { icon: XIcon,      label: 'More',         onPress: notLive ? onSoon : () => setMoreOpen(true) },
+    { icon: Plus,       label: 'Top Up',       onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : onTopUp },
+    { icon: CreditCard, label: 'Card Details', onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : () => setDetailsOpen(true) },
+    { icon: Shield,     label: isFrozen ? 'Unfreeze' : 'Freeze', onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : toggleFreeze },
+    { icon: XIcon,      label: 'More',         onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : () => setMoreOpen(true) },
   ];
   return (
     <View style={{ gap: 14 }}>
@@ -1535,14 +1555,20 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
         {actions.map(a => (
           <Pressable key={a.label} onPress={a.onPress} disabled={freezeBusy && a.label !== 'Top Up'} style={({ pressed }: any) => [{ alignItems: 'center', gap: 6, flex: 1 }, pressed && { opacity: 0.6 }]}>
-            <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
-              <a.icon size={18} color={C.blue}/>
+            <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: a.onPress ? C.blueDim : C.bgElevated, alignItems: 'center', justifyContent: 'center' }}>
+              <a.icon size={18} color={a.onPress ? C.blue : C.textMuted}/>
             </View>
             <Text style={{ color: C.textSecondary, fontSize: 11 }}>{a.label}</Text>
           </Pressable>
         ))}
       </View>
 
+      {!hasCard && !notLive && (
+        <View style={{ backgroundColor: C.blueDim, borderRadius: 14, padding: 14, gap: 8 }}>
+          <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '800' }}>Your LAX card is ready to set up</Text>
+          <Text style={{ color: C.textSecondary, fontSize: 12, lineHeight: 17 }}>Create a virtual card, then manage it securely from this dashboard.</Text>
+        </View>
+      )}
       {notLive && (
         <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, padding: 12, flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
           <AlertTriangle size={15} color="#f59e0b"/>
@@ -1552,7 +1578,10 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
         </View>
       )}
 
-      <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '800', marginTop: 4 }}>Recent Transactions</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+        <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '800' }}>Recent Transactions</Text>
+        {txns.length > 6 && <Text style={{ color: C.blue, fontSize: 11, fontWeight: '700' }}>View all in More</Text>}
+      </View>
       {txns.length === 0 ? (
         <Text style={{ color: C.textMuted, fontSize: 12 }}>No transactions yet.</Text>
       ) : txns.slice(0, 6).map((t: import('./lib/lax').LaxTxn, i: number) => (
@@ -1742,6 +1771,10 @@ function LaxTopUp({ C, styles, cardNo, onDone }: any) {
           </Pressable>
         ))}
       </View>
+
+      <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16 }}>
+        Top-ups are real card funding transactions. Review the amount carefully before confirming.
+      </Text>
 
       {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
 

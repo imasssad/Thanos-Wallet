@@ -19,10 +19,20 @@
 import { formatUnits } from 'ethers';
 import type { IndexerActivityItem } from './indexer';
 
-const MAKALU_API = 'https://makalu.litho.ai/api';
+const MAKALU_API  = 'https://makalu.litho.ai/api';
 // Kamet runs the SAME explorer codebase — identical /api/txs shape
 // (verified live 2026-07-17), so both chains share one fetcher.
-const KAMET_API  = 'https://kamet.litho.ai/api';
+const KAMET_API   = 'https://kamet.litho.ai/api';
+// Lithosphere Mainnet's explorer (lithoscan.ai) also runs the same
+// codebase — verified live 2026-09-15, GET /api/txs?address= returns the
+// identical {txs:[...],total,limit,offset} shape. Added because the
+// wallet defaults to Mainnet now (per client 2026-09) but nothing was
+// fetching Mainnet native-LITHO activity at all — Mainnet sends/receives
+// only ever showed as the optimistic local "Pending" row and NEVER
+// resolved to a confirmed row, since neither the indexer (Makalu-only)
+// nor this file covered Mainnet. That's the root cause of "some txns show
+// pending yet sent already" and "not all activity shows".
+const MAINNET_API = 'https://lithoscan.ai/api';
 
 interface ExplorerTx {
   hash?: string;
@@ -46,6 +56,14 @@ export function fetchNativeLithoActivity(address: string, timeoutMs = 8_000): Pr
  *  Labeled "(Kamet)" so rows are distinguishable from Makalu LITHO moves. */
 export function fetchKametNativeActivity(address: string, timeoutMs = 8_000): Promise<IndexerActivityItem[]> {
   return fetchExplorerNativeActivity(KAMET_API, ' (Kamet)', 'kamet', address, timeoutMs);
+}
+
+/** Recent native-LITHO transfers involving `address` on Lithosphere
+ *  MAINNET, newest first — the wallet's default chain. No suffix label
+ *  since Mainnet is the primary/expected chain (unlike Kamet, which is
+ *  explicitly marked as the secondary one). */
+export function fetchMainnetNativeActivity(address: string, timeoutMs = 8_000): Promise<IndexerActivityItem[]> {
+  return fetchExplorerNativeActivity(MAINNET_API, '', 'mainnet', address, timeoutMs);
 }
 
 async function fetchExplorerNativeActivity(
