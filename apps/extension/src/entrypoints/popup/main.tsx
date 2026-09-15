@@ -2653,6 +2653,44 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
    flag (written the moment it shows) so it appears at most once. Compact for
    the popup viewport. Client request (Esha, 2026-06-15). */
 const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v1';
+/** Banner shown when a newer extension build has been downloaded by the
+ *  browser and is waiting to install. `browser.runtime.onUpdateAvailable`
+ *  is the built-in extension-platform event for this — it fires once the
+ *  store (or the browser's background updater) has staged a new version;
+ *  `browser.runtime.reload()` applies it immediately (the standard way to
+ *  force-apply rather than waiting for the browser's own idle-reload). No
+ *  polling or version-check endpoint needed — this is a native browser
+ *  extension API. */
+function UpdateBanner() {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    const onAvailable = () => setAvailable(true);
+    try {
+      browser.runtime.onUpdateAvailable.addListener(onAvailable);
+      return () => browser.runtime.onUpdateAvailable.removeListener(onAvailable);
+    } catch { /* API unavailable in this context — no-op */ }
+  }, []);
+  if (!available) return null;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+      background: 'var(--blue-dim, #14294f)', borderBottom: '1px solid var(--border-default, #2a3550)',
+      fontSize: 12.5, color: 'var(--text-primary, #fff)',
+    }}>
+      <span style={{ flex: 1 }}>A new version of Thanos Wallet is ready.</span>
+      <button
+        onClick={() => { try { browser.runtime.reload(); } catch { /* ignore */ } }}
+        style={{
+          background: 'var(--blue, #3b7af7)', color: '#fff', border: 'none', borderRadius: 8,
+          padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        }}
+      >
+        Update now
+      </button>
+    </div>
+  );
+}
+
 function MakaluWelcomeModal() {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -2839,18 +2877,21 @@ const EXT_EVM_CHAIN_NAME: Record<number, string> = {
 const coinKey = (c: { sym: string; chainId?: number; tokenAddress?: string }): string =>
   `${c.sym}@${c.chainId ?? 'litho'}${c.tokenAddress ? ':' + c.tokenAddress : ''}`;
 
-function SendModal({ onClose, initialChain, initialCoin, initialChainId, address }: {
+function SendModal({ onClose, initialChain, initialCoin, initialChainId, initialTo, address }: {
   onClose: () => void;
   initialChain?: ExtSendChain;
   initialCoin?: string;
   initialChainId?: number;
+  /** Pre-fill the recipient field — e.g. routing in from a Quantt agent's
+   *  deposit address so the user doesn't have to paste it. */
+  initialTo?: string;
   address?: string;
 }) {
   const { coins, reload } = usePortfolioCtx();
   const seed = useWalletSeed();
   const [chain, setChain] = useState<ExtSendChain>(initialChain ?? 'evm');
   const [selectedKey, setSelectedKey] = useState('');
-  const [to, setTo] = useState('');
+  const [to, setTo] = useState(initialTo ?? '');
   const [amt, setAmt] = useState('');
   const [memo, setMemo] = useState('');
   const [sending, setSending] = useState(false);
@@ -4754,6 +4795,7 @@ function App() {
   return (
     <WalletSeedContext.Provider value={seed}>
     <PortfolioContext.Provider value={portfolio}>
+      <UpdateBanner/>
       {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
       <MakaluWelcomeModal/>
       {modal === 'send'          && <SendModal          onClose={() => { setModal(null); setSeedSym(null); setSeedChainId(undefined); }} address={evmAddr}
