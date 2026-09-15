@@ -66,3 +66,18 @@ export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
     });
   return quantt.signIn(address, sign);
 }
+
+/** Bind this wallet's address as the verified withdrawal-payout address —
+ *  required once before any agent withdrawal can succeed. Same
+ *  challenge→sign→submit shape as sign-in (EIP-712, offscreen signer, keys
+ *  never leave the wallet). Throws if locked. */
+export async function quanttBindWithdrawalAddress(seed: string[], address: string): Promise<unknown> {
+  if (!seed?.length) throw new Error('Wallet is locked');
+  const challenge = await quantt.withdrawalAddressChallenge(address);
+  const signature = await offscreenSignTypedData({
+    seed,
+    hdPath: hdPath(),
+    payload: { domain: challenge.domain, types: challenge.types, value: challenge.message },
+  });
+  return quantt.bindWithdrawalAddress({ address, signature });
+}

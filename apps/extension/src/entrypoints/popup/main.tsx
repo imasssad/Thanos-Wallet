@@ -33,7 +33,7 @@ import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, type DisplayTx,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { quantt, quanttSignIn } from './quantt';
+import { quantt, quanttSignIn, quanttBindWithdrawalAddress } from './quantt';
 import {
   loadCustomAssets, customChains, customTokens, allEvmChains,
   addCustomChain, addCustomToken, removeCustomChain, removeCustomToken,
@@ -42,7 +42,10 @@ import {
 import {
   loadHiddenAssets, isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS,
 } from '../../lib/asset-visibility';
-import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState } from '@thanos/sdk-core';
+import type {
+  QuanttSession, QuanttOverview, QuanttRuntimeState,
+  QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
+} from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
@@ -1480,23 +1483,100 @@ function LaxSuccess({ last4, topUp, onDone }: { last4: string; topUp: { amount: 
   );
 }
 
+/* ── Quantt defensive parse helpers ───────────────────────────────────
+   Every Quantt response body is `unknown` — the upstream OpenAPI spec
+   leaves every 200 as "Default Response" (see packages/sdk-core's
+   quantt/client.ts). These never assume a fixed shape: probe several
+   plausible key spellings and fall back to a generic "list every
+   primitive field" render rather than throwing on something unexpected.
+   Mirrors the LAX integration's coerce* helpers in ../../lib/lax.ts. */
+function quanttAsObj(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+/** Pull an array out of a response that might be a bare array, or wrapped
+ *  under one of several plausible container keys. */
+function quanttAsList(
+  raw: unknown,
+  keys: string[] = ['items', 'agents', 'data', 'results', 'trades', 'positions', 'decisions', 'withdrawals', 'attempts', 'list'],
+): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  const o = quanttAsObj(raw);
+  if (!o) return [];
+  for (const k of keys) if (Array.isArray(o[k])) return o[k] as unknown[];
+  return [];
+}
+function quanttPickStr(o: Record<string, unknown> | null, keys: string[]): string | undefined {
+  if (!o) return undefined;
+  for (const k of keys) {
+    const v = o[k];
+    if (v != null && v !== '' && (typeof v === 'string' || typeof v === 'number')) return String(v);
+  }
+  return undefined;
+}
+/** id of any agent/trade/position/decision/withdrawal-shaped item, regardless
+ *  of key spelling. */
+function quanttRowId(item: unknown): string | undefined {
+  return quanttPickStr(quanttAsObj(item), ['id', '_id', 'agentId', 'agent_id', 'attemptId', 'attempt_id', 'decisionId', 'decision_id']);
+}
+function quanttRowLabel(item: unknown): string | undefined {
+  return quanttPickStr(quanttAsObj(item), ['name', 'agentName', 'title', 'label']);
+}
+function quanttRowStatus(item: unknown): string | undefined {
+  return quanttPickStr(quanttAsObj(item), ['status', 'state']);
+}
+/** Every primitive top-level field of an object, for a generic "show
+ *  whatever the API actually sent back" fallback render — used across
+ *  Trades/Positions/Decisions/Withdrawals/wallet where the real shape isn't
+ *  documented. */
+function quanttObjRows(raw: unknown, skip: string[] = []): Array<[string, string]> {
+  const o = quanttAsObj(raw);
+  if (!o) return [];
+  const out: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(o)) {
+    if (skip.includes(k) || v == null) continue;
+    if (typeof v === 'object') continue;
+    out.push([k, String(v)]);
+  }
+  return out;
+}
+/** Cursor + item list out of a paginated response (getAgentDecisions). */
+function quanttPage(raw: unknown): { items: unknown[]; cursor?: string } {
+  const o = quanttAsObj(raw);
+  const items = quanttAsList(raw, ['items', 'decisions', 'data', 'results']);
+  const cursor = quanttPickStr(o, ['nextCursor', 'next_cursor', 'cursor']);
+  return { items, cursor: items.length ? cursor : undefined };
+}
+
+/** Minimal shape every agent-selection callback needs — satisfied by both
+ *  the slim QuanttAgent from /v1/mobile/overview and a defensively-parsed
+ *  row from listAgents(). */
+interface QuanttAgentRef { id: string; name: string; status?: string; }
+
 /* Live portfolio + agents summary once connected (shapes from /v1/mobile/overview). */
-function QuanttPanel({ overview, onSelectAgent }: { overview: QuanttOverview; onSelectAgent: (a: QuanttAgent) => void }) {
+function QuanttPanel({ overview, onSelectAgent, onCreateAgent, onViewAll }: {
+  overview: QuanttOverview;
+  onSelectAgent: (a: QuanttAgentRef) => void;
+  onCreateAgent: () => void;
+  onViewAll: () => void;
+}) {
   const p = overview?.dashboard?.portfolio;
   const agents = overview?.dashboard?.agents ?? [];
-  if (!p) return null;
   const fmtUsd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
   const pct = (n: number) => (n >= 0 ? '+' : '') + (n ?? 0).toFixed(1) + '%';
   const posColor = (n: number) => (n >= 0 ? '#22c55e' : '#ef4444');
   return (
     <div style={{ marginTop: 10, borderTop: '1px solid var(--border, rgba(148,163,184,0.16))', paddingTop: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{fmtUsd(p.equity)}</span>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-        {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
-      </div>
+      {p && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{fmtUsd(p.equity)}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+            {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
+          </div>
+        </>
+      )}
       {agents.slice(0, 3).map((a) => (
         <button
           key={a.id}
@@ -1510,135 +1590,764 @@ function QuanttPanel({ overview, onSelectAgent }: { overview: QuanttOverview; on
           <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{a.chain}{a.status ? ' · ' + a.status : ''}</span>
         </button>
       ))}
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <button
+          onClick={onCreateAgent}
+          style={{ flex: 1, fontSize: 10.5, fontWeight: 700, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: 'transparent', color: 'var(--blue)', border: '1px solid var(--blue)' }}
+        >+ Create agent</button>
+        {agents.length > 0 && (
+          <button
+            onClick={onViewAll}
+            style={{ flex: 1, fontSize: 10.5, fontWeight: 700, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border, rgba(148,163,184,0.28))' }}
+          >All agents</button>
+        )}
+      </div>
     </div>
   );
 }
 
-const QUANTT_AGENT_DETAIL_LABELS: Record<string, string> = {
-  chain: 'Network', status: 'Status', exposureUsd: 'Exposure', pnlPercent30d: '30d P&L',
-  confidence: 'Confidence', strategy: 'Strategy',
-};
-const QUANTT_TOGGLE_STATES = new Set(['active', 'paused']);
+/** Full agent list — GET /v1/agents, parsed defensively since only
+ *  /v1/mobile/overview's slim agents[] shape has been observed live. */
+function QuanttAgentsListModal({ onClose, onSelectAgent, onCreateAgent }: {
+  onClose: () => void; onSelectAgent: (a: QuanttAgentRef) => void; onCreateAgent: () => void;
+}) {
+  const [items, setItems] = useState<unknown[] | null>(null);
+  const [err, setErr] = useState(false);
 
-/** Mirrors apps/web/components/QuanttCard.tsx's extraDetailEntries. */
-function quanttExtraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[string, string]> {
-  if (!raw || typeof raw !== 'object') return [];
-  const known = new Set(['id', 'name', ...Object.keys(QUANTT_AGENT_DETAIL_LABELS)]);
-  const out: Array<[string, string]> = [];
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (known.has(k) || v == null) continue;
-    if (typeof v === 'object') continue;
-    out.push([k, String(v)]);
-  }
-  return out;
+  useEffect(() => {
+    let live = true;
+    quantt.listAgents()
+      .then((r) => { if (live) setItems(quanttAsList(r)); })
+      .catch(() => { if (live) setErr(true); });
+    return () => { live = false; };
+  }, []);
+
+  return (
+    <Modal title="Your agents" onClose={onClose}>
+      <div className="modal-body">
+        <button className="btn-primary" style={{ marginBottom: 12 }} onClick={onCreateAgent}>+ Create agent</button>
+        {items == null && !err && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>}
+        {err && <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load agents — try again.</div>}
+        {items && items.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No agents yet.</div>}
+        {items && items.map((it, i) => {
+          const id = quanttRowId(it);
+          if (!id) return null;
+          const name = quanttRowLabel(it) ?? `Agent ${i + 1}`;
+          const status = quanttRowStatus(it);
+          return (
+            <button
+              key={id}
+              onClick={() => onSelectAgent({ id, name, status })}
+              style={{
+                display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left',
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 9,
+                padding: '10px 12px', marginBottom: 8, cursor: 'pointer',
+              }}
+            >
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)' }}>{name}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{status ?? '—'}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
 }
 
-/** Agent detail — pause/resume calls POST /v1/agents/{id}/state, a real,
- *  confirmed, fund-adjacent action against production with no sandbox to
- *  rehearse in. Mirrors apps/web/components/QuanttCard.tsx. */
-function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
-  agent: QuanttAgent; onClose: () => void; onStateChanged: () => void;
+const QUANTT_STRATEGIES: Array<{ value: QuanttStrategy; label: string }> = [
+  { value: 'buy_hold',        label: 'Buy & Hold' },
+  { value: 'momentum',        label: 'Momentum' },
+  { value: 'mean_reversion',  label: 'Mean Reversion' },
+  { value: 'trend_following', label: 'Trend Following' },
+  { value: 'macd',            label: 'MACD' },
+  { value: 'kdj_rsi',         label: 'KDJ + RSI' },
+  { value: 'zmr',             label: 'ZMR' },
+  { value: 'sma',             label: 'SMA Crossover' },
+  { value: 'arbitrage',       label: 'Arbitrage' },
+  { value: 'hedging',         label: 'Hedging' },
+  { value: 'fundamental',     label: 'Fundamental' },
+  { value: 'technical',       label: 'Technical' },
+  { value: 'custom',          label: 'Custom (prompt-driven)' },
+];
+const QUANTT_CHAINS: Array<{ value: QuanttChain; label: string }> = [
+  { value: 'arbitrum',    label: 'Arbitrum' },
+  { value: 'base',        label: 'Base' },
+  { value: 'lithosphere', label: 'Lithosphere' },
+  { value: 'bnb',         label: 'BNB Chain' },
+];
+const QUANTT_RISK_DEFAULTS = { maxPositionPct: 25, stopLoss: 5, takeProfit: 10, maxDailyLoss: 3.5 };
+
+/** Create-agent form. NO SANDBOX — createAgent is real from the first
+ *  click, so a real-money warning is shown up front. */
+function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [strategy, setStrategy] = useState<QuanttStrategy>('momentum');
+  const [strategyPrompt, setStrategyPrompt] = useState('');
+  const [chains, setChains] = useState<QuanttChain[]>(['lithosphere']);
+  const [tokens, setTokens] = useState('');
+  const [dexPreference, setDexPreference] = useState<QuanttDexPreference>('kamet');
+  const [capitalUsd, setCapitalUsd] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [maxPositionPct, setMaxPositionPct] = useState(String(QUANTT_RISK_DEFAULTS.maxPositionPct));
+  const [stopLoss, setStopLoss] = useState(String(QUANTT_RISK_DEFAULTS.stopLoss));
+  const [takeProfit, setTakeProfit] = useState(String(QUANTT_RISK_DEFAULTS.takeProfit));
+  const [maxDailyLoss, setMaxDailyLoss] = useState(String(QUANTT_RISK_DEFAULTS.maxDailyLoss));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const toggleChain = (c: QuanttChain) => {
+    setChains(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
+  };
+
+  const capitalNum = parseFloat(capitalUsd || '0');
+  const canSubmit = name.trim().length > 0 && chains.length > 0 && tokens.trim().length > 0 && capitalNum > 0 && !busy;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setBusy(true); setErr(null);
+    try {
+      const body: CreateAgentInput = {
+        name: name.trim(),
+        strategy,
+        strategyPrompt: strategyPrompt.trim() || undefined,
+        chains,
+        tokens: tokens.split(',').map(t => t.trim()).filter(Boolean),
+        dexPreference,
+        capitalUsd: capitalNum,
+        maxPositionPct: parseFloat(maxPositionPct) || QUANTT_RISK_DEFAULTS.maxPositionPct,
+        stopLoss: parseFloat(stopLoss) || QUANTT_RISK_DEFAULTS.stopLoss,
+        takeProfit: parseFloat(takeProfit) || QUANTT_RISK_DEFAULTS.takeProfit,
+        maxDailyLoss: parseFloat(maxDailyLoss) || QUANTT_RISK_DEFAULTS.maxDailyLoss,
+      };
+      await quantt.createAgent(body);
+      onCreated();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not create the agent — try again.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title="Create agent" onClose={onClose}>
+      <div className="modal-body">
+        <div style={{
+          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)',
+          borderRadius: 9, padding: '9px 11px', fontSize: 11, color: '#ef4444', lineHeight: 1.4, marginBottom: 12,
+        }}>
+          Real funds, no sandbox. Once created you&apos;ll deposit real crypto into this agent&apos;s own wallet and it trades autonomously — there is no test mode to rehearse in.
+        </div>
+
+        <label className="field-label">NAME</label>
+        <input className="field" value={name} onChange={e => setName(e.target.value)} placeholder="My momentum agent"/>
+
+        <label className="field-label" style={{ marginTop: 12 }}>STRATEGY</label>
+        <select className="field" value={strategy} onChange={e => setStrategy(e.target.value as QuanttStrategy)}>
+          {QUANTT_STRATEGIES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        {strategy === 'custom' && (
+          <input className="field" style={{ marginTop: 8 }} value={strategyPrompt} onChange={e => setStrategyPrompt(e.target.value)} placeholder="Describe the strategy in your own words…"/>
+        )}
+
+        <label className="field-label" style={{ marginTop: 12 }}>CHAINS</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {QUANTT_CHAINS.map(c => {
+            const on = chains.includes(c.value);
+            return (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => toggleChain(c.value)}
+                style={{
+                  padding: '6px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  background: on ? 'var(--blue)' : 'transparent', color: on ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${on ? 'var(--blue)' : 'var(--border-default)'}`,
+                }}
+              >{c.label}</button>
+            );
+          })}
+        </div>
+
+        <label className="field-label" style={{ marginTop: 12 }}>TOKENS (comma-separated)</label>
+        <input className="field" value={tokens} onChange={e => setTokens(e.target.value)} placeholder="USDC, ETH, LITHO"/>
+
+        <label className="field-label" style={{ marginTop: 12 }}>DEX PREFERENCE</label>
+        <div style={{ display: 'inline-flex', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 999, padding: 3 }}>
+          {(['kamet', 'magma'] as QuanttDexPreference[]).map(d => {
+            const on = dexPreference === d;
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDexPreference(d)}
+                style={{
+                  background: on ? 'var(--bg-card)' : 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '5px 14px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
+                }}
+              >{d === 'kamet' ? 'Kamet' : 'Magma'}</button>
+            );
+          })}
+        </div>
+
+        <label className="field-label" style={{ marginTop: 12 }}>CAPITAL (USD)</label>
+        <input className="field" type="number" value={capitalUsd} onChange={e => setCapitalUsd(e.target.value)} placeholder="500"/>
+
+        <button
+          type="button"
+          onClick={() => setAdvanced(v => !v)}
+          style={{ marginTop: 14, background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: 0 }}
+        >{advanced ? '▾ Hide advanced' : '▸ Advanced risk settings'}</button>
+
+        {advanced && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <label className="field-label">MAX POSITION %</label>
+              <input className="field" type="number" value={maxPositionPct} onChange={e => setMaxPositionPct(e.target.value)}/>
+            </div>
+            <div>
+              <label className="field-label">STOP LOSS %</label>
+              <input className="field" type="number" value={stopLoss} onChange={e => setStopLoss(e.target.value)}/>
+            </div>
+            <div>
+              <label className="field-label">TAKE PROFIT %</label>
+              <input className="field" type="number" value={takeProfit} onChange={e => setTakeProfit(e.target.value)}/>
+            </div>
+            <div>
+              <label className="field-label">MAX DAILY LOSS %</label>
+              <input className="field" type="number" value={maxDailyLoss} onChange={e => setMaxDailyLoss(e.target.value)}/>
+            </div>
+          </div>
+        )}
+
+        {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 10 }}>{err}</div>}
+        <button className="btn-primary" disabled={!canSubmit} style={{ marginTop: 16 }} onClick={submit}>
+          {busy ? 'Creating…' : 'Create agent (real funds)'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function quanttBtnGhost(color: string, disabled: boolean): React.CSSProperties {
+  return {
+    flex: 1, padding: '7px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+    background: 'transparent', color, border: `1px solid ${color}`,
+    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
+  };
+}
+
+function QuanttOverviewTab({ status, rows, loadErr, toggling, analyzing, analyzeMsg, onSetState, onAnalyze }: {
+  status?: string; rows: Array<[string, string]>; loadErr: boolean;
+  toggling: boolean; analyzing: boolean; analyzeMsg: string | null;
+  onSetState: (s: QuanttRuntimeState) => void; onAnalyze: () => void;
 }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {status && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+          <span style={{ color: 'var(--text-secondary)' }}>Status</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{status}</span>
+        </div>
+      )}
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, gap: 8 }}>
+          <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 600, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v}</span>
+        </div>
+      ))}
+      {loadErr && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => onSetState('active')} disabled={toggling || status === 'active'} style={quanttBtnGhost('#22c55e', toggling || status === 'active')}>Start</button>
+        <button onClick={() => onSetState('paused')} disabled={toggling || status === 'paused'} style={quanttBtnGhost('#f59e0b', toggling || status === 'paused')}>Pause</button>
+        <button onClick={() => onSetState('idle')} disabled={toggling || status === 'idle'} style={quanttBtnGhost('#ef4444', toggling || status === 'idle')}>Stop</button>
+      </div>
+      <button onClick={onAnalyze} disabled={analyzing} className="btn-outline" style={{ marginTop: 4 }}>
+        {analyzing ? 'Analyzing…' : 'Analyze now'}
+      </button>
+      {analyzeMsg && <div style={{ fontSize: 11, color: 'var(--blue)' }}>{analyzeMsg}</div>}
+    </div>
+  );
+}
+
+/** Wallet tab — address + on-chain/Magma-ledger balances from getAgentWallet. */
+function QuanttWalletTab({ agentId }: { agentId: string }) {
+  const [wallet, setWallet] = useState<unknown>(null);
+  const [err, setErr] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    quantt.getAgentWallet(agentId).then(r => { if (live) setWallet(r); }).catch(() => { if (live) setErr(true); });
+    return () => { live = false; };
+  }, [agentId]);
+
+  const o = quanttAsObj(wallet);
+  const address = quanttPickStr(o, ['address', 'walletAddress', 'wallet_address'])
+    ?? quanttPickStr(quanttAsObj(o?.wallet), ['address']);
+  const balanceRows = quanttObjRows(wallet, ['address', 'walletAddress', 'wallet_address', 'wallet']);
+
+  const copy = async () => {
+    if (!address) return;
+    try { await navigator.clipboard.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
+  };
+
+  if (!wallet && !err) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading wallet…</div>;
+  if (err) return <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load the agent wallet.</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        Agent wallet address
+      </div>
+      <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 10.5 }}>{address ?? '—'}</div>
+      <button className="btn-outline" onClick={copy} disabled={!address}>{copied ? '✓ Copied' : 'Copy address'}</button>
+
+      {balanceRows.length > 0 && (
+        <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {balanceRows.map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+        Use the Deposit tab to fund this agent from your own wallet.
+      </div>
+    </div>
+  );
+}
+
+/** Deposit — two distinct legs. Leg A is a real blockchain send from the
+ *  user's own Thanos wallet balance to the agent's wallet address, done
+ *  through the existing SendModal (not a new send mechanism). Leg B is a
+ *  separate explicit action telling Quantt to recognize/credit that
+ *  transfer. NO SANDBOX — both legs move/touch real funds from the first
+ *  click. */
+function QuanttDepositTab({ agentId, myAddress }: { agentId: string; myAddress: string }) {
+  const [wallet, setWallet] = useState<unknown>(null);
+  const [err, setErr] = useState(false);
+  const [showSend, setShowSend] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmResult, setConfirmResult] = useState<'ok' | 'err' | null>(null);
+  const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    quantt.getAgentWallet(agentId).then(r => { if (live) setWallet(r); }).catch(() => { if (live) setErr(true); });
+    return () => { live = false; };
+  }, [agentId]);
+
+  const address = quanttPickStr(quanttAsObj(wallet), ['address', 'walletAddress', 'wallet_address']);
+
+  const confirmDeposit = async () => {
+    setConfirming(true); setConfirmResult(null); setConfirmMsg(null);
+    try {
+      await quantt.depositToAgent(agentId);
+      setConfirmResult('ok');
+    } catch (e) {
+      setConfirmResult('err');
+      setConfirmMsg(e instanceof Error ? e.message : 'Could not confirm the deposit — try again in a moment.');
+    } finally { setConfirming(false); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{
+        background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)',
+        borderRadius: 9, padding: '9px 11px', fontSize: 11, color: '#ef4444', lineHeight: 1.4,
+      }}>
+        Real funds, no sandbox. Step 1 below sends crypto on-chain — there is no way to undo a broadcast transfer.
+      </div>
+
+      <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+          Step 1 — send funds
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+          Send crypto from your Thanos wallet to this agent&apos;s own address.
+        </div>
+        <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 10, marginBottom: 8 }}>
+          {address ?? (err ? 'Unavailable' : 'Loading…')}
+        </div>
+        <button className="btn-primary" disabled={!address} onClick={() => setShowSend(true)}>Send to this address</button>
+      </div>
+
+      <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+          Step 2 — tell Quantt
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+          Only after the on-chain transfer above has confirmed — this is a separate call telling Quantt to recognize and credit it.
+        </div>
+        <button className="btn-outline" disabled={confirming} onClick={confirmDeposit}>
+          {confirming ? 'Confirming…' : "I've sent the funds — confirm deposit"}
+        </button>
+        {confirmResult === 'ok' && <div style={{ fontSize: 11, color: '#22c55e', marginTop: 8 }}>Deposit confirmed with Quantt.</div>}
+        {confirmResult === 'err' && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 8 }}>{confirmMsg}</div>}
+      </div>
+
+      {showSend && address && (
+        <SendModal onClose={() => setShowSend(false)} initialChain="evm" initialTo={address} address={myAddress}/>
+      )}
+    </div>
+  );
+}
+
+function QuanttDecisionsTab({ agentId }: { agentId: string }) {
+  const [items, setItems] = useState<unknown[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const load = (nextCursor?: string) => {
+    setLoading(true); setErr(false);
+    quantt.getAgentDecisions(agentId, { cursor: nextCursor, limit: 20 })
+      .then((r) => {
+        const page = quanttPage(r);
+        setItems(prev => nextCursor ? [...prev, ...page.items] : page.items);
+        setCursor(page.cursor);
+        if (!page.cursor || page.items.length === 0) setDone(true);
+      })
+      .catch(() => setErr(true))
+      .finally(() => setLoading(false));
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(undefined); }, [agentId]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {items.length === 0 && !loading && !err && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No decisions yet.</div>}
+      {err && <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load decisions.</div>}
+      {items.map((it, i) => {
+        const skip = ['action', 'decision', 'type', 'createdAt', 'timestamp', 'created_at', 'date', 'id', '_id'];
+        const label = quanttPickStr(quanttAsObj(it), ['action', 'decision', 'type']) ?? 'Decision';
+        const when = quanttPickStr(quanttAsObj(it), ['createdAt', 'timestamp', 'created_at', 'date']);
+        return (
+          <div key={quanttRowId(it) ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 9 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, fontWeight: 700, marginBottom: 4 }}>
+              <span style={{ color: 'var(--text-primary)' }}>{label}</span>
+              {when && <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{when}</span>}
+            </div>
+            {quanttObjRows(it, skip).map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, gap: 8, marginTop: 2 }}>
+                <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+                <span style={{ color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {!done && items.length > 0 && (
+        <button className="btn-outline" disabled={loading} onClick={() => load(cursor)}>
+          {loading ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Generic list renderer for Trades/Positions — every primitive field of
+ *  each row, since the real response shapes aren't documented upstream. */
+function QuanttListTab({ agentId, fetcher, emptyLabel, errLabel }: {
+  agentId: string; fetcher: (id: string) => Promise<unknown>; emptyLabel: string; errLabel: string;
+}) {
+  const [items, setItems] = useState<unknown[] | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetcher(agentId).then(r => { if (live) setItems(quanttAsList(r)); }).catch(() => { if (live) setErr(true); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId]);
+
+  if (items == null && !err) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>;
+  if (err) return <div style={{ fontSize: 12, color: '#ef4444' }}>{errLabel}</div>;
+  if (items!.length === 0) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{emptyLabel}</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {items!.map((it, i) => (
+        <div key={quanttRowId(it) ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 9, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {quanttObjRows(it, ['id', '_id']).map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, gap: 8 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600, textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+function QuanttTradesTab({ agentId }: { agentId: string }) {
+  return <QuanttListTab agentId={agentId} fetcher={(id) => quantt.getAgentTrades(id)} emptyLabel="No trades yet." errLabel="Couldn't load trades."/>;
+}
+function QuanttPositionsTab({ agentId }: { agentId: string }) {
+  return <QuanttListTab agentId={agentId} fetcher={(id) => quantt.getAgentPositions(id)} emptyLabel="No open positions." errLabel="Couldn't load positions."/>;
+}
+
+/** Withdraw — requires a verified withdrawal address (bound once via an
+ *  EIP-712 signature, same shape as sign-in) before withdrawFromAgent can
+ *  succeed. Offers an optional TOTP field without knowing whether TOTP is
+ *  actually enabled on the account. Shows history + a resume action per
+ *  pending attempt. */
+function QuanttWithdrawTab({ agentId, seed, myAddress }: { agentId: string; seed: string[]; myAddress: string }) {
+  const [boundAddress, setBoundAddress] = useState<string | null | undefined>(undefined); // undefined = loading
+  const [binding, setBinding] = useState(false);
+  const [bindErr, setBindErr] = useState<string | null>(null);
+
+  const [amount, setAmount] = useState('');
+  const [totp, setTotp] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawErr, setWithdrawErr] = useState<string | null>(null);
+  const [withdrawOk, setWithdrawOk] = useState(false);
+
+  const [history, setHistory] = useState<unknown[] | null>(null);
+  const [historyErr, setHistoryErr] = useState(false);
+  const [resuming, setResuming] = useState<string | null>(null);
+
+  const loadBound = () => {
+    quantt.getWithdrawalAddress()
+      .then(r => setBoundAddress(quanttPickStr(quanttAsObj(r), ['address', 'walletAddress', 'wallet_address']) ?? null))
+      .catch(() => setBoundAddress(null));
+  };
+  const loadHistory = () => {
+    quantt.getAgentWithdrawals(agentId)
+      .then(r => setHistory(quanttAsList(r)))
+      .catch(() => setHistoryErr(true));
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadBound(); loadHistory(); }, [agentId]);
+
+  const bind = async () => {
+    if (!myAddress) return;
+    setBinding(true); setBindErr(null);
+    try {
+      await quanttBindWithdrawalAddress(seed, myAddress);
+      loadBound();
+    } catch (e) {
+      setBindErr(e instanceof Error ? e.message : 'Could not verify the withdrawal address.');
+    } finally { setBinding(false); }
+  };
+
+  const amtNum = parseFloat(amount || '0');
+  const canWithdraw = !!boundAddress && amtNum > 0 && !withdrawing;
+  const withdraw = async () => {
+    if (!canWithdraw) return;
+    if (!window.confirm(`Withdraw ${amount} to ${boundAddress}? This moves real funds and cannot be undone.`)) return;
+    setWithdrawing(true); setWithdrawErr(null); setWithdrawOk(false);
+    try {
+      await quantt.withdrawFromAgent(agentId, { amount: amtNum, totpCode: totp.trim() || undefined });
+      setWithdrawOk(true);
+      setAmount(''); setTotp('');
+      loadHistory();
+    } catch (e) {
+      setWithdrawErr(e instanceof Error ? e.message : 'Withdrawal failed — try again.');
+    } finally { setWithdrawing(false); }
+  };
+
+  const resume = async (attemptId: string) => {
+    setResuming(attemptId);
+    try {
+      await quantt.resumeWithdrawal(agentId, attemptId);
+      loadHistory();
+    } catch { /* best-effort — row is re-rendered from fresh history either way */ }
+    finally { setResuming(null); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {boundAddress === undefined && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Checking your verified withdrawal address…</div>}
+
+      {boundAddress === null && (
+        <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+            Withdrawals only pay out to a verified address — bind your own wallet address first (signs a message, no funds move).
+          </div>
+          <button className="btn-primary" disabled={binding || !myAddress} onClick={bind}>
+            {binding ? 'Verifying…' : 'Verify my wallet address'}
+          </button>
+          {bindErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 8 }}>{bindErr}</div>}
+        </div>
+      )}
+
+      {boundAddress && (
+        <>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            Verified withdrawal address: <span style={{ color: 'var(--text-primary)', fontWeight: 600, wordBreak: 'break-all' }}>{boundAddress}</span>
+          </div>
+          <label className="field-label">AMOUNT</label>
+          <input className="field" type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00"/>
+          <label className="field-label" style={{ marginTop: 8 }}>TOTP CODE (if enabled)</label>
+          <input className="field" value={totp} onChange={e => setTotp(e.target.value)} placeholder="Optional"/>
+          <button className="btn-primary" disabled={!canWithdraw} style={{ marginTop: 10 }} onClick={withdraw}>
+            {withdrawing ? 'Withdrawing…' : 'Withdraw'}
+          </button>
+          {withdrawOk && <div style={{ fontSize: 11, color: '#22c55e' }}>Withdrawal submitted.</div>}
+          {withdrawErr && <div style={{ fontSize: 11, color: '#ef4444' }}>{withdrawErr}</div>}
+        </>
+      )}
+
+      <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border-default)' }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+          Withdrawal history
+        </div>
+        {history == null && !historyErr && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Loading…</div>}
+        {historyErr && <div style={{ fontSize: 11, color: '#ef4444' }}>Couldn&apos;t load withdrawal history.</div>}
+        {history && history.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>No withdrawals yet.</div>}
+        {history && history.map((it, i) => {
+          const id = quanttRowId(it);
+          const st = quanttRowStatus(it);
+          const pending = !!st && /pending|processing|awaiting/i.test(st);
+          return (
+            <div key={id ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 8, marginBottom: 6 }}>
+              {quanttObjRows(it, ['id', '_id']).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, gap: 8 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
+                  <span style={{ color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
+                </div>
+              ))}
+              {pending && id && (
+                <button className="btn-outline" style={{ marginTop: 6, fontSize: 10.5, padding: '5px 8px' }} disabled={resuming === id} onClick={() => resume(id)}>
+                  {resuming === id ? 'Resuming…' : 'Resume'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type QuanttDetailTab = 'overview' | 'wallet' | 'deposit' | 'withdraw' | 'decisions' | 'trades' | 'positions';
+const QUANTT_TABS: Array<{ key: QuanttDetailTab; label: string }> = [
+  { key: 'overview',  label: 'Overview' },
+  { key: 'wallet',    label: 'Wallet' },
+  { key: 'deposit',   label: 'Deposit' },
+  { key: 'withdraw',  label: 'Withdraw' },
+  { key: 'decisions', label: 'Decisions' },
+  { key: 'trades',    label: 'Trades' },
+  { key: 'positions', label: 'Positions' },
+];
+
+/** Agent detail — a tabbed view over the full agent surface. Every
+ *  state-changing action here (start/pause/stop, analyze, deposit,
+ *  withdraw, delete) is real, confirmed, fund-adjacent, and run against
+ *  production with no sandbox to rehearse in. */
+function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
+  agent: QuanttAgentRef; onClose: () => void; onChanged: () => void;
+}) {
+  const seed = useWalletSeed();
+  const myAddress = seed.length ? deriveEvm(seed, getActiveAccountIndex()) : '';
+
+  const [tab, setTab] = useState<QuanttDetailTab>('overview');
   const [raw, setRaw] = useState<unknown>(null);
   const [loadErr, setLoadErr] = useState(false);
-  const [wallet, setWallet] = useState<unknown>(null);
   const [status, setStatus] = useState(agent.status);
   const [toggling, setToggling] = useState(false);
-  const [toggleErr, setToggleErr] = useState<string | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let live = true;
     quantt.getAgent(agent.id).then((r) => { if (live) setRaw(r); }).catch(() => { if (live) setLoadErr(true); });
-    quantt.getAgentWallet(agent.id).then((r) => { if (live) setWallet(r); }).catch(() => {});
     return () => { live = false; };
   }, [agent.id]);
 
-  const toggleState = async () => {
-    if (!status || !QUANTT_TOGGLE_STATES.has(status) || toggling) return;
-    const next: QuanttRuntimeState = status === 'active' ? 'paused' : 'active';
-    setToggling(true); setToggleErr(null);
+  const setState = async (next: QuanttRuntimeState) => {
+    const verb = next === 'active' ? 'resume' : next === 'paused' ? 'pause' : 'stop';
+    if (!window.confirm(`${verb[0].toUpperCase()}${verb.slice(1)} "${agent.name}"?`)) return;
+    setToggling(true); setActionErr(null);
     try {
       await quantt.setAgentState(agent.id, next);
       setStatus(next);
-      onStateChanged();
+      onChanged();
     } catch (e) {
-      setToggleErr(e instanceof Error ? e.message : 'Could not update the agent — try again.');
+      setActionErr(e instanceof Error ? e.message : 'Could not update the agent — try again.');
     } finally { setToggling(false); }
   };
 
-  const pct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
-  const rows: Array<[string, string]> = [
-    ['chain',         agent.chain ?? '—'],
-    ['status',        status ?? '—'],
-    ['exposureUsd',   agent.exposureUsd != null ? '$' + Math.round(agent.exposureUsd).toLocaleString('en-US') : '—'],
-    ['pnlPercent30d', agent.pnlPercent30d != null ? pct(agent.pnlPercent30d) : '—'],
-    ['confidence',    agent.confidence != null ? Math.round(agent.confidence * 100) / 100 + '' : '—'],
-    ['strategy',      agent.strategy ?? '—'],
-  ].filter(([, v]) => v !== '—') as Array<[string, string]>;
-  const extra = quanttExtraDetailEntries(agent, raw);
-  const walletRows = quanttExtraDetailEntries(agent, wallet);
+  const analyze = async () => {
+    setAnalyzing(true); setAnalyzeMsg(null); setActionErr(null);
+    try {
+      await quantt.analyzeAgent(agent.id);
+      setAnalyzeMsg('Analysis triggered.');
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : 'Could not trigger analysis.');
+    } finally { setAnalyzing(false); }
+  };
+
+  const doDelete = async () => {
+    if (!window.confirm(`Delete "${agent.name}"? This cannot be undone — withdraw any funds first, deleting does not return them automatically.`)) return;
+    if (!window.confirm('Are you absolutely sure? This permanently removes the agent.')) return;
+    setDeleting(true); setActionErr(null);
+    try {
+      await quantt.deleteAgent(agent.id);
+      onChanged();
+      onClose();
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : 'Could not delete the agent.');
+      setDeleting(false);
+    }
+  };
+
+  const rows = quanttObjRows(raw, ['id', '_id', 'name', 'status', 'state']);
 
   return (
     <Modal title={agent.name} onClose={onClose}>
-      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {rows.map(([k, v]) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-            <span style={{ color: 'var(--text-secondary)' }}>{QUANTT_AGENT_DETAIL_LABELS[k] ?? k}</span>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{v}</span>
-          </div>
-        ))}
-
-        {extra.length > 0 && (
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border, rgba(148,163,184,0.16))', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {extra.map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
-                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {loadErr && (
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-            Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
-          </div>
-        )}
-
-        {walletRows.length > 0 && (
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border, rgba(148,163,184,0.16))' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-              Agent wallet
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {walletRows.map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {status && QUANTT_TOGGLE_STATES.has(status) && (
-          <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border, rgba(148,163,184,0.16))' }}>
+      <div className="modal-body" style={{ padding: '10px 14px 14px' }}>
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 8, marginBottom: 10, borderBottom: '1px solid var(--border-default)' }}>
+          {QUANTT_TABS.map(t => (
             <button
-              onClick={toggleState}
-              disabled={toggling}
+              key={t.key}
+              onClick={() => setTab(t.key)}
               style={{
-                width: '100%', padding: '9px 12px', borderRadius: 9,
-                background: status === 'active' ? 'transparent' : 'var(--blue)',
-                color: status === 'active' ? '#ef4444' : '#fff',
-                border: status === 'active' ? '1px solid rgba(239,68,68,0.4)' : 'none',
-                fontSize: 12.5, fontWeight: 700, cursor: toggling ? 'default' : 'pointer',
-                opacity: toggling ? 0.6 : 1,
+                flexShrink: 0, padding: '5px 10px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                background: tab === t.key ? 'var(--blue)' : 'transparent',
+                color: tab === t.key ? '#fff' : 'var(--text-secondary)',
+                border: `1px solid ${tab === t.key ? 'var(--blue)' : 'var(--border-default)'}`,
               }}
-            >
-              {toggling ? 'Working…' : status === 'active' ? 'Pause agent' : 'Resume agent'}
-            </button>
-            {toggleErr && <div style={{ marginTop: 6, fontSize: 11, color: '#ef4444' }}>{toggleErr}</div>}
-          </div>
+            >{t.label}</button>
+          ))}
+        </div>
+
+        {tab === 'overview' && (
+          <QuanttOverviewTab
+            status={status} rows={rows} loadErr={loadErr}
+            toggling={toggling} analyzing={analyzing} analyzeMsg={analyzeMsg}
+            onSetState={setState} onAnalyze={analyze}
+          />
         )}
+        {tab === 'wallet'    && <QuanttWalletTab agentId={agent.id}/>}
+        {tab === 'deposit'   && <QuanttDepositTab agentId={agent.id} myAddress={myAddress}/>}
+        {tab === 'withdraw'  && <QuanttWithdrawTab agentId={agent.id} seed={seed} myAddress={myAddress}/>}
+        {tab === 'decisions' && <QuanttDecisionsTab agentId={agent.id}/>}
+        {tab === 'trades'    && <QuanttTradesTab agentId={agent.id}/>}
+        {tab === 'positions' && <QuanttPositionsTab agentId={agent.id}/>}
+
+        {actionErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 10 }}>{actionErr}</div>}
+
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-default)' }}>
+          <button
+            onClick={doDelete}
+            disabled={deleting}
+            style={{
+              width: '100%', padding: '8px 12px', borderRadius: 9, background: 'transparent',
+              color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', fontSize: 11.5, fontWeight: 700,
+              cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
+            }}
+          >{deleting ? 'Deleting…' : 'Delete agent'}</button>
+        </div>
       </div>
     </Modal>
   );
@@ -1655,7 +2364,9 @@ function AIAssistant() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [overview, setOverview] = useState<QuanttOverview | null>(null);
-  const [detailAgent, setDetailAgent] = useState<QuanttAgent | null>(null);
+  const [detailAgent, setDetailAgent] = useState<QuanttAgentRef | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const loadOverview = () => {
     quantt.getOverview().then(setOverview).catch(() => setOverview(null));
@@ -1703,7 +2414,14 @@ function AIAssistant() {
               ? 'Signed in with your wallet — your AI trading agents.'
               : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
           </div>
-          {session && overview && <QuanttPanel overview={overview} onSelectAgent={setDetailAgent}/>}
+          {session && overview && (
+            <QuanttPanel
+              overview={overview}
+              onSelectAgent={setDetailAgent}
+              onCreateAgent={() => setShowCreate(true)}
+              onViewAll={() => setShowAll(true)}
+            />
+          )}
           {err && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6, lineHeight: 1.35 }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             {session ? (
@@ -1733,7 +2451,20 @@ function AIAssistant() {
           </div>
         </div>
       </div>
-      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} onStateChanged={loadOverview}/>}
+      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} onChanged={loadOverview}/>}
+      {showCreate && (
+        <QuanttCreateAgentModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { setShowCreate(false); loadOverview(); }}
+        />
+      )}
+      {showAll && (
+        <QuanttAgentsListModal
+          onClose={() => setShowAll(false)}
+          onSelectAgent={(a) => { setShowAll(false); setDetailAgent(a); }}
+          onCreateAgent={() => { setShowAll(false); setShowCreate(true); }}
+        />
+      )}
     </div>
   );
 }
