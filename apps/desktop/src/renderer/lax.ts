@@ -94,9 +94,38 @@ export async function laxCreateAccount(params: { address?: string; referralCode?
 
 /** GET /lax/currencies — the tokens/chains active for our LAX account,
  *  pollable, shrinks/grows with dashboard prefs. Shape is upstream's
- *  available_currencies; returned raw for the top-up screen to map. */
+ *  available_currencies; returned raw for the top-up screen to map.
+ *
+ *  Zypto's docs are explicit this must be re-checked at least once every
+ *  24h (the active set can shrink/expand). Cached in localStorage with a
+ *  24h TTL so every screen open doesn't re-hit the network, but a stale
+ *  cache never silently lives forever — a fetch failure with a still-fresh
+ *  cache reuses it; a failure with no/expired cache propagates so the
+ *  caller's existing fallback list kicks in. */
+const CURRENCIES_CACHE_KEY = 'lax_currencies_cache_v1';
+const CURRENCIES_TTL_MS = 24 * 60 * 60 * 1000;
+
+function readCurrenciesCache(): { data: unknown; at: number } | null {
+  try {
+    const raw = window.localStorage.getItem(CURRENCIES_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 export async function laxCurrencies(): Promise<unknown> {
-  return apiClient.apiRequest<unknown>('GET', '/lax/currencies');
+  const cached = readCurrenciesCache();
+  if (cached && Date.now() - cached.at < CURRENCIES_TTL_MS) return cached.data;
+
+  try {
+    const data = await apiClient.apiRequest<unknown>('GET', '/lax/currencies');
+    try { window.localStorage.setItem(CURRENCIES_CACHE_KEY, JSON.stringify({ data, at: Date.now() })); }
+    catch { /* quota/serialization — non-fatal */ }
+    return data;
+  } catch (e) {
+    // Serve a stale-but-present cache over a hard failure.
+    if (cached) return cached.data;
+    throw e;
+  }
 }
 
 /* ── cards ──────────────────────────────────────────────────────────── */

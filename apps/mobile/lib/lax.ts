@@ -80,9 +80,40 @@ export async function laxCreateAccount(params: { address?: string; referralCode?
 
 /** GET /lax/currencies — the tokens/chains active for our LAX account,
  *  pollable, shrinks/grows with dashboard prefs. Shape is upstream's
- *  available_currencies; returned raw for the top-up screen to map. */
+ *  available_currencies; returned raw for the top-up screen to map.
+ *
+ *  Zypto's docs are explicit this must be re-checked at least once every
+ *  24h (the active set can shrink/expand). Cached in AsyncStorage with a
+ *  24h TTL so every screen open doesn't re-hit the network, but a stale
+ *  cache never silently lives forever — a fetch failure with a still-fresh
+ *  cache reuses it; a failure with no/expired cache propagates so the
+ *  caller's existing fallback list kicks in. */
+const CURRENCIES_CACHE_KEY = 'lax_currencies_cache_v1';
+const CURRENCIES_TTL_MS = 24 * 60 * 60 * 1000;
+
 export async function laxCurrencies(): Promise<unknown> {
-  return apiClient.apiRequest<unknown>('GET', '/lax/currencies');
+  const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+  try {
+    const raw = await AsyncStorage.getItem(CURRENCIES_CACHE_KEY);
+    if (raw) {
+      const cached = JSON.parse(raw) as { data: unknown; at: number };
+      if (Date.now() - cached.at < CURRENCIES_TTL_MS) return cached.data;
+    }
+  } catch { /* corrupt/missing cache — fall through to a fresh fetch */ }
+
+  try {
+    const data = await apiClient.apiRequest<unknown>('GET', '/lax/currencies');
+    AsyncStorage.setItem(CURRENCIES_CACHE_KEY, JSON.stringify({ data, at: Date.now() })).catch(() => {});
+    return data;
+  } catch (e) {
+    // Serve a stale-but-present cache over a hard failure — better than
+    // nothing for a "which currencies can I top up with" list.
+    try {
+      const raw = await AsyncStorage.getItem(CURRENCIES_CACHE_KEY);
+      if (raw) return (JSON.parse(raw) as { data: unknown }).data;
+    } catch { /* no usable cache either */ }
+    throw e;
+  }
 }
 
 /* ── cards ──────────────────────────────────────────────────────────── */
