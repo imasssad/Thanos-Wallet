@@ -140,17 +140,20 @@ function getSendNetworks(): SendNet[] {
   ];
 }
 
-export function SendModal({ onClose, initialNetwork, initialCoin }: {
+export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress }: {
   onClose: () => void;
   /** Pre-select a network (e.g. opened from a token detail screen). */
   initialNetwork?: SendNet['id'];
   /** Pre-select an asset on that network (e.g. 'FGPT'). */
   initialCoin?: string;
+  /** Pre-fill the recipient address (e.g. opened from the Quantt deposit
+   *  flow with an agent's wallet address). The field stays editable. */
+  initialAddress?: string;
 }) {
   const wallet = useWallet();
   const [network, setNetwork] = useState<SendNet['id']>(initialNetwork ?? 'makalu');
   const [coin, setCoin]       = useState(initialCoin ?? 'LITHO');
-  const [to, setTo]           = useState('');
+  const [to, setTo]           = useState(initialAddress ?? '');
   const [amount, setAmount]   = useState('');
   // "Send max" — the displayed balance is filled, but the actual send reserves
   // the network fee (BTC: spend-all minus fee; SOL/Cosmos: subtract a fee

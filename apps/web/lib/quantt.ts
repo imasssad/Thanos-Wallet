@@ -38,20 +38,36 @@ const store = {
 
 export const quantt = new QuanttClient({ store });
 
+/** Strips the EIP712Domain entry (ethers derives it from `domain`) and runs
+ *  the wallet-signing worker — shared by sign-in and withdrawal-address
+ *  binding, which both walk the same challenge/sign/verify shape. */
+async function signQuanttTypedData(typed: Eip712TypedData): Promise<string> {
+  const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
+  void _omit;
+  const { signature } = await signerSignTypedData({
+    domain: typed.domain,
+    types: types as Record<string, Array<{ name: string; type: string }>>,
+    message: typed.message,
+  });
+  return signature;
+}
+
 /** Sign in to Quantt using the unlocked web wallet (worker-signed). */
 export async function quanttSignIn(): Promise<QuanttSession> {
   const { address } = await getSignerAddress();
   if (!address) throw new Error('Wallet is locked');
-  const sign = async (typed: Eip712TypedData): Promise<string> => {
-    // The worker's ethers signer wants types without the EIP712Domain entry.
-    const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
-    void _omit;
-    const { signature } = await signerSignTypedData({
-      domain: typed.domain,
-      types: types as Record<string, Array<{ name: string; type: string }>>,
-      message: typed.message,
-    });
-    return signature;
-  };
-  return quantt.signIn(address, sign);
+  return quantt.signIn(address, signQuanttTypedData);
+}
+
+/** Bind this wallet's own address as the verified withdrawal target
+ *  (POST /v1/user/withdrawal-address/challenge → sign → POST
+ *  /v1/user/withdrawal-address). Same EIP-712-challenge shape as sign-in.
+ *  Withdrawals only ever pay out to whatever address is bound here — never
+ *  an arbitrary one entered at withdraw time. */
+export async function quanttBindWithdrawalAddress(): Promise<unknown> {
+  const { address } = await getSignerAddress();
+  if (!address) throw new Error('Wallet is locked');
+  const typed = await quantt.withdrawalAddressChallenge(address);
+  const signature = await signQuanttTypedData(typed);
+  return quantt.bindWithdrawalAddress({ address, signature });
 }
