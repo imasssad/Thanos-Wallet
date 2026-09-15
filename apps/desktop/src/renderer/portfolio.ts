@@ -16,6 +16,7 @@ import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
 import { getLocalActivity } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
+import { fetchMakaluNativeActivity, fetchKametNativeActivity, fetchMainnetNativeActivity, mergeNativeActivity } from './explorer-activity';
 
 const INDEXER_BASE = String(
   (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
@@ -218,11 +219,23 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
     });
     (async () => {
       try {
-        const [pf, prices] = await Promise.all([
+        const [pf, prices, nativeSettled] = await Promise.all([
           fetchPortfolio(address).catch(() => ({ assets: [], activity: [], walletAddress: address, updatedAt: '' } as IndexerPortfolio)),
           fetchEcosystemPrices(),
+          // Native LITHO transfers emit no logs, so the indexer never sees
+          // them on any chain — merge in the explorer-scraped feeds (Makalu
+          // + Kamet + Mainnet, the wallet's default) so they actually show
+          // up instead of only ever appearing as a local "Pending" row.
+          Promise.allSettled([
+            fetchMakaluNativeActivity(address),
+            fetchKametNativeActivity(address),
+            fetchMainnetNativeActivity(address),
+          ]),
         ]);
         if (cancelled) return;
+
+        const nativeActivity = nativeSettled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+        pf.activity = mergeNativeActivity(pf.activity ?? [], nativeActivity);
 
         const priced = pf.assets.map((a) => {
           let bal = 0;
