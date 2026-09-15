@@ -65,7 +65,11 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
 }
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits, randomBytes } from 'ethers';
-import { quantt, quanttSignIn, type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState } from './lib/quantt';
+import {
+  quantt, quanttSignIn, quanttBindWithdrawalAddress,
+  type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
+  type QuanttStrategy, type QuanttChain, type QuanttDexPreference, type CreateAgentInput,
+} from './lib/quantt';
 import {
   createVault, openVault, openVaultWithKey,
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
@@ -152,6 +156,7 @@ import {
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
   ChevronDown, ChevronUp, Star, History, Scan, Wallet as WalletIcon,
+  RefreshCw, Play, Pause, Square as SquareIcon, ListChecks,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -384,6 +389,12 @@ function useWalletSeed(): string[] { return useContext(WalletSeedCtx); }
    screen can call it. */
 const BrowserCtx = createContext<(url: string) => void>(() => {});
 function useBrowser(): (url: string) => void { return useContext(BrowserCtx); }
+
+/** Lets a deeply-nested screen (e.g. the Quantt deposit flow) route into the
+ *  existing Send screen pre-filled with a recipient address, without
+ *  threading the screen-switch state through every intermediate component. */
+const SendNavCtx = createContext<(address: string) => void>(() => {});
+function useSendNav(): (address: string) => void { return useContext(SendNavCtx); }
 
 /* ─────────────────────────── Live portfolio ─────────────────────────── */
 
@@ -1805,6 +1816,60 @@ function LaxSuccess({ C, styles, last4, topUp, onDone }: any) {
   );
 }
 
+/** iOS/Android store links for the update-available nudge. */
+const IOS_STORE_URL     = 'https://apps.apple.com/app/id6738206983';
+const ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=ai.thanos.wallet';
+
+/** "A new version is available" nudge — compares the running app's version
+ *  (parsed from APP_VERSION, e.g. "thanos-v2.0.1" -> "2.0.1") against
+ *  GET /app-version, an unauthenticated backend endpoint driven by
+ *  hand-maintained env vars (services/api/src/app.ts — nothing queries the
+ *  App/Play Store automatically). A null/matching/unreachable response
+ *  shows nothing — never a false positive. */
+function UpdateAvailableBanner() {
+  const C = useColors();
+  const [latest, setLatest] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const current = APP_VERSION.replace(/^thanos-v/, '');
+    (async () => {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 6_000);
+        const res = await fetch('https://thanos.fi/api/app-version', { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!res.ok) return;
+        const json = (await res.json()) as { ios?: string | null; android?: string | null };
+        const target = Platform.OS === 'ios' ? json.ios : json.android;
+        if (!cancelled && target && target !== current) setLatest(target);
+      } catch { /* offline / blip — just don't show the nudge */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!latest) return null;
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(Platform.OS === 'ios' ? IOS_STORE_URL : ANDROID_STORE_URL)}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginTop: 4,
+        borderRadius: 14, borderWidth: 1, borderColor: 'rgba(59,122,247,0.3)',
+        backgroundColor: 'rgba(59,122,247,0.08)',
+      }}
+    >
+      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(59,122,247,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+        <RefreshCw size={18} color={C.blue}/>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary }}>Update available</Text>
+        <Text style={{ fontSize: 12, color: C.textMuted }}>Version {latest} is ready in the {Platform.OS === 'ios' ? 'App Store' : 'Play Store'}.</Text>
+      </View>
+      <ChevronRight size={18} color={C.textMuted}/>
+    </Pressable>
+  );
+}
+
 function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string, chainId?: number) => void }) {
   const C = useColors();
   const styles = useStyles();
@@ -1903,6 +1968,10 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
             under the same App Store 3.1.5 restriction. */}
         {EXCHANGE_ENABLED && <QuickAction Icon={Plus} label="TGE" onPress={() => openBrowser('https://tge.ignite.trade/')}/>}
       </View>
+
+      {/* Update-available nudge — above the security nudge since acting on
+          it is lower-friction (opens the store, no in-app flow). */}
+      <UpdateAvailableBanner/>
 
       {/* Security: recovery-phrase backup nudge */}
       {backedUp === false && (
@@ -2050,6 +2119,110 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   );
 }
 
+/* ── Quantt agent create/manage/fund constants + defensive parse helpers ──
+ * Every Quantt response body is `unknown` (real upstream shapes aren't fully
+ * documented) — these mirror lib/lax.ts's coerceCardList/coerceDetails
+ * philosophy: probe several plausible key spellings, never assume a fixed
+ * shape, never throw on an unexpected one. */
+const QUANTT_STRATEGIES: QuanttStrategy[] = [
+  'buy_hold', 'macd', 'kdj_rsi', 'zmr', 'sma', 'custom', 'momentum',
+  'mean_reversion', 'arbitrage', 'trend_following', 'hedging', 'fundamental', 'technical',
+];
+const QUANTT_STRATEGY_LABELS: Record<QuanttStrategy, string> = {
+  buy_hold: 'Buy & Hold', macd: 'MACD', kdj_rsi: 'KDJ + RSI', zmr: 'ZMR', sma: 'SMA',
+  custom: 'Custom', momentum: 'Momentum', mean_reversion: 'Mean Reversion', arbitrage: 'Arbitrage',
+  trend_following: 'Trend Following', hedging: 'Hedging', fundamental: 'Fundamental', technical: 'Technical',
+};
+const QUANTT_CHAINS: QuanttChain[] = ['arbitrum', 'base', 'lithosphere', 'bnb'];
+const QUANTT_CHAIN_LABELS: Record<QuanttChain, string> = {
+  arbitrum: 'Arbitrum', base: 'Base', lithosphere: 'Lithosphere', bnb: 'BNB Chain',
+};
+const QUANTT_DEFAULTS = { maxPositionPct: 25, stopLoss: 5, takeProfit: 10, maxDailyLoss: 3.5 };
+
+function qAsObj(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+/** Pull a list out of a handful of common container shapes, or a bare array. */
+function qPickList(raw: unknown, keys: string[] = ['items', 'agents', 'data', 'result', 'results', 'trades', 'positions', 'decisions', 'withdrawals', 'list']): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  const o = qAsObj(raw);
+  if (!o) return [];
+  for (const k of keys) { if (Array.isArray(o[k])) return o[k] as unknown[]; }
+  return [];
+}
+function qStr(o: Record<string, unknown> | null, ...keys: string[]): string | undefined {
+  if (!o) return undefined;
+  for (const k of keys) {
+    const v = o[k];
+    if (typeof v === 'string' && v) return v;
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  }
+  return undefined;
+}
+function qNum(o: Record<string, unknown> | null, ...keys: string[]): number | undefined {
+  if (!o) return undefined;
+  for (const k of keys) {
+    const v = o[k];
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+function qFmtVal(v: unknown): string {
+  if (v == null) return '—';
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(4);
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.length ? `[${v.length} items]` : '[]';
+  if (typeof v === 'object') return '{…}';
+  return String(v);
+}
+/** Flatten an unknown record's primitive fields into label/value rows for a
+ *  generic fallback display — used everywhere a Quantt response shape isn't
+ *  pinned down (decisions/trades/positions/withdrawals items). */
+function qEntries(raw: unknown, skip: string[] = []): Array<[string, string]> {
+  const o = qAsObj(raw);
+  if (!o) return [];
+  const out: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(o)) {
+    if (skip.includes(k) || v == null) continue;
+    if (typeof v === 'object' && !Array.isArray(v)) continue; // nested objects skipped, not crashed on
+    out.push([k, qFmtVal(v)]);
+  }
+  return out;
+}
+/** Best-effort agent-wallet address, checking several plausible key
+ *  spellings/nesting levels — never throws on an unexpected shape. */
+function qWalletAddress(raw: unknown): string | undefined {
+  const o = qAsObj(raw);
+  if (!o) return undefined;
+  const direct = qStr(o, 'address', 'walletAddress', 'wallet_address', 'depositAddress', 'deposit_address');
+  if (direct) return direct;
+  const nested = qAsObj(o.wallet) ?? qAsObj(o.data);
+  return nested ? qStr(nested, 'address', 'walletAddress', 'wallet_address') : undefined;
+}
+function qDecisionsCursor(raw: unknown): string | undefined {
+  const o = qAsObj(raw);
+  return qStr(o, 'nextCursor', 'next_cursor', 'cursor');
+}
+
+/** Generic label/value card — renders whatever primitive fields a Quantt
+ *  response item has, defensively, with no assumed shape. */
+function QuanttFieldsCard({ C, raw, empty }: { C: ReturnType<typeof useColors>; raw: unknown; empty: string }) {
+  const entries = qEntries(raw);
+  if (!entries.length) return <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>{empty}</Text>;
+  return (
+    <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 12, marginTop: 8 }}>
+      {entries.map(([k, v]) => (
+        <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, gap: 10 }}>
+          <Text style={{ fontSize: 11, color: C.textMuted, flexShrink: 0 }}>{k}</Text>
+          <Text style={{ fontSize: 12, color: C.textPrimary, fontWeight: '600', flexShrink: 1, textAlign: 'right' }} numberOfLines={2}>{v}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /* Quantt Agents — AI assistant card with native wallet sign-in. "Connect with
    Thanos" runs the EIP-712 wallet login (lib/quantt.ts) signed inline at the
    active HD path; the live portfolio/agents panel loads from /v1/mobile/overview.
@@ -2064,6 +2237,8 @@ function QuanttAgentsCard() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [detailAgent, setDetailAgent] = useState<QuanttAgent | null>(null);
+  const [listOpen, setListOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
   useEffect(() => {
@@ -2132,8 +2307,15 @@ function QuanttAgentsCard() {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             {session ? (
               <>
-                <Pressable onPress={() => openBrowser(QUANTT_AGENTS_URL)} style={({ pressed }) => [{ backgroundColor: C.blue, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 }, pressed && { opacity: 0.85 }]}>
-                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Open Quantts ↗</Text>
+                <Pressable onPress={() => setCreateOpen(true)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blue, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 }, pressed && { opacity: 0.85 }]}>
+                  <Plus size={13} color="#fff"/>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>New Agent</Text>
+                </Pressable>
+                <Pressable onPress={() => setListOpen(true)} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: divider }, pressed && { opacity: 0.7 }]}>
+                  <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>All Agents</Text>
+                </Pressable>
+                <Pressable onPress={() => openBrowser(QUANTT_AGENTS_URL)} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: divider }, pressed && { opacity: 0.7 }]}>
+                  <Text style={{ color: C.textSecondary, fontSize: 13, fontWeight: '700' }}>Open ↗</Text>
                 </Pressable>
                 <Pressable onPress={disconnect} style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: divider }, pressed && { opacity: 0.7 }]}>
                   <Text style={{ color: C.textSecondary, fontSize: 13, fontWeight: '700' }}>Disconnect</Text>
@@ -2152,7 +2334,27 @@ function QuanttAgentsCard() {
           </View>
         </View>
       </View>
-      {detailAgent && <QuanttAgentDetailModal agent={detailAgent} onClose={() => setDetailAgent(null)} onStateChanged={loadOverview}/>}
+      {detailAgent && (
+        <QuanttAgentManageModal
+          agentId={detailAgent.id}
+          summary={detailAgent}
+          onClose={() => setDetailAgent(null)}
+          onChanged={loadOverview}
+        />
+      )}
+      {listOpen && (
+        <QuanttAgentsListModal
+          onClose={() => setListOpen(false)}
+          onOpenAgent={(a) => { setListOpen(false); setDetailAgent(a); }}
+          onCreate={() => { setListOpen(false); setCreateOpen(true); }}
+        />
+      )}
+      {createOpen && (
+        <QuanttCreateAgentModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => { setCreateOpen(false); loadOverview(); }}
+        />
+      )}
     </View>
   );
 }
@@ -2161,8 +2363,6 @@ const QUANTT_AGENT_DETAIL_LABELS: Record<string, string> = {
   chain: 'Network', status: 'Status', exposureUsd: 'Exposure', pnlPercent30d: '30d P&L',
   confidence: 'Confidence', strategy: 'Strategy',
 };
-const QUANTT_TOGGLE_STATES = new Set(['active', 'paused']);
-
 /** Mirrors apps/web/components/QuanttCard.tsx's extraDetailEntries. */
 function quanttExtraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[string, string]> {
   if (!raw || typeof raw !== 'object') return [];
@@ -2181,127 +2381,900 @@ function quanttExtraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[stri
  *  action against production with no sandbox to rehearse in, so it's a
  *  deliberate one-tap toggle with a clear busy/error state. Mirrors
  *  apps/web/components/QuanttCard.tsx. */
-function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
-  agent: QuanttAgent; onClose: () => void; onStateChanged: () => void;
+type QuanttManageTab = 'overview' | 'wallet' | 'decisions' | 'trades' | 'positions';
+const QUANTT_MANAGE_TABS: Array<{ key: QuanttManageTab; label: string }> = [
+  { key: 'overview',  label: 'Overview' },
+  { key: 'wallet',    label: 'Wallet' },
+  { key: 'decisions', label: 'Decisions' },
+  { key: 'trades',    label: 'Trades' },
+  { key: 'positions', label: 'Positions' },
+];
+
+/** Full agent management screen — reached from the AI Assistant card's quick
+ *  taps or "All Agents". Pause/resume/stop call POST /v1/agents/{id}/state,
+ *  real fund-adjacent actions against production with no sandbox to
+ *  rehearse in, so every state change goes through a confirm dialog. Deposit
+ *  and Withdraw open their own dedicated flows (below) since both move real
+ *  funds. Mirrors apps/web/components/QuanttCard.tsx for the overview rows. */
+function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
+  agentId: string; summary?: QuanttAgent | null; onClose: () => void; onChanged: () => void;
 }) {
   const C = useColors();
   const [raw, setRaw] = useState<unknown>(null);
   const [loadErr, setLoadErr] = useState(false);
   const [wallet, setWallet] = useState<unknown>(null);
-  const [status, setStatus] = useState(agent.status);
-  const [toggling, setToggling] = useState(false);
-  const [toggleErr, setToggleErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | undefined>(summary?.status);
+  const [busyAction, setBusyAction] = useState<'state' | 'analyze' | 'delete' | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<QuanttManageTab>('overview');
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+
+  const [decisions, setDecisions] = useState<unknown[]>([]);
+  const [decisionsCursor, setDecisionsCursor] = useState<string | undefined>(undefined);
+  const [decisionsLoading, setDecisionsLoading] = useState(false);
+  const [trades, setTrades] = useState<unknown[] | null>(null);
+  const [positions, setPositions] = useState<unknown[] | null>(null);
+
+  const reload = () => {
+    quantt.getAgent(agentId).then((r) => { setRaw(r); const o = qAsObj(r); const s = qStr(o, 'status', 'state'); if (s) setStatus(s); }).catch(() => setLoadErr(true));
+    quantt.getAgentWallet(agentId).then(setWallet).catch(() => {});
+  };
+  useEffect(() => { let live = true; if (live) reload(); return () => { live = false; }; }, [agentId]);
 
   useEffect(() => {
-    let live = true;
-    quantt.getAgent(agent.id).then((r) => { if (live) setRaw(r); }).catch(() => { if (live) setLoadErr(true); });
-    quantt.getAgentWallet(agent.id).then((r) => { if (live) setWallet(r); }).catch(() => {});
-    return () => { live = false; };
-  }, [agent.id]);
+    if (tab === 'trades' && trades === null) {
+      quantt.getAgentTrades(agentId, 50).then((r) => setTrades(qPickList(r))).catch(() => setTrades([]));
+    }
+    if (tab === 'positions' && positions === null) {
+      quantt.getAgentPositions(agentId).then((r) => setPositions(qPickList(r))).catch(() => setPositions([]));
+    }
+    if (tab === 'decisions' && decisions.length === 0 && !decisionsLoading) {
+      loadMoreDecisions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
-  const toggleState = async () => {
-    if (!status || !QUANTT_TOGGLE_STATES.has(status) || toggling) return;
-    const next: QuanttRuntimeState = status === 'active' ? 'paused' : 'active';
-    setToggling(true); setToggleErr(null);
+  const loadMoreDecisions = async () => {
+    setDecisionsLoading(true);
     try {
-      await quantt.setAgentState(agent.id, next);
-      setStatus(next);
-      onStateChanged();
-    } catch (e) {
-      setToggleErr(e instanceof Error ? e.message : 'Could not update the agent — try again.');
-    } finally { setToggling(false); }
+      const r = await quantt.getAgentDecisions(agentId, { cursor: decisionsCursor, limit: 20 });
+      const page = qPickList(r, ['decisions', 'items', 'data', 'results']);
+      setDecisions((d) => [...d, ...page]);
+      setDecisionsCursor(qDecisionsCursor(r));
+    } catch { /* keep whatever's already loaded */ }
+    finally { setDecisionsLoading(false); }
   };
 
+  const name = summary?.name ?? qStr(qAsObj(raw), 'name') ?? 'Agent';
+  const walletAddress = qWalletAddress(wallet);
+
+  const confirmSetState = (next: QuanttRuntimeState) => {
+    const verb = next === 'active' ? 'resume' : next === 'paused' ? 'pause' : 'stop';
+    Alert.alert(
+      `${verb[0].toUpperCase()}${verb.slice(1)} this agent?`,
+      next === 'idle'
+        ? 'Stopping an agent halts its trading. Funds already deployed stay in its wallet until you withdraw.'
+        : `This changes the agent's live trading state on Quantts — real funds, no sandbox.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: verb[0].toUpperCase() + verb.slice(1), style: next === 'idle' ? 'destructive' : 'default',
+          onPress: async () => {
+            setBusyAction('state'); setActionErr(null);
+            try { await quantt.setAgentState(agentId, next); setStatus(next); onChanged(); }
+            catch (e) { setActionErr(e instanceof Error ? e.message : 'Could not update the agent — try again.'); }
+            finally { setBusyAction(null); }
+          },
+        },
+      ],
+    );
+  };
+
+  const runAnalyze = async () => {
+    setBusyAction('analyze'); setActionErr(null);
+    try { await quantt.analyzeAgent(agentId); reload(); }
+    catch (e) { setActionErr(e instanceof Error ? e.message : 'Analyze failed — try again.'); }
+    finally { setBusyAction(null); }
+  };
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete this agent?',
+      `This permanently deletes "${name}". If it still holds funds, withdraw them first — deleting does not automatically return your money.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            setBusyAction('delete'); setActionErr(null);
+            try { await quantt.deleteAgent(agentId); setDeleted(true); onChanged(); onClose(); }
+            catch (e) { setActionErr(e instanceof Error ? e.message : 'Delete failed — try again.'); }
+            finally { setBusyAction(null); }
+          },
+        },
+      ],
+    );
+  };
+
+  if (deleted) return null;
+
   const pct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
-  const rows: Array<[string, string]> = [
-    ['chain',         agent.chain ?? '—'],
+  const overviewRows: Array<[string, string]> = [
+    ['chain',         summary?.chain ?? qStr(qAsObj(raw), 'chain', 'network') ?? '—'],
     ['status',        status ?? '—'],
-    ['exposureUsd',   agent.exposureUsd != null ? '$' + Math.round(agent.exposureUsd).toLocaleString('en-US') : '—'],
-    ['pnlPercent30d', agent.pnlPercent30d != null ? pct(agent.pnlPercent30d) : '—'],
-    ['confidence',    agent.confidence != null ? Math.round(agent.confidence * 100) / 100 + '' : '—'],
-    ['strategy',      agent.strategy ?? '—'],
+    ['exposureUsd',   summary?.exposureUsd != null ? '$' + Math.round(summary.exposureUsd).toLocaleString('en-US') : '—'],
+    ['pnlPercent30d', summary?.pnlPercent30d != null ? pct(summary.pnlPercent30d) : '—'],
+    ['confidence',    summary?.confidence != null ? Math.round(summary.confidence * 100) / 100 + '' : '—'],
+    ['strategy',      summary?.strategy ?? qStr(qAsObj(raw), 'strategy') ?? '—'],
   ].filter(([, v]) => v !== '—') as Array<[string, string]>;
-  const extra = quanttExtraDetailEntries(agent, raw);
-  const walletRows = quanttExtraDetailEntries(agent, wallet);
-  const canToggle = !!status && QUANTT_TOGGLE_STATES.has(status);
+  const extra = summary ? quanttExtraDetailEntries(summary, raw) : qEntries(raw, ['id', 'name']);
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
-        <Pressable
-          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34, maxHeight: '85%' }}
-          onPress={() => { /* swallow taps inside the sheet */ }}
-        >
-          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>{agent.name}</Text>
-            <Pressable hitSlop={8} onPress={onClose}>
-              <Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text>
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 }}>
+          <Pressable onPress={onClose} hitSlop={16}>
+            <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+          </Pressable>
+          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>{name}</Text>
+          <View style={{ width: 22 }}/>
+        </View>
+
+        {/* Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, paddingLeft: 20, marginBottom: 6 }}>
+          {QUANTT_MANAGE_TABS.map((t) => (
+            <Pressable
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              style={({ pressed }) => [{
+                paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, marginRight: 8,
+                backgroundColor: tab === t.key ? C.blueDim : 'transparent',
+              }, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: tab === t.key ? C.blue : C.textSecondary }}>{t.label}</Text>
             </Pressable>
-          </View>
+          ))}
+        </ScrollView>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14 }}>
-              {rows.map(([k, v]) => (
-                <TxSheetRow key={k} C={C} label={QUANTT_AGENT_DETAIL_LABELS[k] ?? k}>
-                  <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{v}</Text>
-                </TxSheetRow>
-              ))}
-            </View>
-
-            {extra.length > 0 && (
-              <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginTop: 12 }}>
-                {extra.map(([k, v]) => (
-                  <TxSheetRow key={k} C={C} label={k}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+          {tab === 'overview' && (
+            <>
+              <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14 }}>
+                {overviewRows.map(([k, v]) => (
+                  <TxSheetRow key={k} C={C} label={QUANTT_AGENT_DETAIL_LABELS[k] ?? k}>
                     <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{v}</Text>
                   </TxSheetRow>
                 ))}
               </View>
-            )}
-            {loadErr && (
-              <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>
-                Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
-              </Text>
-            )}
-
-            {walletRows.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: C.textSecondary, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-                  Agent wallet
-                </Text>
-                <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14 }}>
-                  {walletRows.map(([k, v]) => (
+              {extra.length > 0 && (
+                <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginTop: 12 }}>
+                  {extra.map(([k, v]) => (
                     <TxSheetRow key={k} C={C} label={k}>
-                      <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{v}</Text>
+                      <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{v}</Text>
                     </TxSheetRow>
                   ))}
                 </View>
-              </View>
-            )}
+              )}
+              {loadErr && (
+                <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 10 }}>
+                  Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
+                </Text>
+              )}
 
-            {canToggle && (
-              <View style={{ marginTop: 18 }}>
-                <Pressable
-                  onPress={toggleState}
-                  disabled={toggling}
-                  style={({ pressed }) => [
-                    {
-                      paddingVertical: 14, borderRadius: 14, alignItems: 'center',
-                      backgroundColor: status === 'active' ? 'transparent' : C.blue,
-                      borderWidth: status === 'active' ? 1 : 0,
-                      borderColor: 'rgba(239,68,68,0.4)',
-                      opacity: toggling ? 0.6 : 1,
-                    },
-                    pressed && { opacity: 0.85 },
-                  ]}
-                >
-                  <Text style={{ color: status === 'active' ? '#ef4444' : '#fff', fontSize: 14, fontWeight: '700' }}>
-                    {toggling ? 'Working…' : status === 'active' ? 'Pause agent' : 'Resume agent'}
-                  </Text>
+              {/* Deposit / Withdraw — both move real funds, kept visually distinct from state controls */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <Pressable onPress={() => setShowDeposit(true)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
+                  <ArrowDownLeft size={15} color="#fff"/>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Deposit</Text>
                 </Pressable>
-                {toggleErr && <Text style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{toggleErr}</Text>}
+                <Pressable onPress={() => setShowWithdraw(true)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault }, pressed && { opacity: 0.7 }]}>
+                  <ArrowUpRight size={15} color={C.textPrimary}/>
+                  <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>Withdraw</Text>
+                </Pressable>
               </View>
+
+              {/* Start / pause / stop */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                {status !== 'active' && (
+                  <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('active')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                    <Play size={15} color="#22c55e"/>
+                    <Text style={{ color: '#22c55e', fontSize: 13, fontWeight: '700' }}>Start</Text>
+                  </Pressable>
+                )}
+                {status === 'active' && (
+                  <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('paused')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(234,179,8,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                    <Pause size={15} color="#eab308"/>
+                    <Text style={{ color: '#eab308', fontSize: 13, fontWeight: '700' }}>Pause</Text>
+                  </Pressable>
+                )}
+                {status !== 'idle' && (
+                  <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('idle')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.12)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                    <SquareIcon size={14} color="#ef4444"/>
+                    <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>Stop</Text>
+                  </Pressable>
+                )}
+              </View>
+
+              <Pressable disabled={busyAction === 'analyze'} onPress={runAnalyze} style={({ pressed }) => [{ flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, marginTop: 10, opacity: busyAction === 'analyze' ? 0.6 : 1 }, pressed && { opacity: 0.7 }]}>
+                <RefreshCw size={14} color={C.textPrimary}/>
+                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>{busyAction === 'analyze' ? 'Analyzing…' : 'Analyze now'}</Text>
+              </Pressable>
+
+              {actionErr && <Text style={{ marginTop: 10, fontSize: 12, color: '#ef4444' }}>{actionErr}</Text>}
+
+              <Pressable disabled={busyAction === 'delete'} onPress={confirmDelete} style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 14, marginTop: 18 }, pressed && { opacity: 0.7 }]}>
+                <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>{busyAction === 'delete' ? 'Deleting…' : 'Delete agent'}</Text>
+              </Pressable>
+            </>
+          )}
+
+          {tab === 'wallet' && (
+            <QuanttWalletTab C={C} wallet={wallet} address={walletAddress} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)}/>
+          )}
+
+          {tab === 'decisions' && (
+            <>
+              {decisions.length === 0 && decisionsLoading && <ActivityIndicator color={C.blue} style={{ marginTop: 20 }}/>}
+              {decisions.length === 0 && !decisionsLoading && <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>No decisions yet — the AI logs each trade suggestion and its reasoning here.</Text>}
+              {decisions.map((d, i) => <QuanttFieldsCard key={i} C={C} raw={d} empty=""/>)}
+              {decisionsCursor && (
+                <Pressable disabled={decisionsLoading} onPress={loadMoreDecisions} style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 12, marginTop: 8 }, pressed && { opacity: 0.7 }]}>
+                  <Text style={{ color: C.blue, fontSize: 13, fontWeight: '700' }}>{decisionsLoading ? 'Loading…' : 'Load more'}</Text>
+                </Pressable>
+              )}
+            </>
+          )}
+
+          {tab === 'trades' && (
+            <>
+              {trades === null && <ActivityIndicator color={C.blue} style={{ marginTop: 20 }}/>}
+              {trades !== null && trades.length === 0 && <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>No trades yet.</Text>}
+              {(trades ?? []).map((t, i) => <QuanttFieldsCard key={i} C={C} raw={t} empty=""/>)}
+            </>
+          )}
+
+          {tab === 'positions' && (
+            <>
+              {positions === null && <ActivityIndicator color={C.blue} style={{ marginTop: 20 }}/>}
+              {positions !== null && positions.length === 0 && <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>No open positions.</Text>}
+              {(positions ?? []).map((p, i) => <QuanttFieldsCard key={i} C={C} raw={p} empty=""/>)}
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+
+      {showDeposit && <QuanttDepositModal agentId={agentId} agentName={name} address={walletAddress} onClose={() => { setShowDeposit(false); reload(); }}/>}
+      {showWithdraw && <QuanttWithdrawModal agentId={agentId} agentName={name} onClose={() => { setShowWithdraw(false); reload(); }}/>}
+    </Modal>
+  );
+}
+
+/** Wallet tab — the agent's OWN deposit address + balances, with the same
+ *  copy/QR pattern the app's Receive screen uses. */
+function QuanttWalletTab({ C, wallet, address, onDeposit, onWithdraw }: {
+  C: ReturnType<typeof useColors>; wallet: unknown; address: string | undefined;
+  onDeposit: () => void; onWithdraw: () => void;
+}) {
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQrSvg(null);
+    if (!address) return;
+    makeAddressQrSvg(address, { size: 200, darkColor: '#0a0a0f', lightColor: '#ffffff' })
+      .then((svg) => { if (!cancelled) setQrSvg(svg); });
+    return () => { cancelled = true; };
+  }, [address]);
+
+  const copy = async () => {
+    if (!address) return;
+    try { await Clipboard.setStringAsync(address); } catch {}
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  const rows = qEntries(wallet, ['address', 'walletAddress', 'wallet_address']);
+
+  if (!address) {
+    return <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>The agent&apos;s wallet address hasn&apos;t loaded yet — pull to refresh or reopen this agent.</Text>;
+  }
+
+  return (
+    <View style={{ alignItems: 'center', marginTop: 8 }}>
+      {qrSvg && (
+        <View style={{ backgroundColor: '#fff', padding: 14, borderRadius: 16 }}>
+          <SvgXml xml={qrSvg} width={180} height={180}/>
+        </View>
+      )}
+      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 14, textAlign: 'center' }}>Agent wallet address</Text>
+      <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginTop: 6, width: '100%' }}>
+        <HiAddr value={address} style={{ fontSize: 13, textAlign: 'center' }}/>
+      </View>
+      <Pressable onPress={copy} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }, pressed && { opacity: 0.7 }]}>
+        {copied ? <Check size={14} color="#22c55e"/> : <Copy size={14} color={C.blue}/>}
+        <Text style={{ fontSize: 12, fontWeight: '700', color: copied ? '#22c55e' : C.blue }}>{copied ? 'Copied' : 'Copy address'}</Text>
+      </Pressable>
+
+      {rows.length > 0 && (
+        <View style={{ width: '100%', marginTop: 16 }}>
+          <QuanttFieldsCard C={C} raw={wallet} empty=""/>
+        </View>
+      )}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, width: '100%' }}>
+        <Pressable onPress={onDeposit} style={({ pressed }) => [{ flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Deposit</Text>
+        </Pressable>
+        <Pressable onPress={onWithdraw} style={({ pressed }) => [{ flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault }, pressed && { opacity: 0.7 }]}>
+          <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>Withdraw</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function qCoerceAgent(raw: unknown): QuanttAgent | null {
+  const o = qAsObj(raw);
+  if (!o) return null;
+  const id = qStr(o, 'id', '_id', 'agentId', 'agent_id');
+  if (!id) return null;
+  return {
+    id,
+    name: qStr(o, 'name') ?? id,
+    chain: qStr(o, 'chain', 'network'),
+    status: qStr(o, 'status', 'state'),
+    exposureUsd: qNum(o, 'exposureUsd', 'exposure_usd', 'exposure'),
+    pnlPercent30d: qNum(o, 'pnlPercent30d', 'pnl_30d', 'pnl30d'),
+    confidence: qNum(o, 'confidence'),
+    strategy: qStr(o, 'strategy'),
+  };
+}
+function qCoerceAgentList(raw: unknown): QuanttAgent[] {
+  return qPickList(raw, ['agents', 'items', 'data', 'result', 'results'])
+    .map(qCoerceAgent)
+    .filter((a): a is QuanttAgent => !!a);
+}
+
+/** Full-screen list of every agent on the account — reached from the AI
+ *  Assistant card's "All Agents" button. Separate from the card's own
+ *  top-3 preview (which comes from the overview payload); this hits
+ *  listAgents() directly. */
+function QuanttAgentsListModal({ onClose, onOpenAgent, onCreate }: {
+  onClose: () => void; onOpenAgent: (a: QuanttAgent) => void; onCreate: () => void;
+}) {
+  const C = useColors();
+  const [agents, setAgents] = useState<QuanttAgent[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = () => {
+    quantt.listAgents()
+      .then((r) => { setAgents(qCoerceAgentList(r)); setErr(null); })
+      .catch((e) => setErr(e instanceof Error ? e.message : 'Could not load agents.'));
+  };
+  useEffect(() => { load(); }, []);
+
+  const fmtUsd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+  const pctv = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+  const pos = (n: number) => (n >= 0 ? '#22c55e' : '#ef4444');
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 }}>
+          <Pressable onPress={onClose} hitSlop={16}>
+            <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+          </Pressable>
+          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>All Agents</Text>
+          <Pressable onPress={onCreate} hitSlop={16}>
+            <Plus size={22} color={C.blue}/>
+          </Pressable>
+        </View>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} tintColor={C.textSecondary}
+              onRefresh={() => { setRefreshing(true); load(); setTimeout(() => setRefreshing(false), 600); }}/>
+          }
+        >
+          {agents === null && !err && <ActivityIndicator color={C.blue} style={{ marginTop: 30 }}/>}
+          {err && <Text style={{ fontSize: 12, color: '#ef4444', marginTop: 20 }}>{err}</Text>}
+          {agents !== null && agents.length === 0 && !err && (
+            <View style={{ alignItems: 'center', marginTop: 40 }}>
+              <Text style={{ fontSize: 13, color: C.textMuted, textAlign: 'center' }}>No agents yet.</Text>
+              <Pressable onPress={onCreate} style={({ pressed }) => [{ marginTop: 14, backgroundColor: C.blue, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12 }, pressed && { opacity: 0.85 }]}>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Create your first agent</Text>
+              </Pressable>
+            </View>
+          )}
+          {(agents ?? []).map((a) => (
+            <Pressable
+              key={a.id}
+              onPress={() => onOpenAgent(a)}
+              style={({ pressed }) => [{ backgroundColor: C.bgCard, borderRadius: 14, padding: 14, marginTop: 10 }, pressed && { opacity: 0.8 }]}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary, flex: 1 }} numberOfLines={1}>{a.name}</Text>
+                {a.status ? (
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: a.status === 'active' ? '#22c55e' : a.status === 'paused' ? '#eab308' : C.textMuted }}>{a.status}</Text>
+                ) : null}
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                <Text style={{ fontSize: 12, color: C.textSecondary }} numberOfLines={1}>
+                  {[a.strategy ? (QUANTT_STRATEGY_LABELS[a.strategy as QuanttStrategy] ?? a.strategy) : null, a.chain].filter(Boolean).join(' · ') || '—'}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {a.exposureUsd != null && <Text style={{ fontSize: 12, color: C.textSecondary }}>{fmtUsd(a.exposureUsd)}</Text>}
+                  {a.pnlPercent30d != null && <Text style={{ fontSize: 12, fontWeight: '700', color: pos(a.pnlPercent30d) }}>{pctv(a.pnlPercent30d)}</Text>}
+                </View>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+/** Create-agent form. Every field maps 1:1 onto CreateAgentInput; the
+ *  Advanced section is pre-filled with the documented defaults
+ *  (25/5/10/3.5) so leaving it collapsed still submits sane risk limits.
+ *  No sandbox — submit goes through a real-money confirm dialog first. */
+function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const C = useColors();
+  const [name, setName] = useState('');
+  const [strategy, setStrategy] = useState<QuanttStrategy>('technical');
+  const [chains, setChains] = useState<QuanttChain[]>(['lithosphere']);
+  const [tokensText, setTokensText] = useState('');
+  const [dex, setDex] = useState<QuanttDexPreference>('kamet');
+  const [capital, setCapital] = useState('');
+  const [advOpen, setAdvOpen] = useState(false);
+  const [maxPositionPct, setMaxPositionPct] = useState(String(QUANTT_DEFAULTS.maxPositionPct));
+  const [stopLoss, setStopLoss] = useState(String(QUANTT_DEFAULTS.stopLoss));
+  const [takeProfit, setTakeProfit] = useState(String(QUANTT_DEFAULTS.takeProfit));
+  const [maxDailyLoss, setMaxDailyLoss] = useState(String(QUANTT_DEFAULTS.maxDailyLoss));
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const toggleChain = (c: QuanttChain) => setChains((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
+
+  const capitalNum = parseFloat(capital || '0');
+  const tokens = tokensText.split(',').map((t) => t.trim().toUpperCase()).filter(Boolean);
+  const canSubmit = name.trim().length > 0 && chains.length > 0 && tokens.length > 0 && capitalNum > 0 && !creating;
+
+  const doCreate = async () => {
+    setCreating(true); setErr(null);
+    try {
+      const body: CreateAgentInput = {
+        name: name.trim(), strategy, chains, tokens, dexPreference: dex, capitalUsd: capitalNum,
+        maxPositionPct: parseFloat(maxPositionPct) || QUANTT_DEFAULTS.maxPositionPct,
+        stopLoss:       parseFloat(stopLoss)       || QUANTT_DEFAULTS.stopLoss,
+        takeProfit:     parseFloat(takeProfit)     || QUANTT_DEFAULTS.takeProfit,
+        maxDailyLoss:   parseFloat(maxDailyLoss)   || QUANTT_DEFAULTS.maxDailyLoss,
+      };
+      await quantt.createAgent(body);
+      onCreated();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not create the agent — try again.');
+    } finally { setCreating(false); }
+  };
+
+  const submit = () => {
+    if (!canSubmit) return;
+    Alert.alert(
+      'Create agent with real funds?',
+      `There is no sandbox. Once created and funded, "${name.trim()}" trades autonomously with real money on ${chains.map((c) => QUANTT_CHAIN_LABELS[c]).join(', ')}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Create', onPress: doCreate },
+      ],
+    );
+  };
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 }}>
+          <Pressable onPress={onClose} hitSlop={16}>
+            <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+          </Pressable>
+          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>New Agent</Text>
+          <View style={{ width: 22 }}/>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <AlertTriangle size={16} color="#ef4444"/>
+            <Text style={{ flex: 1, fontSize: 12, color: '#ef4444', lineHeight: 17 }}>
+              No sandbox exists. Once created and funded, this agent trades with real money from the first click.
+            </Text>
+          </View>
+
+          <Text style={styles_quanttLabel(C)}>Name</Text>
+          <TextInput
+            value={name} onChangeText={setName} placeholder="e.g. Momentum runner" placeholderTextColor={C.textMuted}
+            style={styles_quanttInput(C)}
+          />
+
+          <Text style={styles_quanttLabel(C)}>Strategy</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {QUANTT_STRATEGIES.map((s) => (
+              <Pressable key={s} onPress={() => setStrategy(s)} style={({ pressed }) => [{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: strategy === s ? C.blue : C.bgElevated }, pressed && { opacity: 0.8 }]}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: strategy === s ? '#fff' : C.textSecondary }}>{QUANTT_STRATEGY_LABELS[s]}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles_quanttLabel(C)}>Chains</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            {QUANTT_CHAINS.map((c) => (
+              <Pressable key={c} onPress={() => toggleChain(c)} style={({ pressed }) => [{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: chains.includes(c) ? C.blue : C.bgElevated }, pressed && { opacity: 0.8 }]}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: chains.includes(c) ? '#fff' : C.textSecondary }}>{QUANTT_CHAIN_LABELS[c]}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles_quanttLabel(C)}>Tokens</Text>
+          <TextInput
+            value={tokensText} onChangeText={setTokensText} placeholder="e.g. USDC, ETH, LITHO" placeholderTextColor={C.textMuted} autoCapitalize="characters"
+            style={[styles_quanttInput(C), { marginBottom: 6 }]}
+          />
+          <Text style={{ fontSize: 11, color: C.textMuted, marginBottom: 16 }}>Comma-separated symbols.</Text>
+
+          <Text style={styles_quanttLabel(C)}>DEX preference</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+            {(['kamet', 'magma'] as QuanttDexPreference[]).map((d) => (
+              <Pressable key={d} onPress={() => setDex(d)} style={({ pressed }) => [{ flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 10, backgroundColor: dex === d ? C.blue : C.bgElevated }, pressed && { opacity: 0.8 }]}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: dex === d ? '#fff' : C.textSecondary }}>{d === 'kamet' ? 'Kamet (default)' : 'MagmaDEX'}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles_quanttLabel(C)}>Capital (USD)</Text>
+          <TextInput
+            value={capital} onChangeText={setCapital} placeholder="0.00" placeholderTextColor={C.textMuted} keyboardType="decimal-pad"
+            style={styles_quanttInput(C)}
+          />
+
+          <Pressable onPress={() => setAdvOpen((v) => !v)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 }, pressed && { opacity: 0.7 }]}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: C.textPrimary }}>Advanced risk settings</Text>
+            {advOpen ? <ChevronUp size={16} color={C.textSecondary}/> : <ChevronDown size={16} color={C.textSecondary}/>}
+          </Pressable>
+          {advOpen && (
+            <View style={{ marginTop: 6, marginBottom: 8 }}>
+              {[
+                { label: 'Max position %',   v: maxPositionPct, set: setMaxPositionPct },
+                { label: 'Stop loss %',      v: stopLoss,       set: setStopLoss },
+                { label: 'Take profit %',    v: takeProfit,     set: setTakeProfit },
+                { label: 'Max daily loss %', v: maxDailyLoss,   set: setMaxDailyLoss },
+              ].map((f) => (
+                <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text style={{ fontSize: 13, color: C.textSecondary }}>{f.label}</Text>
+                  <TextInput
+                    value={f.v} onChangeText={f.set} keyboardType="decimal-pad" placeholderTextColor={C.textMuted}
+                    style={{ backgroundColor: C.bgElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: C.textPrimary, fontSize: 13, width: 90, textAlign: 'right' }}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+
+          {err && <Text style={{ fontSize: 12, color: '#ef4444', marginTop: 10 }}>{err}</Text>}
+
+          <Pressable
+            disabled={!canSubmit} onPress={submit}
+            style={({ pressed }) => [{ marginTop: 20, alignItems: 'center', paddingVertical: 15, borderRadius: 14, backgroundColor: C.blue, opacity: canSubmit ? 1 : 0.5 }, pressed && canSubmit && { opacity: 0.85 }]}
+          >
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>{creating ? 'Creating…' : 'Create agent'}</Text>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+function styles_quanttLabel(C: ReturnType<typeof useColors>) {
+  return { fontSize: 11, fontWeight: '700' as const, color: C.textSecondary, textTransform: 'uppercase' as const, marginBottom: 6, letterSpacing: 0.4 };
+}
+function styles_quanttInput(C: ReturnType<typeof useColors>) {
+  return { backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: C.textPrimary, fontSize: 14, marginBottom: 16 };
+}
+
+/** Two-leg deposit flow. Leg A is a REAL blockchain send from the user's own
+ *  Thanos balance to the agent's wallet address — routed into the app's
+ *  existing Send screen via SendNavCtx rather than a new send mechanism.
+ *  Leg B just tells Quantts to recognize/credit that transfer; it moves no
+ *  funds itself, which is why the two steps are visually separated. */
+function QuanttDepositModal({ agentId, agentName, address, onClose }: {
+  agentId: string; agentName: string; address: string | undefined; onClose: () => void;
+}) {
+  const C = useColors();
+  const goSend = useSendNav();
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQrSvg(null);
+    if (!address) return;
+    makeAddressQrSvg(address, { size: 200, darkColor: '#0a0a0f', lightColor: '#ffffff' })
+      .then((svg) => { if (!cancelled) setQrSvg(svg); });
+    return () => { cancelled = true; };
+  }, [address]);
+
+  const copy = async () => {
+    if (!address) return;
+    try { await Clipboard.setStringAsync(address); } catch {}
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  const confirmDeposit = () => {
+    Alert.alert(
+      'Confirm deposit with Quantts?',
+      'Only confirm after the transfer above has actually broadcast. This tells Quantts to recognize funds sent to the agent’s wallet — it does not move any money itself.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            setConfirming(true); setErr(null);
+            try { await quantt.depositToAgent(agentId); setConfirmed(true); }
+            catch (e) { setErr(e instanceof Error ? e.message : 'Could not confirm the deposit — try again.'); }
+            finally { setConfirming(false); }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
+        <Pressable style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 34, maxHeight: '90%' }} onPress={() => {}}>
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }}/>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>Deposit to {agentName}</Text>
+            <Pressable hitSlop={8} onPress={onClose}><Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text></Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {confirmed ? (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <Check size={36} color="#22c55e"/>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.textPrimary, marginTop: 12 }}>Deposit confirmed with Quantts</Text>
+                <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 6, textAlign: 'center', lineHeight: 17 }}>
+                  It can take a few minutes for the balance to reflect once Quantts credits the transfer.
+                </Text>
+                <Pressable onPress={onClose} style={({ pressed }) => [{ marginTop: 18, backgroundColor: C.blue, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 12 }, pressed && { opacity: 0.85 }]}>
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                  <AlertTriangle size={16} color="#ef4444"/>
+                  <Text style={{ flex: 1, fontSize: 12, color: '#ef4444', lineHeight: 17 }}>No sandbox — this moves real funds from your wallet the moment you send.</Text>
+                </View>
+
+                <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Step 1 · Send funds to the agent</Text>
+                {address ? (
+                  <View style={{ alignItems: 'center' }}>
+                    {qrSvg && <View style={{ backgroundColor: '#fff', padding: 12, borderRadius: 14 }}><SvgXml xml={qrSvg} width={160} height={160}/></View>}
+                    <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginTop: 10, width: '100%' }}>
+                      <HiAddr value={address} style={{ fontSize: 12, textAlign: 'center' }}/>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, width: '100%' }}>
+                      <Pressable onPress={copy} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: C.borderDefault }, pressed && { opacity: 0.7 }]}>
+                        {copied ? <Check size={14} color="#22c55e"/> : <Copy size={14} color={C.textPrimary}/>}
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: C.textPrimary }}>{copied ? 'Copied' : 'Copy'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => goSend(address)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
+                        <ArrowUpRight size={14} color="#fff"/>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Send to this address</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 12, color: C.textMuted }}>Couldn&apos;t load the agent&apos;s wallet address yet — close and reopen this agent, then try again.</Text>
+                )}
+
+                <View style={{ height: 1, backgroundColor: C.borderSubtle, marginVertical: 18 }}/>
+
+                <Text style={styles_quanttLabel(C)}>Step 2 · Tell Quantts</Text>
+                <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 17 }}>
+                  Only after the transfer above has broadcast on-chain — this step just tells Quantts to recognize it, it doesn&apos;t move funds itself.
+                </Text>
+                {err && <Text style={{ fontSize: 12, color: '#ef4444', marginBottom: 10 }}>{err}</Text>}
+                <Pressable
+                  disabled={confirming || !address} onPress={confirmDeposit}
+                  style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: C.blue, opacity: (confirming || !address) ? 0.6 : 1 }, pressed && { opacity: 0.8 }]}
+                >
+                  <Text style={{ color: C.blue, fontSize: 13, fontWeight: '700' }}>{confirming ? 'Confirming…' : "I've sent the funds — confirm deposit"}</Text>
+                </Pressable>
+              </>
             )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const QUANTT_WITHDRAW_ADDR_CACHE_KEY = 'quantt_withdrawal_addr_verified_v1';
+
+/** Withdraw flow. Quantts only ever pays out to a *verified* address (bound
+ *  via an EIP-712-signed challenge, same shape as wallet sign-in) — never an
+ *  arbitrary one passed at withdraw time. getWithdrawalAddress() is checked
+ *  first so an already-bound address doesn't need re-verifying every time;
+ *  binding/re-binding is always available below it regardless. TOTP is
+ *  offered unconditionally (submitted empty if the account has none) since
+ *  the UI has no way to know in advance whether it's enabled. */
+function QuanttWithdrawModal({ agentId, agentName, onClose }: {
+  agentId: string; agentName: string; onClose: () => void;
+}) {
+  const C = useColors();
+  const walletAddr = useWalletAddr();
+  const seed = useWalletSeed();
+
+  const [boundAddr, setBoundAddr] = useState<string | null | undefined>(undefined); // undefined = still checking
+  const [bindAddr, setBindAddr] = useState(walletAddr);
+  const [binding, setBinding] = useState(false);
+  const [bindErr, setBindErr] = useState<string | null>(null);
+
+  const [amount, setAmount] = useState('');
+  const [totp, setTotp] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawErr, setWithdrawErr] = useState<string | null>(null);
+  const [withdrawOk, setWithdrawOk] = useState(false);
+
+  const [history, setHistory] = useState<unknown[] | null>(null);
+  const [resuming, setResuming] = useState<string | null>(null);
+
+  const checkBound = () => {
+    quantt.getWithdrawalAddress()
+      .then((r) => {
+        const o = qAsObj(r);
+        const a = qStr(o, 'address', 'walletAddress', 'wallet_address') ?? (typeof r === 'string' ? r : undefined);
+        setBoundAddr(a ?? null);
+      })
+      .catch(async () => {
+        // No GET support / not yet bound — fall back to the last address this
+        // device successfully verified, best-effort only (not authoritative).
+        try {
+          const cached = await AsyncStorage.getItem(QUANTT_WITHDRAW_ADDR_CACHE_KEY);
+          setBoundAddr(cached || null);
+        } catch { setBoundAddr(null); }
+      });
+  };
+  useEffect(() => { checkBound(); }, []);
+
+  const loadHistory = () => {
+    quantt.getAgentWithdrawals(agentId)
+      .then((r) => setHistory(qPickList(r, ['withdrawals', 'items', 'data', 'results'])))
+      .catch(() => setHistory([]));
+  };
+  useEffect(() => { loadHistory(); }, [agentId]);
+
+  const verify = async () => {
+    const addr = bindAddr.trim();
+    if (!addr || binding) return;
+    setBinding(true); setBindErr(null);
+    try {
+      await quanttBindWithdrawalAddress(seed, getActiveAccountIndex(), addr);
+      setBoundAddr(addr);
+      AsyncStorage.setItem(QUANTT_WITHDRAW_ADDR_CACHE_KEY, addr).catch(() => {});
+    } catch (e) {
+      setBindErr(e instanceof Error ? e.message : 'Could not verify this address — try again.');
+    } finally { setBinding(false); }
+  };
+
+  const amtNum = parseFloat(amount || '0');
+  const doWithdraw = async () => {
+    if (amtNum <= 0 || withdrawing) return;
+    setWithdrawing(true); setWithdrawErr(null); setWithdrawOk(false);
+    try {
+      await quantt.withdrawFromAgent(agentId, { amount: amtNum, totpCode: totp.trim() || undefined });
+      setWithdrawOk(true); setAmount(''); setTotp('');
+      loadHistory();
+    } catch (e) {
+      setWithdrawErr(e instanceof Error ? e.message : 'Withdrawal failed — try again.');
+    } finally { setWithdrawing(false); }
+  };
+
+  const resume = async (attemptId: string) => {
+    setResuming(attemptId);
+    try { await quantt.resumeWithdrawal(agentId, attemptId); loadHistory(); }
+    catch { /* the still-pending row itself reflects the outcome */ }
+    finally { setResuming(null); }
+  };
+
+  const verified = !!boundAddr;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
+        <Pressable style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 34, maxHeight: '92%' }} onPress={() => {}}>
+          <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }}/>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }} numberOfLines={1}>Withdraw from {agentName}</Text>
+            <Pressable hitSlop={8} onPress={onClose}><Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text></Pressable>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+              <AlertTriangle size={16} color="#ef4444"/>
+              <Text style={{ flex: 1, fontSize: 12, color: '#ef4444', lineHeight: 17 }}>No sandbox — withdrawals only pay out to a verified address and move real funds.</Text>
+            </View>
+
+            <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Withdrawal address</Text>
+            {verified && boundAddr ? (
+              <View style={{ backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <Check size={15} color="#22c55e"/>
+                <HiAddr value={boundAddr} style={{ fontSize: 12, flex: 1 }}/>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 8, lineHeight: 17 }}>
+                No verified withdrawal address on file yet. Confirm the address below (your own Thanos wallet, by default) before you can withdraw.
+              </Text>
+            )}
+            <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginTop: 10 }}>
+              <TextInput
+                value={bindAddr} onChangeText={(v) => setBindAddr(v)} placeholder="0x…" placeholderTextColor={C.textMuted} autoCapitalize="none"
+                style={{ color: C.textPrimary, fontSize: 12, fontFamily: MONO }}
+              />
+            </View>
+            {bindErr && <Text style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{bindErr}</Text>}
+            <Pressable
+              disabled={binding} onPress={verify}
+              style={({ pressed }) => [{ flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, marginTop: 8, backgroundColor: C.blue, opacity: binding ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>
+                {binding ? 'Verifying…' : (verified && bindAddr.trim() === boundAddr) ? 'Re-verify this address' : 'Verify this address'}
+              </Text>
+            </Pressable>
+
+            <View style={{ height: 1, backgroundColor: C.borderSubtle, marginVertical: 18 }}/>
+
+            <Text style={styles_quanttLabel(C)}>Withdraw funds</Text>
+            <TextInput
+              value={amount} onChangeText={setAmount} placeholder="Amount" placeholderTextColor={C.textMuted} keyboardType="decimal-pad"
+              style={[styles_quanttInput(C), { marginBottom: 10 }]}
+            />
+            <TextInput
+              value={totp} onChangeText={setTotp} placeholder="2FA code (if enabled)" placeholderTextColor={C.textMuted} keyboardType="number-pad"
+              style={[styles_quanttInput(C), { marginBottom: 10 }]}
+            />
+            {withdrawErr && <Text style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{withdrawErr}</Text>}
+            {withdrawOk && <Text style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>Withdrawal submitted — see history below.</Text>}
+            <Pressable
+              disabled={amtNum <= 0 || withdrawing} onPress={doWithdraw}
+              style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 14, borderRadius: 12, backgroundColor: C.blue, opacity: (amtNum <= 0 || withdrawing) ? 0.5 : 1 }, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>{withdrawing ? 'Withdrawing…' : 'Withdraw'}</Text>
+            </Pressable>
+
+            <Text style={[styles_quanttLabel(C), { marginTop: 22 }]}>History</Text>
+            {history === null && <ActivityIndicator color={C.blue}/>}
+            {history !== null && history.length === 0 && <Text style={{ fontSize: 12, color: C.textMuted }}>No withdrawals yet.</Text>}
+            {(history ?? []).map((h, i) => {
+              const o = qAsObj(h);
+              const attemptId = qStr(o, 'id', 'attemptId', 'attempt_id');
+              return (
+                <View key={attemptId ?? i} style={{ marginTop: 8 }}>
+                  <QuanttFieldsCard C={C} raw={h} empty=""/>
+                  {attemptId && (
+                    <Pressable
+                      disabled={resuming === attemptId} onPress={() => resume(attemptId)}
+                      style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 10, marginTop: 4, opacity: resuming === attemptId ? 0.6 : 1 }, pressed && { opacity: 0.7 }]}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: C.blue }}>{resuming === attemptId ? 'Resuming…' : 'Resume'}</Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -2442,7 +3415,7 @@ function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: s
   }
 }
 
-function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string; initialChainId?: number }) {
+function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialTo }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string; initialChainId?: number; initialTo?: string }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -2452,7 +3425,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId }: { goBa
   // Cosmos keys) — pin the chain to 'evm' and hide the chain selector.
   const pkOnly = isPrivateKeyWallet(seed);
   const [chain, setChain] = useState<SendChainOption>(pkOnly ? 'evm' : (initialChain ?? 'evm'));
-  const [to, setTo] = useState('');
+  const [to, setTo] = useState(initialTo ?? '');
   const [amt, setAmt] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
@@ -7424,6 +8397,10 @@ function App() {
   const [seedSym, setSeedSym] = useState<string | null>(null);
   /** Chain of the seeded asset (Receive needs it to show the exact network). */
   const [seedChainId, setSeedChainId] = useState<number | null>(null);
+  /** Recipient address pre-filled into Send — used by the Quantt deposit
+   *  flow's "Send to this address" step (leg A of the two-leg deposit). */
+  const [sendPrefillTo, setSendPrefillTo] = useState<string | null>(null);
+  const openSendTo = (address: string) => { setSendPrefillTo(address); setScreen('send'); };
   // Dark-first, matching the web/desktop/extension clients (they're all
   // dark by default). The Settings toggle still lets users switch to light.
   const [isDark, setIsDark] = useState(true);
@@ -7833,6 +8810,7 @@ function App() {
         <WalletAddrCtx.Provider value={walletAddr}>
         <WalletSeedCtx.Provider value={walletSeed}>
         <BrowserCtx.Provider value={openBrowser}>
+        <SendNavCtx.Provider value={openSendTo}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
 
@@ -8106,10 +9084,11 @@ function App() {
             <View style={styles.body}>
               <AnimatedSwitch keyName={screen} style={{ flex: 1 }}>
                 {screen === 'home'     && <HomeScreen navigate={setScreen} onOpenToken={openToken}/>}
-                {screen === 'send'     && <SendScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }}
+                {screen === 'send'     && <SendScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); setSendPrefillTo(null); }}
                   initialChain={seedSym && ['BTC','SOL','ATOM'].includes(seedSym) ? (seedSym === 'BTC' ? 'bitcoin' : seedSym === 'SOL' ? 'solana' : 'cosmos') : (seedSym ? 'evm' : undefined)}
                   initialSym={seedSym && !['BTC','SOL','ATOM'].includes(seedSym) ? seedSym : undefined}
-                  initialChainId={seedChainId ?? undefined}/>}
+                  initialChainId={seedChainId ?? undefined}
+                  initialTo={sendPrefillTo ?? undefined}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }} initialSym={seedSym ?? undefined} initialChainId={seedChainId ?? undefined}/>}
                 {screen === 'swap' && EXCHANGE_ENABLED && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
                 {screen === 'discover' && <DiscoverScreen/>}
@@ -8156,6 +9135,7 @@ function App() {
               })}
             </View>
           </SafeAreaView>
+        </SendNavCtx.Provider>
         </BrowserCtx.Provider>
         </WalletSeedCtx.Provider>
         </WalletAddrCtx.Provider>

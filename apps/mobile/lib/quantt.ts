@@ -101,6 +101,11 @@ export interface WithdrawInput {
   totpCode?: string;
 }
 
+export interface BindWithdrawalAddressInput {
+  address: string;   // 0x…40
+  signature: string; // 0x… over the EIP-712 challenge from the /challenge endpoint
+}
+
 export type SignTypedDataFn = (typedData: Eip712TypedData) => Promise<string>;
 
 interface SessionStore {
@@ -322,6 +327,26 @@ export class QuanttClient {
   getAgentWithdrawals(id: string): Promise<unknown> {
     return this.authed(`/v1/agents/${encodeURIComponent(id)}/withdrawals`);
   }
+  resumeWithdrawal(id: string, attemptId: string): Promise<unknown> {
+    return this.authed(
+      `/v1/agents/${encodeURIComponent(id)}/withdrawals/${encodeURIComponent(attemptId)}/resume`,
+      { method: 'POST' },
+    );
+  }
+
+  /** The wallet address withdrawals currently pay out to (null if none bound). */
+  getWithdrawalAddress(): Promise<unknown> { return this.authed('/v1/user/withdrawal-address'); }
+  /** Step 1 of binding a withdrawal address — same EIP-712-challenge shape
+   *  as wallet sign-in, reuse SignTypedDataFn. */
+  withdrawalAddressChallenge(address: string): Promise<Eip712TypedData> {
+    return this.authed<Eip712TypedData>('/v1/user/withdrawal-address/challenge', {
+      method: 'POST', body: JSON.stringify({ address }),
+    });
+  }
+  /** Step 2 — bind the address once the challenge is signed. */
+  bindWithdrawalAddress(body: BindWithdrawalAddressInput): Promise<unknown> {
+    return this.authed('/v1/user/withdrawal-address', { method: 'POST', body: JSON.stringify(body) });
+  }
 
   getKillSwitch(): Promise<unknown> { return this.authed('/v1/kill-switch'); }
   getTelemetry(): Promise<unknown> { return this.authed('/v1/telemetry'); }
@@ -423,4 +448,22 @@ export async function quanttSignIn(seed: string[], accountIdx: number): Promise<
     );
   };
   return quantt.signIn(wallet.address, sign);
+}
+
+/** Bind (or re-verify) the address withdrawals pay out to, signed inline
+ *  with the unlocked wallet seed — same challenge → sign → submit shape as
+ *  quanttSignIn above. Withdrawals only ever go to this verified address,
+ *  never an arbitrary one passed at withdraw time. */
+export async function quanttBindWithdrawalAddress(seed: string[], accountIdx: number, address: string): Promise<unknown> {
+  if (!seed?.length) throw new Error('Wallet is locked');
+  const wallet = HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${accountIdx}`);
+  const typed = await quantt.withdrawalAddressChallenge(address);
+  const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
+  void _omit;
+  const signature = await wallet.signTypedData(
+    typed.domain,
+    types as Record<string, Array<{ name: string; type: string }>>,
+    typed.message,
+  );
+  return quantt.bindWithdrawalAddress({ address, signature });
 }
