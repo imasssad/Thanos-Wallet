@@ -84,6 +84,11 @@ const nextConfig = {
   output: 'standalone',
   transpilePackages: ['@thanos/sdk-core', '@thanos/sdk-react', '@thanos/ui'],
 
+  // Baked into the client bundle at BUILD time — UpdateBanner compares this
+  // against /api/version (read fresh per request) to detect a newer deploy
+  // than the bundle the browser currently has loaded.
+  env: { NEXT_PUBLIC_APP_VERSION: require('./package.json').version },
+
   // Skip type-checking during build (handled by IDE / dev server)
   typescript: { ignoreBuildErrors: true },
   // Skip ESLint during build for the same reason

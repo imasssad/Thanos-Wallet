@@ -2,6 +2,7 @@ import React from 'react';
 import type { Metadata, Viewport } from 'next';
 import { ThemeProvider } from '../components/providers/ThemeProvider';
 import { PwaInstall } from '../components/PwaInstall';
+import { UpdateBanner } from '../components/UpdateBanner';
 import './globals.css';
 
 /**
@@ -83,6 +84,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           {children}
           <PwaInstall />
+          <UpdateBanner />
         </ThemeProvider>
       </body>
     </html>
