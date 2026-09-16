@@ -125,7 +125,7 @@ import {
 } from './lib/fx';
 import type { ImageSourcePropType } from 'react-native';
 import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
-import { addLocalActivity, getLocalActivity, type LocalActivityItem } from './lib/local-activity';
+import { addLocalActivity, resolvePendingActivity, type LocalActivityItem } from './lib/local-activity';
 import {
   getPortfolioSnapshot, setPortfolioSnapshot,
   getActivitySnapshot, setActivitySnapshot,
@@ -780,13 +780,17 @@ function useActivity(address: string): ActivityState {
   const [offline, setOffline] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
-  // Load the optimistic local (unconfirmed) sends. Runs on address change and
-  // on every reload so a fresh broadcast + pull-to-refresh surfaces it, and so
-  // the row drops once the indexer catches up (dedup below).
+  // Load the optimistic local (unconfirmed) sends, and while we're at it,
+  // resolve any that have actually confirmed since they were recorded —
+  // external EVM chains (and non-native assets on Mainnet) have no indexer/
+  // explorer coverage, so without this they'd stay "Pending" forever (client-
+  // reported: "some txns show pending yet sent already"). Runs on address
+  // change and on every reload so a fresh broadcast + pull-to-refresh both
+  // surface it, and so a row drops/updates once resolved (dedup below).
   useEffect(() => {
     let cancelled = false;
     if (!address) { setLocal([]); return; }
-    getLocalActivity(address).then((l) => { if (!cancelled) setLocal(l); }).catch(() => {});
+    resolvePendingActivity(address).then((l) => { if (!cancelled) setLocal(l); }).catch(() => {});
     return () => { cancelled = true; };
   }, [address, nonce]);
 
@@ -3537,7 +3541,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           // Optimistic Activity row — recorded AFTER the broadcast returned a
           // hash. Never touches signing/broadcast; merged + deduped by the
           // activity hook, drops once the indexer reports the tx.
-          void addLocalActivity(addr, { hash, sym: coin.sym, amount: amt, ts: Date.now(), type: 'send' });
+          void addLocalActivity(addr, { hash, sym: coin.sym, amount: amt, ts: Date.now(), type: 'send', chainId: coin.chainId });
           setSending(false);
           setAmt(''); setTo(''); setMemo('');
           isNotificationsEnabled().then(on => {
@@ -3562,10 +3566,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
       // Optimistic Activity row — recorded AFTER the broadcast returned a hash.
       // Never touches signing/broadcast; merged + deduped by the activity hook,
       // drops once the indexer reports the tx.
-      void addLocalActivity(addr, { hash, sym, amount: amt, ts: Date.now(), type: 'send' });
+      void addLocalActivity(addr, { hash, sym, amount: amt, ts: Date.now(), type: 'send', chainId: chain === 'evm' ? coin?.chainId : undefined });
       setSending(false);
       setAmt(''); setTo(''); setMemo('');
-      const network = chain === 'evm' ? 'Makalu' : meta.label;
+      const network = chain === 'evm' ? sendNetworkName(coin?.chainId) : meta.label;
       // Fire a local notification (works without a push server) when enabled.
       isNotificationsEnabled().then(on => {
         if (on) notifyLocal('Transaction sent', `${amt} ${sym} broadcast on ${network}.`);
@@ -3592,7 +3596,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const onReview = () => {
     const meta = CHAIN_META[chain];
     const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
-    const network = chain === 'evm' ? 'Makalu' : meta.label;
+    const network = chain === 'evm' ? sendNetworkName(coin?.chainId) : meta.label;
     const usdLine = chain === 'evm' ? `\n≈ ${formatUsd(usd)}` : '';
     if (chain === 'evm' && !coin) return;
     Alert.alert(
