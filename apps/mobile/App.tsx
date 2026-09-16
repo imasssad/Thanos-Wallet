@@ -452,13 +452,20 @@ interface PortfolioState {
  *  fetches their native balances, merging them as additional assets so
  *  the dashboard shows a true cross-chain portfolio total. */
 // Heavy native chains (BTC / SOL / Cosmos) pull in @solana/web3.js + @cosmjs +
-// btc-signer. Importing + initialising those on the JS thread JAMS the Home
-// screen on low-end devices — a blank body for 1-2 minutes while React can't
-// commit a render. Default OFF: Home shows the Makalu/indexer balance + the
-// light external-EVM chains (ethers + fetch, no heavy crypto) instantly, and
-// BTC/SOL/Cosmos balances load on demand when the user opens Send/Receive for
-// them. Flip to true to show native balances on Home on capable devices.
-const HOME_LOAD_NATIVE_CHAINS = false;
+// btc-signer. Importing + initialising those on the JS thread risked jamming
+// the Home screen on low-end devices, so this was shipped OFF — but the
+// tradeoff was silent and absolute: Home always showed BTC/SOL/ATOM as a flat
+// $0/0 row, correct balance only visible after opening Send/Receive for that
+// chain specifically. Client-reported 2026-09-16 as "Solana balances are not
+// accurate" (verified: a wallet holding 0.1577 SOL on-chain showed 0 on
+// Home) — a real, live data-accuracy bug, not a perf nice-to-have. The loop
+// below already defers past the unlock transition (InteractionManager.
+// runAfterInteractions) and loads each chain SEQUENTIALLY specifically to
+// cap peak memory instead of spiking all three at once — i.e. the mitigation
+// this flag was gating was already built and just never turned on. Flipping
+// it on trades a small, safely-deferred load for correct balances instead of
+// a permanent wrong number.
+const HOME_LOAD_NATIVE_CHAINS = true;
 
 function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce]   = useState(0);
