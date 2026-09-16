@@ -65,7 +65,15 @@ export default defineConfig({
     // No 'tabs' permission: tabs.create() needs none, tabs.query({}) returns the
     // ids we use without it, and tabs.sendMessage works via host_permissions.
     // (Chrome Web Store rejected 0.2.0 for requesting 'tabs' unnecessarily.)
-    permissions: ['storage', 'activeTab', 'offscreen', 'notifications'],
+    // 'sidePanel' — client request 2026-09-16 (MetaMask-style: dock to the
+    // browser's right edge instead of opening a full tab). Chrome-only
+    // (114+); Firefox/Safari have no equivalent API, so "Open in full
+    // screen" falls back to the existing tab-based Expand view there — see
+    // popup/main.tsx's openSidePanelOrFullscreen(). default_path reuses the
+    // same popup.html bundle with ?sidepanel=1 rather than a second
+    // WXT entrypoint (and therefore a second built copy of the whole UI).
+    permissions: ['storage', 'activeTab', 'offscreen', 'notifications', 'sidePanel'],
+    side_panel: { default_path: 'popup.html?sidepanel=1' },
     host_permissions: ['https://*/*', 'http://*/*'],
     // injected.js must be loadable from page context for the MAIN-world
     // window.thanos provider injection.

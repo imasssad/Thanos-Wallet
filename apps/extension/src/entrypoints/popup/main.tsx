@@ -100,6 +100,20 @@ const IS_EXPANDED = (() => {
 })();
 if (IS_EXPANDED) { try { document.documentElement.dataset.expanded = '1'; } catch { /* pre-DOM */ } }
 
+/* ──────────────────────── Side panel (dock to the right) ────────────────────
+   Client request 2026-09-16: dock like MetaMask/other extensions instead of
+   opening a full tab. Chrome 114+'s chrome.sidePanel API does exactly that —
+   registered in wxt.config.ts (side_panel.default_path: 'popup.html?sidepanel=1').
+   IS_SIDEPANEL flips a THIRD layout mode (popup.css `html[data-sidepanel]`):
+   unlike Expand view's centered 400px column on a full page, the side panel
+   already IS a narrow, fixed-width surface the browser chrome provides — so
+   this mode fills it edge-to-edge instead of adding more padding/centering. */
+const IS_SIDEPANEL = (() => {
+  try { return new URLSearchParams(window.location.search).get('sidepanel') === '1'; }
+  catch { return false; }
+})();
+if (IS_SIDEPANEL) { try { document.documentElement.dataset.sidepanel = '1'; } catch { /* pre-DOM */ } }
+
 /** Open (or re-open) the wallet in a full browser tab. Creating a tab needs no
  *  extra permission; we intentionally don't query existing tabs (that WOULD
  *  need the "tabs" permission), so a repeat click just opens another tab. */
@@ -108,6 +122,30 @@ function openFullscreen(): void {
   try { void browser.tabs.create({ url }); } catch { /* no tabs API — ignore */ }
   // The popup is transient; close it once the tab is on its way.
   if (!IS_EXPANDED) { try { window.close(); } catch { /* not a popup context */ } }
+}
+
+/** Dock the wallet as a Chrome side panel (MetaMask-style) when the API is
+ *  available; falls back to the tab-based Expand view on Firefox/Safari,
+ *  which have no equivalent surface. chrome.sidePanel isn't covered by the
+ *  webextension-polyfill, so it's accessed directly off the global `chrome`
+ *  — same pattern already used for the offscreen document.
+ *  sidePanel.open() must run inside the click's own user-gesture window
+ *  (no `await` before it), and needs a windowId — chrome.windows.getCurrent()
+ *  works without a declared permission, same as the tabs.create() note above. */
+function openSidePanelOrFullscreen(): void {
+  const sidePanel = (globalThis as unknown as { chrome?: { sidePanel?: { open: (o: { windowId: number }) => Promise<void> }; windows?: { getCurrent: (cb: (w: { id?: number }) => void) => void } } }).chrome?.sidePanel;
+  const windowsApi = (globalThis as unknown as { chrome?: { windows?: { getCurrent: (cb: (w: { id?: number }) => void) => void } } }).chrome?.windows;
+  if (sidePanel && windowsApi) {
+    try {
+      windowsApi.getCurrent((w) => {
+        if (w?.id != null) void sidePanel.open({ windowId: w.id }).catch(() => openFullscreen());
+        else openFullscreen();
+      });
+      if (!IS_EXPANDED && !IS_SIDEPANEL) { try { window.close(); } catch { /* not a popup context */ } }
+      return;
+    } catch { /* fall through to the tab-based fallback below */ }
+  }
+  openFullscreen();
 }
 
 /* Dark-first, applied synchronously at module load — BEFORE React mounts
@@ -2618,10 +2656,10 @@ function HomeScreen({
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {/* Expand into a full browser tab — MetaMask-style corner icon.
-              Hidden when we're already the full-tab view. */}
-          {!IS_EXPANDED && (
-            <button className="icon-btn" onClick={openFullscreen} title="Open in full screen" aria-label="Open in full screen">
+          {/* Dock as a side panel (MetaMask-style) — falls back to a full
+              browser tab on Firefox/Safari. Hidden when already docked/expanded. */}
+          {!IS_EXPANDED && !IS_SIDEPANEL && (
+            <button className="icon-btn" onClick={openSidePanelOrFullscreen} title="Open in side panel" aria-label="Open in side panel">
               <Maximize2 size={15}/>
             </button>
           )}
@@ -3071,14 +3109,15 @@ function SettingsScreen({
             {FX_CURRENCIES.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
-        {/* Expand view — open the wallet in a full browser tab (MetaMask-style).
-            Hidden when we're already the full-tab view. */}
-        {!IS_EXPANDED && (
-          <button className="set-row" onClick={openFullscreen} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
+        {/* Side panel — dock the wallet to the browser's right edge, like
+            MetaMask (falls back to a full tab on Firefox/Safari). Hidden
+            when already docked/expanded. */}
+        {!IS_EXPANDED && !IS_SIDEPANEL && (
+          <button className="set-row" onClick={openSidePanelOrFullscreen} style={{ width: '100%', background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer' }}>
             <div className="set-icon"><Maximize2 size={15}/></div>
             <div style={{ flex: 1 }}>
-              <div className="set-label">Open in full screen</div>
-              <div className="set-sub">Expand the wallet into a full browser tab</div>
+              <div className="set-label">Open in side panel</div>
+              <div className="set-sub">Dock the wallet to the side of your browser</div>
             </div>
             <ChevronRight size={15} color="var(--text-muted)"/>
           </button>
