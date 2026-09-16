@@ -3353,7 +3353,7 @@ function SendModal({ onClose, initialChain, initialCoin, address, initialTo }: {
             tokenAddress: coin.native ? undefined : coin.tokenAddress,
           });
           setTxHash(hash);
-          if (address) addLocalActivity(address, { hash, chain, sym: coin.sym, amount, ts: Date.now() });
+          if (address) addLocalActivity(address, { hash, chain, sym: coin.sym, amount, ts: Date.now(), chainId: coin.chainId });
           reload(); setSending(false); return;
         }
       }
@@ -3718,8 +3718,11 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
           />
         </div>
 
-        {/* Lithosphere dual-format toggle — only for genuine Lithosphere
-            chains, not external EVM chains (see isDualAddressNetwork). */}
+        {/* Lithosphere dual-format toggle — switches which format the QR
+            encodes. Only for genuine Lithosphere chains, not external EVM
+            chains (see isDualAddressNetwork). Both formats are ALSO always
+            shown as separate copyable rows below (client: "need to show
+            both litho1 and 0x formats") — this toggle just picks the QR. */}
         {chain === 'evm' && lithoAddr && isDualAddressNetwork && (
           <div style={{
             display: 'inline-flex',
@@ -3743,7 +3746,7 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
                     fontSize: 11, fontWeight: 600,
                     color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
                   }}
-                >{o.label}</button>
+                >QR: {o.label}</button>
               );
             })}
           </div>
@@ -3760,24 +3763,60 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
           <TokenAvatar sym={network.iconSym} color={network.color} className="coin-select-avatar" style={{ width: 18, height: 18, fontSize: 8 }} label={network.iconSym.slice(0, 1)} />
           {network.label}
         </div>
-        <div style={{ fontSize: 10, color: network.color, fontWeight: 600, marginBottom: 8 }}>● {chain === 'evm' ? 'One 0x address — works on Makalu + every EVM chain' : meta[chain].network}</div>
+        <div style={{ fontSize: 10, color: network.color, fontWeight: 600, marginBottom: 8 }}>● {chain === 'evm' ? 'One address — works on Mainnet, Makalu + every EVM chain' : meta[chain].network}</div>
         {chain !== 'evm' && chainBalance && (
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
             Balance: {chainBalance}
           </div>
         )}
-        <div className="addr-box" style={{ fontSize: 10 }}>{addr ? <HiAddr value={addr} full/> : '—'}</div>
+
+        {chain === 'evm' && lithoAddr && isDualAddressNetwork ? (
+          <>
+            <AddrFormatRow label="Litho1" value={lithoAddr}/>
+            <AddrFormatRow label="EVM (0x)" value={evmAddr}/>
+          </>
+        ) : (
+          <div className="addr-box" style={{ fontSize: 10 }}>{addr ? <HiAddr value={addr} full/> : '—'}</div>
+        )}
 
         <button className="btn-primary" onClick={copy} style={{ marginTop: 14, width: '100%' }} disabled={!addr}>
-          {copied ? '✓ Copied!' : 'Copy Address'}
+          {copied ? '✓ Copied!' : `Copy ${chain === 'evm' && isDualAddressNetwork ? (showAlt ? 'Litho1' : 'EVM (0x)') : 'Address'}`}
         </button>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.6 }}>
           {chain === 'evm'
-            ? 'This 0x address receives assets on Makalu and every EVM chain (Ethereum, BNB, Polygon, Base, Arbitrum, Optimism, Linea, Avalanche).'
+            ? 'Both formats above are the SAME wallet — receives assets on Mainnet, Makalu and every EVM chain (Ethereum, BNB, Polygon, Base, Arbitrum, Optimism, Linea, Avalanche).'
             : `Only send ${network.label} assets to this address.`}
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* Litho1 + 0x are the SAME address — client asked both to be visible at
+ * once on Receive rather than hidden behind a toggle (Mac/iOS feedback,
+ * 2026-09-16). One row per format, each independently copyable. */
+function AddrFormatRow({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    if (!value) return;
+    void copyText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div style={{ width: '100%', textAlign: 'left', marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: 0.4, marginBottom: 4 }}>{label}</div>
+      <button onClick={copy} title="Click to copy" style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+        borderRadius: 10, padding: '8px 10px', cursor: 'pointer', textAlign: 'left',
+      }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 10 }}>{value ? <HiAddr value={value} full/> : '—'}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: copied ? 'var(--green, #22c55e)' : 'var(--blue, #3b7af7)', whiteSpace: 'nowrap' }}>
+          {copied ? '✓ Copied' : 'Copy'}
+        </span>
+      </button>
+    </div>
   );
 }
 

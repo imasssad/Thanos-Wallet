@@ -14,7 +14,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
 import { formatUnits } from 'ethers';
-import { getLocalActivity } from './local-activity';
+import { getLocalActivity, resolvePendingActivity } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
 import { fetchMakaluNativeActivity, fetchKametNativeActivity, fetchMainnetNativeActivity, mergeNativeActivity } from './explorer-activity';
 
@@ -86,23 +86,28 @@ function formatDate(iso?: string): string {
  *  feed. Native LITHO / external-chain sends are never indexed, so without this
  *  a user's own transaction never appears. Deduped by tx hash so once the
  *  indexer reports the tx the local copy drops out. Local entries (newest)
- *  sort above the indexed ones. */
+ *  sort above the indexed ones. A local row whose status has been resolved by
+ *  resolvePendingActivity() (external-chain sends the indexer will never see)
+ *  renders as Completed/Failed instead of staying stuck on Pending. */
 function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] {
-  const local: DisplayTx[] = getLocalActivity(address).map((t) => ({
-    id: t.hash,
-    sym: t.sym,
-    name: t.sym,
-    type: 'Send' as const,
-    date: formatDate(new Date(t.ts).toISOString()),
-    status: 'Completed' as const,
-    amount: `-${String(t.amount).replace(/^[+-]/, '')} ${t.sym}`,
-    pos: false,
-    color: coinColor(t.sym),
-    txHash: t.hash,
-    rawTs: new Date(t.ts).toISOString(),
-    rawAmount: parseFloat(String(t.amount).replace(/^[+-]/, '')) || 0,
-    pending: true, // local-only until the indexer reports this hash (see filter below)
-  }));
+  const local: DisplayTx[] = getLocalActivity(address).map((t) => {
+    const resolved = t.status === 'confirmed' || t.status === 'failed';
+    return {
+      id: t.hash,
+      sym: t.sym,
+      name: t.sym,
+      type: 'Send' as const,
+      date: formatDate(new Date(t.ts).toISOString()),
+      status: t.status === 'failed' ? 'Failed' as const : 'Completed' as const,
+      amount: `-${String(t.amount).replace(/^[+-]/, '')} ${t.sym}`,
+      pos: false,
+      color: coinColor(t.sym),
+      txHash: t.hash,
+      rawTs: new Date(t.ts).toISOString(),
+      rawAmount: parseFloat(String(t.amount).replace(/^[+-]/, '')) || 0,
+      pending: !resolved, // drives the "Pending" badge until the indexer OR resolvePendingActivity resolves it
+    };
+  });
   const fresh = local.filter(
     (l) => !indexed.some((x) => x.id === l.id || (!!x.txHash && x.txHash === l.txHash)),
   );
@@ -231,6 +236,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             fetchKametNativeActivity(address),
             fetchMainnetNativeActivity(address),
           ]),
+          // External-EVM local sends (BNB/Ethereum/Polygon/…) have no
+          // indexer/explorer at all — resolve them via direct chain-RPC
+          // receipt polling instead, so they don't stay "Pending" forever.
+          // Persists to storage itself; mergeLocalActivity below re-reads.
+          resolvePendingActivity(address).catch(() => {}),
         ]);
         if (cancelled) return;
 
