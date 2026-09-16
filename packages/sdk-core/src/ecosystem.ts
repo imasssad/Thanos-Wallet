@@ -66,15 +66,16 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     category: 'AI',
     section: 'AI & Agents',
   },
-  {
-    id: 'atua',
-    name: 'ATUA AI',
-    description: 'AI-driven analytics and on-chain insights.',
-    url: 'https://atua.ai',
-    color: '#06b6d4',
-    category: 'AI',
-    section: 'AI & Agents',
-  },
+  // ATUA AI removed per client 2026-09-15 — re-add when confirmed ready.
+  // {
+  //   id: 'atua',
+  //   name: 'ATUA AI',
+  //   description: 'AI-driven analytics and on-chain insights.',
+  //   url: 'https://atua.ai',
+  //   color: '#06b6d4',
+  //   category: 'AI',
+  //   section: 'AI & Agents',
+  // },
   // ─── DeFi & Yield ────────────────────────────────────────────────────
   {
     id: 'ignite',
@@ -87,15 +88,16 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   },
   // EGO Exchange removed per Esha 2026-06-10 — re-add when the team
   // confirms a real product URL + the integration is ready.
-  {
-    id: 'mansa',
-    name: 'Mansa AI',
-    description: 'AI-driven DeFi and liquidity on Lithosphere.',
-    url: 'https://mansa.world',
-    color: '#eab308',
-    category: 'AI · DeFi',
-    section: 'DeFi & Yield',
-  },
+  // Mansa AI removed per client 2026-09-15 — re-add when confirmed ready.
+  // {
+  //   id: 'mansa',
+  //   name: 'Mansa AI',
+  //   description: 'AI-driven DeFi and liquidity on Lithosphere.',
+  //   url: 'https://mansa.world',
+  //   color: '#eab308',
+  //   category: 'AI · DeFi',
+  //   section: 'DeFi & Yield',
+  // },
   // ─── NFTs ────────────────────────────────────────────────────────────
   {
     id: 'colle',
