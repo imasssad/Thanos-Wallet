@@ -55,22 +55,29 @@ jobs:
       # the electron-builder.yml default).
       - name: Package .dmg + .zip
         working-directory: apps/desktop
+        run: |
+          # A GitHub secret that isn't configured arrives as an EMPTY STRING,
+          # not unset. electron-builder treats an empty-but-defined CSC_LINK as
+          # "a certificate was provided" and tries to read it from path "" —
+          # which resolves to the cwd (apps/desktop) and fails with
+          # "... not a file" (confirmed live 2026-09-17: CSC_IDENTITY_AUTO_
+          # DISCOVERY=false alone does NOT fix this — that only stops the
+          # keychain-search fallback, not the empty-CSC_LINK misread). When no
+          # cert is present, force a clean UNSIGNED build: drop the empty vars
+          # and disable keychain auto-discovery too. Same guard release.yml's
+          # desktop job already uses.
+          if [ -z "$CSC_LINK" ]; then
+            echo "::notice::No macOS signing certificate configured — building UNSIGNED."
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npx electron-builder --mac dmg zip --arm64 --x64 --publish never --config.productName=Thanos
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Without CSC_LINK, electron-builder still defaults to searching the
-          # runner's local keychain for a signing identity (CSC_IDENTITY_AUTO_
-          # DISCOVERY defaults true) — on this runner that search was finding
-          # something and then failing to use it ("/…/apps/desktop not a
-          # file"), turning what should be a silent unsigned build into a hard
-          # failure. CSC_LINK (when set) supplies its own cert explicitly and
-          # doesn't need ambient-keychain discovery, so disabling this is safe
-          # either way.
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npx electron-builder --mac dmg zip --arm64 --x64 --publish never --config.productName=Thanos
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
