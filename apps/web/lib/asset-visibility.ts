@@ -65,7 +65,15 @@ export function toggleAssetVisibility(key: string): void {
  *  matching how the portfolio itself treats them. */
 export const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
   { key: networkVisKey(9005, 'LITHO'),      name: 'Lithosphere',        sub: 'Mainnet · chain 9005' },
-  { key: networkVisKey(undefined, 'LITHO'), name: 'Lithosphere Makalu', sub: 'Testnet' },
+  // chainId 700777, NOT undefined — the indexer always tags Makalu-native
+  // LITHO/LEP100 rows with the real MAKALU_CHAIN_ID (services/indexer/src/
+  // chain.ts, lep100-sync.ts), it never omits chainId. This key previously
+  // used networkVisKey(undefined, 'LITHO'), which could never match a real
+  // Makalu row's networkVisKey(700777, 'LITHO') — toggling "Lithosphere
+  // Makalu" off in Settings silently did nothing (client-reported
+  // 2026-09-18: "turned off Makalu but assets still show"). Matches
+  // mobile's already-correct ALL_NETWORKS entry.
+  { key: networkVisKey(700777, 'LITHO'),    name: 'Lithosphere Makalu', sub: 'Testnet' },
   { key: networkVisKey(undefined, 'BTC'),   name: 'Bitcoin',            sub: 'Native' },
   { key: networkVisKey(undefined, 'SOL'),   name: 'Solana',             sub: 'Native' },
   { key: networkVisKey(undefined, 'ATOM'),  name: 'Cosmos Hub',         sub: 'Native' },
