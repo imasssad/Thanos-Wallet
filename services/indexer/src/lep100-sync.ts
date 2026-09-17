@@ -41,16 +41,28 @@ async function ensureToken(spec: TokenSpec): Promise<void> {
   );
   if (rows.length > 0) return;
 
-  let symbol = spec.fallbackSymbol ?? 'UNKNOWN';
-  let name = symbol;
-  let decimals = 18;
-  let totalSupply: bigint | null = null;
+  let symbol: string;
+  let name: string;
+  let decimals: number;
+  let totalSupply: bigint | null;
   try {
     const c = tokenContract(spec.address);
+    // decimals() is NOT individually .catch()-defaulted like symbol/name —
+    // a wrong guess here silently corrupts every balance display for this
+    // token by orders of magnitude (a real 6-decimal token recorded as 18
+    // reads ~10^-12 of its true balance) and, since `rows.length > 0` skips
+    // this whole function forever once a row exists, a transient RPC hiccup
+    // on this ONE call would have wedged the wrong value in permanently —
+    // the comment below about "retried on the next sync pass" was false as
+    // long as decimals had its own catch, because the row still got written
+    // either way. Let a decimals() failure fall to the outer catch instead,
+    // which skips the insert entirely so the row stays genuinely missing
+    // and a later pass retries. symbol/name failures are cosmetic (UNKNOWN
+    // is a safe placeholder) and stay independently defaulted.
     const [sym, nm, dec, ts] = await Promise.all([
       c.symbol().catch(() => spec.fallbackSymbol ?? 'UNKNOWN'),
       c.name().catch(() => spec.fallbackSymbol ?? 'UNKNOWN'),
-      c.decimals().catch(() => 18),
+      c.decimals(),
       c.totalSupply().catch(() => null) as Promise<bigint | null>,
     ]);
     symbol = String(sym);
@@ -58,10 +70,13 @@ async function ensureToken(spec: TokenSpec): Promise<void> {
     decimals = Number(dec);
     totalSupply = ts;
   } catch (e) {
-    // Use the fallback symbol; metadata will be retried on the next sync pass
-    // when the row is missing.
+    // Metadata read failed (most likely decimals()) — skip the insert so the
+    // row stays missing and gets retried on the next sync pass, rather than
+    // writing a guessed decimals value that would corrupt balance display
+    // and never get corrected (rows.length > 0 short-circuits future runs).
     // eslint-disable-next-line no-console
-    console.warn(`[indexer] metadata read failed for ${spec.address}:`, (e as Error).message);
+    console.warn(`[indexer] metadata read failed for ${spec.address}, will retry next pass:`, (e as Error).message);
+    return;
   }
 
   await pool.query(

@@ -55,4 +55,13 @@ export interface TxConfirmJob {
   chainId:  number;
   txHash:   string;
   chainKind:'evm' | 'lithic' | 'bitcoin' | 'solana';
+  /** Manual retry counter — a "recheck" re-add() creates a BRAND NEW BullMQ
+   *  job (no jobId reuse), so job.attemptsMade (which only counts automatic
+   *  retries of the SAME job after a failure) stays 0 forever across
+   *  reschedules. Without this field the 30-attempt "give up" cap in
+   *  worker.ts never fired — a tx that never confirms polled its chain RPC
+   *  indefinitely. Threaded through the same way BridgePollJob's
+   *  attemptCount already is. Optional/defaulted so an in-flight job queued
+   *  before this field existed still works (starts counting from 1). */
+  attemptCount?: number;
 }

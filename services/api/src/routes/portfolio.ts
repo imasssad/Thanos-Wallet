@@ -141,7 +141,7 @@ async function fetchLithoPositions(address: string): Promise<Position[]> {
   try {
     const json = await guardedFetchJson<IndexerHoldingsResp>(
       'indexer',
-      `${INDEXER_URL}/lep100/holdings/${encodeURIComponent(address)}`,
+      `${INDEXER_URL}/lep100/balances/${encodeURIComponent(address)}`,
     );
     const items = json.items ?? [];
     const symbols = Array.from(new Set(items.map(i => (i.symbol ?? 'LITHO').toUpperCase())));

@@ -476,7 +476,15 @@ const txConfirmWorker = new Worker<TxConfirmJob>(
     // If still pending, re-queue with linear backoff. Cap attempts at
     // ~30 (≈ 30 min for EVM, longer for Bitcoin) — beyond that we mark
     // the tx as 'dropped' so the UI can offer a manual nudge.
-    const attempts = (job.attemptsMade ?? 0) + 1;
+    //
+    // attemptCount is threaded through job.data manually (same pattern as
+    // BridgePollJob) because each recheck below adds a BRAND NEW job with no
+    // jobId reuse — job.attemptsMade only counts automatic retries of the
+    // SAME job after a failure, so it stayed 0 across every reschedule and
+    // this cap never fired, polling the chain RPC forever for a tx that
+    // never confirms. job.data.attemptCount covers jobs queued before this
+    // field existed (undefined -> starts at 1).
+    const attempts = (job.data.attemptCount ?? 0) + 1;
     if (r.recheck) {
       if (attempts >= 30) {
         await pool.query(
@@ -487,7 +495,7 @@ const txConfirmWorker = new Worker<TxConfirmJob>(
       } else {
         await getQueue<TxConfirmJob>(QUEUES.TX_CONFIRM).add(
           'recheck',
-          job.data,
+          { ...job.data, attemptCount: attempts },
           { delay: 30_000 + attempts * 10_000 },     // 30s + ramp
         );
       }
