@@ -151,7 +151,12 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
   initialAddress?: string;
 }) {
   const wallet = useWallet();
-  const [network, setNetwork] = useState<SendNet['id']>(initialNetwork ?? 'makalu');
+  // Default to Lithosphere Mainnet (chain 9005), not Makalu testnet — client
+  // requirement (2026-09-18, "ensure chain 9005 is live in all builds").
+  // Mainnet only exists as a generic `evm:${chainId}` entry here (from
+  // allEvmChains()), not a first-class network like Makalu/Kamet — that's
+  // fine for a plain native-LITHO send, which is all Mainnet carries today.
+  const [network, setNetwork] = useState<SendNet['id']>(initialNetwork ?? 'evm:9005');
   const [coin, setCoin]       = useState(initialCoin ?? 'LITHO');
   const [to, setTo]           = useState(initialAddress ?? '');
   const [amount, setAmount]   = useState('');
@@ -1534,10 +1539,25 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
   const networks: ReceiveNetwork[] = useMemo(() => {
     const out: ReceiveNetwork[] = [];
     if (litho || evm) {
-      // Makalu — Lithosphere main chain (700777). The default for
-      // most sends; users selecting Makalu here see exactly the same
-      // address they'd see on Kamet, with the same litho1 / EVM
-      // toggle.
+      // Lithosphere MAINNET (9005) leads the list — the flagship/Web4 home
+      // chain, same "always first" convention used on Home/Send across
+      // every client (client requirement 2026-08-27, applied here
+      // 2026-09-18 — this list previously put testnet Makalu on top).
+      // Same dual-address treatment as Makalu/Kamet below.
+      out.push({
+        id:           'lithosphere-mainnet',
+        name:         'Lithosphere',
+        symbol:       'LITHO',
+        color:        '#22c55e',
+        address:      litho || evm,
+        altAddress:   litho && evm ? evm : undefined,
+        primaryLabel: 'Litho1',
+        altLabel:     'EVM',
+        badge:        'EVM',
+      });
+      // Makalu — Lithosphere testnet chain (700777). Users selecting Makalu
+      // here see exactly the same address they'd see on Mainnet/Kamet, with
+      // the same litho1 / EVM toggle.
       out.push({
         id:           'lithosphere-makalu',
         name:         'Lithosphere Makalu · Testnet',
@@ -1561,21 +1581,6 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
         altAddress:   litho && evm ? evm : undefined,
         primaryLabel: 'Litho1',
         altLabel:     'EVM',
-      });
-      // Lithosphere Mainnet (9005) — the flagship chain. Same dual-address
-      // treatment as Makalu/Kamet; this was previously falling through to
-      // the generic EVM-chains loop below and only ever showing the 0x
-      // address, with no litho1 option at all.
-      out.push({
-        id:           'lithosphere-mainnet',
-        name:         'Lithosphere',
-        symbol:       'LITHO',
-        color:        '#22c55e',
-        address:      litho || evm,
-        altAddress:   litho && evm ? evm : undefined,
-        primaryLabel: 'Litho1',
-        altLabel:     'EVM',
-        badge:        'EVM',
       });
     }
     // EVM chains — all share the wallet's single 0x address, surfaced as

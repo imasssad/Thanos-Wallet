@@ -879,10 +879,14 @@ export function Dashboard() {
     }
     if (hideSmall) list = list.filter(c => c.usdNum >= 1);
     list = [...list].sort((a, b) => {
-      // Lithosphere always leads regardless of amount or the chosen sort
-      // mode — the Web4 home chain, client requirement 2026-08-27.
-      const al = a.sym === 'LITHO' ? 0 : 1;
-      const bl = b.sym === 'LITHO' ? 0 : 1;
+      // Lithosphere MAINNET (chainId 9005) always leads regardless of
+      // amount or the chosen sort mode — the Web4 home chain, client
+      // requirement 2026-08-27. Rank by chainId specifically (not just
+      // "any LITHO"), which previously let Makalu's LITHO (700777) sort
+      // ahead of Mainnet's — same bug found + fixed on extension/desktop,
+      // 2026-09-18.
+      const al = a.chainId === 9005 ? -1 : a.sym === 'LITHO' ? 0 : 1;
+      const bl = b.chainId === 9005 ? -1 : b.sym === 'LITHO' ? 0 : 1;
       if (al !== bl) return al - bl;
       return sortMode === 'name'      ? a.sym.localeCompare(b.sym)
         : sortMode === 'value-asc' ? a.usdNum - b.usdNum

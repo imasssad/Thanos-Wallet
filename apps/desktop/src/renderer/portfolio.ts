@@ -345,10 +345,19 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           })),
           ...xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 })),
         ];
-        // Lithosphere always leads regardless of amount — the Web4 home
-        // chain, client requirement 2026-08-27. Array.sort is stable, so
-        // everything else keeps its existing relative order.
-        coins.sort((a, b) => (a.sym === 'LITHO' ? 0 : 1) - (b.sym === 'LITHO' ? 0 : 1));
+        // Lithosphere MAINNET (chainId 9005) always leads regardless of
+        // amount — the Web4 home chain, client requirement 2026-08-27.
+        // The previous check was "any LITHO first", which doesn't
+        // disambiguate Mainnet's LITHO from Makalu's — since coins[] is
+        // built Lithosphere/indexer rows first, then external-EVM rows
+        // (where Mainnet's row actually lives), the stable sort kept
+        // Makalu's LITHO on top instead, exactly backwards from intent
+        // (found + fixed alongside the identical bug on extension,
+        // 2026-09-18). Rank by chainId specifically.
+        coins.sort((a, b) => {
+          const rank = (c: typeof a) => c.chainId === 9005 ? -1 : c.sym === 'LITHO' ? 0 : 1;
+          return rank(a) - rank(b);
+        });
 
         const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {
           const { type, pos } = txType(t.type);
