@@ -36,7 +36,7 @@ import { breaker } from '../lib/circuit-breaker.js';
 
 export const portfolioRouter = Router();
 
-const INDEXER_URL = (process.env.INDEXER_URL ?? 'http://localhost:8081').replace(/\/$/, '');
+const INDEXER_URL = (process.env.INDEXER_URL ?? 'http://localhost:4010').replace(/\/$/, '');
 const COSMOS_REST = process.env.COSMOS_REST_URL ?? 'https://cosmos-rest.publicnode.com';
 const SOLANA_RPC  = process.env.SOLANA_RPC_URL  ?? 'https://api.mainnet-beta.solana.com';
 const BTC_API     = process.env.BITCOIN_MEMPOOL_URL ?? 'https://mempool.space/api';
@@ -46,7 +46,20 @@ const CACHE_TTL_MS  = 5_000;
 const PRICE_TTL_MS  = 30_000;
 
 interface CachedPortfolio { at: number; data: PortfolioResponse }
+// Unauthenticated endpoint — a request for ANY address:chains combination
+// adds an entry, and with a 5s TTL almost every entry is stale within
+// seconds of being written, but was never actually being removed (only
+// skipped-as-a-hit once past its TTL). Unbounded growth over the process
+// lifetime. Swept periodically below rather than adding LRU-eviction
+// complexity for a cache with such a short useful lifetime anyway.
 const portfolioCache = new Map<string, CachedPortfolio>();
+const PORTFOLIO_CACHE_SWEEP_MS = 60_000;
+setInterval(() => {
+  const cutoff = Date.now() - CACHE_TTL_MS;
+  for (const [key, entry] of portfolioCache) {
+    if (entry.at < cutoff) portfolioCache.delete(key);
+  }
+}, PORTFOLIO_CACHE_SWEEP_MS).unref();
 interface CachedPrices    { at: number; data: Record<string, number> }
 let priceCache: CachedPrices | null = null;
 
