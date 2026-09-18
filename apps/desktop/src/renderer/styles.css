@@ -684,10 +684,23 @@ button { font-family: inherit; cursor: pointer; }
      same way without vw's scrollbar-inclusion quirk. */
   border-radius: 16px; width: 400px; max-width: 92%;
   box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  /* Several modals (Send/Receive especially — network + asset pickers,
+     recipient + QR, amount/fee, an optional hardware-wallet section, a
+     simulation panel) can outgrow the window near its 1100x720 minimum
+     (src/main/index.ts). Other modals worked around this individually
+     with inline maxHeight/overflowY; capped it here on the shared class
+     instead so every current and future modal gets it, and the button at
+     the bottom can't end up clipped off-screen with no way to scroll to
+     it. display:flex + modal-body's overflow-y below keeps the header/
+     close button pinned while only the body scrolls. */
+  max-height: min(88vh, 760px);
+  display: flex;
+  flex-direction: column;
 }
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 20px 14px; border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 .modal-title { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
 .modal-close {
@@ -696,7 +709,14 @@ button { font-family: inherit; cursor: pointer; }
   transition: color 0.12s;
 }
 .modal-close:hover { color: var(--text-primary); }
-.modal-body { padding: 20px; display: flex; flex-direction: column; }
+.modal-body {
+  padding: 20px; display: flex; flex-direction: column;
+  /* min-height:0 is the flexbox gotcha — without it a flex child won't
+     shrink below its content size, so overflow-y would never engage and
+     .modal-box's max-height would just get pushed past instead of
+     scrolling. */
+  overflow-y: auto; min-height: 0;
+}
 .modal-success { padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .success-icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(16,185,129,0.12); border: 2px solid rgba(16,185,129,0.3); display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--green); }
 .success-title { font-size: 16px; font-weight: 700; }

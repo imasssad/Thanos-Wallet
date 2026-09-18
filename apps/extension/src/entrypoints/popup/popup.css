@@ -111,6 +111,17 @@ html[data-expanded] #root {
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  /* Every modal (Send/Receive/Settings/…) uses .modal-back { position:
+     fixed; inset: 0; }. overflow:hidden alone does NOT make #root a
+     containing block for fixed-position descendants — only transform/
+     filter/perspective do — so in this expanded full-tab mode a modal
+     positioned "fixed" was covering the entire browser tab edge-to-edge
+     instead of staying inside this rounded card (harmless in the popup,
+     where #root already fills the viewport, and in the side panel, where
+     covering it edge-to-edge is correct). translateZ(0) is a no-op visual
+     transform whose only effect here is establishing that containing
+     block, so descendant `position: fixed` resolves against #root. */
+  transform: translateZ(0);
 }
 
 /* ── Side panel (dock to the browser's right edge) ────────────────────────

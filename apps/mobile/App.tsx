@@ -4287,7 +4287,10 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
           <View style={styles.qrCornerBR}/>
           <View style={styles.qrPlaceholder}>
             {qrSvg
-              ? <SvgXml xml={qrSvg} width={220} height={220}/>
+              // Must match qrPlaceholder's 180x180 — RN Views default to
+              // overflow:'visible', so a larger QR here doesn't clip, it
+              // spills past the dark tile and the corner brackets around it.
+              ? <SvgXml xml={qrSvg} width={180} height={180}/>
               : <Image
                   source={require('./assets/images/Thanos_Logo_Transparent.png')}
                   style={{ width: 38, height: 38 }}
