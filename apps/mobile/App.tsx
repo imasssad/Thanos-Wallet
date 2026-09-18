@@ -591,9 +591,16 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
           void (async () => {
             for (const n of NATIVE_CHAIN_ROWS) {
               if (cancelled) return;
-              let bal = 0;
-              if (n.fetchBal) { try { bal = await n.fetchBal(); } catch { bal = 0; } }
+              // null = fetch failed — keep the previous row (never paint a
+              // real balance as 0 because the public Solana RPC 429'd).
+              // 0 is only written on a successful read of an empty wallet,
+              // or when HOME_LOAD_NATIVE_CHAINS left fetchBal undefined.
+              let bal: number | null = n.fetchBal ? null : 0;
+              if (n.fetchBal) {
+                try { bal = await n.fetchBal(); } catch { bal = null; }
+              }
               if (cancelled) return;
+              if (bal === null) continue;
               const priceUsd = prices[n.sym] ?? 0;
               const row: DisplayAsset = {
                 sym: n.sym, name: n.name, chainId: 0,
@@ -603,7 +610,11 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
               };
               // Upsert by (chainId 0, sym) — a kept row from the previous
               // cycle may already be present; never append a duplicate.
-              setAssets(prev => [...prev.filter(p => !(p.chainId === 0 && p.sym === row.sym)), row]);
+              setAssets(prev => {
+                const merged = [...prev.filter(p => !(p.chainId === 0 && p.sym === row.sym)), row];
+                void setPortfolioSnapshot(address, merged, merged.reduce((s, a) => s + a.usdValue, 0));
+                return merged;
+              });
             }
 
             // External EVM (Ethereum / BNB / Polygon / Base / Arbitrum /
@@ -2251,7 +2262,17 @@ function QuanttAgentsCard() {
   const [listOpen, setListOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
+  // If the overview fetch fails, it might be because the refresh token
+  // itself expired (QuanttClient clears its internal session when that
+  // happens) — re-check ground truth so the "Connected" badge doesn't stay
+  // stuck on while the portfolio panel silently disappears with no
+  // explanation.
+  const loadOverview = () => {
+    quantt.getOverview().then(setOverview).catch(() => {
+      setOverview(null);
+      void quantt.session().then(setSession).catch(() => setSession(null));
+    });
+  };
   useEffect(() => {
     let live = true;
     quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
@@ -2288,7 +2309,7 @@ function QuanttAgentsCard() {
           <Text style={{ fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 }}>
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
-              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+              : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
           </Text>
 
           {session && p ? (
@@ -3131,7 +3152,6 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
   const seed = useWalletSeed();
 
   const [boundAddr, setBoundAddr] = useState<string | null | undefined>(undefined); // undefined = still checking
-  const [bindAddr, setBindAddr] = useState(walletAddr);
   const [binding, setBinding] = useState(false);
   const [bindErr, setBindErr] = useState<string | null>(null);
 
@@ -3170,7 +3190,7 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
   useEffect(() => { loadHistory(); }, [agentId]);
 
   const verify = async () => {
-    const addr = bindAddr.trim();
+    const addr = walletAddr.trim();
     if (!addr || binding) return;
     setBinding(true); setBindErr(null);
     try {
@@ -3231,10 +3251,12 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
               </Text>
             )}
             <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginTop: 10 }}>
-              <TextInput
-                value={bindAddr} onChangeText={(v) => setBindAddr(v)} placeholder="0x…" placeholderTextColor={C.textMuted} autoCapitalize="none"
-                style={{ color: C.textPrimary, fontSize: 12, fontFamily: MONO }}
-              />
+              {/* Read-only — verification signs with the ACTIVE wallet's
+                  key, so any other typed address could never actually
+                  verify (a free-text field here was a pure dead-end, not a
+                  security issue but a confusing one: matches web/desktop/
+                  extension, which only ever bind the fixed active address). */}
+              <Text selectable numberOfLines={1} style={{ color: C.textPrimary, fontSize: 12, fontFamily: MONO }}>{walletAddr}</Text>
             </View>
             {bindErr && <Text style={{ fontSize: 12, color: '#ef4444', marginTop: 6 }}>{bindErr}</Text>}
             <Pressable
@@ -3242,7 +3264,7 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
               style={({ pressed }) => [{ flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, marginTop: 8, backgroundColor: C.blue, opacity: binding ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}
             >
               <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>
-                {binding ? 'Verifying…' : (verified && bindAddr.trim() === boundAddr) ? 'Re-verify this address' : 'Verify this address'}
+                {binding ? 'Verifying…' : (verified && walletAddr.trim() === boundAddr) ? 'Re-verify this address' : 'Verify this address'}
               </Text>
             </Pressable>
 
@@ -8411,7 +8433,13 @@ function App() {
   /** Recipient address pre-filled into Send — used by the Quantt deposit
    *  flow's "Send to this address" step (leg A of the two-leg deposit). */
   const [sendPrefillTo, setSendPrefillTo] = useState<string | null>(null);
-  const openSendTo = (address: string) => { setSendPrefillTo(address); setScreen('send'); };
+  // Agents default to quoteAsset USDC — seed the Send screen so the deposit
+  // leg doesn't open on native LITHO by accident (no sandbox to catch it).
+  const openSendTo = (address: string) => {
+    setSendPrefillTo(address);
+    setSeedSym('USDC');
+    setScreen('send');
+  };
   // Dark-first, matching the web/desktop/extension clients (they're all
   // dark by default). The Settings toggle still lets users switch to light.
   const [isDark, setIsDark] = useState(true);

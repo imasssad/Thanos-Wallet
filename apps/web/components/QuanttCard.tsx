@@ -743,12 +743,12 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
                 )}
 
                 <div style={{ paddingTop: 14, borderTop: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {(['active', 'paused', 'idle'] as QuanttRuntimeState[]).map(s => (
                       <button
                         key={s}
                         className="btn-outline"
-                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12.5, opacity: agent.status === s ? 0.5 : 1 }}
+                        style={{ flex: '1 1 96px', minWidth: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 12.5, opacity: agent.status === s ? 0.5 : 1 }}
                         disabled={agent.status === s}
                         onClick={() => setPendingState(s)}
                       >
@@ -818,6 +818,13 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
           onClose={() => setSendAddress(null)}
           initialAddress={sendAddress}
           initialNetwork={sendNet}
+          // Agents trade a quoteAsset (default USDC per CreateAgentInput) —
+          // no create-agent form in any client exposes a picker for it, so
+          // every agent created through Thanos today IS USDC. Without this,
+          // the button defaulted to native LITHO, so tapping "Send to this
+          // address" would send the wrong asset to the agent with no
+          // verification the deposit-confirm step catches it (no sandbox).
+          initialCoin="USDC"
         />
       )}
     </div>
@@ -1115,7 +1122,19 @@ export function QuanttCard() {
   const [showList, setShowList] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
-  const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
+  // If the overview fetch fails, it might be because the refresh token
+  // itself expired (QuanttClient clears its internal session when that
+  // happens) — re-check ground truth so the "● Connected" badge doesn't
+  // stay stuck on while the portfolio panel silently disappears with no
+  // explanation. Previously `session` was only ever set once on mount /
+  // explicit sign-in/out, so a background token-refresh failure left the
+  // UI permanently out of sync with the client's real auth state.
+  const loadOverview = () => {
+    quantt.getOverview().then(setOverview).catch(() => {
+      setOverview(null);
+      void quantt.session().then(setSession).catch(() => setSession(null));
+    });
+  };
   useEffect(() => {
     let live = true;
     quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
@@ -1141,11 +1160,11 @@ export function QuanttCard() {
   const primary: React.CSSProperties = { ...btnBase, background: 'var(--blue)', color: '#fff', border: 'none' };
 
   return (
-    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg, 16px)', padding: 18 }}>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg, 16px)', padding: 'clamp(14px, 3.5vw, 18px)' }}>
       <SpinKeyframes/>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <span>AI Assistant</span>
-        {session && <span style={{ color: 'var(--blue)', fontSize: 12, fontWeight: 700 }}>● Connected</span>}
+        {session && <span style={{ color: 'var(--blue)', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>● Connected</span>}
       </div>
       <div className="ai-body">
         <div className="ai-icon"><Sparkles size={16}/></div>
@@ -1154,10 +1173,10 @@ export function QuanttCard() {
           <div className="ai-sub">
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
-              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+              : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
           </div>
           {session && overview && <QuanttPanel overview={overview} onSelectAgent={a => setDetailAgent({ id: a.id, name: a.name })} />}
-          {err && <div style={{ fontSize: 12, color: '#ff6b6b', marginTop: 8 }}>{err}</div>}
+          {err && <div style={{ fontSize: 12, color: '#ff6b6b', marginTop: 8, wordBreak: 'break-word' }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             {session ? (
               <>

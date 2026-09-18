@@ -1462,7 +1462,17 @@ function AIAssistant() {
   const [createOpen, setCreateOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
 
-  const loadOverview = () => { quantt.getOverview().then(setOverview).catch(() => setOverview(null)); };
+  // If the overview fetch fails, it might be because the refresh token
+  // itself expired (QuanttClient clears its internal session when that
+  // happens) — re-check ground truth so the "Connected" badge doesn't stay
+  // stuck on while the portfolio panel silently disappears with no
+  // explanation.
+  const loadOverview = () => {
+    quantt.getOverview().then(setOverview).catch(() => {
+      setOverview(null);
+      void quantt.session().then(setSession).catch(() => setSession(null));
+    });
+  };
   useEffect(() => {
     let live = true;
     quantt.session().then((s) => { if (live) { setSession(s); if (s) loadOverview(); } }).catch(() => {});
@@ -1491,7 +1501,7 @@ function AIAssistant() {
           <div className="ai-sub">
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
-              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+              : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
           </div>
           {session && (
             <QuanttPanel

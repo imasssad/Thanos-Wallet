@@ -2031,7 +2031,9 @@ function QuanttDepositTab({ agentId, myAddress }: { agentId: string; myAddress: 
       </div>
 
       {showSend && address && (
-        <SendModal onClose={() => setShowSend(false)} initialChain="evm" initialTo={address} address={myAddress}/>
+        // Agents default to quoteAsset USDC (CreateAgentInput); pre-select it
+        // so "Send to this address" doesn't default to the wrong asset.
+        <SendModal onClose={() => setShowSend(false)} initialChain="evm" initialCoin="USDC" initialTo={address} address={myAddress}/>
       )}
     </div>
   );
@@ -2406,8 +2408,16 @@ function AIAssistant() {
   const [showCreate, setShowCreate] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
+  // If the overview fetch fails, it might be because the refresh token
+  // itself expired (QuanttClient clears its internal session when that
+  // happens) — re-check ground truth so the "Connected" badge doesn't stay
+  // stuck on while the portfolio panel silently disappears with no
+  // explanation.
   const loadOverview = () => {
-    quantt.getOverview().then(setOverview).catch(() => setOverview(null));
+    quantt.getOverview().then(setOverview).catch(() => {
+      setOverview(null);
+      void quantt.session().then(setSession).catch(() => setSession(null));
+    });
   };
 
   useEffect(() => {
@@ -2450,7 +2460,7 @@ function AIAssistant() {
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
-              : 'AI agents that optimize your portfolio across chains. Sign in with your wallet — no password.'}
+              : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
           </div>
           {session && overview && (
             <QuanttPanel
