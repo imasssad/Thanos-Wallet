@@ -7,11 +7,8 @@
  * laxFetch() talks to the upstream LAX/FCFpay API directly rather than
  * through a wrapped client.
  *
- * LAX_API_KEY/BASE/WIDGET_ID/PRODUCT_ID are set here so routes run past
- * their 503 "not configured" gate and exercise the actual hardening logic
- * this file is testing — that gate itself is trivial and, as of this
- * writing, is what every route in production actually returns (no real
- * values are configured yet).
+ * LAX_API_KEY/BASE/PROJECT_ID are set here so routes run past their 503
+ * "not configured" gate and exercise the actual hardening logic.
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
@@ -23,8 +20,7 @@ vi.hoisted(() => {
   process.env.CORS_ORIGINS  = 'http://localhost:3000';
   process.env.LAX_API_KEY   = 'test-lax-key';
   process.env.LAX_API_BASE  = 'https://lax.test.invalid';
-  process.env.LAX_WIDGET_ID = '42';
-  process.env.LAX_PRODUCT_ID = '7';
+  process.env.LAX_PROJECT_ID = '612';
 });
 
 const { dbQuery, dbQueryOne } = vi.hoisted(() => ({
@@ -97,8 +93,9 @@ describe('GET /lax/status', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       configured: true,
-      configuredForIssuance: true,
-      have: { apiKey: true, apiBase: true, widgetId: true, productId: true },
+      configuredForIssuance: false, // Project 612 has no virtual instant-issue
+      projectId: 612,
+      have: { apiKey: true, apiBase: true, projectId: true },
     });
     // The actual secret values must never appear in the response body.
     const body = JSON.stringify(res.body);
@@ -138,12 +135,31 @@ describe('POST /lax/card/topup', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('rejects an amount below LAX\'s real $20 minimum, before touching the DB or upstream', async () => {
+    const res = await request(app)
+      .post('/lax/card/topup')
+      .set('Authorization', auth())
+      .send({ cardNumber: 'card-1', amount: 19.99 });
+    expect(res.status).toBe(400);
+    expect(dbQueryOne).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an amount with more than 2 decimal places', async () => {
+    const res = await request(app)
+      .post('/lax/card/topup')
+      .set('Authorization', auth())
+      .send({ cardNumber: 'card-1', amount: 20.123 });
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('404s a card the caller does not own, without calling upstream', async () => {
     dbQueryOne.mockResolvedValueOnce(null);
     const res = await request(app)
       .post('/lax/card/topup')
       .set('Authorization', auth())
-      .send({ cardNumber: 'not-mine', amount: 10 });
+      .send({ cardNumber: 'not-mine', amount: 25 }); // >= LAX's real $20 floor — this test is about ownership, not amount validity
     expect(res.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -160,7 +176,44 @@ describe('POST /lax/card/topup', () => {
   });
 });
 
-/* ─── issuance — validation + recording ownership on success ───────── */
+/* ─── card list — must never leak other users' merchant cards ───────── */
+
+describe('GET /lax/cards', () => {
+  it('returns an empty list when the caller owns no cards, without calling upstream', async () => {
+    dbQuery.mockResolvedValueOnce([]);
+    const res = await request(app).get('/lax/cards').set('Authorization', auth());
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ cards: [] });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns only this caller\'s lax_cards rows (no virtual get-my-cards)', async () => {
+    dbQuery.mockResolvedValueOnce([
+      { card_number: 'mine-1', currency: 'USDC' },
+    ]);
+    const res = await request(app).get('/lax/cards').set('Authorization', auth());
+    expect(res.status).toBe(200);
+    expect(res.body.cards).toEqual([{ card_number: 'mine-1', currency: 'USDC' }]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /lax/currencies', () => {
+  it('proxies available_currencies and filters enabled_on_account when present', async () => {
+    fetchMock.mockResolvedValueOnce(jsonRes(200, {
+      data: [
+        { ticker: 'USDC', enabled_on_account: true },
+        { ticker: 'BTC', enabled_on_account: false },
+      ],
+    }));
+    const res = await request(app).get('/lax/currencies').set('Authorization', auth());
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([{ ticker: 'USDC', enabled_on_account: true }]);
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/general/available_currencies');
+  });
+});
+
+/* ─── issuance — Project 612 has no virtual issue path ──────────────── */
 
 describe('POST /lax/card/issue', () => {
   it('rejects an invalid email with 400', async () => {
@@ -172,41 +225,34 @@ describe('POST /lax/card/issue', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('records ownership in lax_cards when the upstream response has a card number', async () => {
-    fetchMock.mockResolvedValueOnce(jsonRes(201, { card_number: 'new-card-9' }));
+  it('returns 501 — no virtual product_id / instant issue for this project', async () => {
     const res = await request(app)
       .post('/lax/card/issue')
       .set('Authorization', auth())
       .send({ amount: 100, currency: 'USDC', email: 'user@example.com' });
-    expect(res.status).toBe(201);
-    expect(dbQuery).toHaveBeenCalledWith(
-      expect.stringContaining('insert into lax_cards'),
-      ['user-l', 'new-card-9', 'USDC', 100],
-    );
+    expect(res.status).toBe(501);
+    expect(res.body.projectId).toBe(612);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('physical card upstream paths', () => {
+  it('proxies balance to /api/physical-cards/get-balance', async () => {
+    dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: '10.00' }));
+    const res = await request(app).get('/lax/card/card-1/balance').set('Authorization', auth());
+    expect(res.status).toBe(200);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/physical-cards/get-balance');
   });
 
-  it('never sends iframe_id/product_id from the request body — only the server-configured values', async () => {
-    fetchMock.mockResolvedValueOnce(jsonRes(201, { card_number: 'new-card-1' }));
-    await request(app)
-      .post('/lax/card/issue')
-      .set('Authorization', auth())
-      // A malicious/confused client trying to pick its own widget/product —
-      // must be silently ignored (IssueSchema doesn't even parse these).
-      .send({ amount: 100, currency: 'USDC', email: 'user@example.com', iframe_id: 999, product_id: 999 });
-    const [, opts] = fetchMock.mock.calls.at(-1)!;
-    const sentBody = JSON.parse((opts as { body: string }).body);
-    expect(sentBody.iframe_id).toBe(42);   // LAX_WIDGET_ID from env, not the request
-    expect(sentBody.product_id).toBe(7);   // LAX_PRODUCT_ID from env, not the request
-  });
-
-  it('still returns the upstream response when no card number field is recognized', async () => {
-    fetchMock.mockResolvedValueOnce(jsonRes(201, { unexpected: 'shape' }));
+  it('proxies top-up to /api/physical-cards/load', async () => {
+    dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { ok: true }));
     const res = await request(app)
-      .post('/lax/card/issue')
+      .post('/lax/card/topup')
       .set('Authorization', auth())
-      .send({ amount: 100, currency: 'USDC', email: 'user@example.com' });
-    expect(res.status).toBe(201);
-    expect(res.body).toEqual({ unexpected: 'shape' });
-    expect(dbQuery).not.toHaveBeenCalled();
+      .send({ cardNumber: 'card-1', amount: 25 });
+    expect(res.status).toBe(200);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/physical-cards/load');
   });
 });

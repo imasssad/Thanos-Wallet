@@ -1828,7 +1828,7 @@ function LaxSuccess({ C, styles, last4, topUp, onDone }: any) {
       <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800' }}>Top Up Successful!</Text>
       {topUp && (
         <Text style={{ color: C.textSecondary, fontSize: 14, textAlign: 'center' }}>
-          <Text style={{ color: C.textPrimary, fontWeight: '800' }}>${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text> in {topUp.currency} has been added to your LAX Card •••• {last4}
+          <Text style={{ color: C.textPrimary, fontWeight: '800' }}>${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text> has been added to your LAX Card •••• {last4}
         </Text>
       )}
       <Pressable onPress={onDone} style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 12 }, pressed && { opacity: 0.85 }]}>

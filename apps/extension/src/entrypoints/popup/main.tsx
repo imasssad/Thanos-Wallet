@@ -990,13 +990,17 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   const [err, setErr]   = useState<string | null>(null);
 
   // Skip the account step entirely when this device already has a Thanos
-  // session — carry over the account email for the issue-card call.
+  // session — carry over the account email for the issue-card call. Also
+  // gate on configuredForIssuance here, same as submitAccount()/submitAmount()
+  // below — LAX_WIDGET_ID/LAX_PRODUCT_ID aren't set in production yet, so
+  // without this an already-registered user landed straight on the amount/
+  // issue-card screen and a guaranteed 503 instead of the "coming soon" exit.
   useEffect(() => {
     (async () => {
       if (await hasThanosAccount()) {
         const existing = await laxAccountEmail();
         if (existing) setEmail(existing);
-        setStep('amount');
+        if (status?.configuredForIssuance) setStep('amount'); else onDone();
       } else {
         setStep('account');
       }
@@ -1023,7 +1027,11 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
     setBusy(true);
     try {
       await laxRegisterThanosAccount({ email: email.trim(), password: pwd });
-      setStep('amount');
+      // LAX_WIDGET_ID/LAX_PRODUCT_ID aren't set in production yet — without
+      // this check every new extension user who registered was walked
+      // straight into the amount/issue-card screen and a guaranteed 503,
+      // instead of the "coming soon" exit web/mobile/desktop already use.
+      if (status?.configuredForIssuance) setStep('amount'); else onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not create your account — try again.');
     } finally { setBusy(false); }
@@ -1513,7 +1521,7 @@ function LaxSuccess({ last4, topUp, onDone }: { last4: string; topUp: { amount: 
         <div style={{ color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
           <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>
             ${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </span> in {topUp.currency} has been added to your LAX Card •••• {last4}
+          </span> has been added to your LAX Card •••• {last4}
         </div>
       )}
       <button className="btn-primary" style={{ marginTop: 8, alignSelf: 'stretch' }} onClick={onDone}>Done</button>

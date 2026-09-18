@@ -880,7 +880,7 @@ function LaxSuccess({ last4, topUp, onDone }: { last4?: string; topUp: { amount:
           <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>
             ${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </span>{' '}
-          in {topUp.currency} has been added to your LAX Card •••• {last4}
+          has been added to your LAX Card •••• {last4}
         </p>
       )}
       <button className="btn-primary" onClick={onDone} style={{ width: '100%', marginTop: 12 }}>

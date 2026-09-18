@@ -2268,7 +2268,7 @@ function LaxSuccess({ last4, topUp, onDone }: { last4: string; topUp: { amount: 
       <div className="success-title">Top Up Successful!</div>
       {topUp && (
         <div className="success-sub">
-          ${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} in {topUp.currency} has been added to your LAX Card •••• {last4}
+          ${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} has been added to your LAX Card •••• {last4}
         </div>
       )}
       <button className="btn-primary" onClick={onDone} style={{ marginTop: 8 }}>Done</button>

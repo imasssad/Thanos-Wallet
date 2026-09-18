@@ -16,45 +16,36 @@
  *   - LAX_API_BASE is our own dashboard-generated Project URL — the spec's
  *     example server (merchant.fcfpay.com) is a placeholder we replace with
  *     ours ("just replace zypto to yours for endpoints" — Robert, 2026-09-09).
- *   - Path shapes below match the real spec exactly (36 documented endpoints
- *     across /api/physical-cards/* and /api/cards/*), not guesses.
- *   - `POST /api/cards/issue-card-api` requires `iframe_id` (our Super
- *     Widget's dashboard ID, LAX_WIDGET_ID) AND `product_id` (a card product
- *     configured in-dashboard, LAX_PRODUCT_ID) — confirmed straight from the
- *     spec's request schema, not a guess like the earlier scaffold's
- *     x-widget-id header was.
+ *   - Project 612 (LAX Card) has NO Virtual Cards dashboard section — ops
+ *     confirmed 2026-09-18. Live card ops therefore use
+ *     `/api/physical-cards/*` (balance/load/transactions/view/status), not
+ *     `/api/cards/*` virtual issue/load. Instant virtual `issue-card-api`
+ *     (iframe_id + product_id) is not available for this project.
+ *   - Active tokens/chains: `GET /api/general/available_currencies` from
+ *     dash.zypto.com/docs/cards — must be re-checked at least once per 24h
+ *     (list shrinks/grows with dashboard prefs). Cached server-side 24h.
  *   - NO SANDBOX EXISTS (confirmed by Robert). Every call below hits real
  *     production the moment it's configured — there's no dry-run environment
  *     to catch mistakes first.
  *
- * STATUS: SCAFFOLD. Until LAX_API_BASE + LAX_API_KEY are configured the
- * routes degrade safely:
- *   • POST /lax/account → hands back the hosted registration URL (lax.money) so
- *     the app's SafePal-style "Create Account → Next" still opens the web flow —
- *     the pre-integration behaviour, but now through the proper server seam.
+ * STATUS: Until LAX_API_BASE + LAX_API_KEY are configured the routes degrade
+ * safely:
+ *   • POST /lax/account → hosted registration URL (lax.money).
  *   • the rest return 503 "LAX not configured yet".
- * Routes that additionally need LAX_WIDGET_ID / LAX_PRODUCT_ID (issuing a new
- * virtual card) stay 503 even once the key/base are set, until those two
- * dashboard-created values exist too — see configuredForIssuance() below.
+ * Native one-shot card issuance stays off (`configuredForIssuance: false`)
+ * until the physical create-card-holder + KYC flow is wired — Project 612
+ * has no virtual-card product picker.
  *
- * WEBHOOKS (2026-09-13): laxWebhookRouter (bottom of this file, mounted at
- * /lax-webhook in app.ts, NOT under /lax's requireAuth) receives Zypto's
- * dashboard-configured webhook calls and logs every payload to
- * lax_webhook_events (migration 003) — see that router's own comment for
- * why it doesn't verify a signature yet. Configure the webhook URL in
- * dash.zypto.com/webhooks as https://<api-host>/lax-webhook.
+ * WEBHOOKS: laxWebhookRouter (mounted at /lax-webhook) requires
+ * LAX_WEBHOOK_SECRET. Configure dash.zypto.com/webhooks →
+ * https://<api-host>/lax-webhook.
  *
  * ENV (set on the VPS `.env`, gitignored — NEVER commit the value):
- *   LAX_API_KEY    — partner secret, generated (and rotatable) from the
- *                    dashboard's owner/admin Project-creation page
- *                    (rotate the one shared in chat earlier — that one is
- *                    burned, it was pasted in plaintext)
- *   LAX_API_BASE   — the dashboard-generated Project URL
- *   LAX_WIDGET_ID  — the Super Widget's iframe_id (integer) — required by
- *                    issue-card-api
- *   LAX_PRODUCT_ID — a card product's id (integer), configured in-dashboard
- *                    under Card Fees/Products — also required by
- *                    issue-card-api
+ *   LAX_API_KEY     — partner secret from Project List → "Get api key"
+ *   LAX_API_BASE    — dashboard root / project API base (https)
+ *   LAX_PROJECT_ID  — dashboard Project id (612 for LAX Card) — informational
+ *                     / status flag; the Bearer key already scopes the merchant
+ *   LAX_WEBHOOK_SECRET — shared secret for /lax-webhook
  *
  * HARDENING (2026-09-09), added once this got read closely for exactly
  * that purpose:
@@ -85,6 +76,7 @@
  *     before they reach production with no sandbox to catch a typo.
  */
 import { Router, type Response } from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { query, queryOne } from '../lib/db.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
@@ -92,20 +84,69 @@ import { laxOpLimiter } from '../middleware/rate-limit.js';
 
 const LAX_API_KEY    = process.env.LAX_API_KEY    ?? '';
 const LAX_API_BASE   = process.env.LAX_API_BASE   ?? '';
-const LAX_WIDGET_ID  = process.env.LAX_WIDGET_ID  ?? '';
-const LAX_PRODUCT_ID = process.env.LAX_PRODUCT_ID ?? '';
+/** Dashboard Project id for LAX Card — confirmed 612. Not sent on every
+ *  upstream call (Bearer key scopes the merchant); exposed via /lax/status. */
+const LAX_PROJECT_ID = process.env.LAX_PROJECT_ID ?? '';
+const LAX_WEBHOOK_SECRET = process.env.LAX_WEBHOOK_SECRET ?? '';
 const LAX_PUBLIC_REGISTER = 'https://lax.money';
+const LAX_REQUEST_TIMEOUT_MS = 15_000;
+const CURRENCIES_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const laxRouter = Router();
 laxRouter.use(requireAuth);
 
-/** True once the key and base URL are configured — enough for read-only
- *  calls (available currencies, card balance/details, transactions). */
-const configured = (): boolean => Boolean(LAX_API_KEY && LAX_API_BASE);
-/** True once issuing a NEW card is actually possible — needs the widget +
- *  product id on top of the base key/URL. Neither exists yet (both require
- *  dashboard setup — see the integration doc). */
-const configuredForIssuance = (): boolean => configured() && Boolean(LAX_WIDGET_ID && LAX_PRODUCT_ID);
+/** True once the key and base URL are configured — enough for currencies,
+ *  balance, top-up, transactions (physical-cards namespace). */
+function validBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash;
+  } catch { return false; }
+}
+
+const configured = (): boolean => Boolean(LAX_API_KEY && validBaseUrl(LAX_API_BASE));
+const projectConfigured = (): boolean => /^\d+$/.test(LAX_PROJECT_ID) && Number(LAX_PROJECT_ID) > 0;
+/** Instant native issuance is OFF for Project 612 — no Virtual Cards
+ *  dashboard / product_id. Physical issuance needs create-card-holder + KYC
+ *  (not wired yet). Keep false so clients show the external / coming-soon
+ *  path instead of calling POST /lax/card/issue. */
+const configuredForIssuance = (): boolean => false;
+
+interface CurrenciesCache { at: number; status: number; json: unknown }
+let currenciesCache: CurrenciesCache | null = null;
+
+/** Prefer entries marked enabled_on_account when the upstream shape includes it. */
+function filterEnabledCurrencies(json: unknown): unknown {
+  const pickList = (v: unknown): unknown[] | null => {
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      for (const k of ['data', 'currencies', 'items', 'result', 'message']) {
+        if (Array.isArray(o[k])) return o[k] as unknown[];
+      }
+    }
+    return null;
+  };
+  const list = pickList(json);
+  if (!list) return json;
+  const hasFlag = list.some(
+    (row) => row && typeof row === 'object' && 'enabled_on_account' in (row as object),
+  );
+  if (!hasFlag) return json;
+  const enabled = list.filter((row) => {
+    if (!row || typeof row !== 'object') return false;
+    return Boolean((row as Record<string, unknown>).enabled_on_account);
+  });
+  if (Array.isArray(json)) return enabled;
+  const o = { ...(json as Record<string, unknown>) };
+  for (const k of ['data', 'currencies', 'items', 'result', 'message']) {
+    if (Array.isArray(o[k])) {
+      o[k] = enabled;
+      return o;
+    }
+  }
+  return enabled;
+}
 
 interface FetchOpts { method?: string; body?: string; headers?: Record<string, string> }
 
@@ -127,69 +168,67 @@ const AccountSchema = z.object({
   address:      z.string().min(1).max(200).optional(),
   referralCode: z.string().min(1).max(64).optional(),
 });
+// LAX's own spec (docs/integrations/reference/zypto-fcfpay-openapi.yaml):
+// amount "must match /^\d+(\.\d{1,2})?$/, must be at least 20" on both
+// load-virtual-card and issue-card-api. Without this floor specifically, a
+// sub-$20 request still round-trips to real production (no sandbox) before
+// LAX rejects it, surfacing a raw upstream error instead of an immediate
+// client-side message. (The spec ALSO claims card_number "must not be
+// greater than 20 characters" right next to an example value that is
+// itself 43 characters — a self-contradiction in LAX's own doc, so that
+// one constraint is deliberately NOT tightened here; the existing 64-char
+// cap stays as the safer, more permissive bound.)
+const hasAtMost2Decimals = (v: number) => Number(v.toFixed(2)) === v;
+const laxAmount = z.number().positive().finite().min(20, 'Minimum amount is 20').max(100_000)
+  .refine(hasAtMost2Decimals, 'Amount may have at most 2 decimal places');
 const TopupSchema = z.object({
-  cardNumber: z.string().min(1).max(64),
-  amount:     z.number().positive().finite(),
+  cardNumber: z.string().trim().regex(/^[A-Za-z0-9_-]{3,64}$/),
+  amount:     laxAmount,
 });
 const IssueSchema = z.object({
-  amount:   z.number().positive().finite(),
-  currency: z.string().min(1).max(16),
-  email:    z.string().email(),
+  amount:   laxAmount,
+  currency: z.string().trim().regex(/^[A-Za-z0-9_-]{1,16}$/).transform(v => v.toUpperCase()),
+  email:    z.string().trim().email().max(254),
 });
-
-/** Best-effort card-number extraction from issue-card-api's response — its
- *  shape is documented as a bare "Default Response" in the spec, never
- *  confirmed against a live call (no sandbox exists to check against).
- *  Tries the field names likely to hold it; if none match, the card was
- *  still issued for real (this never blocks the response), it's just not
- *  recorded in lax_cards yet — logged so it can be reconciled manually. */
-function extractCardNumber(json: unknown): string | null {
-  if (!json || typeof json !== 'object') return null;
-  const o = json as Record<string, unknown>;
-  const candidates = [o.card_number, o.cardNumber, o.id, o.card_id];
-  const nested = o.card && typeof o.card === 'object' ? (o.card as Record<string, unknown>) : null;
-  if (nested) candidates.push(nested.card_number, nested.number, nested.id);
-  for (const c of candidates) {
-    if (typeof c === 'string' && c) return c;
-    if (typeof c === 'number' && Number.isFinite(c)) return String(c);
-  }
-  return null;
-}
+const CardNumberSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{3,64}$/);
+const CardStatusSchema = z.object({ status: z.enum(['active', 'frozen']) });
 
 /** Proxy helper — attaches the secret key to a LAX/FCFpay API call.
  *  Authorization: Bearer <key> — confirmed from the real OpenAPI spec. */
 async function laxFetch(path: string, opts: FetchOpts = {}): Promise<{ status: number; json: unknown }> {
-  const res = await fetch(`${LAX_API_BASE}${path}`, {
+  if (!configured() || !path.startsWith('/api/') || path.includes('://') || path.includes('..')) {
+    throw new Error('Invalid LAX upstream configuration or path');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LAX_REQUEST_TIMEOUT_MS);
+  let res: Awaited<ReturnType<typeof fetch>>;
+  try {
+    res = await fetch(`${LAX_API_BASE.replace(/\/$/, '')}${path}`, {
     method:  opts.method ?? 'GET',
     body:    opts.body,
+    signal:  controller.signal,
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${LAX_API_KEY}`,
       ...(opts.headers ?? {}),
     },
-  });
+    });
+  } finally { clearTimeout(timer); }
   let json: unknown = null;
   try { json = await res.json(); } catch { /* non-JSON upstream */ }
   return { status: res.status, json };
 }
 
-/** GET /lax/status — readiness check for whoever is standing up the
- *  dashboard config (ops, or a future settings screen), without exposing
- *  anything secret. Reveals only which of the four env vars are SET
- *  (never their values) and the two derived booleans every route below
- *  actually branches on — not "is LAX_API_KEY correct," just "is it
- *  present." No auth-gate bypass: still behind requireAuth like the rest
- *  of this router, so this doesn't leak configuration state to anyone
- *  who isn't already a logged-in Thanos user. */
+/** GET /lax/status — readiness check without exposing secrets. */
 laxRouter.get('/status', async (_req, res: Response) => {
   return res.json({
-    configured:           configured(),
+    configured:            configured(),
     configuredForIssuance: configuredForIssuance(),
+    projectId:             projectConfigured() ? Number(LAX_PROJECT_ID) : null,
     have: {
       apiKey:    Boolean(LAX_API_KEY),
-      apiBase:   Boolean(LAX_API_BASE),
-      widgetId:  Boolean(LAX_WIDGET_ID),
-      productId: Boolean(LAX_PRODUCT_ID),
+      apiBase:   validBaseUrl(LAX_API_BASE),
+      projectId: projectConfigured(),
     },
   });
 });
@@ -213,52 +252,66 @@ laxRouter.post('/account', async (req, res: Response) => {
   return res.json({ mode: 'external', registrationUrl: url.toString() });
 });
 
-/** GET /lax/currencies — the "which tokens/chains are active for your
- *  account" read Robert described: pollable, shrinks/grows based on our
- *  dashboard preferences. Safe, read-only, no widget/product id needed. */
+/** GET /lax/currencies — dash.zypto.com/docs/cards → available_currencies.
+ *  Must be re-checked at least once per 24h (partner requirement). Server
+ *  caches successful responses for 24h; serves stale cache on upstream failure. */
 laxRouter.get('/currencies', async (_req, res) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  if (currenciesCache && Date.now() - currenciesCache.at < CURRENCIES_TTL_MS) {
+    return res.status(currenciesCache.status).json(currenciesCache.json);
+  }
   try {
     const { status, json } = await laxFetch('/api/general/available_currencies');
+    if (status >= 200 && status < 300) {
+      const filtered = filterEnabledCurrencies(json);
+      currenciesCache = { at: Date.now(), status, json: filtered };
+      return res.status(status).json(filtered);
+    }
+    if (currenciesCache) return res.status(currenciesCache.status).json(currenciesCache.json);
     return res.status(status).json(json);
   } catch {
+    if (currenciesCache) return res.status(currenciesCache.status).json(currenciesCache.json);
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
 });
 
-/** GET /lax/cards — POST /api/cards/get-my-cards under the hood (their spec
- *  has this as a POST despite being a read — kept as-is rather than
- *  "fixing" their API shape). `cards_type` is required by their schema;
- *  defaults to 'virtual' since that's the only flow this scaffold covers so
- *  far (see issue-card-api below) — physical-card holders need the fuller
- *  KYC flow noted on /account above first. */
-laxRouter.get('/cards', async (_req, res) => {
+/** GET /lax/cards — Project 612 has no virtual get-my-cards surface.
+ *  Source of truth is this caller's `lax_cards` rows only (never the full
+ *  merchant cardholder list). Physical enrich (view-card) is per-card on
+ *  demand via /lax/card/:n/details. */
+laxRouter.get('/cards', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const userId = (req as unknown as AuthRequest).userId;
   try {
-    const { status, json } = await laxFetch('/api/cards/get-my-cards', {
-      method: 'POST', body: JSON.stringify({ cards_type: 'virtual' }),
+    const ownedRows = await query<{ card_number: string; currency: string | null }>(
+      `select card_number, currency from lax_cards where user_id = $1 order by created_at desc`,
+      [userId],
+    );
+    return res.status(200).json({
+      cards: ownedRows.map((r) => ({
+        card_number: r.card_number,
+        currency: r.currency ?? undefined,
+      })),
     });
-    return res.status(status).json(json);
   } catch {
-    return res.status(502).json({ error: 'LAX upstream unreachable' });
+    return res.status(502).json({ error: 'LAX card lookup failed' });
   }
 });
 
-/** GET /lax/card/:cardNumber/balance — POST /api/cards/get-card-balance.
- *  404s (not 403 — don't confirm/deny a card number's existence to a
- *  caller who doesn't own it) for any card not recorded as this user's in
- *  lax_cards. LAX's own API has no per-end-user scoping to fall back on. */
+/** GET /lax/card/:cardNumber/balance — physical get-balance. */
 laxRouter.get('/card/:cardNumber/balance', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const cardParse = CardNumberSchema.safeParse(req.params.cardNumber);
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
   const userId = (req as unknown as AuthRequest).userId;
   const owned = await queryOne<LaxCardRow>(
     `select id, user_id, card_number from lax_cards where user_id = $1 and card_number = $2`,
-    [userId, req.params.cardNumber],
+    [userId, cardParse.data],
   );
   if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/cards/get-card-balance', {
-      method: 'POST', body: JSON.stringify({ card_number: req.params.cardNumber }),
+    const { status, json } = await laxFetch('/api/physical-cards/get-balance', {
+      method: 'POST', body: JSON.stringify({ card_number: cardParse.data }),
     });
     return res.status(status).json(json);
   } catch {
@@ -266,12 +319,7 @@ laxRouter.get('/card/:cardNumber/balance', async (req, res: Response) => {
   }
 });
 
-/** POST /lax/card/topup — body { cardNumber, amount }. Maps to
- *  load-virtual-card. Unload (withdraw) isn't wired yet — no client UI
- *  needs it until the load flow itself is proven, and NO SANDBOX means
- *  every one of these calls is a real fund movement from day one.
- *  laxOpLimiter + ownership check on top of the usual validation — this
- *  moves real money with nothing to rehearse it against first. */
+/** POST /lax/card/topup — physical load. NO SANDBOX — real funds. */
 laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const parse = TopupSchema.safeParse(req.body);
@@ -284,7 +332,7 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
   );
   if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/cards/load-virtual-card', {
+    const { status, json } = await laxFetch('/api/physical-cards/load', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount }),
     });
     return res.status(status).json(json);
@@ -293,47 +341,17 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
   }
 });
 
-/** POST /lax/card/issue — body { amount, currency, email }. Maps to
- *  issue-card-api. iframe_id + product_id are OUR configured values, never
- *  taken from the client request — a user has no business choosing which
- *  widget/product a card gets issued against. 503s until both env vars
- *  exist (they don't yet — need the dashboard Widget + Card Product setup
- *  from the integration doc). laxOpLimiter — issuing a card is a real,
- *  no-sandbox fund-adjacent action same as topup. On success, records
- *  (userId, cardNumber) in lax_cards so /balance and /topup above can
- *  enforce ownership on this card going forward. */
+/** POST /lax/card/issue — not available for Project 612 (no Virtual Cards
+ *  product). Physical issuance is create-card-holder + KYC + assign/activate,
+ *  which is a separate flow still using the external hand-off. */
 laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
-  if (!configuredForIssuance()) return res.status(503).json({ error: 'LAX card issuance not configured yet (missing widget/product setup)' });
   const parse = IssueSchema.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
-  const { amount, currency, email } = parse.data;
-  const userId = (req as unknown as AuthRequest).userId;
-  try {
-    const { status, json } = await laxFetch('/api/cards/issue-card-api', {
-      method: 'POST',
-      body: JSON.stringify({
-        iframe_id:  Number(LAX_WIDGET_ID),
-        product_id: Number(LAX_PRODUCT_ID),
-        amount, currency, email,
-      }),
-    });
-    if (status >= 200 && status < 300) {
-      const cardNumber = extractCardNumber(json);
-      if (cardNumber) {
-        await query(
-          `insert into lax_cards (user_id, card_number, currency, issued_amount) values ($1, $2, $3, $4)
-           on conflict (card_number) do nothing`,
-          [userId, cardNumber, currency, amount],
-        );
-      } else {
-        // eslint-disable-next-line no-console
-        console.error('[lax] issue-card-api succeeded but no recognizable card number field was found in the response — ownership not recorded, reconcile lax_cards manually', { userId, responseKeys: json && typeof json === 'object' ? Object.keys(json) : null });
-      }
-    }
-    return res.status(status).json(json);
-  } catch {
-    return res.status(502).json({ error: 'LAX upstream unreachable' });
-  }
+  return res.status(501).json({
+    error: 'Native card issuance is not available for this LAX project',
+    detail: 'Project 612 has no Virtual Cards API / product_id. Use physical card-holder KYC (hosted redirect) or wait for the native physical onboarding flow.',
+    projectId: projectConfigured() ? Number(LAX_PROJECT_ID) : null,
+  });
 });
 
 /** GET /lax/card/:cardNumber/transactions — POST /api/cards/get-card-transactions.
@@ -343,9 +361,10 @@ laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
   const cardNumber = String(req.params.cardNumber);
+  if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/cards/get-card-transactions', {
+    const { status, json } = await laxFetch('/api/physical-cards/get-transactions-current-month', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
     });
     return res.status(status).json(json);
@@ -354,17 +373,16 @@ laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
   }
 });
 
-/** GET /lax/card/:cardNumber/details — POST /api/cards/get-card-details.
- *  Sensitive: the spec's response carries expiry + CVC. Ownership-gated AND
- *  laxOpLimiter'd so a compromised session can't scrape card secrets in a
- *  loop. Never logged here. */
+/** GET /lax/card/:cardNumber/details — physical view-card. Ownership-gated
+ *  + laxOpLimiter'd. Never logged here. */
 laxRouter.get('/card/:cardNumber/details', laxOpLimiter, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
   const cardNumber = String(req.params.cardNumber);
+  if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/cards/get-card-details', {
+    const { status, json } = await laxFetch('/api/physical-cards/view-card', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
     });
     return res.status(status).json(json);
@@ -382,8 +400,11 @@ laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Respon
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
   const cardNumber = String(req.params.cardNumber);
+  if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
-  const { status: desired } = (req.body ?? {}) as { status?: string };
+  const parsed = CardStatusSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'status must be active or frozen' });
+  const desired = parsed.data.status;
   const body: Record<string, unknown> = { card_number: cardNumber };
   if (typeof desired === 'string' && desired) body.status = desired;
   try {
@@ -409,30 +430,32 @@ laxRouter.get('/card', async (_req, res) => {
 });
 
 /* ── webhook receiver ─────────────────────────────────────────────────
- * Separate, UNAUTHENTICATED router — Zypto's servers calling in have no
- * Thanos session, so this can't sit behind laxRouter's requireAuth (or
- * under the /lax mount at all, to keep it clearly distinct). Mounted at
- * /lax-webhook in app.ts.
+ * Separate router — Zypto's servers calling in have no Thanos session, so
+ * this can't sit behind laxRouter's requireAuth (or under the /lax mount
+ * at all). Mounted at /lax-webhook in app.ts.
+ *
+ * Auth: shared secret via `x-lax-webhook-secret` or `Authorization: Bearer`
+ * (LAX_WEBHOOK_SECRET). Unset secret → 503; wrong secret → 401 with a
+ * timing-safe compare. Zypto has not documented an HMAC scheme yet; swap
+ * this for their real signature check when they publish one.
  *
  * Event names/payload shapes are dashboard-configured
- * (dash.zypto.com/webhooks) and not in the OpenAPI spec, and there's no
- * confirmed signature scheme to verify the caller with yet — Robert's
- * guidance was naming convention only ("following the same naming
- * convention as your product or the general term, such as 'user
- * deposit'"), nothing about auth. So this deliberately does NOT reject
- * unrecognized payloads or unverified callers: every request is logged to
- * lax_webhook_events (migration 003) for reconciliation, and a 200 is
- * returned quickly (most webhook senders retry on non-2xx, which we don't
- * want for a shape we can't fully validate yet). Add real HMAC/signature
- * verification the moment Zypto documents one — this is a starting point,
- * not the final state.
+ * (dash.zypto.com/webhooks) and not in the OpenAPI spec — unrecognized
+ * payloads are still accepted and logged to lax_webhook_events (migration
+ * 003) for reconciliation, with a fast 200 so senders don't retry-storm.
  */
 export const laxWebhookRouter = Router();
 
 laxWebhookRouter.post('/', async (req, res: Response) => {
+  if (!LAX_WEBHOOK_SECRET) return res.status(503).json({ error: 'Webhook authentication is not configured' });
+  const supplied = String(req.headers['x-lax-webhook-secret'] ?? req.headers.authorization?.replace(/^Bearer\s+/i, '') ?? '');
+  const expected = Buffer.from(LAX_WEBHOOK_SECRET);
+  const actual = Buffer.from(supplied);
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
+    return res.status(401).json({ error: 'Invalid webhook signature' });
+  }
   const body = (req.body ?? {}) as Record<string, unknown>;
-  // Best-effort field extraction — same "try the likely names" approach as
-  // extractCardNumber above, since the real shape is unconfirmed.
+  // Best-effort field extraction — webhook payload shapes are unconfirmed.
   const eventType =
     (typeof body.event === 'string' && body.event) ||
     (typeof body.event_type === 'string' && body.event_type) ||
