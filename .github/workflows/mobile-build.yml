@@ -39,6 +39,23 @@ jobs:
         working-directory: apps/mobile
         run: npm ci   # .npmrc carries legacy-peer-deps (vendored multx-sdk peers react ^18)
 
+      - name: Restore Android upload keystore from secrets
+        working-directory: apps/mobile
+        env:
+          ANDROID_KEYSTORE_BASE64:   ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS:         ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD:      ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Signs with the Play-registered upload key (SHA1 72:6E:B5:F7:...:F6:41)
+          # instead of any EAS-generated keystore. Fails loudly if secrets are unset.
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set"; exit 1; }
+          done
+          mkdir -p credentials
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > credentials/android-upload.jks
+          node -e "require('fs').writeFileSync('credentials.json',JSON.stringify({android:{keystore:{keystorePath:'credentials/android-upload.jks',keystorePassword:process.env.ANDROID_KEYSTORE_PASSWORD,keyAlias:process.env.ANDROID_KEY_ALIAS,keyPassword:process.env.ANDROID_KEY_PASSWORD}}}))"
+
       - name: EAS local build
         working-directory: apps/mobile
         env:
