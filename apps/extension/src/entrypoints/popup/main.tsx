@@ -2725,14 +2725,6 @@ function HomeScreen({
           <div className="qa-icon"><Repeat size={14}/></div>
           <span>Swap</span>
         </button>
-        {/* TGE — opens the Ignite token-generation event in a new tab. The
-            extension injects window.thanos into every page, so the TGE site
-            auto-connects to this wallet with no extra step (replaces the old
-            dead "Buy" placeholder button). */}
-        <button className="qa-btn" onClick={() => browser.tabs.create({ url: 'https://tge.ignite.trade/' })}>
-          <div className="qa-icon"><Plus size={14}/></div>
-          <span>TGE</span>
-        </button>
       </div>
 
       <div className="section-header">

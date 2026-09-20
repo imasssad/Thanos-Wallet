@@ -2449,21 +2449,6 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
               <span>{a.label}</span>
             </button>
           ))}
-          {/* TGE — opens the Ignite token-generation event in the in-app dApp
-              browser (falls back to the system browser). NOTE: the desktop
-              in-app browser injects no provider, so the page connects via
-              WalletConnect rather than auto-connecting. */}
-          <button
-            key="tge"
-            onClick={() => openDapp('https://tge.ignite.trade/', 'Ignite TGE')}
-            className="quick-action-btn"
-            title="Open the Ignite TGE (tge.ignite.trade)"
-          >
-            <span className="quick-action-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </span>
-            <span>TGE</span>
-          </button>
         </div>
       </div>
 

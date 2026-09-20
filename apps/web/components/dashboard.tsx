@@ -902,12 +902,6 @@ export function Dashboard() {
   const assetsCold   = liveAssets   === null;
   const activityCold = liveActivity === null;
 
-  /* TGE — the Ignite token-generation event. Opens in a new tab; the page
-     connects to this wallet via WalletConnect (the web wallet doesn't inject
-     a provider into other tabs/iframes, so there's no silent auto-connect
-     here — a cross-origin iframe couldn't reach window.thanos either). */
-  const onTge = () => window.open('https://tge.ignite.trade/', '_blank', 'noopener,noreferrer');
-
   return (
     <div style={{
       width: '100%', overflowY: 'auto', overflowX: 'hidden', height: '100%', minHeight: 0,
@@ -1024,16 +1018,10 @@ export function Dashboard() {
           // width. Bare 1fr keeps each track at its content min-size, so on a
           // narrow phone the row overflowed the viewport and the whole page
           // could be dragged sideways — the "moving" the user saw.
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           gap: 12,
           width: '100%',
         }}>
-          <ActionBtn
-            icon={<Sparkles size={30} strokeWidth={2}/>}
-            label="TGE"
-            title="Open the Ignite TGE (tge.ignite.trade) in a new tab"
-            onClick={onTge}
-          />
           <ActionBtn
             icon={<Repeat size={30} strokeWidth={2}/>}
             label="Swap"

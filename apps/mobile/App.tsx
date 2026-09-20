@@ -1982,13 +1982,6 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         <QuickAction Icon={ArrowUpRight}  label="Send"    onPress={() => navigate('send')}/>
         <QuickAction Icon={ArrowDownLeft} label="Receive" onPress={() => navigate('receive')}/>
         {EXCHANGE_ENABLED && <QuickAction Icon={Repeat} label="Swap" onPress={() => navigate('swap')}/>}
-        {/* TGE — opens the Ignite token-generation event in the in-app dApp
-            browser, which injects the window.thanos EIP-1193 provider from the
-            unlocked seed so the page can connect to this wallet (replaces the
-            old "Buy" card-on-ramp placeholder). Gated on iOS with the exchange
-            features: a token-generation event is crypto acquisition and falls
-            under the same App Store 3.1.5 restriction. */}
-        {EXCHANGE_ENABLED && <QuickAction Icon={Plus} label="TGE" onPress={() => openBrowser('https://tge.ignite.trade/')}/>}
       </View>
 
       {/* Update-available nudge — above the security nudge since acting on
