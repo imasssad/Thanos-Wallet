@@ -4953,8 +4953,8 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
           {SWAP_MODE_TABS.map(([id, label]) => {
             const sel = mode === id;
             return (
-              <Pressable key={id} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent' }}>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{label}</Text>
+              <Pressable key={id} disabled={id === 'cross'} onPress={() => setMode(id)} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: sel ? C.blue : 'transparent', opacity: id === 'cross' ? 0.45 : 1 }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: sel ? '#fff' : C.textSecondary }}>{id === 'cross' ? label + ' · Soon' : label}</Text>
               </Pressable>
             );
           })}
@@ -5097,7 +5097,7 @@ function DiscoverChip({ app, onPress }: { app: VisitedApp; onPress: () => void }
   );
 }
 
-function DiscoverScreen() {
+function DiscoverScreen({ onOpenMarket }: { onOpenMarket: () => void }) {
   const C = useColors();
   const styles = useStyles();
   const openBrowser = useBrowser();
@@ -5141,6 +5141,18 @@ function DiscoverScreen() {
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <Text style={styles.pageTitleLarge}>Discover</Text>
       <Text style={styles.pageSubtitle}>Lithosphere ecosystem apps — open in the in-app browser</Text>
+
+      <Pressable
+        onPress={onOpenMarket}
+        style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, marginTop: 14, borderRadius: 14, borderWidth: 1, borderColor: C.borderDefault, backgroundColor: C.bgElevated }, pressed && { opacity: 0.7 }]}
+      >
+        <TrendingUp size={20} color={C.blue}/>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 15 }}>Market</Text>
+          <Text style={{ color: C.textMuted, fontSize: 12, marginTop: 2 }}>Prices, movers and charts</Text>
+        </View>
+        <ChevronRight size={18} color={C.textMuted}/>
+      </Pressable>
 
       {/* Search / address bar */}
       <View style={{ position: 'relative', marginTop: 14, marginBottom: 14, justifyContent: 'center' }}>
@@ -6841,11 +6853,29 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'assets' | 'nfts';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'quantt' | 'assets' | 'nfts';
+
+/** Bottom-nav Quantts icon — the brand mark (full colour, not tinted) so it
+ *  matches the Quantts app's own menu. Sized up because the PNG has padding. */
+function QuanttTabIcon({ size = 20 }: { size?: number; color?: string; strokeWidth?: number }) {
+  return <Image source={require('./assets/images/tokens/quantt.png')} style={{ width: size + 12, height: size + 12, marginVertical: -6 }} resizeMode="contain"/>;
+}
+
+/** Quantts tab — the agents card, previously buried under Cards. */
+function QuanttScreen() {
+  const styles = useStyles();
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <Text style={styles.pageTitleLarge}>Quantts</Text>
+      <Text style={styles.pageSubtitle}>AI trading agents you fund and monitor across chains</Text>
+      <QuanttAgentsCard/>
+    </ScrollView>
+  );
+}
 
 const TABS: { key: Screen; label: string; Icon: any }[] = [
   { key: 'home',     label: 'Wallet',   Icon: Home },
-  { key: 'market',   label: 'Market',   Icon: TrendingUp },
+  { key: 'quantt',   label: 'Quantts',  Icon: QuanttTabIcon },
   { key: 'discover', label: 'Discover', Icon: Compass },
   { key: 'activity', label: 'Activity', Icon: Clock },
   { key: 'settings', label: 'Settings', Icon: SettingsIcon },
@@ -9126,9 +9156,10 @@ function App() {
                   initialTo={sendPrefillTo ?? undefined}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }} initialSym={seedSym ?? undefined} initialChainId={seedChainId ?? undefined}/>}
                 {screen === 'swap' && EXCHANGE_ENABLED && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
-                {screen === 'discover' && <DiscoverScreen/>}
+                {screen === 'discover' && <DiscoverScreen onOpenMarket={() => setScreen('market')}/>}
+                {screen === 'quantt'   && <QuanttScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
-                {screen === 'market'   && <MarketScreen goBack={() => setScreen('home')} onOpenToken={openToken}/>}
+                {screen === 'market'   && <MarketScreen goBack={() => setScreen('discover')} onOpenToken={openToken}/>}
                 {screen === 'assets'   && <AssetsScreen goBack={() => setScreen('home')} onOpenToken={openToken}/>}
                 {screen === 'nfts'     && <NFTsScreen goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}
@@ -9153,7 +9184,7 @@ function App() {
             {/* Bottom tabs */}
             <View style={styles.tabbar}>
               {TABS.map(t => {
-                const active = screen === t.key || (t.key === 'home' && (screen === 'send' || screen === 'receive'));
+                const active = screen === t.key || (t.key === 'discover' && screen === 'market') || (t.key === 'home' && (screen === 'send' || screen === 'receive'));
                 return (
                   <Pressable
                     key={t.key}

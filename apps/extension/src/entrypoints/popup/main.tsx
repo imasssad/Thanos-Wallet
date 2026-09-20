@@ -4536,11 +4536,11 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
           build, so a shipped extension shows Swap + Cross-chain. */}
       <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
         {(import.meta.env.DEV ? (['swap', 'cross', 'bridge'] as const) : (['swap', 'cross'] as const)).map(m => (
-          <button key={m} onClick={() => setMode(m)} style={{
-            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700,
+          <button key={m} disabled={m === 'cross'} title={m === 'cross' ? 'Coming soon — MultX bridge is offline' : undefined} onClick={() => setMode(m)} style={{ opacity: m === 'cross' ? 0.45 : 1,
+            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: m === 'cross' ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700,
             background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-secondary)',
-          }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain' : 'Bridge'}</button>
+          }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain · Soon' : 'Bridge'}</button>
         ))}
       </div>
       {(import.meta.env.DEV && mode === 'bridge') ? <ExtMakaluKametBridge seed={seed}/> : mode === 'cross' ? <ExtCrossChainSwap bridge={false}/> : (

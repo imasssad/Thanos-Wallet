@@ -2036,15 +2036,15 @@ function SwapTabs({ mode, setMode }: { mode: string; setMode: (m: 'swap' | 'cros
     <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--bg-elevated)', padding: 4, borderRadius: 12, border: '1px solid var(--border-default)' }}>
       {SWAP_MODE_TABS.map(([id, label]) => (
         <button
-          key={id} type="button" onClick={() => setMode(id)}
+          key={id} type="button" disabled={id === 'cross'} title={id === 'cross' ? 'Coming soon — MultX bridge is offline' : undefined} onClick={() => setMode(id)}
           style={{
-            flex: 1, padding: '9px 0', borderRadius: 9, border: 'none', cursor: 'pointer',
+            flex: 1, padding: '9px 0', borderRadius: 9, border: 'none', cursor: id === 'cross' ? 'not-allowed' : 'pointer', opacity: id === 'cross' ? 0.45 : 1,
             fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
             background: mode === id ? 'var(--blue, #3b7af7)' : 'transparent',
             color: mode === id ? '#fff' : 'var(--text-secondary)',
             transition: 'background .12s, color .12s',
           }}
-        >{label}</button>
+        >{id === 'cross' ? label + ' · Soon' : label}</button>
       ))}
     </div>
   );
