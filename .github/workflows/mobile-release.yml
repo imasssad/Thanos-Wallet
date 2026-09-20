@@ -75,6 +75,14 @@ jobs:
           echo "${{ secrets.ASC_API_KEY_BASE64 }}"          | base64 -d > credentials/asc-api-key.p8
           echo "${{ secrets.PLAY_SERVICE_ACCOUNT_BASE64 }}" | base64 -d > credentials/play-service-account.json
 
+      # App Store Connect rejects a repeated CFBundleVersion ("already submitted
+      # this build"). eas autoIncrement only bumps the CI checkout's app.json
+      # (33 -> 34 every run, never committed), so derive a unique, monotonically
+      # increasing build number from the run number instead.
+      - name: Set unique iOS build number
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.ios.buildNumber=String(100+Number(process.env.GITHUB_RUN_NUMBER));fs.writeFileSync('app.json',JSON.stringify(j,null,2));console.log('iOS buildNumber =',j.expo.ios.buildNumber)"
+
       - name: Build (and submit) via EAS
         env:
           EXPO_TOKEN:            ${{ secrets.EXPO_TOKEN }}
