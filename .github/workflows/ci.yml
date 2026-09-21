@@ -213,7 +213,7 @@ jobs:
         # any matched secret out of the log output (we don't want CI logs
         # to surface a real leak; the report file is for the operator).
         # Exit code 1 = leaks found → fails the job. Exit 0 = clean.
-        run: gitleaks detect --redact --verbose --report-format json --report-path gitleaks-report.json
+        run: gitleaks detect --config=.gitleaks.toml --redact --verbose --report-format json --report-path gitleaks-report.json
       - name: Upload gitleaks report on failure
         if: failure()
         uses: actions/upload-artifact@v4

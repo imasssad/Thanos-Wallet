@@ -61,8 +61,7 @@ App-access/review-access issue, not a licensing one.)
 **Option B — Import the demo wallet (fastest; skips the quiz)**
 1. Launch the app. On the Welcome screen, tap **"I already have a wallet"**.
 2. On the **"Import wallet"** chooser, tap the **"Private key"** card (labeled *"Single EVM account (Makalu) · no BTC/SOL/Cosmos"*).
-3. On **"Import private key"**, paste the demo key below into the **"0x…"** field. The **"Continue"** button stays disabled until a valid 64-character hex key is entered; once accepted, tap **"Continue"**.
-   Demo private key: `0xc82813c04ea8b0b0d2db85d1bc808db94de4d2161aff6a5e1b008360be5dccf0`
+3. On **"Import private key"**, use the temporary reviewer key supplied through the private Play Console access channel. Do not commit wallet keys to this repository. The **"Continue"** button stays disabled until a valid 64-character hex key is entered; once accepted, tap **"Continue"**.
 4. On **"Set a password"**, enter an 8+ character password in **"Password"** and the identical value in **"Confirm password"** (example: `Review1234`). This password is created locally on the device — it is not a credential we hold. Tap **"Import wallet"** (button briefly shows **"Encrypting…"**).
 5. You land on the wallet **Home**. Dismiss the one-time **"Welcome to Thanos Wallet"** modal by tapping **"Got it"**. Send, Receive, and balances are now fully accessible. No biometric prompt appears during this flow.
 

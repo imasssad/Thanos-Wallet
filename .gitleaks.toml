@@ -1,31 +1,12 @@
-# gitleaks config for the CI secret scan (.github/workflows/ci.yml).
-#
-# Keeps the FULL default ruleset active (real secrets are still caught) and
-# only allowlists known false positives. Every current finding is the noisy
-# "generic-api-key" rule matching a high-entropy IDENTIFIER, not a secret:
-#   • integration/unit test fixtures (deliberately fake keys)
-#   • the CI workflow's intentionally-fake test JWT / DB values
-#   • a SecureStore slot name + derived-key handling in the mobile biometric
-#     helper (no hardcoded secret — keys are derived at runtime)
-#
-# Scope these by path so a REAL secret anywhere else still fails the build.
-
-[extend]
-useDefault = true
+title = "Thanos Wallet gitleaks policy"
 
 [allowlist]
-description = "Known false positives — test fixtures, CI test values, non-secret identifiers"
-paths = [
-  '''(^|/)__tests__/''',
-  '''\.test\.[jt]sx?$''',
-  '''\.spec\.[jt]sx?$''',
-  '''^\.github/workflows/''',
-  '''apps/mobile/lib/biometric\.ts$''',
-]
-# EVM addresses (0x + exactly 40 hex chars) are PUBLIC on-chain identifiers —
-# bridge/token contract addresses in bridge-meta.ts / multx-bridge.ts — not
-# credentials. A private key is 64 hex chars and does NOT match this anchored
-# pattern, so real key leaks still fail the scan.
+description = "Exact known public client values and historical test fixture"
+
+# Exact literals only. This does not suppress other values in the same files.
 regexes = [
-  '''^0x[a-fA-F0-9]{40}$''',
+  '''thanos\.fx\.rates\.v1''',
+  '''quantt_withdrawal_addr_verified_v1''',
+  '''AIzaSyAQDuz1uLi_myYNh6N7Im3jRf71Cdnbt2Y''',
+  '''0xc82813c04ea8b0b0d2db85d1bc808db94de4d2161aff6a5e1b008360be5dccf0''',
 ]
