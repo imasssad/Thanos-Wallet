@@ -6,13 +6,10 @@
  * account (apiClient session) is required — the Create screen of the card
  * flow registers one.
  *
- * NOT LIVE: until LAX_API_BASE / LAX_API_KEY (and, for issuance,
- * LAX_WIDGET_ID / LAX_PRODUCT_ID) are set on the VPS, every configured
- * route returns 503 "LAX not configured yet". isConfigured() /
- * isIssuanceConfigured() below let the UI show the right state instead of
- * dead-ending. Response bodies are undocumented upstream ("Default
- * Response" in the OpenAPI, some are stringified-JSON blobs), so the
- * parse helpers here are deliberately loose.
+ * NOT LIVE: until LAX_API_BASE / LAX_API_KEY are set on the VPS, configured
+ * routes return 503. Project 612 has no Virtual Cards product — native
+ * instant issue stays off (configuredForIssuance: false). Currencies from
+ * GET /lax/currencies must be re-checked at least every 24h (cached below).
  *
  * Ported from apps/mobile/lib/lax.ts — same function names/signatures,
  * swapped mobile's apiClient (./auth-client, RN AsyncStorage) for web's
@@ -27,7 +24,8 @@ const LAX_PUBLIC_REGISTER = 'https://lax.money';
 export interface LaxStatus {
   configured: boolean;
   configuredForIssuance: boolean;
-  have: { apiKey: boolean; apiBase: boolean; widgetId: boolean; productId: boolean };
+  projectId?: number | null;
+  have: { apiKey: boolean; apiBase: boolean; projectId: boolean };
 }
 
 /** GET /lax/status — no secrets, just which env vars are present + the two

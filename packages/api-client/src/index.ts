@@ -192,7 +192,7 @@ export class ThanosApiClient {
     await this.clearTokens();
   }
 
-  async me(): Promise<AuthUser & { mfa_enabled: boolean; created_at: string }> {
+  async me(): Promise<AuthUser & { mfaEnabled: boolean; createdAt: string }> {
     return this.req('GET', '/auth/me', undefined, true);
   }
 

@@ -259,7 +259,14 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
     res.status(404).json({ error: 'User not found' });
     return;
   }
-  res.json(user);
+  // Match login/register AuthUser camelCase — clients type displayName, not display_name.
+  res.json({
+    id: user.id,
+    email: user.email,
+    displayName: user.display_name,
+    mfaEnabled: user.mfa_enabled,
+    createdAt: user.created_at,
+  });
 });
 
 // ─── GET /auth/sessions ─────────────────────────────────────────────────────

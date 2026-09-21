@@ -3458,6 +3458,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [memo, setMemo] = useState('');
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   // Pre-send simulation — fires when recipient + amount are both valid,
   // mirrors the web Send modal so mobile users get the same
   // "contract recipient" + "insufficient balance" warnings before signing.
@@ -3483,6 +3484,8 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const amtNum = parseFloat(amt || '0');
   const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
+  const reviewSym = chain === 'evm' && coin ? coin.sym : CHAIN_META[chain].sym;
+  const reviewNetwork = chain === 'evm' ? sendNetworkName(coin?.chainId) : CHAIN_META[chain].label;
 
   // Chain-specific recipient validation. The EVM path also accepts
   // litho1… and name.litho — handled inside isValidRecipient.
@@ -3616,19 +3619,8 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   };
 
   const onReview = () => {
-    const meta = CHAIN_META[chain];
-    const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
-    const network = chain === 'evm' ? sendNetworkName(coin?.chainId) : meta.label;
-    const usdLine = chain === 'evm' ? `\n≈ ${formatUsd(usd)}` : '';
     if (chain === 'evm' && !coin) return;
-    Alert.alert(
-      'Confirm send',
-      `Send ${amt} ${sym}\nTo: ${to}${usdLine}\n\nThis broadcasts a real transaction on ${network} and cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Send', style: 'destructive', onPress: doSend },
-      ],
-    );
+    setConfirmSendOpen(true);
   };
 
   return (
@@ -3890,6 +3882,42 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
             <Pressable style={[styles.btnPrimary, { alignSelf: 'stretch' }]} onPress={() => { setSentInfo(null); goBack(); }}>
               <Text style={styles.btnPrimaryText}>Done</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Send confirmation - an in-app dialog rather than the platform Alert,
+          so the transaction details remain readable on iOS and Android. */}
+      <Modal visible={confirmSendOpen} transparent animationType="fade" onRequestClose={() => setConfirmSendOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ width: '100%', maxWidth: 380, backgroundColor: C.bgCard, borderRadius: 20, padding: 24 }}>
+            <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800', marginBottom: 16 }}>Confirm send</Text>
+            <Text style={{ color: C.textSecondary, fontSize: 18, fontWeight: '700', lineHeight: 25 }}>
+              Send {amt} {reviewSym}
+            </Text>
+            <Text style={{ color: C.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 4 }}>
+              To: {to}
+            </Text>
+            {chain === 'evm' && <Text style={{ color: C.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 2 }}>
+              ≈ {formatUsd(usd)}
+            </Text>}
+            <Text style={{ color: C.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 18 }}>
+              This broadcasts a real transaction on {reviewNetwork} and cannot be undone.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 24 }}>
+              <Pressable
+                style={[styles.btnOutline, { flex: 1, marginTop: 0 }]}
+                onPress={() => setConfirmSendOpen(false)}
+              >
+                <Text style={styles.btnOutlineText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.btnPrimary, { flex: 1, marginTop: 0, backgroundColor: C.red }]}
+                onPress={() => { setConfirmSendOpen(false); void doSend(); }}
+              >
+                <Text style={styles.btnPrimaryText}>Send</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -7750,7 +7778,7 @@ const MAKALU_CHAIN_ID_NUM = 700777;
  *  Base, Arbitrum, Linea, Optimism, Avalanche). Deliberately NO arbitrary
  *  wallet_addEthereumChain — adding a dApp-supplied chain would let it point the
  *  wallet at a malicious RPC. This is what unblocks dApps on other chains (e.g.
- *  the Ignite TGE on BNB) while keeping the wallet on known-good RPCs. */
+ *  multi-chain dApps on BNB) while keeping the wallet on known-good RPCs. */
 const BROWSER_EVM_CHAIN_IDS = new Set<number>([MAKALU_CHAIN_ID_NUM, 9005, 1, 56, 137, 8453, 42161, 59144, 10, 43114]);
 
 function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
@@ -8394,15 +8422,24 @@ export default function Root() {
  *  Returns null for any other deep link so unrelated links are ignored. */
 function extractWcUri(url: string): string | null {
   if (!url) return null;
-  if (url.startsWith('wc:')) return url;
-  const m = url.match(/[?&]uri=([^&]+)/);
-  if (m) {
+  const raw = url.trim();
+  if (/^wc:/i.test(raw)) return raw;
+  try {
+    const parsed = new URL(raw);
+    const candidate = parsed.searchParams.get('uri') || parsed.searchParams.get('wc_uri');
+    if (!candidate) return null;
+    const decoded = decodeURIComponent(candidate).trim();
+    return /^wc:/i.test(decoded) ? decoded : null;
+  } catch {
+    // React Native's URL polyfill may reject a malformed external URL; keep
+    // accepting the legacy query form without ever accepting an arbitrary URL.
+    const m = raw.match(/[?&](?:uri|wc_uri)=([^#]+)/i);
+    if (!m) return null;
     try {
-      const decoded = decodeURIComponent(m[1]);
-      if (decoded.startsWith('wc:')) return decoded;
-    } catch { /* malformed percent-encoding — ignore */ }
+      const decoded = decodeURIComponent(m[1]).trim();
+      return /^wc:/i.test(decoded) ? decoded : null;
+    } catch { return null; }
   }
-  return null;
 }
 
 /** Hosts the `thanoswallet://open?url=` deep link may open in the in-app
@@ -8422,15 +8459,32 @@ const BROWSE_ALLOWED_HOSTS: Set<string> = new Set([
  *  BROWSE_ALLOWED_HOSTS pass; anything else returns null and is dropped. */
 function extractBrowseUrl(url: string): string | null {
   if (!url) return null;
-  if (!/^thanoswallet:\/\/open([/?]|$)/i.test(url)) return null;
-  const m = url.match(/[?&]url=([^&]+)/);
-  if (!m) return null;
+  const raw = url.trim();
+  const isNativeOpen = /^thanoswallet:\/\/open([/?]|$)/i.test(raw);
+  let isUniversalOpen = false;
   try {
-    const decoded = decodeURIComponent(m[1]);
+    const parsed = new URL(raw);
+    isUniversalOpen = parsed.protocol === 'https:' &&
+      parsed.hostname.toLowerCase() === 'thanos.fi' &&
+      parsed.pathname.replace(/\/$/, '') === '/app';
+    if (!isNativeOpen && !isUniversalOpen) return null;
+    const candidate = parsed.searchParams.get('url');
+    if (!candidate) return null;
+    const decoded = decodeURIComponent(candidate).trim();
     if (!/^https:\/\//i.test(decoded)) return null;
     const host = new URL(decoded).host.toLowerCase();
     return BROWSE_ALLOWED_HOSTS.has(host) ? decoded : null;
-  } catch { return null; }
+  } catch {
+    if (!isNativeOpen) return null;
+    const m = raw.match(/[?&]url=([^#]+)/i);
+    if (!m) return null;
+    try {
+      const decoded = decodeURIComponent(m[1]).trim();
+      if (!/^https:\/\//i.test(decoded)) return null;
+      const host = new URL(decoded).host.toLowerCase();
+      return BROWSE_ALLOWED_HOSTS.has(host) ? decoded : null;
+    } catch { return null; }
+  }
 }
 
 function App() {

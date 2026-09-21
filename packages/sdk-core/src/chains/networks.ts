@@ -132,7 +132,12 @@ export const SOLANA_MAINNET: NetworkConfig = {
   chainId: 900,
   name: 'Solana',
   kind: 'solana',
-  rpcUrls: ['https://api.mainnet-beta.solana.com'],
+  // publicnode first — mainnet-beta rate-limits wallet clients and was
+  // painting live SOL balances as 0 on iOS (HCZhMuj7…, 2026-09-16).
+  rpcUrls: [
+    'https://solana-rpc.publicnode.com',
+    'https://api.mainnet-beta.solana.com',
+  ],
   blockExplorerUrl: 'https://explorer.solana.com',
   nativeCurrency: { name: 'Solana', symbol: 'SOL', decimals: 9 }
 };

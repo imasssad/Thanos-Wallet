@@ -29,7 +29,8 @@ const LAX_PUBLIC_REGISTER = 'https://lax.money';
 export interface LaxStatus {
   configured: boolean;
   configuredForIssuance: boolean;
-  have: { apiKey: boolean; apiBase: boolean; widgetId: boolean; productId: boolean };
+  projectId?: number | null;
+  have: { apiKey: boolean; apiBase: boolean; projectId: boolean };
 }
 
 /** GET /lax/status — no secrets, just which env vars are present + the two

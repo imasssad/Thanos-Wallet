@@ -213,8 +213,15 @@ describe('GET /auth/me', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.id).toBe('user-9');
-    expect(res.body.email).toBe('me@example.com');
+    expect(res.body).toEqual({
+      id: 'user-9',
+      email: 'me@example.com',
+      displayName: 'Me',
+      mfaEnabled: false,
+      createdAt: expect.anything(),
+    });
+    expect(res.body).not.toHaveProperty('display_name');
+    expect(res.body).not.toHaveProperty('mfa_enabled');
   });
 });
 

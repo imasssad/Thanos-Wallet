@@ -30,6 +30,16 @@ const ANDROID_PACKAGE = 'ai.thanos.wallet';
 const UPLOAD_KEY_SHA256 =
   '4A:EA:06:A5:CD:ED:88:D6:8E:95:19:9B:96:31:E4:EA:A2:74:63:EB:F2:A3:23:46:0F:FA:28:A9:05:26:4B:F5';
 
+// Play App Signing uses a different certificate from the upload keystore.
+// Keep this configurable so the same manifest can cover direct APKs and the
+// store build once the Play Console SHA-256 fingerprint is supplied.
+const PLAY_SIGNING_KEYS = String(
+  process.env.ANDROID_APP_SIGNING_SHA256_FINGERPRINT || '',
+)
+  .split(',')
+  .map((value) => value.trim().toUpperCase())
+  .filter(Boolean);
+
 export function GET() {
   const body = JSON.stringify([
     {
@@ -37,7 +47,7 @@ export function GET() {
       target: {
         namespace: 'android_app',
         package_name: ANDROID_PACKAGE,
-        sha256_cert_fingerprints: [UPLOAD_KEY_SHA256],
+        sha256_cert_fingerprints: [UPLOAD_KEY_SHA256, ...PLAY_SIGNING_KEYS],
       },
     },
   ]);

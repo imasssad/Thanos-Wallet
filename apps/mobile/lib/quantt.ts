@@ -405,8 +405,14 @@ function normalizeSession(raw: unknown, prev?: QuanttSession): QuanttSession {
   if (!accessToken) {
     throw new QuanttError(500, `no access token in response: ${JSON.stringify(o).slice(0, 160)}`, 'typed-verify');
   }
+  const expiresInRaw = (o.expiresIn ?? o.expires_in ?? nested.expiresIn) as unknown;
+  const expiresAtRaw = (o.expiresAt ?? o.expires_at ?? nested.expiresAt) as unknown;
+  let expiresAt = typeof expiresAtRaw === 'number' ? expiresAtRaw : undefined;
+  if (expiresAt == null && typeof expiresInRaw === 'number') {
+    expiresAt = Math.floor(Date.now() / 1000) + expiresInRaw;
+  }
   const user = (o.user && typeof o.user === 'object') ? (o.user as QuanttUser) : prev?.user;
-  return { accessToken, refreshToken, user };
+  return { accessToken, refreshToken, expiresAt, user };
 }
 
 /* ── mobile wiring ──────────────────────────────────────────────────── */

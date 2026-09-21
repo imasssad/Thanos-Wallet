@@ -9,10 +9,10 @@
  *     forward-verified server-side; same endpoint lib/address.ts already
  *     uses for Send recipients).
  *   • Registration → the chain RPC's custom `lithic_callContract` method,
- *     exactly as the web's DnnsService.register() does. The Makalu node
- *     submits register(name, owner, years) on the Kamet registry; there is
- *     no API endpoint for this. Failure throws (no fabricated tx hash) so
- *     the UI can surface it honestly.
+ *     exactly as the web's DnnsService.register() does. Registration is
+ *     submitted to the Kamet v0 registry on chain 900523; there is no API
+ *     endpoint for this. Failure throws (no fabricated tx hash) so the UI
+ *     can surface it honestly.
  */
 import { getAddress } from 'ethers';
 
@@ -22,11 +22,11 @@ const API_BASE = String(
     'https://thanos.fi/api',
 ).replace(/\/$/, '');
 
-// Registration is submitted via the Makalu RPC (chain 700777), matching the
-// web (svc.register uses MAKALU_TESTNET.chainId). The node bridges to the
-// Kamet registry internally.
-const MAKALU_CHAIN_ID = 700777;
-const MAKALU_RPCS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
+// DNNS v0 is deployed on Kamet. Keep registration on the registry's
+// authoritative chain rather than routing it through the wallet's active
+// Makalu network.
+const DNNS_KAMET_CHAIN_ID = 900523;
+const KAMET_RPCS = ['https://rpc-3.litho.ai', 'https://rpc-2.litho.ai'];
 
 const NAME_RE = /^[a-z0-9-]+\.litho$/;
 
@@ -89,7 +89,7 @@ export async function reverseLookupDnns(address: string): Promise<string | null>
 /**
  * Register `name.litho` to `owner` for `years`. Mirrors the web's
  * DnnsService.register(): a `lithic_callContract` JSON-RPC call to the
- * Makalu node. Returns the submitted tx hash. Throws on RPC error or a
+ * Kamet node. Returns the submitted tx hash. Throws on RPC error or a
  * malformed hash — never fabricates success.
  */
 export async function registerDnnsName(args: {
@@ -107,11 +107,11 @@ export async function registerDnnsName(args: {
     jsonrpc: '2.0',
     id: 1,
     method: 'lithic_callContract',
-    params: [{ chainId: MAKALU_CHAIN_ID, contract: 'dnns-registry', method: 'register', args: [name, owner, years] }],
+    params: [{ chainId: DNNS_KAMET_CHAIN_ID, contract: 'dnns-registry', method: 'register', args: [name, owner, years] }],
   });
 
   let lastErr: unknown = null;
-  for (const url of MAKALU_RPCS) {
+  for (const url of KAMET_RPCS) {
     try {
       const res = await fetch(url, {
         method: 'POST',

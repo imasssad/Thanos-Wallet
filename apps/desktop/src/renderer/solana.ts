@@ -6,12 +6,28 @@ import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { SolanaClient, SOLANA_MAINNET } from '@thanos/sdk-core';
 
 const NETWORK = SOLANA_MAINNET;
+const RPC_URLS = NETWORK.rpcUrls.length ? NETWORK.rpcUrls : ['https://api.mainnet-beta.solana.com'];
 let _connection: Connection | null = null;
-function getConnection(): Connection {
-  if (_connection) return _connection;
-  _connection = new Connection(NETWORK.rpcUrls[0], 'confirmed');
-  return _connection;
+
+async function withSolanaRpc<T>(fn: (conn: Connection) => Promise<T>): Promise<T> {
+  const urls = _connection
+    ? [_connection.rpcEndpoint, ...RPC_URLS.filter((u) => u !== _connection!.rpcEndpoint)]
+    : RPC_URLS;
+  let lastErr: unknown;
+  for (const url of urls) {
+    try {
+      const conn = _connection?.rpcEndpoint === url ? _connection : new Connection(url, 'confirmed');
+      const out = await fn(conn);
+      _connection = conn;
+      return out;
+    } catch (e) {
+      lastErr = e;
+      if (_connection?.rpcEndpoint === url) _connection = null;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Solana RPC unavailable');
 }
+
 const client = new SolanaClient();
 
 export function isValidSolanaAddress(input: string): boolean {
@@ -24,7 +40,8 @@ export function getSolanaAddress(mnemonic: string): string {
 }
 
 export async function getSolanaBalance(address: string): Promise<string> {
-  const lamports = await getConnection().getBalance(new PublicKey(address));
+  const pubkey = new PublicKey(address);
+  const lamports = await withSolanaRpc((conn) => conn.getBalance(pubkey));
   return (lamports / LAMPORTS_PER_SOL).toFixed(9);
 }
 

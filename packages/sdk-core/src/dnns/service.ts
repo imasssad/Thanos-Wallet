@@ -183,7 +183,9 @@ export class DnnsService {
     // Failing loudly is the only honest behaviour — the UI surfaces the
     // error and the user retries.
     const txHash = await this.lithic.callContract({
-      chainId:  request.chainId,
+      // DNNS v0 is a Kamet registry. Do not route registration through the
+      // wallet's currently selected network (usually Makalu).
+      chainId:  DNNS_KAMET_CHAIN_ID,
       contract: 'dnns-registry',
       method:   'register',
       args:     [request.name, request.owner, request.years ?? 1],

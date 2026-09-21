@@ -52,8 +52,8 @@
 // multi-chain in-app browser.
 // NEW in 1.1.0: multi-chain in-app dApp browser — the browser was locked to
 // Makalu and REJECTED wallet_switchEthereumChain, so dApps on other chains
-// dead-ended on "wrong network — need chain 56" (this is the Ignite TGE on BNB
-// failure). It now switches across Makalu + 8 EVM chains (ETH, BNB, Polygon,
+// dead-ended on "wrong network — need chain 56". It now switches across Makalu
+// + 8 EVM chains (ETH, BNB, Polygon,
 // Base, Arbitrum, Optimism, Avalanche, Linea), known-good RPCs only. Quantt
 // "Sign in with Thanos" now runs INSIDE the wallet. Plus two rounds of security
 // hardening: the wallet address is no longer disclosed to a site the user never
@@ -64,8 +64,7 @@
 // wired to the real version, confirm the build by the downloaded FILENAME.
 // From v1.13: WalletConnect deep-link handoff (thanoswallet://wc?uri=… auto-
 // pairs) + raw wc:// on iOS; activity notifications (WC requests, tx confirm/
-// fail, bridge/swap); themed send-success modal; TGE quick action opens
-// tge.ignite.trade in the in-app browser. Also formats activity token amounts
+// fail, bridge/swap); themed send-success modal. Also formats activity token amounts
 // by decimals (fixed via the indexer — no client change needed).
 // From v1.12: account discovery derives the BIP39 seed ONCE (cheap per-account
 // child derivation) — kills the multi-minute JS-thread freeze right after unlock;

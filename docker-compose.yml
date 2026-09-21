@@ -74,6 +74,8 @@ services:
       CORS_ORIGINS:      ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
       RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60000}
       RATE_LIMIT_MAX:    ${RATE_LIMIT_MAX:-100}
+      # Portfolio aggregator proxies LEP-100 balances from the indexer.
+      INDEXER_URL:       ${INDEXER_URL:-http://indexer:4010}
       # Lithosphere RPC — the DNNS resolver fails over primary → fallback.
       LITHO_RPC_PRIMARY:   ${LITHO_RPC_PRIMARY:-https://rpc.litho.ai}
       LITHO_RPC_FALLBACK:  ${LITHO_RPC_FALLBACK:-https://rpc-2.litho.ai}

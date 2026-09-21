@@ -15,15 +15,39 @@ import {
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
-const RPC_URL = 'https://api.mainnet-beta.solana.com';
+/** Public mainnet endpoints — `api.mainnet-beta.solana.com` rate-limits
+ *  mobile traffic hard (429 / intermittent failures). Falling back keeps
+ *  Home balances accurate instead of silently painting SOL as 0.
+ *  Verified 2026-09-16 against HCZhMuj7… (0.1577 SOL) which showed $0 on
+ *  live iOS when the primary RPC alone was used. */
+const RPC_URLS = [
+  'https://solana-rpc.publicnode.com',
+  'https://api.mainnet-beta.solana.com',
+];
 const EXPLORER_BASE = 'https://explorer.solana.com';
 const SOL_PATH = "m/44'/501'/0'/0'";
 
 let _connection: Connection | null = null;
-function getConnection(): Connection {
-  if (_connection) return _connection;
-  _connection = new Connection(RPC_URL, 'confirmed');
-  return _connection;
+
+/** Try each RPC until one succeeds. Remembers the working endpoint so
+ *  subsequent send/balance calls don't keep hitting a dead primary. */
+async function withSolanaRpc<T>(fn: (conn: Connection) => Promise<T>): Promise<T> {
+  const urls = _connection
+    ? [_connection.rpcEndpoint, ...RPC_URLS.filter((u) => u !== _connection!.rpcEndpoint)]
+    : RPC_URLS;
+  let lastErr: unknown;
+  for (const url of urls) {
+    try {
+      const conn = _connection?.rpcEndpoint === url ? _connection : new Connection(url, 'confirmed');
+      const out = await fn(conn);
+      _connection = conn;
+      return out;
+    } catch (e) {
+      lastErr = e;
+      if (_connection?.rpcEndpoint === url) _connection = null;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Solana RPC unavailable');
 }
 
 export class SolanaSendError extends Error {
@@ -83,7 +107,8 @@ export function getSolanaAddress(mnemonic: string): string {
 }
 
 export async function getSolanaBalance(address: string): Promise<string> {
-  const lamports = await getConnection().getBalance(new PublicKey(address));
+  const pubkey = new PublicKey(address);
+  const lamports = await withSolanaRpc((conn) => conn.getBalance(pubkey));
   return (lamports / LAMPORTS_PER_SOL).toFixed(9);
 }
 
@@ -106,12 +131,11 @@ export async function sendSol(input: {
         lamports,
       }),
     );
-    const conn = getConnection();
-    return await sendAndConfirmTransaction(conn, tx, [sender]);
+    return await withSolanaRpc((conn) => sendAndConfirmTransaction(conn, tx, [sender]));
   } catch (e) {
     const msg = (e as Error)?.message || 'Failed to send';
     if (/insufficient/i.test(msg)) throw new SolanaSendError('insufficient', 'Insufficient SOL balance');
-    if (/blockhash|node is behind/i.test(msg)) throw new SolanaSendError('rpc_error', 'Solana RPC issue');
+    if (/blockhash|node is behind|429|fetch/i.test(msg)) throw new SolanaSendError('rpc_error', 'Solana RPC issue');
     throw new SolanaSendError('unknown', msg);
   }
 }
@@ -129,20 +153,21 @@ export async function sendSplToken(input: {
   const sender = keypairFromMnemonic(input.mnemonic);
   const mint   = new PublicKey(input.mintAddress);
   const dest   = new PublicKey(input.recipient.trim());
-  const conn   = getConnection();
 
   const senderAta = await getAssociatedTokenAddress(mint, sender.publicKey);
   const destAta   = await getAssociatedTokenAddress(mint, dest);
 
-  const tx = new Transaction();
-  const destAcc = await conn.getAccountInfo(destAta);
-  if (!destAcc) {
-    tx.add(createAssociatedTokenAccountInstruction(sender.publicKey, destAta, dest, mint));
-  }
-  tx.add(createTransferCheckedInstruction(
-    senderAta, mint, destAta, sender.publicKey, amountBase, decimals, [], TOKEN_PROGRAM_ID,
-  ));
-  return await sendAndConfirmTransaction(conn, tx, [sender]);
+  return await withSolanaRpc(async (conn) => {
+    const tx = new Transaction();
+    const destAcc = await conn.getAccountInfo(destAta);
+    if (!destAcc) {
+      tx.add(createAssociatedTokenAccountInstruction(sender.publicKey, destAta, dest, mint));
+    }
+    tx.add(createTransferCheckedInstruction(
+      senderAta, mint, destAta, sender.publicKey, amountBase, decimals, [], TOKEN_PROGRAM_ID,
+    ));
+    return sendAndConfirmTransaction(conn, tx, [sender]);
+  });
 }
 
 export function solanaExplorerUrl(signature: string): string {

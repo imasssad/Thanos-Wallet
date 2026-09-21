@@ -14,7 +14,7 @@
  * keystrokes in the Send modal don't re-fetch on every change.
  */
 import { DnnsService } from '@thanos/sdk-core';
-import { MAKALU_CHAIN_ID } from './rpc';
+import { KAMET_CHAIN_ID } from './rpc';
 import { apiClient } from './auth-client';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -53,7 +53,7 @@ export async function resolveName(name: string): Promise<string | null> {
   // 1. Try the API. It has its own dnns_cache table + RPC fallback,
   //    so a 200 with `record.address: null` is an authoritative miss.
   try {
-    const { record } = await apiClient.resolveDnnsName(key, MAKALU_CHAIN_ID);
+    const { record } = await apiClient.resolveDnnsName(key, KAMET_CHAIN_ID);
     if (record) {
       const addr = record.address && record.address !== ZERO_ADDRESS ? record.address : null;
       cache.set(key, { address: addr, at: Date.now() });
@@ -66,7 +66,7 @@ export async function resolveName(name: string): Promise<string | null> {
   // 2. Direct RPC fallback via sdk-core. Same semantics — zero address
   //    means "no record".
   try {
-    const rec = await getService().resolve(MAKALU_CHAIN_ID, key);
+    const rec = await getService().resolve(KAMET_CHAIN_ID, key);
     const addr = rec.address && rec.address !== ZERO_ADDRESS ? rec.address : null;
     cache.set(key, { address: addr, at: Date.now() });
     return addr;
@@ -89,7 +89,7 @@ export async function reverseLookup(address: string): Promise<string | null> {
   // 1. API path — uses the dnns_cache table + forward-verified reverse
   //    resolution on Kamet (services/api/src/lib/dnns-chain.ts).
   try {
-    const { record } = await apiClient.lookupDnnsAddress(trimmed, MAKALU_CHAIN_ID);
+    const { record } = await apiClient.lookupDnnsAddress(trimmed, KAMET_CHAIN_ID);
     return record?.name ?? null;
   } catch {
     /* API unreachable — fall through to the SDK direct-contract path. */
@@ -98,7 +98,7 @@ export async function reverseLookup(address: string): Promise<string | null> {
   // 2. SDK fallback — direct ENS-style read against the Kamet Registry.
   //    Forward-verifies the claimed name internally before returning.
   try {
-    return await getService().reverseResolve(MAKALU_CHAIN_ID, trimmed);
+    return await getService().reverseResolve(KAMET_CHAIN_ID, trimmed);
   } catch {
     return null;
   }

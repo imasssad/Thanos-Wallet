@@ -168,7 +168,7 @@ Play). Keys to a smooth review:
 - A few countries still restrict crypto apps; if Google flags a market, deselect
   it in §8 rather than fight it.
 - This is the Android analogue of the iOS 3.1.5 issue — but Play is materially more
-  lenient, and unlike iOS the Swap/Bridge/TGE features are **not** gated on Android.
+  lenient, and unlike iOS the Swap/Bridge features are **not** gated on Android.
 
 ---
 

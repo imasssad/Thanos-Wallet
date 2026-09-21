@@ -133,8 +133,8 @@ export async function sendExtEvm(args: {
 /**
  * Sign + broadcast an ARBITRARY transaction (incl. contract calls carrying
  * `data`) on an external EVM chain — the in-app dApp browser's
- * eth_sendTransaction path once the user has switched off Makalu (e.g. the
- * Ignite TGE on BNB Chain). Distinct from sendExtEvm (structured native/ERC-20
+ * eth_sendTransaction path once the user has switched off Makalu (for example,
+ * a multi-chain dApp on BNB Chain). Distinct from sendExtEvm (structured native/ERC-20
  * transfers only). ethers accepts the dApp's hex-string fields directly and
  * stamps the correct EIP-155 chainId from the chain-bound provider.
  */

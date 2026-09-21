@@ -103,20 +103,30 @@ engineering call.
 
 `dash.zypto.com/webhooks` — Robert: *"following the same naming convention
 as your product or the general term, such as 'user deposit'."* Configured
-entirely in-dashboard, pointing at our own backend. **We still don't have a
-webhook receiver route built** — needs adding to `services/api` once the
-dashboard side is set up, event names to be confirmed against whatever the
-dashboard's webhook config UI actually offers.
+entirely in-dashboard, pointing at our own backend.
 
-## 7. Still open
+**Thanos side (built):** `POST /lax-webhook` in `services/api/src/routes/lax.ts`
+(`laxWebhookRouter`) logs payloads to `lax_webhook_events` and authenticates
+with `LAX_WEBHOOK_SECRET` (`x-lax-webhook-secret` or `Authorization: Bearer`).
+Configure the dashboard webhook URL as `https://<api-host>/lax-webhook` and
+set the same shared secret in the VPS `.env`. Event names still follow
+whatever the dashboard UI offers (e.g. `user deposit`).
 
-- **Which products are in our contract** (physical / virtual / both) — the
-  onboarding guide warned creating a widget for something not covered just
-  errors out. Not yet confirmed.
+## 7. Still open / corrected 2026-09-18
+
+- **Product namespace:** Project **612** (LAX Card) has **no Virtual Cards
+  API section** on the dashboard. Live ops use `/api/physical-cards/*`.
+  There is no separate `product_id` to fetch — only the project id (612).
+  Native `POST /lax/card/issue` therefore returns 501 until physical
+  create-card-holder + KYC is wired; UI stays on external / coming-soon
+  for new cards.
+- **Active currencies:** must call `GET /api/general/available_currencies`
+  (docs: dash.zypto.com/docs/cards) and re-check at least once per 24h —
+  server + all clients cache with a 24h TTL.
 - **A SendGrid/Elastic Email account** for Zypto's transactional emails —
   still don't have one.
 - **The missed call** — reschedule via Robert's Calendly
-  (calendly.com/robert-zypto/30min); nobody joined the last one.
+  (calendly.com/robert-zypto/30min).
 
 ## 8. UPDATE 2026-09-13 — all 4 values now locatable; Robert answered the rest
 
@@ -124,56 +134,35 @@ Our dashboard account exists and is populated (Project "LAX Card", user
 LaxCash, `admin@lax.money`, status active). Where each `.env` value comes
 from, confirmed via screenshots + Robert:
 
-- **`LAX_API_KEY`** — Project List row → **"Get api key"** button (also
-  visible via "Refresh Key" if ever rotated). The value pasted in chat was
-  flagged as exposed (shared in plaintext chat, public repo); **client's
-  explicit call (2026-09-13): keep using it as-is, no rotation** — noted and
-  respected, not re-flagged going forward.
-- **`LAX_API_BASE`** — Robert: *"base url is your dashboard."* That's the
-  dashboard's own root, `https://dashboard.lax.money` — NOT the per-project
-  "Domain" field (see below).
-- **`LAX_WIDGET_ID`** — Widgets list → **`13524`**, title "LAX Card Main",
-  type "Global", owner `LAXCash/71509` — this is our project's widget (the
-  other rows — Bamram2429, Kamprett — belong to different owners sharing the
-  same platform, not us).
-- **`LAX_PRODUCT_ID`** — NOT a static dashboard field and not in the OpenAPI
-  spec as a list endpoint either. Robert: fetched via the **"Get Products"
-  label in the dashboard's Virtual Cards API section** — a UI action, not
-  something to hardcode from a screenshot. Do this once the key + base URL
-  are live.
-- **The Project "Domain" field** (shows "LAX.money") — Robert: *"being
-  sunset, not important during creation but still mandatory, any domain
-  will fill this field and work correctly."* It's a vestigial required field,
-  not the API base — don't confuse it with `LAX_API_BASE` above.
-- **Multiple widgets/keys under one account** — Robert clarified this is
-  normal: *"same access regardless of different key if created by
-  admin/owner."* Only the one Project (612 / LaxCash) and its widget (13524)
-  matter for us.
+- **`LAX_API_KEY`** — Project List row → **"Get api key"** / **"Refresh Key"**.
+- **`LAX_API_BASE`** — Robert: *"base url is your dashboard."* →
+  `https://dashboard.lax.money` (not the vestigial Project "Domain" field).
+- **`LAX_PROJECT_ID`** — **`612`** (Project "LAX Card"). Confirmed: there is
+  **no Virtual Cards API option** on this dashboard and therefore **no
+  product_id**. Do not wait on widget/product IDs for this project.
+- **Physical cards** — balance / load / transactions / view / status map to
+  `/api/physical-cards/*`. New-card KYC remains hosted redirect (or future
+  native create-card-holder flow).
 
-**Net: LAX is now fully unblocked except for the key rotation**, which only
-the client can do (self-serve, same "Refresh Key" button). Once a fresh key
-+ the base URL + widget ID are in the VPS `.env`, card issuance still needs
-one more dashboard visit for the product ID via "Get Products," then
-everything in `services/api/src/routes/lax.ts` goes live with no code
-changes needed — it already reads all four from the environment.
+**Net:** set `LAX_API_KEY` + `LAX_API_BASE` + `LAX_PROJECT_ID=612` (+ webhook
+secret) on the VPS. Currencies + physical card ops go live; native instant
+issue stays off until physical onboarding is built.
 
 ---
 
 ## What's already built on the Thanos side
 
-- **Server proxy** (`routes/lax.ts`): key stays server-side; routes for
-  `POST /account`, `GET /account`, `GET /card`, `POST /card/topup` are
-  stubbed. **Auth header now correctly set to `Authorization: Bearer`**
-  (was `x-api-key`, a wrong guess — corrected once the real spec confirmed
-  it). Still switches from the safe external hand-off to the real API only
-  once `LAX_API_KEY` + `LAX_API_BASE` are both set.
-- **Client cards** on all four platforms (the current "Create Account"
-  cards) — swap the `lax.money` open for the native flow. On web this is a
-  straightforward iframe embed of the Super Widget; mobile/desktop/extension
-  can reuse each client's existing in-app browser/webview infrastructure to
-  host the same widget rather than building a separate native embed path.
-- **Env wiring** ready on the VPS (`LAX_API_KEY`, `LAX_API_BASE`,
-  `LAX_WIDGET_ID`, `LAX_PRODUCT_ID`).
+- **Server proxy** (`routes/lax.ts`): key stays server-side. Live routes once
+  configured: `GET /lax/status`, `GET /lax/currencies`, `GET /lax/cards`
+  (ownership-scoped to the caller's `lax_cards`), balance / transactions /
+  details, `POST /lax/card/topup`, `POST /lax/card/issue`, freeze/unfreeze,
+  plus `POST /lax-webhook`. Auth header is `Authorization: Bearer`. Until
+  `LAX_API_KEY` + `LAX_API_BASE` are set, non-account routes return 503 and
+  account creation still hands back the hosted `lax.money` URL.
+- **Native client flows** on all four platforms (`LaxCard` / `LaxCardFlow`) —
+  intro → create/issue → dashboard → top-up, talking only to Thanos `/lax/*`.
+- **Env wiring** in compose + VPS template: `LAX_API_KEY`, `LAX_API_BASE`,
+  `LAX_PROJECT_ID` (612), `LAX_WEBHOOK_SECRET`.
 
 ## Security requirements (non-negotiable on our side)
 

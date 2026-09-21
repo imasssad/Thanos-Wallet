@@ -90,7 +90,7 @@ const MAKALU_RPC_URLS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
    eth_getBalance / eth_blockNumber / eth_getBlockByNumber / eth_estimateGas …
    ALL throw -32601, so right after wallet_switchEthereumChain the dApp can't
    read the new chain to confirm the switch and bounces back to "wrong network".
-   This was the real cause of tge.ignite.trade never leaving 700777.
+   This keeps a switched dApp from being stranded on the previous chain.
    Signing + state-changing methods are deliberately NOT here — they stay gated
    by the popup approval flow (eth_sendTransaction/personal_sign/… above). */
 const RPC_PASSTHROUGH = new Set<string>([
