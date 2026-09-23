@@ -23,16 +23,21 @@ jobs:
 
       - name: Build Chrome and Firefox packages
         run: |
+          mkdir -p release-artifacts
           pnpm --filter @thanos/extension zip
+          cp apps/extension/.output/*.zip release-artifacts/
           pnpm --filter @thanos/extension zip:firefox
+          cp apps/extension/.output/*.zip release-artifacts/
 
       - name: Build Safari source package
-        run: pnpm --filter @thanos/extension build:safari
+        run: |
+          pnpm --filter @thanos/extension build:safari
+          cp -R apps/extension/.output/safari-mv2 release-artifacts/
 
       - name: Add SHA-256 checksums
         shell: bash
         run: |
-          cd apps/extension/.output
+          cd release-artifacts
           for file in *.zip; do
             [ -e "$file" ] || continue
             sha256sum "$file" > "$file.sha256"
@@ -42,7 +47,7 @@ jobs:
         with:
           name: thanos-extension-release
           path: |
-            apps/extension/.output/*.zip
-            apps/extension/.output/*.sha256
-            apps/extension/.output/safari-mv2/
+            release-artifacts/*.zip
+            release-artifacts/*.sha256
+            release-artifacts/safari-mv2/
           retention-days: 30
