@@ -22,6 +22,7 @@ const CSP = [
   // workers (child-src is the fallback older Safari consults for workers).
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
+  "frame-src 'self' https://widget.lax.money",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:"
     // CoinGecko serves token logos from BOTH hosts — /coins/markets returns
@@ -74,7 +75,7 @@ const SECURITY_HEADERS = [
   { key: 'X-Frame-Options',           value: 'DENY' },
   { key: 'X-Content-Type-Options',    value: 'nosniff' },
   { key: 'Referrer-Policy',           value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy',        value: 'camera=(self), microphone=(), geolocation=(), payment=()' },
+  { key: 'Permissions-Policy',        value: 'camera=(self "https://widget.lax.money"), microphone=(), geolocation=(self "https://widget.lax.money"), payment=(self "https://widget.lax.money")' },
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
 ];
 

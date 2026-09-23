@@ -1308,10 +1308,11 @@ function LaxComingSoon({ C, styles, have, onClose, onLearn }: any) {
   return (
     <View style={{ gap: 14, alignItems: 'center', paddingTop: 20 }}>
       <LaxCardArt/>
-      <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 }}>LAX cards aren&apos;t live yet</Text>
+      <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 }}>Apply for your LAX Card</Text>
       <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
-        Native issuance, top-ups and balance land as soon as the LAX partner setup is finished. Until then you can apply on the LAX site.
+        Complete your card application securely through the LAX partner widget.
       </Text>
+      <WebView source={{ uri: 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse' }} style={{ width: '100%', height: 1000, borderRadius: 12, overflow: 'hidden' }} />
       <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 6 }, pressed && { opacity: 0.85 }]}>
         <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Apply on lax.money ↗</Text>
       </Pressable>

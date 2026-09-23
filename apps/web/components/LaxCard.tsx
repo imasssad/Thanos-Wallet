@@ -25,6 +25,7 @@ import { apiClient } from '../lib/auth-client';
  */
 
 const LAX_LEARN_URL = 'https://lax.money';
+const LAX_WIDGET_URL = 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
 
 type LaxView = 'intro' | 'soon' | 'create' | 'dashboard' | 'topup' | 'success';
 
@@ -195,11 +196,18 @@ function LaxComingSoon({ onClose }: { onClose: () => void }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 20 }}>
       <LaxCardArt />
       <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', marginTop: 8 }}>
-        LAX cards aren&apos;t live yet
+        Apply for your LAX Card
       </div>
       <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
-        Native issuance, top-ups and balance land as soon as the LAX partner setup is finished. Until then you can apply on the LAX site.
+        Complete your card application securely through the LAX partner widget.
       </p>
+      <iframe
+        title="LAX Card application"
+        src={LAX_WIDGET_URL}
+        style={{ width: '100%', minHeight: 1000, border: 0, borderRadius: 12, background: '#fff' }}
+        allow="payment; camera; geolocation"
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
       <a
         className="btn-primary"
         href={LAX_LEARN_URL}

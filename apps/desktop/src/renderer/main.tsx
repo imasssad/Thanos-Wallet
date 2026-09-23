@@ -1783,10 +1783,11 @@ function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 8 }}>
       <LaxCardArt/>
-      <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 800, textAlign: 'center', marginTop: 4 }}>LAX cards aren&apos;t live yet</div>
+      <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 800, textAlign: 'center', marginTop: 4 }}>Apply for your LAX Card</div>
       <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, textAlign: 'center' }}>
-        Native issuance, top-ups and balance land as soon as the LAX partner setup is finished. Until then you can apply on the LAX site.
+        Complete your card application securely through the LAX partner widget.
       </div>
+      <iframe title="LAX Card application" src="https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse" style={{ width: '100%', height: 1000, border: 0, borderRadius: 12, background: '#fff' }} allow="payment; camera; geolocation" />
       <button className="btn-primary" onClick={onLearn} style={{ marginTop: 2 }}>Apply on lax.money ↗</button>
       <button className="settings-btn-link" onClick={onClose}>Not now</button>
     </div>
