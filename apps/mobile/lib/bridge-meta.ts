@@ -13,6 +13,7 @@
 export const MAKALU_CHAIN_ID = 700777;
 export const KAMET_CHAIN_ID  = 900523;
 export const MAKALU_RPC       = 'https://rpc.litho.ai';
+export const KAMET_BRIDGE_ADDRESS = '0x90614DF29E37a6136CC2c1fbDf7B25907654464D';
 
 export interface BridgeToken {
   symbol: string;
@@ -46,7 +47,7 @@ export const BRIDGE_ROUTE = {
 /** MultX bridge config for Makalu — passed to MultXClient at execution time.
  *  Structurally a MultXConfig; typed loosely here to avoid importing the SDK. */
 export const MAKALU_BRIDGE_CONFIG = {
-  bridgeAddress: '0x5832D5E609c6690f74c7683606Eb20F89ff096a6',
+  bridgeAddress: '0xD8b64FE917EB63f4e4c68B0d97d0aAC07c65B98E',
   bridgeApiUrl:  'https://bridge.litho.ai',
   lithoTokenAddress: '0x599a7E135f1790ae117b4EdDc0422D24Bc766161',
   supportedTokens: BRIDGE_TOKENS as BridgeToken[],

@@ -34,7 +34,7 @@ export interface KametMultXConfig {
 }
 
 export const KAMET_MULTX_BRIDGE: KametMultXConfig = {
-  bridgeAddress: '0x3a896BDF3a1088287FA84aB5a43bB30e2535F263',
+  bridgeAddress: '0x90614DF29E37a6136CC2c1fbDf7B25907654464D',
   chainId: KAMET_MAINNET.chainId,
   bridgeApiUrl: 'https://bridge.litho.ai',
   rpcUrl: 'https://rpc-3.litho.ai',
