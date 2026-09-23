@@ -269,7 +269,10 @@ export class QuanttClient {
     });
   }
   analyzeAgent(id: string): Promise<unknown> {
-    return this.authed(`/v1/agents/${encodeURIComponent(id)}/analyze`, { method: 'POST' });
+    return this.authed(`/v1/agents/${encodeURIComponent(id)}/analyze`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   }
   getAgentTrades(id: string, limit?: number): Promise<unknown> {
     const qs = limit ? `?limit=${encodeURIComponent(String(limit))}` : '';

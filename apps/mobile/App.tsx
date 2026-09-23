@@ -1133,7 +1133,7 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
  *  per the client (2026-07-19) they must not ship until the LAX integration is
  *  approved. Kept as a function so the call site (which passes the address) is
  *  untouched; the address is deliberately ignored now. */
-const laxApplyUrl = (_address?: string) => 'https://lax.money';
+const laxApplyUrl = (_address?: string) => 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
@@ -1156,6 +1156,13 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const C = useColors();
   const styles = useStyles();
   const openBrowser = useBrowser();
+  const openLax = async () => {
+    try {
+      await Linking.openURL(laxApplyUrl());
+    } catch {
+      Alert.alert('LAX is unavailable', 'Please open the LAX application link in your browser to continue.');
+    }
+  };
 
   const [view, setView]       = useState<LaxView>('intro');
   const [booting, setBooting] = useState(true);
@@ -1223,8 +1230,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-            {view === 'intro'    && <LaxIntro C={C} styles={styles} notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => openBrowser('https://lax.money')}/>}
-            {view === 'soon'     && <LaxComingSoon C={C} styles={styles} have={status?.have} onClose={onClose} onLearn={() => openBrowser('https://lax.money')}/>}
+            {view === 'intro'    && <LaxIntro C={C} styles={styles} notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={openLax}/>}
+            {view === 'soon'     && <LaxComingSoon C={C} styles={styles} have={status?.have} onClose={onClose} onLearn={openLax}/>}
             {view === 'create' && (
               <LaxCreate
                 C={C}
@@ -1307,6 +1314,8 @@ function LaxIntro({ C, styles, notLive, onStart, onLearn }: any) {
 }
 
 function LaxComingSoon({ C, styles, have, onClose, onLearn }: any) {
+  const [widgetReady, setWidgetReady] = useState(false);
+  const [widgetFailed, setWidgetFailed] = useState(false);
   return (
     <View style={{ gap: 14, alignItems: 'center', paddingTop: 20 }}>
       <LaxCardArt/>
@@ -1314,8 +1323,24 @@ function LaxComingSoon({ C, styles, have, onClose, onLearn }: any) {
       <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
         Complete your card application securely through the LAX partner widget.
       </Text>
-      <WebView source={{ uri: 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse' }} style={{ width: '100%', height: 1000, borderRadius: 12, overflow: 'hidden' }} />
-      <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 6 }, pressed && { opacity: 0.85 }]}>
+      {!widgetFailed && <View style={{ width: '100%', height: 600, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
+        {!widgetReady && <View style={{ ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bgElevated }}><ActivityIndicator color={C.blue}/></View>}
+        <WebView
+          source={{ uri: laxApplyUrl() }}
+          onLoadEnd={() => setWidgetReady(true)}
+          onError={() => setWidgetFailed(true)}
+          startInLoadingState
+          javaScriptEnabled
+          domStorageEnabled
+          style={{ flex: 1, opacity: widgetReady ? 1 : 0 }}
+        />
+      </View>}
+      {widgetFailed && <View style={{ width: '100%', backgroundColor: C.bgElevated, borderRadius: 12, padding: 14 }}>
+        <Text style={{ color: C.textSecondary, fontSize: 12, lineHeight: 18, textAlign: 'center' }}>
+          The LAX application could not load inside Thanos. Use the fallback below to continue.
+        </Text>
+      </View>}
+      <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 0 }, pressed && { opacity: 0.85 }]}>
         <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Apply on lax.money ↗</Text>
       </Pressable>
       <Pressable onPress={onClose} style={{ paddingVertical: 8 }}>
@@ -3220,6 +3245,10 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
 
   const amtNum = parseFloat(amount || '0');
   const doWithdraw = async () => {
+    if (!verified) {
+      setWithdrawErr('Verify your Thanos wallet address before withdrawing.');
+      return;
+    }
     if (amtNum <= 0 || withdrawing) return;
     setWithdrawing(true); setWithdrawErr(null); setWithdrawOk(false);
     try {
@@ -3298,8 +3327,8 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
             {withdrawErr && <Text style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>{withdrawErr}</Text>}
             {withdrawOk && <Text style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>Withdrawal submitted — see history below.</Text>}
             <Pressable
-              disabled={amtNum <= 0 || withdrawing} onPress={doWithdraw}
-              style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 14, borderRadius: 12, backgroundColor: C.blue, opacity: (amtNum <= 0 || withdrawing) ? 0.5 : 1 }, pressed && { opacity: 0.85 }]}
+              disabled={!verified || amtNum <= 0 || withdrawing} onPress={doWithdraw}
+              style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 14, borderRadius: 12, backgroundColor: C.blue, opacity: (!verified || amtNum <= 0 || withdrawing) ? 0.5 : 1 }, pressed && { opacity: 0.85 }]}
             >
               <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>{withdrawing ? 'Withdrawing…' : 'Withdraw'}</Text>
             </Pressable>
@@ -4050,6 +4079,7 @@ const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>>
 function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => void; initialSym?: string; initialChainId?: number }) {
   const C = useColors();
   const styles = useStyles();
+  const { hiddenNetworks } = useHiddenAssets();
   const walletAddr = useWalletAddr();
   const seed = useWalletSeed();
   const [copied, setCopied]   = useState(false);
@@ -4073,6 +4103,13 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
   const [asset, setAsset] = useState<{ sym: string; name: string } | null>(preseedAsset);
   /** Active chain — switches the displayed address + QR. */
   const [chain, setChain] = useState<ReceiveChain>(preseeded ? preseedChain : 'lithosphere');
+  const visibleReceiveNetworks = useMemo(
+    () => RECEIVE_NETWORKS.filter((n) => {
+      const key = networkVisKey(n.chainId ?? 0, n.sym);
+      return !hiddenNetworks.has(key);
+    }),
+    [hiddenNetworks],
+  );
   // litho1 is the SAME keypair's bech32 form regardless of which Lithosphere
   // network it's used on — Mainnet (9005) and Makalu (700777) both accept it,
   // so both get the litho1/EVM toggle here (not just Makalu).
@@ -4176,16 +4213,21 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
           <View style={{ width: 36 }}/>
         </View>
         <View style={{ paddingHorizontal: 6 }}>
-          {RECEIVE_NETWORKS.map((n, i) => (
+          {visibleReceiveNetworks.map((n, i) => (
             <Pressable key={n.id} onPress={() => { setChain(n.id); setShowAlt(false); setAsset(null); setStep('asset'); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14,
-                       borderBottomWidth: i < RECEIVE_NETWORKS.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
+                       borderBottomWidth: i < visibleReceiveNetworks.length - 1 ? 1 : 0, borderBottomColor: C.borderSubtle }}>
               <Avatar symbol={n.sym} color={ASSET_COLORS[n.sym.toUpperCase()] ?? C.blue} size={36}
                 icon={networkIconSource(n.id) ?? undefined}/>
               <Text style={{ flex: 1, color: C.textPrimary, fontWeight: '700', fontSize: 15 }}>{n.name}</Text>
               <ChevronRight size={18} color={C.textMuted}/>
             </Pressable>
           ))}
+          {visibleReceiveNetworks.length === 0 && (
+            <Text style={{ color: C.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 24 }}>
+              All networks are hidden. Enable one in Settings → Manage networks.
+            </Text>
+          )}
         </View>
       </ScrollView>
     );
@@ -8542,6 +8584,7 @@ function App() {
   const openSendTo = (address: string) => {
     setSendPrefillTo(address);
     setSeedSym('USDC');
+    setSeedChainId(700777);
     setScreen('send');
   };
   // Dark-first, matching the web/desktop/extension clients (they're all

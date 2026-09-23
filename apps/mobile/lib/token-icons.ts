@@ -154,6 +154,7 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   furgpt: require('../assets/images/dapps/furgpt.png'),
   imagen: require('../assets/images/dapps/imagen.png'),
   ignite: require('../assets/images/dapps/ignite.png'),
+  magma:  require('../assets/images/dapps/magma.png'),
   atua:   require('../assets/images/dapps/atua.png'),
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
   'litho-deals':     require('../assets/images/dapps/litho-deals.png'),

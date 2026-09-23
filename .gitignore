@@ -85,3 +85,6 @@ asc-api-key*.p8
 # there makes EAS attempt (and fail) a pnpm install on every build before falling
 # back, and risks resolving deps from a stale lockfile.
 apps/mobile/pnpm-lock.yaml
+
+# Local extension release packages (built artifacts)
+apps/extension/release/

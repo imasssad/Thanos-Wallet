@@ -86,6 +86,15 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     category: 'DEX',
     section: 'DeFi & Yield',
   },
+  {
+    id: 'magma',
+    name: 'Magma DEX',
+    description: 'Decentralized trading and liquidity on Lithosphere.',
+    url: 'https://magmadex.trade',
+    color: '#2f6bff',
+    category: 'DEX',
+    section: 'DeFi & Yield',
+  },
   // EGO Exchange removed per Esha 2026-06-10 — re-add when the team
   // confirms a real product URL + the integration is ready.
   // Mansa AI removed per client 2026-09-15 — re-add when confirmed ready.

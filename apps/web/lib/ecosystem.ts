@@ -25,11 +25,10 @@ export interface EcosystemApp extends BaseEcosystemApp {
 const WEB_ICONS: Record<string, string> = {
   agii:   '/images/dapps/agii.png',
   colle:  '/images/dapps/colle.png',
-  mansa:  '/images/dapps/mansa.png',
   furgpt: '/images/dapps/furgpt.png', // reuses the token logo as the app mark
   imagen: '/images/dapps/imagen.png', // sourced from imagen.network's official watermark
   ignite: '/images/dapps/ignite.png', // reuses the token logo
-  atua:   '/images/dapps/atua.png',   // sourced from atua.ai brand kit
+  magma:  '/images/dapps/magma.png',
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
   'litho-deals':     '/images/dapps/litho-deals.png', // the double-struck 𝕃 mark
   lithoscan:         '/images/dapps/lithoscan.png',   // client-supplied 2026-09-11

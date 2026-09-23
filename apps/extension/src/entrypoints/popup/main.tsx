@@ -191,9 +191,8 @@ function HiAddr({ value, head = 6, tail = 6, full = false }: {
    ATUA mark never appeared in the extension. */
 const DAPP_ICONS: Record<string, string> = {
   agii: '/images/dapps/agii.png', colle: '/images/dapps/colle.png',
-  mansa: '/images/dapps/mansa.png', furgpt: '/images/dapps/furgpt.png',
-  imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png',
-  atua: '/images/dapps/atua.png',
+  furgpt: '/images/dapps/furgpt.png',
+  imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png', magma: '/images/dapps/magma.png',
   lithoscan: '/images/dapps/lithoscan.png', // client-supplied 2026-09-11
 };
 
@@ -755,7 +754,7 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
    top up → success), backed by the /lax/* proxy (see ../../lib/lax.ts) —
    no more hand-off to lax.money except as a "Learn more" fallback link.
    QUANTT_AGENTS_URL points at the live Quantt product site. */
-const LAX_LEARN_MORE_URL = 'https://lax.money';
+const LAX_LEARN_MORE_URL = 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
@@ -951,7 +950,7 @@ function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () 
       <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
         Complete your card application securely through the LAX partner widget.
       </div>
-      <iframe title="LAX Card application" src="https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse" style={{ width: '100%', height: 1000, border: 0, borderRadius: 12, background: '#fff' }} allow="payment; camera; geolocation" />
+      <iframe title="LAX Card application" src={LAX_LEARN_MORE_URL} style={{ width: '100%', height: 560, border: 0, borderRadius: 12, background: '#fff' }} allow="payment; camera; geolocation" />
       <button className="btn-primary" style={{ marginTop: 6 }} onClick={onLearn}>Apply on lax.money ↗</button>
       <button className="btn-link" onClick={onClose}>Not now</button>
     </div>

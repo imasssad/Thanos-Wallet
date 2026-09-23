@@ -87,6 +87,8 @@ const LAX_API_BASE   = process.env.LAX_API_BASE   ?? '';
 /** Dashboard Project id for LAX Card — confirmed 612. Not sent on every
  *  upstream call (Bearer key scopes the merchant); exposed via /lax/status. */
 const LAX_PROJECT_ID = process.env.LAX_PROJECT_ID ?? '';
+const LAX_IFRAME_ID  = process.env.LAX_IFRAME_ID  ?? '';
+const LAX_PRODUCT_ID = process.env.LAX_PRODUCT_ID ?? '';
 const LAX_WEBHOOK_SECRET = process.env.LAX_WEBHOOK_SECRET ?? '';
 const LAX_PUBLIC_REGISTER = 'https://lax.money';
 const LAX_REQUEST_TIMEOUT_MS = 15_000;
@@ -106,11 +108,8 @@ function validBaseUrl(value: string): boolean {
 
 const configured = (): boolean => Boolean(LAX_API_KEY && validBaseUrl(LAX_API_BASE));
 const projectConfigured = (): boolean => /^\d+$/.test(LAX_PROJECT_ID) && Number(LAX_PROJECT_ID) > 0;
-/** Instant native issuance is OFF for Project 612 — no Virtual Cards
- *  dashboard / product_id. Physical issuance needs create-card-holder + KYC
- *  (not wired yet). Keep false so clients show the external / coming-soon
- *  path instead of calling POST /lax/card/issue. */
-const configuredForIssuance = (): boolean => false;
+const integerConfig = (value: string): number | null => /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : null;
+const configuredForIssuance = (): boolean => Boolean(configured() && integerConfig(LAX_IFRAME_ID) && integerConfig(LAX_PRODUCT_ID));
 
 interface CurrenciesCache { at: number; status: number; json: unknown }
 let currenciesCache: CurrenciesCache | null = null;
@@ -241,6 +240,10 @@ laxRouter.get('/status', async (_req, res: Response) => {
     configured:            configured(),
     configuredForIssuance: configuredForIssuance(),
     projectId:             projectConfigured() ? Number(LAX_PROJECT_ID) : null,
+    virtualCard: {
+      iframeId: Boolean(integerConfig(LAX_IFRAME_ID)),
+      productId: Boolean(integerConfig(LAX_PRODUCT_ID)),
+    },
     have: {
       apiKey:    Boolean(LAX_API_KEY),
       apiBase:   validBaseUrl(LAX_API_BASE),
@@ -277,6 +280,19 @@ function findProviderId(value: unknown): string | undefined {
   }
   for (const key of ['data', 'result', 'message']) {
     const found = findProviderId(o[key]);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findCardNumber(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const o = value as Record<string, unknown>;
+  for (const key of ['card_number', 'cardNumber', 'number']) {
+    if (typeof o[key] === 'string' && o[key].length >= 3) return o[key];
+  }
+  for (const key of ['data', 'result', 'message', 'card_info']) {
+    const found = findCardNumber(o[key]);
     if (found) return found;
   }
   return undefined;
@@ -431,11 +447,31 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
 laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
   const parse = IssueSchema.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
-  return res.status(501).json({
-    error: 'Native card issuance is not available for this LAX project',
-    detail: 'Project 612 has no Virtual Cards API / product_id. Use physical card-holder KYC (hosted redirect) or wait for the native physical onboarding flow.',
-    projectId: projectConfigured() ? Number(LAX_PROJECT_ID) : null,
-  });
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const iframeId = integerConfig(LAX_IFRAME_ID);
+  const productId = integerConfig(LAX_PRODUCT_ID);
+  if (!iframeId || !productId) {
+    return res.status(503).json({
+      error: 'Virtual card issuance is not configured',
+      detail: 'Set LAX_IFRAME_ID and LAX_PRODUCT_ID from the LAX/Zypto dashboard.',
+      projectId: projectConfigured() ? Number(LAX_PROJECT_ID) : null,
+    });
+  }
+  const userId = (req as unknown as AuthRequest).userId;
+  try {
+    const upstream = await laxFetch('/api/cards/issue-card-api', {
+      method: 'POST',
+      body: JSON.stringify({ iframe_id: iframeId, product_id: productId, ...parse.data }),
+    });
+    if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
+    const cardNumber = findCardNumber(upstream.json);
+    if (!cardNumber) return res.status(502).json({ error: 'LAX did not return a virtual card number' });
+    await query(
+      `insert into lax_cards (user_id, card_number, currency, issued_amount) values ($1, $2, $3, $4) on conflict (card_number) do update set user_id = excluded.user_id, currency = excluded.currency, issued_amount = excluded.issued_amount`,
+      [userId, cardNumber, parse.data.currency, parse.data.amount],
+    );
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
 /** GET /lax/card/:cardNumber/transactions — POST /api/cards/get-card-transactions.

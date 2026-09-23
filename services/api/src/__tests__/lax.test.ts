@@ -93,8 +93,9 @@ describe('GET /lax/status', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       configured: true,
-      configuredForIssuance: false, // Project 612 has no virtual instant-issue
+      configuredForIssuance: false,
       projectId: 612,
+      virtualCard: { iframeId: false, productId: false },
       have: { apiKey: true, apiBase: true, projectId: true },
     });
     // The actual secret values must never appear in the response body.
@@ -225,12 +226,12 @@ describe('POST /lax/card/issue', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns 501 — no virtual product_id / instant issue for this project', async () => {
+  it('returns 503 until the virtual-card dashboard ids are configured', async () => {
     const res = await request(app)
       .post('/lax/card/issue')
       .set('Authorization', auth())
       .send({ amount: 100, currency: 'USDC', email: 'user@example.com' });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(503);
     expect(res.body.projectId).toBe(612);
     expect(fetchMock).not.toHaveBeenCalled();
   });
