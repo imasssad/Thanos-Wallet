@@ -3524,7 +3524,9 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   // BTC/SOL/ATOM rows (chainId 0, all-networks display); picking one here
   // would mis-route a send, so they're excluded — those chains have their
   // own pills with fixed native assets.
-  const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0), [assets]);
+  // Networks/assets the user hid in Settings stay out of the FROM picker too.
+  const { isVisible, hiddenNetworks } = useHiddenAssets();
+  const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0 && isVisible(a)), [assets, isVisible]);
   const coin =
     (selectedKey ? evmAssets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
     // Prefer an exact (symbol + chain) match — several symbols repeat across
@@ -3690,7 +3692,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           private-key wallets, which are Makalu/EVM-only. */}
       {!pkOnly && (
       <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginBottom: 8 }}>
-        {(Object.keys(CHAIN_META) as SendChainOption[]).map(c => {
+        {(Object.keys(CHAIN_META) as SendChainOption[]).filter(c => c === 'evm' || c === chain || !hiddenNetworks.has(networkVisKey(0, CHAIN_META[c].sym))).map(c => {
           const selected = c === chain;
           return (
             <Pressable

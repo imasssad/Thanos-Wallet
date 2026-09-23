@@ -26,6 +26,7 @@ import {
   IgniteUnavailable,
 } from '../lib/ignite';
 import { TokenSelect } from './ui/TokenSelect';
+import { getHiddenNetworks, networkVisKey } from '../lib/asset-visibility';
 import { Addr } from './Addr';
 import { TokenIcon } from './TokenIcon';
 import { QrScannerModal } from './QrScannerModal';
@@ -129,6 +130,19 @@ type SendNet =
 
 // A function (not a frozen const) so a custom network added mid-session
 // shows up immediately — allEvmChains() re-reads the live custom-assets cache.
+/** Visibility key (Settings → Manage networks) for a send/receive network id. */
+function netVisKeyForId(id: string): string {
+  if (id === 'makalu' || id === 'lithosphere-makalu') return networkVisKey(700777, 'LITHO');
+  if (id === 'kamet'  || id === 'lithosphere-kamet')  return networkVisKey(900523, 'LITHO');
+  if (id === 'lithosphere-mainnet') return networkVisKey(9005, 'LITHO');
+  if (id === 'bitcoin') return networkVisKey(undefined, 'BTC');
+  if (id === 'solana')  return networkVisKey(undefined, 'SOL');
+  if (id === 'cosmos')  return networkVisKey(undefined, 'ATOM');
+  const m = /^evm[:-](\d+)$/.exec(id);
+  return m ? networkVisKey(Number(m[1]), '') : id;
+}
+const isNetShown = (id: string): boolean => !getHiddenNetworks().has(netVisKeyForId(id));
+
 function getSendNetworks(): SendNet[] {
   return [
     { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
@@ -1148,7 +1162,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
               }}
             >
               <RadixSelect.Viewport style={{ padding: 2 }}>
-                {getSendNetworks().map(n => {
+                {getSendNetworks().filter(n => n.id === network || isNetShown(n.id)).map(n => {
                   const evmId = n.id.startsWith('evm:') ? parseInt(n.id.slice(4), 10) : null;
                   const chain = evmId !== null ? allEvmChains().find(c => c.chainId === evmId) ?? null : null;
                   const sym   =
@@ -1645,8 +1659,9 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return networks;
-    return networks.filter(n => n.name.toLowerCase().includes(q) || n.symbol.toLowerCase().includes(q));
+    const shown = networks.filter(n => isNetShown(n.id));
+    if (!q) return shown;
+    return shown.filter(n => n.name.toLowerCase().includes(q) || n.symbol.toLowerCase().includes(q));
   }, [networks, search]);
 
   /* Generate the QR SVG whenever the active network changes. qrcode's
