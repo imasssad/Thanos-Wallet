@@ -3364,9 +3364,6 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
     ? withCurrencyAffix(convertFromUsd(amountNum * priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     : null;
 
-  const statusText  = tx.pending || tx.status === 'pending' ? 'Pending' : tx.status === 'failed' ? 'Failed' : 'Completed';
-  const statusColor = statusText === 'Pending' ? 'var(--orange, #f59e0b)' : statusText === 'Failed' ? 'var(--red, #f87171)' : 'var(--green, #10b981)';
-
   const [det, setDet] = useState<OnchainTxDetails | null>(null);
   const [detLoading, setDetLoading] = useState<boolean>(!!tx.txHash);
   useEffect(() => {
@@ -3378,6 +3375,13 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
       .catch(() => { if (!cancel) setDetLoading(false); });
     return () => { cancel = true; };
   }, [tx.txHash]);
+
+  // Local sends start optimistically as pending because the Makalu indexer
+  // does not report native LITHO transfers. Once the detail lookup has a
+  // receipt, the chain result is authoritative and must override that flag.
+  const effectiveStatus = det?.status ?? (tx.pending || tx.status === 'pending' ? 'pending' : tx.status);
+  const statusText  = effectiveStatus === 'pending' ? 'Pending' : effectiveStatus === 'failed' ? 'Failed' : 'Completed';
+  const statusColor = statusText === 'Pending' ? 'var(--orange, #f59e0b)' : statusText === 'Failed' ? 'var(--red, #f87171)' : 'var(--green, #10b981)';
 
   const feeText = det?.feeNative != null
     ? `${det.feeNative.toLocaleString('en-US', { maximumFractionDigits: 8 })} ${det.nativeSymbol}`
