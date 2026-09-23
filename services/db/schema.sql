@@ -421,6 +421,20 @@ CREATE TABLE IF NOT EXISTS lax_cards (
 CREATE INDEX IF NOT EXISTS lax_cards_user_id_idx ON lax_cards(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS lax_cards_card_number_idx ON lax_cards(card_number);
 
+CREATE TABLE IF NOT EXISTS lax_card_holders (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  holder_id       TEXT NOT NULL,
+  status          TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id),
+  UNIQUE (holder_id)
+);
+
+CREATE INDEX IF NOT EXISTS lax_card_holders_user_id_idx ON lax_card_holders(user_id);
+CREATE INDEX IF NOT EXISTS lax_card_holders_holder_id_idx ON lax_card_holders(holder_id);
+
 -- Raw log of every inbound LAX/Zypto webhook call (migration
 -- 003_lax_webhook_events). Event names/payload shapes are
 -- dashboard-configured and undocumented, and there's no confirmed

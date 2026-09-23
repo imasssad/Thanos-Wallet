@@ -1536,6 +1536,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [moreOpen, setMoreOpen]       = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [physicalOpen, setPhysicalOpen] = useState(false);
   const [freezeBusy, setFreezeBusy]   = useState(false);
 
   const toggleFreeze = () => {
@@ -1623,8 +1624,9 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
       ))}
 
       <LaxCardDetailsSheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} cardNumber={cardNo}/>
-      <LaxMoreSheet visible={moreOpen} onClose={() => setMoreOpen(false)} onHistory={() => setHistoryOpen(true)}/>
+      <LaxMoreSheet visible={moreOpen} onClose={() => setMoreOpen(false)} onHistory={() => setHistoryOpen(true)} onPhysical={() => { setMoreOpen(false); setPhysicalOpen(true); }}/>
       <LaxTxnHistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} txns={txns}/>
+      <LaxPhysicalCardSheet visible={physicalOpen} onClose={() => setPhysicalOpen(false)}/>
     </View>
   );
 }
@@ -1709,15 +1711,17 @@ function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolea
 /** "More" — a simple action sheet. Only full transaction history has real
  *  backend support today; the rest are clearly-labeled "Coming soon" so we
  *  never pretend to wire an endpoint that doesn't exist. */
-function LaxMoreSheet({ visible, onClose, onHistory }: { visible: boolean; onClose: () => void; onHistory: () => void }) {
+function LaxMoreSheet({ visible, onClose, onHistory, onPhysical }: { visible: boolean; onClose: () => void; onHistory: () => void; onPhysical: () => void }) {
   const C = useColors();
   if (!visible) return null;
-  const soon = (label: string) => Alert.alert(label, 'Coming soon.');
+  const providerOnly = (label: string) => Alert.alert(label, 'This action is not exposed by the current LAX Project 612 API. No card change was made.');
   const rows: { label: string; onPress: () => void }[] = [
     { label: 'Full Transaction History', onPress: () => { onClose(); onHistory(); } },
-    { label: 'Replace card', onPress: () => soon('Replace card') },
-    { label: 'Report lost', onPress: () => soon('Report lost') },
-    { label: 'Close card', onPress: () => soon('Close card') },
+    { label: 'Manage Card', onPress: () => providerOnly('Manage Card') },
+    { label: 'Physical Card', onPress: onPhysical },
+    { label: 'Replace card', onPress: () => providerOnly('Replace card') },
+    { label: 'Report lost', onPress: () => providerOnly('Report lost') },
+    { label: 'Close card', onPress: () => providerOnly('Close card') },
   ];
   return (
     <SheetShell title="More" onClose={onClose}>
@@ -1728,6 +1732,22 @@ function LaxMoreSheet({ visible, onClose, onHistory }: { visible: boolean; onClo
       ))}
     </SheetShell>
   );
+}
+
+function LaxPhysicalCardSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const C = useColors();
+  const [step, setStep] = useState<'form' | 'created' | 'kyc' | 'submitted'>('form');
+  const [holderId, setHolderId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [form, setForm] = useState<Record<string, string>>({ name: '', firstName: '', lastName: '', email: '', address_line1: '', city: '', state: '', country: 'GB', zip: '', phone: '', cellPhoneNumber: '', birth_date: '' });
+  if (!visible) return null;
+  const update = (key: string, value: string) => setForm(v => ({ ...v, [key]: value }));
+  const create = async () => { setBusy(true); setErr(null); try { const lax = require('./lib/lax') as typeof import('./lib/lax'); const raw = await lax.laxCreatePhysicalHolder({ ...form, callingCode: '044', countryCallingCode: '44', genderId: 0, NFT_holder: 0, Card_color: 'Matte black (stainless)' } as any); const o = raw as Record<string, unknown>; const id = String(o.holderId ?? o.card_holder_id ?? ''); if (!id) throw new Error('LAX did not return a card-holder id.'); setHolderId(id); setStep('created'); } catch (e: any) { setErr(e?.message || 'Could not create the card holder.'); } finally { setBusy(false); } };
+  const startKyc = async () => { setBusy(true); setErr(null); try { const lax = require('./lib/lax') as typeof import('./lib/lax'); await lax.laxStartPhysicalKyc(holderId); setStep('kyc'); } catch (e: any) { setErr(e?.message || 'Could not start KYC.'); } finally { setBusy(false); } };
+  const submit = async () => { setBusy(true); setErr(null); try { const lax = require('./lib/lax') as typeof import('./lib/lax'); await lax.laxSubmitPhysicalHolder(holderId); setStep('submitted'); } catch (e: any) { setErr(e?.message || 'Could not submit to issuer.'); } finally { setBusy(false); } };
+  const fields = [['name','Full name'],['firstName','First name'],['lastName','Last name'],['email','Email'],['address_line1','Address'],['city','City'],['state','State'],['country','Country'],['zip','Postal code'],['phone','Phone'],['cellPhoneNumber','Mobile'],['birth_date','Birth date (YYYY-MM-DD)']];
+  return <SheetShell title="Physical Card" onClose={onClose}><ScrollView style={{ maxHeight: 560 }} contentContainerStyle={{ gap: 10 }}>{step === 'form' ? <><Text style={{ color: C.textSecondary, fontSize: 12, lineHeight: 17 }}>Details are sent to LAX/Zypto for physical-card KYC and issuance.</Text>{fields.map(([key, label]) => <TextInput key={key} value={form[key]} onChangeText={v => update(key, v)} placeholder={label} placeholderTextColor={C.textMuted} style={{ backgroundColor: C.bgElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: C.textPrimary }}/>) }{err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}<Pressable onPress={create} disabled={busy} style={{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Creating…' : 'Create Card Holder'}</Text></Pressable></> : <><Text style={{ color: C.textSecondary, fontSize: 12 }}>Holder ID: <Text style={{ color: C.textPrimary }}>{holderId}</Text></Text>{err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}{step === 'created' && <Pressable onPress={startKyc} disabled={busy} style={{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Starting…' : 'Start KYC'}</Text></Pressable>}{step === 'kyc' && <Pressable onPress={submit} disabled={busy} style={{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Submitting…' : 'Submit To Issuer'}</Text></Pressable>}{step === 'submitted' && <Text style={{ color: '#22c55e', fontSize: 13 }}>Submitted to LAX issuer.</Text>}</>}</ScrollView></SheetShell>;
 }
 
 /** Full scrollable transaction history — same row rendering as the
@@ -1775,7 +1795,7 @@ function LaxTopUp({ C, styles, cardNo, onDone }: any) {
     if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
     setBusy(true);
     try {
-      await (require('./lib/lax') as typeof import('./lib/lax')).laxTopUp({ cardNumber: cardNo, amount: amt });
+      await (require('./lib/lax') as typeof import('./lib/lax')).laxTopUp({ cardNumber: cardNo, amount: amt, currency });
       onDone(amt, currency);
     } catch (e: any) {
       setErr(e?.message || 'Top up failed — try again.');

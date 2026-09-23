@@ -8,8 +8,8 @@ import {
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
   laxRegisterThanosAccount, hasThanosAccount, cardNumberOf,
-  laxIssueCard, laxCardDetails, laxSetCardStatus, findKycUrl,
-  type LaxStatus, type LaxCard as LaxCardT, type LaxTxn, type LaxCardDetails,
+  laxIssueCard, laxCardDetails, laxSetCardStatus, laxGetPin, laxSetPin, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, findKycUrl,
+  type LaxStatus, type LaxCard as LaxCardT, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from '../lib/lax';
 import { apiClient } from '../lib/auth-client';
 
@@ -690,6 +690,10 @@ function ConfirmDialog({
 
 function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
   const [showHistory, setShowHistory] = useState(false);
+  const [showManage, setShowManage] = useState(false);
+  const [showPhysical, setShowPhysical] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [txns, setTxns]               = useState<LaxTxn[] | null>(null);
   const [loading, setLoading]         = useState(false);
   const [err, setErr]                 = useState<string | null>(null);
@@ -706,23 +710,23 @@ function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void })
     } finally { setLoading(false); }
   };
 
-  const COMING_SOON = ['Replace card', 'Report lost', 'Close card'];
+  const providerNotice = (label: string) => setNotice(`${label} is not exposed by the LAX Project 612 API yet. Your card has not been changed.`);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box modal-popup" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          {showHistory ? (
-            <button className="modal-back-btn" onClick={() => setShowHistory(false)} aria-label="Back" style={{ width: 32, height: 32 }}>
+          {showHistory || showManage || showPhysical || showPin ? (
+            <button className="modal-back-btn" onClick={() => { setShowHistory(false); setShowManage(false); setShowPhysical(false); setShowPin(false); }} aria-label="Back" style={{ width: 32, height: 32 }}>
               <ChevronLeft size={20} />
             </button>
           ) : <span />}
-          <span className="modal-title">{showHistory ? 'All Transactions' : 'More'}</span>
+          <span className="modal-title">{showHistory ? 'All Transactions' : showManage ? 'Manage Card' : showPhysical ? 'Physical Card' : showPin ? 'Change PIN' : 'More'}</span>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-scroll">
           <div className="modal-body" style={{ gap: 4 }}>
-            {!showHistory ? (
+            {!showHistory && !showManage && !showPhysical && !showPin ? (
               <>
                 <button
                   onClick={openHistory}
@@ -735,22 +739,18 @@ function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void })
                   Full Transaction History
                   <ChevronLeft size={16} style={{ transform: 'rotate(180deg)', color: 'var(--text-muted)' }} />
                 </button>
-                {COMING_SOON.map(label => (
-                  <div
-                    key={label}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
-                      padding: '14px 2px', borderBottom: '1px solid var(--border-subtle)',
-                      color: 'var(--text-muted)', fontSize: 14, fontWeight: 600,
-                    }}
-                  >
-                    {label}
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '3px 8px', borderRadius: 999 }}>
-                      Coming soon
-                    </span>
-                  </div>
-                ))}
+                <MoreRow label="Manage Card" onClick={() => setShowManage(true)} />
+                <MoreRow label="Physical Card" onClick={() => setShowPhysical(true)} />
+                <MoreRow label="Replace Card" onClick={() => providerNotice('Replace card')} />
+                <MoreRow label="Report Lost or Stolen" onClick={() => providerNotice('Report lost or stolen')} destructive />
+                <MoreRow label="Close Card" onClick={() => providerNotice('Close card')} destructive />
               </>
+            ) : showManage ? (
+              <ManageCardPanel cardNo={cardNo} onNotice={providerNotice} onPin={() => setShowPin(true)} />
+            ) : showPhysical ? (
+              <PhysicalCardPanel onNotice={providerNotice} />
+            ) : showPin ? (
+              <PinPanel cardNo={cardNo} />
             ) : loading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
                 <div style={{
@@ -785,8 +785,111 @@ function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void })
           </div>
         </div>
       </div>
+      {notice && <ConfirmDialog title="LAX provider limitation" message={notice} confirmLabel="OK" onConfirm={() => setNotice(null)} onCancel={() => setNotice(null)} />}
     </div>
   );
+}
+
+function MoreRow({ label, onClick, destructive = false }: { label: string; onClick: () => void; destructive?: boolean }) {
+  return <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border-subtle)', padding: '14px 2px', cursor: 'pointer', color: destructive ? '#ef4444' : 'var(--text-primary)', fontSize: 14, fontWeight: 600 }}><span>{label}</span><ChevronLeft size={16} style={{ transform: 'rotate(180deg)', color: 'var(--text-muted)' }} /></button>;
+}
+
+function ManageCardPanel({ cardNo, onNotice, onPin }: { cardNo: string; onNotice: (label: string) => void; onPin: () => void }) {
+  const controls = ['Online payments', 'ATM withdrawals', 'International transactions', 'Contactless payments'];
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5, padding: '4px 0 10px' }}>Card controls are shown here. LAX Project 612 currently exposes freeze/unfreeze only; unsupported controls stay disabled until the provider enables them.</div>
+    {controls.map(label => <label key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 2px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-primary)', fontSize: 14 }}><span>{label}</span><input type="checkbox" disabled aria-label={label} /></label>)}
+    <button className="btn-outline" onClick={onPin} style={{ marginTop: 12, width: '100%' }}>Change PIN</button>
+    <button className="btn-outline" onClick={() => onNotice('Spending limits')} style={{ width: '100%' }}>Spending Limits</button>
+    <span style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 6 }}>Card: •••• {cardNo.slice(-4)}</span>
+  </div>;
+}
+
+function PinPanel({ cardNo }: { cardNo: string }) {
+  const [pin, setPin] = useState('');
+  const [current, setCurrent] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const save = async () => {
+    if (!/^\d{4,6}$/.test(pin)) { setErr('PIN must contain 4 to 6 digits.'); return; }
+    setBusy(true); setErr(null);
+    try { await laxSetPin(cardNo, pin); setPin(''); setCurrent('PIN updated successfully.'); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not update PIN.'); }
+    finally { setBusy(false); }
+  };
+  const reveal = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const raw = await laxGetPin(cardNo);
+      const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      setCurrent(String(o.pin ?? o.PIN ?? o.message ?? 'PIN unavailable'));
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not load PIN.'); }
+    finally { setBusy(false); }
+  };
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>Your PIN is handled by LAX and is never stored by Thanos.</p>
+    <input className="field-input" type="password" inputMode="numeric" maxLength={6} placeholder="New PIN" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} />
+    {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
+    {current && <span style={{ color: '#22c55e', fontSize: 12 }}>{current}</span>}
+    <button className="btn-primary" onClick={save} disabled={busy} style={{ width: '100%' }}>{busy ? 'Working…' : 'Save PIN'}</button>
+    <button className="btn-outline" onClick={reveal} disabled={busy} style={{ width: '100%' }}>View Current PIN</button>
+  </div>;
+}
+
+function PhysicalCardPanel({ onNotice }: { onNotice: (label: string) => void }) {
+  const [holderId, setHolderId] = useState<string | null>(null);
+  const [step, setStep] = useState<'form' | 'created' | 'kyc' | 'submitted'>('form');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [form, setForm] = useState<LaxHolderInput>({
+    name: '', firstName: '', lastName: '', address_line1: '', city: '', state: '', country: 'GB', zip: '',
+    phone: '', email: '', cellPhoneNumber: '', callingCode: '044', countryCallingCode: '44', birth_date: '', genderId: 0,
+    NFT_holder: 0, Card_color: 'Matte black (stainless)',
+  });
+  const set = (key: keyof LaxHolderInput, value: string) => setForm(current => ({ ...current, [key]: key === 'genderId' || key === 'NFT_holder' ? Number(value) : value }));
+  const create = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const raw = await laxCreatePhysicalHolder(form);
+      const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      const id = String(o.holderId ?? o.card_holder_id ?? '');
+      if (!id) throw new Error('LAX did not return a card-holder id.');
+      setHolderId(id); setStep('created');
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not create the card holder.'); }
+    finally { setBusy(false); }
+  };
+  const startKyc = async () => {
+    if (!holderId) return;
+    setBusy(true); setErr(null);
+    try { await laxStartPhysicalKyc(holderId); setStep('kyc'); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not start KYC.'); }
+    finally { setBusy(false); }
+  };
+  const submit = async () => {
+    if (!holderId) return;
+    setBusy(true); setErr(null);
+    try { await laxSubmitPhysicalHolder(holderId); setStep('submitted'); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not submit to the card issuer.'); }
+    finally { setBusy(false); }
+  };
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <LaxCardArt active />
+    <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800 }}>Get your LAX physical card</div>
+    {step === 'form' ? <>
+      <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>Create your LAX card-holder profile. Your details are sent to LAX/Zypto for physical-card KYC and issuance.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {([['name', 'Full name'], ['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['address_line1', 'Address'], ['city', 'City'], ['state', 'State (2 letters)'], ['country', 'Country'], ['zip', 'Postal code'], ['phone', 'Phone'], ['cellPhoneNumber', 'Mobile'], ['birth_date', 'Birth date (YYYY-MM-DD)']] as const).map(([key, label]) => <input key={key} className="field-input" placeholder={label} value={String(form[key] ?? '')} onChange={e => set(key, e.target.value)} style={{ gridColumn: key === 'address_line1' ? '1 / -1' : undefined }} />)}
+      </div>
+      {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
+      <button className="btn-primary" onClick={create} disabled={busy} style={{ width: '100%' }}>{busy ? 'Creating…' : 'Create Card Holder'}</button>
+    </> : <>
+      <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 14, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>Holder ID: <strong style={{ color: 'var(--text-primary)' }}>{holderId}</strong><br />Status: <strong style={{ color: step === 'submitted' ? '#22c55e' : 'var(--text-primary)' }}>{step}</strong></div>
+      {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
+      {step === 'created' && <button className="btn-primary" onClick={startKyc} disabled={busy} style={{ width: '100%' }}>{busy ? 'Starting…' : 'Start KYC'}</button>}
+      {step === 'kyc' && <button className="btn-primary" onClick={submit} disabled={busy} style={{ width: '100%' }}>{busy ? 'Submitting…' : 'Submit To Issuer'}</button>}
+      {step === 'submitted' && <span style={{ color: '#22c55e', fontSize: 13 }}>Your card-holder application was submitted to LAX.</span>}
+    </>}
+  </div>;
 }
 
 const LAX_TOPUP_QUICK = [50, 100, 200, 500];
@@ -821,7 +924,7 @@ function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cu
     if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
     setBusy(true);
     try {
-      await laxTopUp({ cardNumber: cardNo, amount: amt });
+      await laxTopUp({ cardNumber: cardNo, amount: amt, currency });
       onDone(amt, currency);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Top up failed — try again.');

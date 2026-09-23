@@ -255,4 +255,26 @@ describe('physical card upstream paths', () => {
     expect(res.status).toBe(200);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/physical-cards/load');
   });
+
+  it('creates and records a physical card holder', async () => {
+    dbQueryOne.mockResolvedValueOnce(null);
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: 'holder-123' }));
+    dbQuery.mockResolvedValueOnce([]);
+    const res = await request(app).post('/lax/physical/holder').set('Authorization', auth()).send({
+      name: 'Test Holder', NFT_holder: 0, Card_color: 'Matte black (stainless)', firstName: 'Test', lastName: 'Holder',
+      address_line1: '1 Test Street', city: 'London', state: 'LD', country: 'GB', zip: 'SW1A 1AA',
+      phone: '+44123456789', email: 'test@example.com', cellPhoneNumber: '+44123456789', callingCode: '044',
+      countryCallingCode: '44', birth_date: '1990-01-01', genderId: 0,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.holderId).toBe('holder-123');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/physical-cards/create-card-holder');
+  });
+
+  it('ownership-gates PIN reads', async () => {
+    dbQueryOne.mockResolvedValueOnce(null);
+    const res = await request(app).get('/lax/card/not-mine/pin').set('Authorization', auth());
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

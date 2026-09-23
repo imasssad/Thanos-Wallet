@@ -151,6 +151,7 @@ function filterEnabledCurrencies(json: unknown): unknown {
 interface FetchOpts { method?: string; body?: string; headers?: Record<string, string> }
 
 interface LaxCardRow { id: string; user_id: string; card_number: string }
+interface LaxHolderRow { id?: string; user_id?: string; holder_id: string; status?: string | null; created_at?: string; updated_at?: string }
 
 /** True iff `cardNumber` is recorded as this user's in lax_cards. Every
  *  card-scoped route below gates on this — LAX's own API has no per-end-user
@@ -184,6 +185,7 @@ const laxAmount = z.number().positive().finite().min(20, 'Minimum amount is 20')
 const TopupSchema = z.object({
   cardNumber: z.string().trim().regex(/^[A-Za-z0-9_-]{3,64}$/),
   amount:     laxAmount,
+  currency:   z.string().trim().regex(/^[A-Za-z0-9_.-]{1,32}$/).transform(v => v.toUpperCase()).optional(),
 });
 const IssueSchema = z.object({
   amount:   laxAmount,
@@ -192,6 +194,20 @@ const IssueSchema = z.object({
 });
 const CardNumberSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{3,64}$/);
 const CardStatusSchema = z.object({ status: z.enum(['active', 'frozen']) });
+const HolderSchema = z.object({
+  name: z.string().trim().min(3).max(22),
+  NFT_holder: z.number().int().min(0).max(1).default(0),
+  Card_color: z.enum(['Mirror black', 'Brushed black', 'Brushed red', 'Brushed green', 'Matte black (stainless)', 'Matte black (gold)', 'Matte white', '24karat mirror gold']).default('Matte black (stainless)'),
+  firstName: z.string().trim().min(1).max(22), lastName: z.string().trim().min(1).max(22),
+  address_line1: z.string().trim().min(3).max(200), city: z.string().trim().min(3).max(100),
+  state: z.string().trim().min(2).max(2), country: z.string().trim().min(2).max(3),
+  zip: z.string().trim().min(3).max(20), phone: z.string().trim().regex(/^\+?[0-9]{9,15}$/),
+  email: z.string().trim().email().max(254), cellPhoneNumber: z.string().trim().regex(/^\+?[0-9]{9,15}$/),
+  callingCode: z.string().trim().regex(/^[0-9]{3}$/), countryCallingCode: z.string().trim().min(2).max(2),
+  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), genderId: z.number().int().min(0).max(1),
+});
+const HolderIdSchema = z.object({ holderId: z.string().trim().min(1).max(128) });
+const PinSchema = z.object({ PIN: z.string().regex(/^\d{4,6}$/) });
 
 /** Proxy helper — attaches the secret key to a LAX/FCFpay API call.
  *  Authorization: Bearer <key> — confirmed from the real OpenAPI spec. */
@@ -250,6 +266,74 @@ laxRouter.post('/account', async (req, res: Response) => {
   if (referralCode) url.searchParams.set('ref', referralCode);
   if (address)      url.searchParams.set('address', address);
   return res.json({ mode: 'external', registrationUrl: url.toString() });
+});
+
+function findProviderId(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (!value || typeof value !== 'object') return undefined;
+  const o = value as Record<string, unknown>;
+  for (const key of ['cardHolderID', 'card_holder_id', 'holder_id', 'holderId', 'id']) {
+    if (typeof o[key] === 'string' || typeof o[key] === 'number') return String(o[key]);
+  }
+  for (const key of ['data', 'result', 'message']) {
+    const found = findProviderId(o[key]);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+async function ownedHolder(userId: string, holderId: string): Promise<boolean> {
+  return Boolean(await queryOne<LaxHolderRow>(
+    `select id from lax_card_holders where user_id = $1 and holder_id = $2`, [userId, holderId],
+  ));
+}
+
+/** Create the provider card-holder identity used by the physical-card KYC flow. */
+laxRouter.post('/physical/holder', laxOpLimiter, async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const parsed = HolderSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Validation failed', issues: parsed.error.issues });
+  const userId = (req as unknown as AuthRequest).userId;
+  const existing = await queryOne<LaxHolderRow>(`select id, user_id, holder_id, status from lax_card_holders where user_id = $1`, [userId]);
+  if (existing) return res.status(200).json({ holderId: existing.holder_id, status: existing.status ?? 'created', existing: true });
+  try {
+    const upstream = await laxFetch('/api/physical-cards/create-card-holder', { method: 'POST', body: JSON.stringify(parsed.data) });
+    if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
+    const holderId = findProviderId(upstream.json);
+    if (!holderId) return res.status(502).json({ error: 'LAX did not return a card-holder id' });
+    await query(`insert into lax_card_holders (user_id, holder_id, status) values ($1, $2, $3) on conflict (user_id) do update set holder_id = excluded.holder_id, status = excluded.status`, [userId, holderId, 'created']);
+    return res.status(201).json({ holderId, status: 'created' });
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
+});
+
+laxRouter.get('/physical/holder', async (req, res: Response) => {
+  const userId = (req as unknown as AuthRequest).userId;
+  const holder = await queryOne<LaxHolderRow>(`select holder_id, status, created_at, updated_at from lax_card_holders where user_id = $1`, [userId]);
+  return res.json(holder ? { holderId: holder.holder_id, status: holder.status, createdAt: holder.created_at, updatedAt: holder.updated_at } : null);
+});
+
+/** Forward a holder's hosted KYC start and issuer submission, ownership-scoped. */
+laxRouter.post('/physical/kyc/start', laxOpLimiter, async (req, res: Response) => {
+  const parsed = HolderIdSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'holderId is required' });
+  const userId = (req as unknown as AuthRequest).userId;
+  if (!(await ownedHolder(userId, parsed.data.holderId))) return res.status(404).json({ error: 'Card holder not found' });
+  try {
+    const upstream = await laxFetch('/api/physical-cards/send-kyc', { method: 'POST', body: JSON.stringify({ card_holder_id: parsed.data.holderId }) });
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
+});
+
+laxRouter.post('/physical/submit', laxOpLimiter, async (req, res: Response) => {
+  const parsed = HolderIdSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'holderId is required' });
+  const userId = (req as unknown as AuthRequest).userId;
+  if (!(await ownedHolder(userId, parsed.data.holderId))) return res.status(404).json({ error: 'Card holder not found' });
+  try {
+    const upstream = await laxFetch('/api/physical-cards/submit_to_issuer', { method: 'POST', body: JSON.stringify({ card_holder_id: parsed.data.holderId }) });
+    if (upstream.status >= 200 && upstream.status < 300) await query(`update lax_card_holders set status = $1 where user_id = $2 and holder_id = $3`, ['submitted', userId, parsed.data.holderId]);
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
 /** GET /lax/currencies — dash.zypto.com/docs/cards → available_currencies.
@@ -324,7 +408,7 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const parse = TopupSchema.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
-  const { cardNumber, amount } = parse.data;
+    const { cardNumber, amount, currency } = parse.data;
   const userId = (req as unknown as AuthRequest).userId;
   const owned = await queryOne<LaxCardRow>(
     `select id, user_id, card_number from lax_cards where user_id = $1 and card_number = $2`,
@@ -333,7 +417,7 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
   if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     const { status, json } = await laxFetch('/api/physical-cards/load', {
-      method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount }),
+      method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount, ...(currency ? { currency } : {}) }),
     });
     return res.status(status).json(json);
   } catch {
@@ -415,6 +499,42 @@ laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Respon
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
+});
+
+/** Physical-card PIN operations are provider-backed and never persisted by Thanos. */
+laxRouter.get('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const cardNumber = String(req.params.cardNumber);
+  const userId = (req as unknown as AuthRequest).userId;
+  if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  try {
+    const upstream = await laxFetch('/api/physical-cards/get-pin', { method: 'POST', body: JSON.stringify({ card_number: cardNumber }) });
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
+});
+
+laxRouter.post('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const cardNumber = String(req.params.cardNumber);
+  const userId = (req as unknown as AuthRequest).userId;
+  const parsed = PinSchema.safeParse(req.body ?? {});
+  if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  if (!parsed.success) return res.status(400).json({ error: 'PIN must contain 4 to 6 digits' });
+  try {
+    const upstream = await laxFetch('/api/physical-cards/set-pin', { method: 'POST', body: JSON.stringify({ card_number: cardNumber, PIN: parsed.data.PIN }) });
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
+});
+
+laxRouter.post('/card/:cardNumber/activate', laxOpLimiter, async (req, res: Response) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  const cardNumber = String(req.params.cardNumber);
+  const userId = (req as unknown as AuthRequest).userId;
+  if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  try {
+    const upstream = await laxFetch('/api/physical-cards/activate-card', { method: 'POST', body: JSON.stringify({ card_number: cardNumber }) });
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
 // Kept for back-compat with any existing client calls to the old /account,

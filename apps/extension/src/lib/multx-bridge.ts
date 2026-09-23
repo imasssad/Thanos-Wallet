@@ -28,7 +28,7 @@ import {
   Contract, JsonRpcProvider, Wallet, HDNodeWallet, Mnemonic, parseUnits, formatUnits,
 } from 'ethers';
 import {
-  MAKALU_BRIDGE_CONFIG, MAKALU_CHAIN_ID, KAMET_CHAIN_ID, MAKALU_RPC,
+  MAKALU_BRIDGE_CONFIG, MAKALU_CHAIN_ID, KAMET_CHAIN_ID, KAMET_BRIDGE_ADDRESS, MAKALU_RPC,
   type BridgeToken, type BridgeStep,
 } from './bridge-meta';
 
@@ -62,6 +62,30 @@ function makeMakaluSigner(src: BridgeWalletSource): Wallet {
 
 export class BridgeError extends Error {
   constructor(message: string) { super(message); this.name = 'BridgeError'; }
+}
+
+/** Fail closed if the public bridge directory and the compiled route disagree.
+ * A lock transaction is irreversible; silently accepting a stale deployment
+ * address can strand funds on a contract the current relayer does not watch. */
+async function verifyLiveRoute(): Promise<void> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8_000);
+  try {
+    const res = await fetch(`${BRIDGE_API}/chains`, { signal: ctrl.signal });
+    if (!res.ok) throw new BridgeError(`MultX directory unavailable (${res.status})`);
+    const body = await res.json() as { chains?: Array<{ chainId?: number; bridge?: string }> };
+    const source = body.chains?.find((c) => Number(c.chainId) === MAKALU_CHAIN_ID);
+    const destination = body.chains?.find((c) => Number(c.chainId) === KAMET_CHAIN_ID);
+    if (source?.bridge?.toLowerCase() !== BRIDGE_ADDRESS.toLowerCase()
+      || destination?.bridge?.toLowerCase() !== KAMET_BRIDGE_ADDRESS.toLowerCase()) {
+      throw new BridgeError('MultX deployment changed; bridge route is blocked until the wallet is updated.');
+    }
+  } catch (e) {
+    if (e instanceof BridgeError) throw e;
+    throw new BridgeError('Could not verify the live MultX deployment. No funds were moved.');
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface BridgeResult { txHash: string; status: string }
@@ -134,6 +158,11 @@ export async function bridgeMakaluToKamet(opts: {
 }): Promise<BridgeResult> {
   const { source, token, amount, onStep } = opts;
   const signer = makeMakaluSigner(source);
+  await verifyLiveRoute();
+  const liveNetwork = await signer.provider!.getNetwork();
+  if (Number(liveNetwork.chainId) !== MAKALU_CHAIN_ID) {
+    throw new BridgeError('Makalu RPC returned the wrong chain; transaction blocked.');
+  }
   const owner  = await signer.getAddress();
   const amountBase = parseUnits(amount, token.decimals);
 
@@ -143,7 +172,7 @@ export async function bridgeMakaluToKamet(opts: {
   // ── Pre-flight: balance + bridge-supported check (mirrors SDK lockTokens) ──
   const [balance, supported] = await Promise.all([
     tokenC.balanceOf(owner) as Promise<bigint>,
-    (bridgeC.supportedTokens(token.address) as Promise<boolean>).catch(() => true),
+    bridgeC.supportedTokens(token.address) as Promise<boolean>,
   ]);
   if (!supported) throw new BridgeError(`${token.symbol} is not on the bridge supported-token list`);
   if (balance < amountBase) {

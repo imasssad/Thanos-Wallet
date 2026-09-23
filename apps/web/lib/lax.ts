@@ -173,7 +173,7 @@ export async function laxCardDetails(cardNumber: string): Promise<LaxCardDetails
 
 /** POST /lax/card/topup — { cardNumber, amount }. Maps to
  *  load-virtual-card. NO SANDBOX: a real fund movement from day one. */
-export async function laxTopUp(input: { cardNumber: string; amount: number }): Promise<unknown> {
+export async function laxTopUp(input: { cardNumber: string; amount: number; currency?: string }): Promise<unknown> {
   return apiClient.apiRequest<unknown>('POST', '/lax/card/topup', input);
 }
 
@@ -189,6 +189,15 @@ export async function laxIssueCard(input: { amount: number; currency: string; em
 export async function laxSetCardStatus(cardNumber: string, status: 'active' | 'frozen' | string): Promise<unknown> {
   return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/status`, { status });
 }
+
+export interface LaxHolderInput { name: string; NFT_holder?: number; Card_color?: string; firstName: string; lastName: string; address_line1: string; city: string; state: string; country: string; zip: string; phone: string; email: string; cellPhoneNumber: string; callingCode: string; countryCallingCode: string; birth_date: string; genderId: number }
+export async function laxCreatePhysicalHolder(input: LaxHolderInput): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/holder', input); }
+export async function laxGetPhysicalHolder(): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', '/lax/physical/holder'); }
+export async function laxStartPhysicalKyc(holderId: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/kyc/start', { holderId }); }
+export async function laxSubmitPhysicalHolder(holderId: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/submit', { holderId }); }
+export async function laxGetPin(cardNumber: string): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/pin`); }
+export async function laxSetPin(cardNumber: string, PIN: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/pin`, { PIN }); }
+export async function laxActivateCard(cardNumber: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/activate`); }
 
 /* ── loose parse helpers ────────────────────────────────────────────── */
 
