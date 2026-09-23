@@ -3563,14 +3563,15 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive, onSwap }: 
   // Lithosphere Makalu (chainId undefined in DisplayCoin) and Lithosphere
   // Mainnet (9005), so a symbol-only match always resolved to whichever came
   // first, regardless of which row was actually tapped.
-  const coin =
-    coins.find(c => c.sym.toLowerCase() === sym.toLowerCase() && c.chainId === chainId)
-    ?? coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
+  const coin = chainId != null
+    ? coins.find(c => c.sym.toLowerCase() === sym.toLowerCase() && c.chainId === chainId)
+    : coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   // Same fix as mobile/desktop: external-EVM coins must show their REAL chain
   // and must not offer the Makalu-only swap (Makalu rows carry no chainId).
   const isMakalu = !!coin && !coin.native && !!coin.tokenAddress && (coin.chainId == null || coin.chainId === 700777);
   const network = coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' : coin?.sym === 'ATOM' ? 'Cosmos Hub'
+    : coin?.chainId === 9005 ? 'Lithosphere Mainnet'
     : coin?.chainId === 900523 ? 'Lithosphere Kamet'
     : coin?.chainId != null && coin.chainId !== 700777 && EXT_EVM_CHAIN_NAME[coin.chainId]
       ? EXT_EVM_CHAIN_NAME[coin.chainId]

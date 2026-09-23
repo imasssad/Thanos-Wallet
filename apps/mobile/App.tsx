@@ -529,7 +529,9 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             // Binance-style network label: show WHICH Lithosphere chain the
             // asset lives on next to its name (client: distinguish Makalu vs
             // Kamet holdings at a glance).
-            const netLabel = a.chainId === 900523 ? ' · Kamet' : a.chainId === 700777 ? ' · Makalu' : '';
+            const netLabel = a.chainId === 9005 ? ' · Mainnet'
+              : a.chainId === 900523 ? ' · Kamet'
+              : a.chainId === 700777 ? ' · Makalu' : '';
             return {
               sym: a.symbol, name: `${a.name}${netLabel}`, chainId: a.chainId,
               balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
@@ -6735,9 +6737,9 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
   // regardless of which row the user actually tapped. Falls back to a
   // symbol-only match for callers that don't know the chain (e.g. Market,
   // which browses prices rather than holdings).
-  const coin =
-    (chainId != null ? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase() && a.chainId === chainId) : undefined)
-    ?? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
+  const coin = chainId != null
+    ? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase() && a.chainId === chainId)
+    : assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   // Gates the Swap action — the MultX/Ignite swap flow is Makalu-only, so a
   // token must actually LIVE on Makalu (not merely be any contract token:
@@ -6751,6 +6753,7 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
       coin?.sym === 'BTC'  ? 'Bitcoin'
     : coin?.sym === 'SOL'  ? 'Solana'
     : coin?.sym === 'ATOM' ? 'Cosmos Hub'
+    : coin?.chainId === 9005 ? 'Lithosphere Mainnet'
     : coin?.chainId === 900523 ? 'Lithosphere Kamet'
     : (coin?.chainId != null && RECEIVE_NETWORKS.find(n => n.chainId === coin.chainId)?.name)
       || (coin?.chainId && coin.chainId !== 700777 ? `Chain ${coin.chainId}` : 'Lithosphere Makalu');
