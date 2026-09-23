@@ -1,0 +1,48 @@
+name: Extension release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package browser extensions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: corepack enable
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: Build Chrome and Firefox packages
+        run: |
+          pnpm --filter @thanos/extension zip
+          pnpm --filter @thanos/extension zip:firefox
+
+      - name: Build Safari source package
+        run: pnpm --filter @thanos/extension build:safari
+
+      - name: Add SHA-256 checksums
+        shell: bash
+        run: |
+          cd apps/extension/.output
+          for file in *.zip; do
+            [ -e "$file" ] || continue
+            sha256sum "$file" > "$file.sha256"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thanos-extension-release
+          path: |
+            apps/extension/.output/*.zip
+            apps/extension/.output/*.sha256
+            apps/extension/.output/safari-mv2/
+          retention-days: 30
