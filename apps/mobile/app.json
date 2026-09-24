@@ -40,7 +40,7 @@
     "android": {
       "package": "ai.thanos.wallet",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 35,
+      "versionCode": 36,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
         "backgroundColor": "#080809"

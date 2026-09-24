@@ -2197,6 +2197,12 @@ const QUANTT_STRATEGY_LABELS: Record<QuanttStrategy, string> = {
   trend_following: 'Trend Following', hedging: 'Hedging', fundamental: 'Fundamental', technical: 'Technical',
 };
 const QUANTT_CHAINS: QuanttChain[] = ['arbitrum', 'base', 'lithosphere', 'bnb'];
+/** Network logo for a Quantts chain chip (L2s have their own mark; BNB and
+ *  Lithosphere use their native-coin logos). */
+function quanttChainIcon(c: QuanttChain) {
+  return (c === 'arbitrum' || c === 'base') ? networkIconSource(c) : tokenIconSource(c === 'bnb' ? 'BNB' : 'LITHO');
+}
+
 const QUANTT_CHAIN_LABELS: Record<QuanttChain, string> = {
   arbitrum: 'Arbitrum', base: 'Base', lithosphere: 'Lithosphere', bnb: 'BNB Chain',
 };
@@ -2970,13 +2976,6 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
           <View style={{ width: 22 }}/>
         </View>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-          <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-            <AlertTriangle size={16} color="#ef4444"/>
-            <Text style={{ flex: 1, fontSize: 12, color: '#ef4444', lineHeight: 17 }}>
-              No sandbox exists. Once created and funded, this agent trades with real money from the first click.
-            </Text>
-          </View>
-
           <Text style={styles_quanttLabel(C)}>Name</Text>
           <TextInput
             value={name} onChangeText={setName} placeholder="e.g. Momentum runner" placeholderTextColor={C.textMuted}
@@ -2995,7 +2994,8 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
           <Text style={styles_quanttLabel(C)}>Chains</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
             {QUANTT_CHAINS.map((c) => (
-              <Pressable key={c} onPress={() => toggleChain(c)} style={({ pressed }) => [{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: chains.includes(c) ? C.blue : C.bgElevated }, pressed && { opacity: 0.8 }]}>
+              <Pressable key={c} onPress={() => toggleChain(c)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 8, paddingRight: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: chains.includes(c) ? C.blue : C.bgElevated }, pressed && { opacity: 0.8 }]}>
+                {(() => { const src = quanttChainIcon(c); return src ? <Image source={src} style={{ width: 18, height: 18, borderRadius: 9 }}/> : null; })()}
                 <Text style={{ fontSize: 12, fontWeight: '700', color: chains.includes(c) ? '#fff' : C.textSecondary }}>{QUANTT_CHAIN_LABELS[c]}</Text>
               </Pressable>
             ))}
@@ -8134,21 +8134,22 @@ function MinimizedBrowserChip({ url, onRestore, onClose }: { url: string; onRest
 /** Coins shown on the Market screen — Litho ecosystem + the mainstream coins
  *  the wallet transacts on. Mirrors apps/web's market list. */
 const MARKET_LIST: { sym: string; name: string }[] = [
+  // Mainnet assets only — Makalu-testnet tokens (wrapped LitBTC, JOT, FGPT,
+  // MUSA) were removed per client 2026-09-24.
   { sym: 'LITHO',  name: 'Lithosphere' },
-  { sym: 'LitBTC', name: 'Bitcoin (wrapped)' },
-  { sym: 'JOT',    name: 'Jot Art' },
   { sym: 'LAX',    name: 'Lithosphere Algorithmic' },
-  { sym: 'COLLE',  name: 'Colle AI' },
-  { sym: 'IMAGE',  name: 'Imagen Network' },
-  { sym: 'FGPT',   name: 'FurGPT' },
-  { sym: 'MUSA',   name: 'Mansa AI' },
-  { sym: 'SOL',    name: 'Solana' },
   { sym: 'BTC',    name: 'Bitcoin' },
-  { sym: 'ATOM',   name: 'Cosmos Hub' },
   { sym: 'ETH',    name: 'Ethereum' },
+  { sym: 'SOL',    name: 'Solana' },
   { sym: 'BNB',    name: 'BNB' },
+  { sym: 'USDT',   name: 'Tether USD' },
+  { sym: 'USDC',   name: 'USD Coin' },
+  { sym: 'ATOM',   name: 'Cosmos Hub' },
   { sym: 'POL',    name: 'Polygon' },
   { sym: 'AVAX',   name: 'Avalanche' },
+  { sym: 'COLLE',  name: 'Colle AI' },
+  { sym: 'IMAGE',  name: 'Imagen Network' },
+  { sym: 'AGII',   name: 'AGII' },
 ];
 
 function fmtCompactUsd(nUsd: number | null): string {
