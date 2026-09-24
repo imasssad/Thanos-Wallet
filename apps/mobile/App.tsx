@@ -146,6 +146,7 @@ import {
   recordVisit, toggleFavorite, type VisitedApp,
 } from './lib/browser-history';
 import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -9021,6 +9022,7 @@ function App() {
             <BrowserCtx.Provider value={openBrowser}>
               <SafeAreaView style={styles.root}>
                 <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase}/>
+                <GlassAura dark={isDark}/>
                 <OnboardingScreen
                   hasVault={hasVault}
                   onComplete={(seed) => {
@@ -9072,6 +9074,7 @@ function App() {
         <SendNavCtx.Provider value={openSendTo}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
+            <GlassAura dark={isDark}/>
 
             {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
             <MakaluWelcomeModal/>
@@ -9279,6 +9282,7 @@ function App() {
 
             {/* Top header */}
             <View style={styles.topbar}>
+              {GLASS && <BlurView intensity={isDark ? 45 : 60} tint={isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} style={StyleSheet.absoluteFill}/>}
               <Pressable
                 style={styles.acct}
                 /* Tap = account switcher (mnemonic wallets only). Long-press
@@ -9377,6 +9381,7 @@ function App() {
 
             {/* Bottom tabs */}
             <View style={styles.tabbar}>
+              {GLASS && <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'systemThinMaterialDark' : 'systemThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
               {TABS.map(t => {
                 const active = screen === t.key || (t.key === 'discover' && screen === 'market') || (t.key === 'home' && (screen === 'send' || screen === 'receive'));
                 return (
@@ -9424,8 +9429,73 @@ function _scaleFontSizes<T extends Record<string, any>>(raw: T): T {
   return raw;
 }
 
+/* ─────────── Apple glass (iOS only) ───────────
+   iOS 26-style Liquid Glass: a soft brand aura behind the app, translucent
+   surfaces with a light specular edge, a blurred header and a floating glass
+   tab bar. Android keeps the existing solid look. */
+const GLASS = Platform.OS === 'ios';
+const isDarkPalette = (C: Colors) => C.bgBase === DARK.bgBase;
+function glassTokens(C: Colors) {
+  const dark = isDarkPalette(C);
+  return dark
+    ? { card: 'rgba(255,255,255,0.06)', raised: 'rgba(255,255,255,0.09)', edge: 'rgba(255,255,255,0.12)', bar: 'rgba(14,14,20,0.35)' }
+    : { card: 'rgba(255,255,255,0.58)', raised: 'rgba(255,255,255,0.72)', edge: 'rgba(255,255,255,0.95)', bar: 'rgba(255,255,255,0.45)' };
+}
+const GLASS_CARD_STYLES   = ['balanceCard', 'qaBtn', 'card', 'assetSelectCard', 'receiveCard', 'acctHeaderCard', 'onboardCard', 'seedWord', 'obInputWrap'];
+const GLASS_RAISED_STYLES = ['acct', 'themeBtn', 'assetsCount', 'backBtn', 'feeRowCard', 'btnSecondary', 'networkSelector', 'addrCard', 'filterPill', 'settingIcon', 'input', 'addrBox', 'seedGrid', 'copyableBox', 'btnOutline'];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
+  if (!GLASS) return styles;
+  const g = glassTokens(C);
+  const out = { ...styles } as Record<string, Record<string, unknown>>;
+  for (const k of GLASS_CARD_STYLES)   if (out[k]) out[k] = { ...out[k], backgroundColor: g.card,   borderColor: g.edge, borderWidth: StyleSheet.hairlineWidth * 2 };
+  for (const k of GLASS_RAISED_STYLES) if (out[k]) out[k] = { ...out[k], backgroundColor: g.raised, borderColor: g.edge, borderWidth: StyleSheet.hairlineWidth * 2 };
+  if (out.card) out.card = { ...out.card, borderRadius: 22 };
+  if (out.balanceCard) out.balanceCard = { ...out.balanceCard, borderRadius: 26 };
+  if (out.root) out.root = { ...out.root, backgroundColor: isDarkPalette(C) ? '#05050a' : '#eef1f8' };
+  if (out.topbar) out.topbar = { ...out.topbar, backgroundColor: 'transparent', borderBottomColor: g.edge, borderBottomWidth: StyleSheet.hairlineWidth, overflow: 'hidden' };
+  if (out.tabbar) out.tabbar = {
+    ...out.tabbar, backgroundColor: g.bar, borderTopWidth: 0,
+    marginHorizontal: 14, marginBottom: 4, borderRadius: 30, overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth * 2, borderColor: g.edge,
+    paddingTop: 4, paddingBottom: 4,
+  };
+  if (out.tab) out.tab = { ...out.tab, borderRadius: 24 };
+  return out as T;
+}
+
+/** Soft brand-colour aura painted behind the whole app so the translucent
+ *  glass surfaces have something to refract (iOS only). */
+function GlassAura({ dark }: { dark: boolean }) {
+  if (!GLASS) return null;
+  const a = dark ? 0.55 : 0.35;
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="auraBlue" cx="15%" cy="8%" r="60%">
+            <Stop offset="0" stopColor="#3b7af7" stopOpacity={a}/>
+            <Stop offset="1" stopColor="#3b7af7" stopOpacity={0}/>
+          </RadialGradient>
+          <RadialGradient id="auraPurple" cx="95%" cy="38%" r="55%">
+            <Stop offset="0" stopColor="#8b7df7" stopOpacity={a * 0.8}/>
+            <Stop offset="1" stopColor="#8b7df7" stopOpacity={0}/>
+          </RadialGradient>
+          <RadialGradient id="auraTeal" cx="30%" cy="92%" r="55%">
+            <Stop offset="0" stopColor="#22d3ee" stopOpacity={a * 0.45}/>
+            <Stop offset="1" stopColor="#22d3ee" stopOpacity={0}/>
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#auraBlue)"/>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#auraPurple)"/>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#auraTeal)"/>
+      </Svg>
+    </View>
+  );
+}
+
 function makeStyles(C: Colors) {
-  return StyleSheet.create(_scaleFontSizes({
+  return StyleSheet.create(applyGlass(_scaleFontSizes({
     root:      { flex: 1, backgroundColor: C.bgBase },
     body:      { flex: 1 },
     scroll:    { flex: 1 },
@@ -10167,5 +10237,5 @@ function makeStyles(C: Colors) {
       textAlign: 'center',
       paddingVertical: 16,
     },
-  }));
+  }), C));
 }

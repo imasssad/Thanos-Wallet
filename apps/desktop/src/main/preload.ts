@@ -27,6 +27,11 @@ export interface TypedDataPayload {
   value:  Record<string, unknown>;
 }
 
+// Lets the renderer CSS opt into the macOS glass styling (styles.css).
+window.addEventListener('DOMContentLoaded', () => {
+  document.documentElement.dataset.platform = process.platform;
+});
+
 contextBridge.exposeInMainWorld('thanosDesktop', {
   vaultGet:    (key: string) => ipcRenderer.invoke('vault:get', key),
   vaultSet:    (key: string, value: string) => ipcRenderer.invoke('vault:set', key, value),

@@ -33,7 +33,12 @@ const createWindow = () => {
     height: 860,
     minWidth: 1100,
     minHeight: 720,
-    backgroundColor: '#080809',
+    // macOS: native window vibrancy under a translucent UI (Liquid Glass look,
+    // paired with the html[data-platform=darwin] CSS in styles.css). Other
+    // platforms keep the solid background.
+    ...(process.platform === 'darwin'
+      ? { vibrancy: 'under-window' as const, visualEffectState: 'active' as const, backgroundColor: '#00000000' }
+      : { backgroundColor: '#080809' }),
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
