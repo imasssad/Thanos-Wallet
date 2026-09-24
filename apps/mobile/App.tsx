@@ -7194,6 +7194,38 @@ function ObMark({ size = 128 }: { size?: number }) {
    ripple + press-scale + the wiring onPress are preserved. The blue shadow lives
    on an OUTER wrapper (obPillShadow) because the shared Btn hard-codes
    overflow:'hidden', which would clip the iOS shadow. */
+/** First-run biometric offer (client 2026-09-24): right after a wallet is
+ *  created or imported, ask once whether to unlock with Face ID / Touch ID /
+ *  fingerprint so users don't have to find it in Settings. Needs the session
+ *  key createVault just cached. Never throws; resolves once the user has
+ *  answered (or immediately if the device has no enrolled biometric). */
+async function offerBiometricSetup(): Promise<void> {
+  try {
+    const cap = await getBiometricCapability();
+    if (!cap.hasHardware || !cap.isEnrolled) return;
+    if (await isBiometricUnlockEnabled()) return;
+    const key = getSessionKey();
+    if (!key) return;
+    const name = biometricLabel(cap.kind);
+    const wantIt = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        `Unlock with ${name}?`,
+        `Use ${name} to open Thanos Wallet instead of typing your password each time. You can change this anytime in Settings.`,
+        [
+          { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+          { text: `Enable ${name}`, onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+    if (!wantIt) return;
+    const res = await enableBiometricUnlock(key);
+    if (!res.ok && res.reason === 'storage_failed') {
+      Alert.alert('Could not enable', 'Secure storage was unavailable. Make sure your device has a screen lock set, then enable it in Settings.');
+    }
+  } catch { /* never block onboarding on this */ }
+}
+
 function ObGradientPill({ label, onPress, disabled, busy: pillBusy, ripple }: {
   label: React.ReactNode; onPress?: () => void; disabled?: boolean; busy?: boolean; ripple?: string;
 }) {
@@ -7374,6 +7406,7 @@ function OnboardingScreen({
       await createVault(seed.join(' '), password);
       await setSeedBackedUp(true); // create flow includes seed verification
       // createVault session-caches the key internally.
+      await offerBiometricSetup();
       onComplete(seed);
     } finally { setBusy(false); }
   };
@@ -7396,6 +7429,7 @@ function OnboardingScreen({
       try {
         await createVault(key, password);
         await setSeedBackedUp(true); // no phrase to back up — user holds the key
+        await offerBiometricSetup();
         onComplete([key]);
       } finally { setBusy(false); }
       return;
@@ -7412,6 +7446,7 @@ function OnboardingScreen({
     try {
       await createVault(words.join(' '), password);
       await setSeedBackedUp(true); // imported — user already holds the phrase
+      await offerBiometricSetup();
       onComplete(words);
     } finally { setBusy(false); }
   };
