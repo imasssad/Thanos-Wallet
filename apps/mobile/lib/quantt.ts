@@ -115,9 +115,19 @@ interface SessionStore {
 
 type FetchInit = { method?: string; body?: string; headers?: Record<string, string> };
 
+/** Upstream gateways (Cloudflare/nginx) answer 502/503/504 with an HTML page;
+ *  never dump that markup into the UI. */
+function friendlyQuanttMessage(status: number, detail: string, path: string): string {
+  const html = /^\s*<(!doctype|html|!--)/i.test(detail);
+  if (html || status === 502 || status === 503 || status === 504) {
+    return `Quantts is temporarily unavailable (HTTP ${status}). Please try again in a few minutes.`;
+  }
+  return `Quantt ${path} → ${status}${detail ? `: ${detail}` : ''}`;
+}
+
 export class QuanttError extends Error {
   constructor(public status: number, public detail: string, public path: string) {
-    super(`Quantt ${path} → ${status}${detail ? `: ${detail}` : ''}`);
+    super(friendlyQuanttMessage(status, detail, path));
     this.name = 'QuanttError';
   }
 }
@@ -152,6 +162,7 @@ export class QuanttClient {
   async challenge(address: string): Promise<Eip712TypedData> {
     const res = await fetch(`${this.base}/v1/auth/wallet/typed-challenge`, {
       method: 'POST',
+      credentials: 'omit',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ address }),
     });
@@ -164,6 +175,7 @@ export class QuanttClient {
     const signature = await sign(typed);
     const res = await fetch(`${this.base}/v1/auth/wallet/typed-verify`, {
       method: 'POST',
+      credentials: 'omit',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ address, signature }),
     });
@@ -178,6 +190,7 @@ export class QuanttClient {
     if (!cur?.refreshToken) return null;
     const res = await fetch(`${this.base}/v1/auth/refresh`, {
       method: 'POST',
+      credentials: 'omit',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ refreshToken: cur.refreshToken }),
     });
@@ -198,7 +211,7 @@ export class QuanttClient {
   async signOut(): Promise<void> {
     const cur = await this.session();
     if (cur?.accessToken) {
-      try { await fetch(`${this.base}/v1/auth/logout`, { method: 'POST', headers: this.authHeaders(cur) }); }
+      try { await fetch(`${this.base}/v1/auth/logout`, { method: 'POST', credentials: 'omit', headers: this.authHeaders(cur) }); }
       catch { /* ignore — local clear below is what matters */ }
     }
     await this.setSession(null);
@@ -215,6 +228,7 @@ export class QuanttClient {
     if (!s) throw new QuanttError(401, 'not signed in', path);
     const res = await fetch(`${this.base}${path}`, {
       method: init.method ?? 'GET',
+      credentials: 'omit',
       body: init.body,
       headers: { ...this.authHeaders(s), ...(init.headers ?? {}) },
     });
@@ -405,6 +419,9 @@ function normalizeSession(raw: unknown, prev?: QuanttSession): QuanttSession {
   };
   const accessToken = pickStr('accessToken', 'access_token', 'token', 'access', 'jwt') ?? prev?.accessToken;
   const refreshToken = pickStr('refreshToken', 'refresh_token', 'refresh') ?? prev?.refreshToken;
+  if (!accessToken && o.alreadyLinked === true) {
+    throw new QuanttError(409, 'This wallet is already linked to a Quantts account, but Quantts returned no session. Please try Connect again; if it persists, contact Quantts support.', 'typed-verify');
+  }
   if (!accessToken) {
     throw new QuanttError(500, `no access token in response: ${JSON.stringify(o).slice(0, 160)}`, 'typed-verify');
   }

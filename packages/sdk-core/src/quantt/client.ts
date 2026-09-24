@@ -179,9 +179,19 @@ export interface QuanttClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+/** Upstream gateways (Cloudflare/nginx) answer 502/503/504 with an HTML page;
+ *  never dump that markup into the UI. */
+function friendlyQuanttMessage(status: number, detail: string, path: string): string {
+  const html = /^\s*<(!doctype|html|!--)/i.test(detail);
+  if (html || status === 502 || status === 503 || status === 504) {
+    return `Quantts is temporarily unavailable (HTTP ${status}). Please try again in a few minutes.`;
+  }
+  return `Quantt ${path} → ${status}${detail ? `: ${detail}` : ''}`;
+}
+
 export class QuanttError extends Error {
   constructor(public status: number, public detail: string, public path: string) {
-    super(`Quantt ${path} → ${status}${detail ? `: ${detail}` : ''}`);
+    super(friendlyQuanttMessage(status, detail, path));
     this.name = 'QuanttError';
   }
 }

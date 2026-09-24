@@ -2748,7 +2748,14 @@ function QuanttWalletTab({ C, wallet, address, onDeposit, onWithdraw }: {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
-  const rows = qEntries(wallet, ['address', 'walletAddress', 'wallet_address']);
+  // Hide plumbing fields (address is shown above; 'supported' is a flag) and
+  // never surface Quantt's raw internal balance error (e.g. their own RPC URL).
+  const walletObj = qAsObj(wallet) ?? {};
+  const balanceUnavailable = typeof walletObj.balanceError === 'string' && walletObj.balanceError.length > 0;
+  const walletDisplay = Object.fromEntries(Object.entries(walletObj).filter(([k, v]) =>
+    !['address', 'walletAddress', 'wallet_address', 'supported', 'balanceError'].includes(k)
+    && !(Array.isArray(v) && v.length === 0)));
+  const rows = qEntries(walletDisplay);
 
   if (!address) {
     return <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>The agent&apos;s wallet address hasn&apos;t loaded yet — pull to refresh or reopen this agent.</Text>;
@@ -2772,8 +2779,13 @@ function QuanttWalletTab({ C, wallet, address, onDeposit, onWithdraw }: {
 
       {rows.length > 0 && (
         <View style={{ width: '100%', marginTop: 16 }}>
-          <QuanttFieldsCard C={C} raw={wallet} empty=""/>
+          <QuanttFieldsCard C={C} raw={walletDisplay} empty=""/>
         </View>
+      )}
+      {balanceUnavailable && (
+        <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 14, textAlign: 'center' }}>
+          Agent balances are temporarily unavailable from Quantts. Your funds are unaffected — check again shortly.
+        </Text>
       )}
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, width: '100%' }}>
