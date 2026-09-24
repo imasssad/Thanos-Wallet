@@ -754,7 +754,7 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
    top up → success), backed by the /lax/* proxy (see ../../lib/lax.ts) —
    no more hand-off to lax.money except as a "Learn more" fallback link.
    QUANTT_AGENTS_URL points at the live Quantt product site. */
-const LAX_LEARN_MORE_URL = 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
+const LAX_LEARN_MORE_URL = 'https://checkout.lax.money/prepaid/t99rrtj1r5ftk0lyvv9cvbsi3j43ellu7lrju8hdunvxkcsqxqebavtid0v7';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',

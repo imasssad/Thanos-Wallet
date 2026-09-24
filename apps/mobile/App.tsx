@@ -1133,7 +1133,7 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
  *  per the client (2026-07-19) they must not ship until the LAX integration is
  *  approved. Kept as a function so the call site (which passes the address) is
  *  untouched; the address is deliberately ignored now. */
-const laxApplyUrl = (_address?: string) => 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
+const laxApplyUrl = (_address?: string) => 'https://checkout.lax.money/prepaid/t99rrtj1r5ftk0lyvv9cvbsi3j43ellu7lrju8hdunvxkcsqxqebavtid0v7';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',

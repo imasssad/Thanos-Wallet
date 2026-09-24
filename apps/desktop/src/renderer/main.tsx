@@ -1551,7 +1551,7 @@ function AIAssistant() {
    Thanos backend proxy (services/api/src/routes/lax.ts); the LAX API
    key never reaches the client. No sandbox upstream — top-ups move
    real funds from the first configured call. */
-const LAX_LEARN_URL = 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
+const LAX_LEARN_URL = 'https://checkout.lax.money/prepaid/t99rrtj1r5ftk0lyvv9cvbsi3j43ellu7lrju8hdunvxkcsqxqebavtid0v7';
 const LAX_BENEFITS = [
   'Get a LAX Debit Card for free',
   'Unlimited top-ups with 0 fees',

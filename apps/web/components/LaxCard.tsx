@@ -24,7 +24,7 @@ import { apiClient } from '../lib/auth-client';
  *   intro -> (soon | create) -> dashboard -> topup -> success -> dashboard
  */
 
-const LAX_LEARN_URL = 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
+const LAX_LEARN_URL = 'https://checkout.lax.money/prepaid/t99rrtj1r5ftk0lyvv9cvbsi3j43ellu7lrju8hdunvxkcsqxqebavtid0v7';
 
 type LaxView = 'intro' | 'soon' | 'create' | 'dashboard' | 'topup' | 'success';
 

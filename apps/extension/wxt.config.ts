@@ -89,7 +89,7 @@ export default defineConfig({
     // review. `wasm-unsafe-eval` is needed by tiny-secp256k1 (BIP32
     // derivation) which loads its WASM via the ESM integration proposal.
     content_security_policy: {
-      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src https://widget.lax.money",
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src https://widget.lax.money https://checkout.lax.money",
     },
     icons: {
       '16':  'icons/icon16.png',
