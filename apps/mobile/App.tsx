@@ -393,8 +393,9 @@ function useBrowser(): (url: string) => void { return useContext(BrowserCtx); }
 /** Lets a deeply-nested screen (e.g. the Quantt deposit flow) route into the
  *  existing Send screen pre-filled with a recipient address, without
  *  threading the screen-switch state through every intermediate component. */
-const SendNavCtx = createContext<(address: string) => void>(() => {});
-function useSendNav(): (address: string) => void { return useContext(SendNavCtx); }
+type SendNavFn = (address: string, asset?: { sym: string; chainId: number }) => void;
+const SendNavCtx = createContext<SendNavFn>(() => {});
+function useSendNav(): SendNavFn { return useContext(SendNavCtx); }
 
 /* ─────────────────────────── Live portfolio ─────────────────────────── */
 
@@ -2206,6 +2207,26 @@ function quanttChainIcon(c: QuanttChain) {
 const QUANTT_CHAIN_LABELS: Record<QuanttChain, string> = {
   arbitrum: 'Arbitrum', base: 'Base', lithosphere: 'Lithosphere', bnb: 'BNB Chain',
 };
+/** EVM chain id + native coin for each Quantts chain (deposit asset picker). */
+const QUANTT_CHAIN_META: Record<QuanttChain, { chainId: number; native: string }> = {
+  arbitrum: { chainId: 42161, native: 'ETH' }, base: { chainId: 8453, native: 'ETH' },
+  lithosphere: { chainId: 9005, native: 'LITHO' }, bnb: { chainId: 56, native: 'BNB' },
+};
+interface QuanttDepositAsset { sym: string; chain: QuanttChain; chainId: number }
+/** Assets a user can fund an agent with: the agent's quote asset first, then
+ *  stablecoins and the chain's native coin, on each chain the agent trades. */
+function quanttDepositAssets(chains: string[], quoteAsset?: string): QuanttDepositAsset[] {
+  const valid = chains.filter((c): c is QuanttChain => c in QUANTT_CHAIN_META);
+  const list = valid.length ? valid : (['lithosphere'] as QuanttChain[]);
+  const out: QuanttDepositAsset[] = [];
+  for (const chain of list) {
+    const { chainId, native } = QUANTT_CHAIN_META[chain];
+    const syms = chain === 'lithosphere' ? [quoteAsset ?? 'USDC', 'LAX', native] : [quoteAsset ?? 'USDC', 'USDC', 'USDT', native];
+    for (const sym of syms) if (!out.some((a) => a.sym === sym && a.chain === chain)) out.push({ sym, chain, chainId });
+  }
+  return out;
+}
+
 const QUANTT_DEFAULTS = { maxPositionPct: 25, stopLoss: 5, takeProfit: 10, maxDailyLoss: 3.5 };
 
 function qAsObj(v: unknown): Record<string, unknown> | null {
@@ -2528,6 +2549,7 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
 
   const name = summary?.name ?? qStr(qAsObj(raw), 'name') ?? 'Agent';
   const walletAddress = qWalletAddress(wallet);
+  const agentChains = (() => { const o = qAsObj(raw); const arr = o && Array.isArray(o.chains) ? (o.chains as unknown[]).filter((x): x is string => typeof x === 'string') : []; const one = qStr(o, 'chain', 'network') ?? summary?.chain; return arr.length ? arr : one ? [one] : []; })();
 
   const confirmSetState = (next: QuanttRuntimeState) => {
     const verb = next === 'active' ? 'resume' : next === 'paused' ? 'pause' : 'stop';
@@ -2730,7 +2752,7 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
         )}
       </SafeAreaView>
 
-      {showDeposit && <QuanttDepositModal agentId={agentId} agentName={name} address={walletAddress} onClose={() => { setShowDeposit(false); reload(); }}/>}
+      {showDeposit && <QuanttDepositModal agentId={agentId} agentName={name} address={walletAddress} assets={quanttDepositAssets(agentChains, qStr(qAsObj(raw), 'quoteAsset', 'quote_asset'))} onClose={() => { setShowDeposit(false); reload(); }}/>}
       {showWithdraw && <QuanttWithdrawModal agentId={agentId} agentName={name} onClose={() => { setShowWithdraw(false); reload(); }}/>}
     </Modal>
   );
@@ -3077,9 +3099,11 @@ function styles_quanttInput(C: ReturnType<typeof useColors>) {
  *  existing Send screen via SendNavCtx rather than a new send mechanism.
  *  Leg B just tells Quantts to recognize/credit that transfer; it moves no
  *  funds itself, which is why the two steps are visually separated. */
-function QuanttDepositModal({ agentId, agentName, address, onClose }: {
-  agentId: string; agentName: string; address: string | undefined; onClose: () => void;
+function QuanttDepositModal({ agentId, agentName, address, assets, onClose }: {
+  agentId: string; agentName: string; address: string | undefined; assets: QuanttDepositAsset[]; onClose: () => void;
 }) {
+  const [asset, setAsset] = useState<QuanttDepositAsset>(assets[0]);
+  const [assetOpen, setAssetOpen] = useState(false);
   const C = useColors();
   const goSend = useSendNav();
   const [qrSvg, setQrSvg] = useState<string | null>(null);
@@ -3146,7 +3170,32 @@ function QuanttDepositModal({ agentId, agentName, address, onClose }: {
             ) : (
               <>
 
-                <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Step 1 · Send funds to the agent</Text>
+                <Text style={[styles_quanttLabel(C), { marginTop: 4 }]}>Asset to deposit</Text>
+                <Pressable onPress={() => setAssetOpen((v) => !v)} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: assetOpen ? C.blue : C.borderDefault }, pressed && { opacity: 0.8 }]}>
+                  <Avatar symbol={asset.sym} color={ASSET_COLORS[asset.sym.toUpperCase()] ?? C.blue} size={28} chainId={asset.chainId}/>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.textPrimary, fontSize: 14, fontWeight: '700' }}>{asset.sym}</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 11 }}>on {QUANTT_CHAIN_LABELS[asset.chain]}</Text>
+                  </View>
+                  {assetOpen ? <ChevronUp size={16} color={C.textSecondary}/> : <ChevronDown size={16} color={C.textSecondary}/>}
+                </Pressable>
+                {assetOpen && (
+                  <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, marginTop: 6, paddingVertical: 4 }}>
+                    {assets.map((a) => {
+                      const sel = a.sym === asset.sym && a.chain === asset.chain;
+                      return (
+                        <Pressable key={a.sym + a.chain} onPress={() => { setAsset(a); setAssetOpen(false); }} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 9 }, pressed && { opacity: 0.7 }]}>
+                          <Avatar symbol={a.sym} color={ASSET_COLORS[a.sym.toUpperCase()] ?? C.blue} size={24} chainId={a.chainId}/>
+                          <Text style={{ flex: 1, color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{a.sym} <Text style={{ color: C.textMuted, fontWeight: '500' }}>· {QUANTT_CHAIN_LABELS[a.chain]}</Text></Text>
+                          {sel && <Check size={15} color={C.blue}/>}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Step 1 · Send {asset.sym} to the agent</Text>
+                <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 17 }}>Send only {asset.sym} on {QUANTT_CHAIN_LABELS[asset.chain]} to this address.</Text>
                 {address ? (
                   <View style={{ alignItems: 'center' }}>
                     {qrSvg && <View style={{ backgroundColor: '#fff', padding: 12, borderRadius: 14 }}><SvgXml xml={qrSvg} width={160} height={160}/></View>}
@@ -3158,9 +3207,9 @@ function QuanttDepositModal({ agentId, agentName, address, onClose }: {
                         {copied ? <Check size={14} color="#22c55e"/> : <Copy size={14} color={C.textPrimary}/>}
                         <Text style={{ fontSize: 12, fontWeight: '700', color: C.textPrimary }}>{copied ? 'Copied' : 'Copy'}</Text>
                       </Pressable>
-                      <Pressable onPress={() => goSend(address)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
+                      <Pressable onPress={() => goSend(address, { sym: asset.sym, chainId: asset.chainId })} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
                         <ArrowUpRight size={14} color="#fff"/>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Send to this address</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Send {asset.sym}</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -8605,10 +8654,10 @@ function App() {
   const [sendPrefillTo, setSendPrefillTo] = useState<string | null>(null);
   // Agents default to quoteAsset USDC — seed the Send screen so the deposit
   // leg doesn't open on native LITHO by accident (no sandbox to catch it).
-  const openSendTo = (address: string) => {
+  const openSendTo = (address: string, asset?: { sym: string; chainId: number }) => {
     setSendPrefillTo(address);
-    setSeedSym('USDC');
-    setSeedChainId(700777);
+    setSeedSym(asset?.sym ?? 'USDC');
+    setSeedChainId(asset?.chainId ?? 9005);
     setScreen('send');
   };
   // Dark-first, matching the web/desktop/extension clients (they're all
