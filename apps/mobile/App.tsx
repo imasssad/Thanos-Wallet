@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  ActivityIndicator, Alert, Animated, AppState, Dimensions, Easing, Image, InteractionManager, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
+  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
@@ -3429,7 +3429,8 @@ const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
  *  helpers. Cheap (a couple of small JSON arrays) — fine to load fresh in
  *  every screen that needs it. */
 function useHiddenAssets() {
-  const [hiddenNetworks, setHiddenNetworks] = useState<Set<string>>(new Set());
+  // Makalu (testnet) starts hidden until the user saves their own choice.
+  const [hiddenNetworks, setHiddenNetworks] = useState<Set<string>>(() => new Set([networkVisKey(700777, 'LITHO')]));
   const [hiddenAssets, setHiddenAssets]     = useState<Set<string>>(new Set());
   useEffect(() => {
     (async () => {
@@ -3438,7 +3439,7 @@ function useHiddenAssets() {
           AsyncStorage.getItem(HIDDEN_NETWORKS_KEY),
           AsyncStorage.getItem(HIDDEN_ASSETS_KEY),
         ]);
-        if (nRaw) setHiddenNetworks(new Set(JSON.parse(nRaw)));
+        if (nRaw != null) setHiddenNetworks(new Set(JSON.parse(nRaw)));
         if (aRaw) setHiddenAssets(new Set(JSON.parse(aRaw)));
       } catch { /* corrupt/missing pref — default to nothing hidden */ }
     })();
@@ -7985,10 +7986,20 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   const isConnect = pending?.method === 'eth_requestAccounts';
   const summary = pending ? (isConnect ? `Connect your wallet to ${host}?` : summariseRequest(pending.method, pending.params)) : '';
 
+  useEffect(() => {
+    if (minimized) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onMinimize(); return true; });
+    return () => sub.remove();
+  }, [minimized, onMinimize]);
+
   return (
-    <Modal visible={!minimized} animationType="slide" onRequestClose={onMinimize} statusBarTranslucent>
+    // NOT a <Modal>: RN unmounts a Modal's children when visible={false}, which
+    // destroyed the WebView on minimize and reloaded the page on restore.
+    // display:none keeps the WebView (scroll position, dApp session, form
+    // state) alive so restoring resumes exactly where the user stopped.
+    <View style={[StyleSheet.absoluteFill, { zIndex: 50, elevation: 50 }, minimized && { display: 'none' }]}>
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
-        <StatusBar barStyle={C.statusBar} backgroundColor={C.bgBase}/>
+        {!minimized && <StatusBar barStyle={C.statusBar} backgroundColor={C.bgBase}/>}
         {/* Chrome: minimize · host (lock) · back · forward · reload · open external */}
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -8085,7 +8096,7 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
           </View>
         )}
       </SafeAreaView>
-    </Modal>
+    </View>
   );
 }
 
@@ -8097,13 +8108,13 @@ function MinimizedBrowserChip({ url, onRestore, onClose }: { url: string; onRest
   let host = url;
   try { host = new URL(url).host; } catch { /* keep raw */ }
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 78, alignItems: 'center' }}>
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 104, alignItems: 'center', zIndex: 40, elevation: 40 }}>
       <Pressable
         onPress={onRestore}
         style={({ pressed }) => [{
           flexDirection: 'row', alignItems: 'center', gap: 8,
-          backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault,
-          borderRadius: 999, paddingLeft: 14, paddingRight: 8, paddingVertical: 8,
+          backgroundColor: C.bgElevated, borderWidth: 1.5, borderColor: C.blue,
+          borderRadius: 999, paddingLeft: 16, paddingRight: 10, paddingVertical: 11,
           shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6,
         }, pressed && { opacity: 0.85 }]}
       >

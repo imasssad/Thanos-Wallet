@@ -1,0 +1,68 @@
+# iOS builds on a GitHub-hosted macOS runner via `eas build --local`, then
+# uploads the .ipa to App Store Connect with `eas submit`.
+#
+# WHY: same reason as mobile-build.yml (Android). The Expo free plan's monthly
+# cloud-build quota runs out mid-release; --local runs the identical EAS
+# pipeline (prebuild → pods → xcodebuild, distribution cert + provisioning
+# profile pulled from EAS with EXPO_TOKEN) on the runner — no quota used.
+#
+# Trigger manually: gh workflow run ios-local-build.yml [-f submit=false]
+name: ios-local-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: Upload the build to App Store Connect
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: eas local build (ios production)
+    runs-on: macos-15
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+
+      - name: Install dependencies
+        run: npm ci
+
+      # App Store Connect rejects a repeated CFBundleVersion. Offset by 200 so
+      # these never collide with mobile-release.yml's 100 + run_number.
+      - name: Set unique iOS build number
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.ios.buildNumber=String(200+Number(process.env.GITHUB_RUN_NUMBER));fs.writeFileSync('app.json',JSON.stringify(j,null,2));console.log('iOS buildNumber =',j.expo.ios.buildNumber)"
+
+      - name: EAS local build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli build --platform ios --profile production \
+            --local --non-interactive --output ./thanos-ios.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thanos-ios
+          path: apps/mobile/thanos-ios.ipa
+          retention-days: 14
+
+      - name: Submit to App Store Connect
+        if: ${{ inputs.submit }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          mkdir -p credentials
+          echo "${{ secrets.ASC_API_KEY_BASE64 }}" | base64 -d > credentials/asc-api-key.p8
+          npx eas-cli submit --platform ios --profile production \
+            --path ./thanos-ios.ipa --non-interactive

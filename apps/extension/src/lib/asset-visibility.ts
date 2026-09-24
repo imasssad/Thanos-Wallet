@@ -30,7 +30,9 @@ let loaded = false;
 export async function loadHiddenAssets(): Promise<void> {
   try {
     const r = await browser.storage.local.get([HIDDEN_NETWORKS_KEY, HIDDEN_ASSETS_KEY]);
-    hiddenNetworks = new Set(Array.isArray(r[HIDDEN_NETWORKS_KEY]) ? (r[HIDDEN_NETWORKS_KEY] as string[]) : []);
+    // Makalu (testnet; extension rows carry no chainId → sym:LITHO) starts
+    // hidden until the user has saved their own Manage-networks choice.
+    hiddenNetworks = new Set(Array.isArray(r[HIDDEN_NETWORKS_KEY]) ? (r[HIDDEN_NETWORKS_KEY] as string[]) : ['sym:LITHO']);
     hiddenAssets   = new Set(Array.isArray(r[HIDDEN_ASSETS_KEY])   ? (r[HIDDEN_ASSETS_KEY]   as string[]) : []);
   } catch {
     hiddenNetworks = new Set();

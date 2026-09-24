@@ -21,18 +21,24 @@
 const HIDDEN_NETWORKS_KEY = 'thanos.hidden_networks.v1';
 const HIDDEN_ASSETS_KEY   = 'thanos.hidden_assets.v1';
 
-function readSet(key: string): Set<string> {
-  if (typeof window === 'undefined') return new Set();
+// Lithosphere Makalu (testnet) starts hidden for users who have never
+// touched Manage networks (client 2026-09-24). A stored list — even an
+// empty one — is the user's own choice and always wins.
+const DEFAULT_HIDDEN_NETWORKS = ['chain:700777'];
+
+function readSet(key: string, fallback: string[] = []): Set<string> {
+  if (typeof window === 'undefined') return new Set(fallback);
   try {
     const raw = window.localStorage.getItem(key);
-    const arr = raw ? (JSON.parse(raw) as unknown) : [];
+    if (raw == null) return new Set(fallback);
+    const arr = JSON.parse(raw) as unknown;
     return new Set(Array.isArray(arr) ? (arr as string[]) : []);
   } catch {
     return new Set();
   }
 }
 
-let hiddenNetworks = readSet(HIDDEN_NETWORKS_KEY);
+let hiddenNetworks = readSet(HIDDEN_NETWORKS_KEY, DEFAULT_HIDDEN_NETWORKS);
 let hiddenAssets   = readSet(HIDDEN_ASSETS_KEY);
 
 export const networkVisKey = (chainId: number | undefined, sym: string): string =>
