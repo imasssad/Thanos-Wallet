@@ -2642,50 +2642,6 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
                 </Text>
               )}
 
-              {/* Deposit / Withdraw — both move real funds, kept visually distinct from state controls */}
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-                <Pressable onPress={() => setShowDeposit(true)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
-                  <ArrowDownLeft size={15} color="#fff"/>
-                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Deposit</Text>
-                </Pressable>
-                <Pressable onPress={() => setShowWithdraw(true)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault }, pressed && { opacity: 0.7 }]}>
-                  <ArrowUpRight size={15} color={C.textPrimary}/>
-                  <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>Withdraw</Text>
-                </Pressable>
-              </View>
-
-              {/* Start / pause / stop */}
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                {status !== 'active' && (
-                  <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('active')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
-                    <Play size={15} color="#22c55e"/>
-                    <Text style={{ color: '#22c55e', fontSize: 13, fontWeight: '700' }}>Start</Text>
-                  </Pressable>
-                )}
-                {status === 'active' && (
-                  <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('paused')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(234,179,8,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
-                    <Pause size={15} color="#eab308"/>
-                    <Text style={{ color: '#eab308', fontSize: 13, fontWeight: '700' }}>Pause</Text>
-                  </Pressable>
-                )}
-                {status !== 'idle' && (
-                  <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('idle')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.12)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
-                    <SquareIcon size={14} color="#ef4444"/>
-                    <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>Stop</Text>
-                  </Pressable>
-                )}
-              </View>
-
-              <Pressable disabled={busyAction === 'analyze'} onPress={runAnalyze} style={({ pressed }) => [{ flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, marginTop: 10, opacity: busyAction === 'analyze' ? 0.6 : 1 }, pressed && { opacity: 0.7 }]}>
-                <RefreshCw size={14} color={C.textPrimary}/>
-                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>{busyAction === 'analyze' ? 'Analyzing…' : 'Analyze now'}</Text>
-              </Pressable>
-
-              {actionErr && <Text style={{ marginTop: 10, fontSize: 12, color: '#ef4444' }}>{actionErr}</Text>}
-
-              <Pressable disabled={busyAction === 'delete'} onPress={confirmDelete} style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 14, marginTop: 18 }, pressed && { opacity: 0.7 }]}>
-                <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>{busyAction === 'delete' ? 'Deleting…' : 'Delete agent'}</Text>
-              </Pressable>
             </>
           )}
 
@@ -2722,6 +2678,56 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
             </>
           )}
         </ScrollView>
+
+        {/* Agent actions — pinned below the scrolling details (client 2026-09-24). */}
+        {tab === 'overview' && (
+          <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8, borderTopWidth: 1, borderTopColor: C.borderSubtle, backgroundColor: C.bgBase }}>
+          {/* Deposit / Withdraw — both move real funds, kept visually distinct from state controls */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Pressable onPress={() => setShowDeposit(true)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
+              <ArrowDownLeft size={15} color="#fff"/>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Deposit</Text>
+            </Pressable>
+            <Pressable onPress={() => setShowWithdraw(true)} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault }, pressed && { opacity: 0.7 }]}>
+              <ArrowUpRight size={15} color={C.textPrimary}/>
+              <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>Withdraw</Text>
+            </Pressable>
+          </View>
+
+          {/* Start / pause / stop */}
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            {status !== 'active' && (
+              <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('active')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                <Play size={15} color="#22c55e"/>
+                <Text style={{ color: '#22c55e', fontSize: 13, fontWeight: '700' }}>Start</Text>
+              </Pressable>
+            )}
+            {status === 'active' && (
+              <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('paused')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(234,179,8,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                <Pause size={15} color="#eab308"/>
+                <Text style={{ color: '#eab308', fontSize: 13, fontWeight: '700' }}>Pause</Text>
+              </Pressable>
+            )}
+            {status !== 'idle' && (
+              <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('idle')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.12)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+                <SquareIcon size={14} color="#ef4444"/>
+                <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>Stop</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <Pressable disabled={busyAction === 'analyze'} onPress={runAnalyze} style={({ pressed }) => [{ flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, marginTop: 10, opacity: busyAction === 'analyze' ? 0.6 : 1 }, pressed && { opacity: 0.7 }]}>
+            <RefreshCw size={14} color={C.textPrimary}/>
+            <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>{busyAction === 'analyze' ? 'Analyzing…' : 'Analyze now'}</Text>
+          </Pressable>
+
+          {actionErr && <Text style={{ marginTop: 10, fontSize: 12, color: '#ef4444' }}>{actionErr}</Text>}
+
+          <Pressable disabled={busyAction === 'delete'} onPress={confirmDelete} style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 10, marginTop: 4 }, pressed && { opacity: 0.7 }]}>
+            <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>{busyAction === 'delete' ? 'Deleting…' : 'Delete agent'}</Text>
+          </Pressable>
+          </View>
+        )}
       </SafeAreaView>
 
       {showDeposit && <QuanttDepositModal agentId={agentId} agentName={name} address={walletAddress} onClose={() => { setShowDeposit(false); reload(); }}/>}
@@ -3139,10 +3145,6 @@ function QuanttDepositModal({ agentId, agentName, address, onClose }: {
               </View>
             ) : (
               <>
-                <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-                  <AlertTriangle size={16} color="#ef4444"/>
-                  <Text style={{ flex: 1, fontSize: 12, color: '#ef4444', lineHeight: 17 }}>No sandbox — this moves real funds from your wallet the moment you send.</Text>
-                </View>
 
                 <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Step 1 · Send funds to the agent</Text>
                 {address ? (
@@ -3291,10 +3293,6 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
             <Pressable hitSlop={8} onPress={onClose}><Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text></Pressable>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 12, flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-              <AlertTriangle size={16} color="#ef4444"/>
-              <Text style={{ flex: 1, fontSize: 12, color: '#ef4444', lineHeight: 17 }}>No sandbox — withdrawals only pay out to a verified address and move real funds.</Text>
-            </View>
 
             <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Withdrawal address</Text>
             {verified && boundAddr ? (
