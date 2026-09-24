@@ -175,7 +175,7 @@ jobs:
   audit:
     name: dependency audit (high+)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     # Non-blocking for now — surfaces advisories but doesn't fail the build.
     # Flip to `continue-on-error: false` once the floor is clean.
     continue-on-error: true
@@ -186,6 +186,10 @@ jobs:
       - run: corepack enable
       - run: pnpm install --no-frozen-lockfile
       - name: pnpm audit (high+ severity, prod deps only)
+        # The monorepo's audit tree exceeds Node's default ~4 GB heap (it
+        # crashed with "heap out of memory", which read as a red check).
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm audit --audit-level=high --prod
 
   gitleaks:
