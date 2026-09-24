@@ -7203,7 +7203,7 @@ function ObGradientPill({ label, onPress, disabled, busy: pillBusy, ripple }: {
   const [w, setW] = useState(Dimensions.get('window').width - 48);
   const H = 54;
   return (
-    <View style={[styles.obPillShadow, disabled && { opacity: 0.5 }]}>
+    <View style={[styles.obPillShadow, disabled && !pillBusy && { opacity: 0.45, shadowOpacity: 0, elevation: 0 }, pillBusy && { shadowOpacity: 0.18 }]}>
       <Btn style={styles.obPill} disabled={disabled} onPress={onPress} ripple={ripple ?? 'rgba(255,255,255,0.22)'}>
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
           <Svg width={w} height={H}>
@@ -10149,6 +10149,7 @@ function makeStyles(C: Colors) {
     },
     obActions: {
       width: '100%',
+      gap: 12,
     },
     obPillShadow: {
       width: '100%',
@@ -10179,7 +10180,7 @@ function makeStyles(C: Colors) {
       borderRadius: 26,
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: 12,
+      marginTop: 0, // spacing comes from obActions gap
     },
     obGhostText: {
       color: C.textSecondary,
@@ -10192,7 +10193,7 @@ function makeStyles(C: Colors) {
       fontSize: 7.7,  // -> ~11.5 rendered
       lineHeight: 11, // -> ~17
       textAlign: 'center',
-      marginTop: 18,
+      marginTop: 6,
       paddingHorizontal: 12,
     },
     obUnlockTitle: {
@@ -10215,7 +10216,9 @@ function makeStyles(C: Colors) {
       backgroundColor: C.bgCard,
       borderColor: C.borderDefault,
       borderWidth: 1,
-      borderRadius: 16,
+      // Capsule, same radius as the Face ID + Unlock pills around it.
+      borderRadius: 27,
+      paddingHorizontal: 4,
     },
     obInputWrapErr: {
       borderColor: C.red,
@@ -10235,7 +10238,6 @@ function makeStyles(C: Colors) {
       backgroundColor: C.blueDim,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 14,
     },
     obBioText: {
       color: C.blue,
@@ -10248,15 +10250,15 @@ function makeStyles(C: Colors) {
       fontSize: 8.3,  // -> ~12.5 rendered
       fontWeight: '600',
       textAlign: 'center',
-      marginTop: 12,
-      marginBottom: 2,
+      marginTop: 0,
+      marginBottom: 0,
     },
     obReset: {
       color: C.textMuted,
       fontSize: 8.7,  // -> ~13 rendered
       fontWeight: '500',
       textAlign: 'center',
-      paddingVertical: 16,
+      paddingVertical: 8,
     },
   }), C));
 }
