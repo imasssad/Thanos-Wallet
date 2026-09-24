@@ -64,6 +64,8 @@ const MARKET_EXTRA: Array<{ sym: string; name: string; color: string; chainId: n
   { sym: 'BNB',  name: 'BNB',       color: '#f3ba2f', chainId: 56    },
   { sym: 'POL',  name: 'Polygon',   color: '#8247e5', chainId: 137   },
   { sym: 'AVAX', name: 'Avalanche', color: '#e84142', chainId: 43114 },
+  { sym: 'USDT', name: 'Tether USD', color: '#26a17b', chainId: 1 },
+  { sym: 'USDC', name: 'USD Coin',   color: '#2775ca', chainId: 1 },
 ];
 
 interface CGMarket {
@@ -176,7 +178,10 @@ export function MarketView() {
         icon:  q?.image ?? undefined,
       };
     };
-    const base = TOKENS.map(t => toRow(t.sym, t.name, t.color));
+    // Mainnet assets only — Makalu-testnet tokens stay out of the Market
+    // (client 2026-09-24); they remain in TOKENS for the wallet/swap flows.
+    const TESTNET_ONLY = new Set(['LitBTC', 'LitETH', 'JOT', 'FGPT', 'MUSA', 'wLITHO']);
+    const base = TOKENS.filter(t => !TESTNET_ONLY.has(t.sym)).map(t => toRow(t.sym, t.name, t.color));
     // Display-only mainstream coins — appended once their live quote lands so
     // a row never appears with a fake/placeholder price.
     const extra = MARKET_EXTRA

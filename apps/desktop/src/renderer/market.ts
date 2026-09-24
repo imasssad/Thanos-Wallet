@@ -6,7 +6,7 @@
  * the MARKET mock.
  */
 import { useEffect, useState } from 'react';
-import { getMakaluLep100Tokens, fetchEcosystemPrices, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
+import { fetchEcosystemPrices, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import { coinColor } from './portfolio';
 
 /* The Market lists ONLY the Lithosphere ecosystem (per Esha) — LITHO + the
@@ -14,9 +14,22 @@ import { coinColor } from './portfolio';
    global market feeds, so we show the live price from the shared ecosystem
    price source; 24h/7d change + market cap + volume aren't available and read
    as — until an ecosystem market feed lands. */
+// Mainnet assets only — Makalu testnet LEP-100 tokens were removed from the
+// Market per client 2026-09-24 (every symbol here has a live price feed).
 const ECOSYSTEM_MARKET: { sym: string; name: string }[] = [
   { sym: 'LITHO', name: 'Lithosphere' },
-  ...getMakaluLep100Tokens().map(t => ({ sym: t.symbol, name: t.name })),
+  { sym: 'LAX',   name: 'Lithosphere Algorithmic' },
+  { sym: 'BTC',   name: 'Bitcoin' },
+  { sym: 'ETH',   name: 'Ethereum' },
+  { sym: 'SOL',   name: 'Solana' },
+  { sym: 'BNB',   name: 'BNB' },
+  { sym: 'USDT',  name: 'Tether USD' },
+  { sym: 'USDC',  name: 'USD Coin' },
+  { sym: 'ATOM',  name: 'Cosmos Hub' },
+  { sym: 'POL',   name: 'Polygon' },
+  { sym: 'AVAX',  name: 'Avalanche' },
+  { sym: 'COLLE', name: 'Colle AI' },
+  { sym: 'IMAGE', name: 'Imagen Network' },
 ];
 
 export interface MarketRow {
