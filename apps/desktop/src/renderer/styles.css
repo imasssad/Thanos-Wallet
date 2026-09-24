@@ -1630,3 +1630,45 @@ html[data-platform="darwin"] .modal-backdrop {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
+
+/* ─────────── macOS type + motion ───────────
+   SF Pro (system font) and Apple's standard spring-like easing on macOS
+   only, so the app reads and moves like a native macOS 26 app. */
+html[data-platform="darwin"] {
+  --ease-apple: cubic-bezier(0.32, 0.72, 0, 1);
+}
+html[data-platform="darwin"] body,
+html[data-platform="darwin"] button,
+html[data-platform="darwin"] input,
+html[data-platform="darwin"] select,
+html[data-platform="darwin"] textarea {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  font-feature-settings: normal;
+  letter-spacing: normal;
+}
+html[data-platform="darwin"] .modal-title,
+html[data-platform="darwin"] .card-title { letter-spacing: -0.01em; }
+
+/* Pop-ups spring in (scale + fade) like macOS sheets and popovers. */
+html[data-platform="darwin"] .modal-backdrop { animation: macFade 0.22s var(--ease-apple) both; }
+html[data-platform="darwin"] .modal-box      { animation: macPop 0.38s var(--ease-apple) both; }
+html[data-platform="darwin"] .account-menu   { animation: macPop 0.28s var(--ease-apple) both; transform-origin: top right; }
+@keyframes macFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes macPop  { from { opacity: 0; transform: scale(0.96) translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Controls: smooth hover/press with a subtle press-in. */
+html[data-platform="darwin"] button,
+html[data-platform="darwin"] .card,
+html[data-platform="darwin"] .menu-item {
+  transition: background-color 0.2s var(--ease-apple), border-color 0.2s var(--ease-apple),
+              box-shadow 0.25s var(--ease-apple), transform 0.2s var(--ease-apple),
+              opacity 0.2s var(--ease-apple), filter 0.2s var(--ease-apple);
+}
+html[data-platform="darwin"] button:active:not(:disabled) { transform: scale(0.97); }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-platform="darwin"] .modal-backdrop,
+  html[data-platform="darwin"] .modal-box,
+  html[data-platform="darwin"] .account-menu { animation: none; }
+  html[data-platform="darwin"] button:active:not(:disabled) { transform: none; }
+}

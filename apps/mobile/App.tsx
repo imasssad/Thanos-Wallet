@@ -27,8 +27,12 @@ const injectBrandFont = (Comp: any) => {
     return el ? React.cloneElement(el, { style: [{ fontFamily: 'Satoshi' }, el.props?.style] }) : el;
   };
 };
-injectBrandFont(Text);
-injectBrandFont(TextInput);
+// iOS uses the system font (SF Pro, with Apple's optical sizing) so type
+// matches native iOS; Android keeps the Satoshi brand face.
+if (Platform.OS !== 'ios') {
+  injectBrandFont(Text);
+  injectBrandFont(TextInput);
+}
 
 /** Address with highlighted head + tail — the visual-confirmation pattern
  *  every major wallet uses (client request 2026-06-12). Address-poisoning
@@ -147,6 +151,7 @@ import {
 } from './lib/browser-history';
 import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -292,6 +297,15 @@ function AnimatedSwitch({ keyName, children, style }: {
     // wraps Pressables (the whole onboarding card + the main tab body) can
     // desync the Android touch target from the visual mid-animation, making
     // buttons untappable. JS-driven is touch-safe; the 260ms fade is cheap.
+    if (Platform.OS === 'ios') {
+      // iOS: native-driven spring (UIKit-like settle). The touch-desync issue
+      // above is Android-only, so iOS can use the native driver.
+      Animated.parallel([
+        Animated.timing(opacity,    { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.spring(translateY, { toValue: 0, damping: 20, stiffness: 220, mass: 0.9, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
     Animated.parallel([
       Animated.timing(opacity,    { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
       Animated.timing(translateY, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
@@ -321,7 +335,7 @@ function Btn({ onPress, onLongPress, disabled, style, children, hitSlop, ripple 
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={onPress && Platform.OS === 'ios' ? () => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onPress(); } : onPress}
       onLongPress={onLongPress}
       disabled={disabled}
       hitSlop={hitSlop}
@@ -329,7 +343,7 @@ function Btn({ onPress, onLongPress, disabled, style, children, hitSlop, ripple 
       style={({ pressed }) => [
         style,
         { overflow: 'hidden' },
-        pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] },
+        pressed && (Platform.OS === 'ios' ? { opacity: 0.85, transform: [{ scale: 0.97 }] } : { opacity: 0.92, transform: [{ scale: 0.98 }] }),
       ]}
     >
       {children}
@@ -9387,10 +9401,10 @@ function App() {
                 return (
                   <Pressable
                     key={t.key}
-                    style={({ pressed }) => [styles.tab, pressed && { opacity: 0.55 }]}
+                    style={({ pressed }) => [styles.tab, pressed && (GLASS ? { transform: [{ scale: 0.9 }] } : { opacity: 0.55 })]}
                     android_ripple={{ color: 'rgba(91,124,250,0.18)', borderless: false }}
                     hitSlop={6}
-                    onPress={() => setScreen(t.key)}
+                    onPress={() => { if (GLASS && !active) void Haptics.selectionAsync().catch(() => {}); setScreen(t.key); }}
                   >
                     {active && <View style={styles.tabActiveBar}/>}
                     <t.Icon size={20} color={active ? colors.blue : colors.textMuted} strokeWidth={active ? 2.4 : 2}/>
@@ -9417,13 +9431,18 @@ function App() {
 
 /* Global text-size multiplier for mobile — matches web/desktop 1.5x zoom feel.
    Applied to every fontSize in the StyleSheet below via _scaleFontSizes(). */
-const MOBILE_TEXT_SCALE = 1.5;
+// iOS: 1.2 maps the stylesheet onto Apple's HIG type scale (28 → 34pt Large
+// Title, 14 → 17pt Body, 16 → 19pt nav title). Android keeps 1.5.
+const MOBILE_TEXT_SCALE = Platform.OS === 'ios' ? 1.2 : 1.5;
 function _scaleFontSizes<T extends Record<string, any>>(raw: T): T {
   for (const k in raw) {
     const s: any = raw[k];
     if (s && typeof s === 'object') {
       if (typeof s.fontSize === 'number')   s.fontSize   = Math.round(s.fontSize   * MOBILE_TEXT_SCALE);
       if (typeof s.lineHeight === 'number') s.lineHeight = Math.round(s.lineHeight * MOBILE_TEXT_SCALE);
+      // SF Pro is already optically tracked — the tight negative tracking tuned
+      // for Satoshi crowds it, so soften it on iOS.
+      if (Platform.OS === 'ios' && typeof s.letterSpacing === 'number' && s.letterSpacing < -0.4) s.letterSpacing = -0.4;
     }
   }
   return raw;
@@ -9461,6 +9480,8 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
     paddingTop: 4, paddingBottom: 4,
   };
   if (out.tab) out.tab = { ...out.tab, borderRadius: 24 };
+  // iOS 26 tab bar: the selected tab sits in its own soft glass capsule.
+  if (out.tabActiveBar) out.tabActiveBar = { position: 'absolute', top: 2, bottom: 2, left: 2, right: 2, borderRadius: 24, backgroundColor: isDarkPalette(C) ? 'rgba(255,255,255,0.13)' : 'rgba(59,122,247,0.12)' };
   return out as T;
 }
 
