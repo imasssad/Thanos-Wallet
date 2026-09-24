@@ -101,6 +101,10 @@ probe() {
     sym='✓'; col='32'; ok=$((ok+1))
   elif [ "$status" = "$expected" ]; then
     sym='⚠'; col='33'; warn=$((warn+1)); detail="slow (${ms}ms)"
+  elif [ "$status" = "429" ]; then
+    # Rate-limited: the upstream is up, it's just throttling this runner's
+    # shared IP (public RPCs do this to GitHub Actions). Not an outage.
+    sym='⚠'; col='33'; warn=$((warn+1)); detail="rate-limited (429)"
   else
     sym='✗'; col='31'; failed=$((failed+1))
     detail="status=$status (expected $expected)"
