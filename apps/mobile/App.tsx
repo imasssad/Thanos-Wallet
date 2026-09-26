@@ -262,6 +262,9 @@ const StylesCtx  = createContext(makeStyles(DARK));
 /* Opens the rename-account dialog for an account index. Provided by the
    root shell so any screen (Settings card, account sheet) can trigger it. */
 const RenameAcctCtx = createContext<(idx: number) => void>(() => {});
+/** The user's own accounts (visible HD indices) — Send lists them as one-tap recipients. */
+interface OwnAccount { idx: number; name: string; address: string }
+const OwnAccountsCtx = createContext<OwnAccount[]>([]);
 /* Display currency — root-held so a change re-renders the whole tree
    (every formatUsd call picks up the new rate), same pattern as theme. */
 const FiatCtx = createContext<{ code: DisplayCurrency; set: (c: DisplayCurrency) => void }>({ code: 'USD', set: () => {} });
@@ -3706,6 +3709,8 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [padOpen, setPadOpen] = useState(false);
+  const ownAccounts = useContext(OwnAccountsCtx);
+  const otherAccounts = ownAccounts.filter((a) => a.address.toLowerCase() !== addr.toLowerCase());
   const [sending, setSending] = useState(false);
   const [memo, setMemo] = useState('');
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
@@ -4031,6 +4036,35 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           <Text style={[styles.rowSub, { marginTop: 8, color: C.red }]}>
             Not a valid {CHAIN_META[chain].label} address
           </Text>
+        )}
+
+        {/* Own accounts — one-tap transfer between the user's wallets. EVM
+            addresses are shared across every EVM network (Lithosphere,
+            Ethereum, BNB…), so this works for any EVM-chain asset. */}
+        {chain === 'evm' && otherAccounts.length > 0 && (
+          <View style={{ marginTop: 14 }}>
+            <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>MY ACCOUNTS</Text>
+            {otherAccounts.map((a, i) => {
+              const sel = to.trim().toLowerCase() === a.address.toLowerCase();
+              return (
+                <Pressable
+                  key={a.idx}
+                  onPress={() => setTo(a.address)}
+                  style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: i === 0 ? 0 : StyleSheet.hairlineWidth, borderTopColor: C.borderSubtle }, pressed && { opacity: 0.6 }]}
+                  accessibilityLabel={`Send to ${a.name}`}
+                >
+                  <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
+                    <WalletIcon size={18} color={C.blue}/>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '600' }}>{a.name}</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 12, fontFamily: MONO, marginTop: 2 }}>{a.address.slice(0, 8)}…{a.address.slice(-6)}</Text>
+                  </View>
+                  {sel && <Check size={18} color={C.blue}/>}
+                </Pressable>
+              );
+            })}
+          </View>
         )}
       </View>
 
@@ -8993,6 +9027,10 @@ function App() {
   const [visibleAccounts, setVisibleAccounts] = useState<number[]>([0]);
   const [acctBusy, setAcctBusy] = useState(false);
   useEffect(() => { setVisibleAccounts(getVisibleAccountIndices()); }, [accountCount, activeIdx]);
+  const ownAccounts = useMemo<OwnAccount[]>(
+    () => visibleAccounts.filter((i) => !!accountAddresses[i]).map((i) => ({ idx: i, name: getAccountName(i), address: accountAddresses[i] })),
+    [visibleAccounts, accountAddresses],
+  );
 
   const confirmDeleteAccount = async (idx: number) => {
     if (acctBusy) return;
@@ -9252,6 +9290,7 @@ function App() {
         <WalletSeedCtx.Provider value={walletSeed}>
         <BrowserCtx.Provider value={openBrowser}>
         <SendNavCtx.Provider value={openSendTo}>
+        <OwnAccountsCtx.Provider value={ownAccounts}>
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
             <GlassAura dark={isDark}/>
@@ -9580,6 +9619,7 @@ function App() {
               })}
             </View>
           </SafeAreaView>
+        </OwnAccountsCtx.Provider>
         </SendNavCtx.Provider>
         </BrowserCtx.Provider>
         </WalletSeedCtx.Provider>
