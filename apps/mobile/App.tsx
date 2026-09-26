@@ -155,7 +155,7 @@ import * as Haptics from 'expo-haptics';
 import { WebView } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import {
-  ArrowUpRight, ArrowDownLeft, Repeat, Plus,
+  ArrowUpRight, ArrowDownLeft, Repeat, Plus, ArrowUpDown, Delete as DeleteKey,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
@@ -3568,6 +3568,128 @@ function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: s
   }
 }
 
+/** Trim a number to at most `dp` decimals without trailing zeros ("0.5", not "0.50000000"). */
+function trimAmount(n: number, dp: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return n.toFixed(dp).replace(/\.?0+$/, '');
+}
+
+/** Full-screen amount entry (Trust/Coinbase-style keypad). Big amount, a
+ *  crypto ⇄ USD toggle, available balance, 25/50/75/Max and a numeric pad.
+ *  Always hands back the amount in the ASSET's units. */
+function SendAmountPad({ visible, sym, available, priceUsd, initial, onClose, onDone }: {
+  visible: boolean; sym: string; available?: number; priceUsd?: number; initial: string;
+  onClose: () => void; onDone: (amount: string) => void;
+}) {
+  const C = useColors();
+  const canFiat = !!priceUsd && priceUsd > 0;
+  const [fiat, setFiat] = useState(false);
+  const [val, setVal] = useState(initial);
+  useEffect(() => { if (visible) { setVal(initial); setFiat(false); } }, [visible]);
+
+  const maxDp = fiat ? 2 : 8;
+  const num = parseFloat(val || '0') || 0;
+  const assetAmt = fiat && canFiat ? num / priceUsd! : num;
+  const usdAmt = canFiat ? assetAmt * priceUsd! : 0;
+  const over = available != null && assetAmt > available + 1e-12;
+  const tick = () => { if (Platform.OS === 'ios') void Haptics.selectionAsync().catch(() => {}); };
+
+  const press = (k: string) => {
+    tick();
+    setVal((v) => {
+      if (k === 'del') return v.slice(0, -1);
+      if (k === '.') return v.includes('.') ? v : (v === '' ? '0.' : v + '.');
+      if (v.length >= 16) return v;
+      const dot = v.indexOf('.');
+      if (dot >= 0 && v.length - dot - 1 >= maxDp) return v;
+      if (v === '0') return k;
+      return v + k;
+    });
+  };
+  const pct = (p: number) => {
+    if (available == null) return;
+    tick();
+    const a = available * p;
+    setVal(fiat && canFiat ? trimAmount(a * priceUsd!, 2) : trimAmount(a, 8));
+  };
+  const toggle = () => {
+    if (!canFiat) return;
+    tick();
+    setVal(fiat ? trimAmount(assetAmt, 8) : trimAmount(usdAmt, 2));
+    setFiat((f) => !f);
+  };
+
+  const shown = val === '' ? '0' : val;
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'];
+  const keyBg = C.bgElevated;
+  const ready = assetAmt > 0 && !over;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 }}>
+          <Pressable onPress={onClose} hitSlop={12}><ChevronLeft size={24} color={C.textPrimary}/></Pressable>
+          <Text style={{ color: C.textPrimary, fontSize: 17, fontWeight: '700' }}>Send</Text>
+          <Pressable onPress={onClose} hitSlop={12}><XIcon size={22} color={C.textPrimary}/></Pressable>
+        </View>
+
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 }}>
+          <Text
+            numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}
+            style={{ fontSize: 64, fontWeight: '700', letterSpacing: -1, color: val === '' ? C.textMuted : (over ? C.red : C.textPrimary) }}
+          >
+            {fiat ? `$${shown}` : `${shown} ${sym}`}
+          </Text>
+          {canFiat && (
+            <Pressable onPress={toggle} style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: C.bgElevated }, pressed && { opacity: 0.7 }]}>
+              <Text style={{ color: C.textSecondary, fontSize: 15, fontWeight: '600' }}>
+                {fiat ? `${trimAmount(assetAmt, 8) || '0'} ${sym}` : `$ ${usdAmt.toFixed(2)}`}
+              </Text>
+              <ArrowUpDown size={15} color={C.textSecondary}/>
+            </Pressable>
+          )}
+          {available != null && (
+            <Text style={{ color: over ? C.red : C.textMuted, fontSize: 15, marginTop: 14 }}>
+              {over ? 'Amount exceeds your balance' : `${trimAmount(available, 8) || '0'} ${sym} available`}
+            </Text>
+          )}
+        </View>
+
+        <View style={{ paddingHorizontal: 12, paddingBottom: 8, gap: 8 }}>
+          {available != null && (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {[['25%', 0.25], ['50%', 0.5], ['75%', 0.75], ['Max', 1]].map(([label, p]) => (
+                <Pressable key={label as string} onPress={() => pct(p as number)} style={({ pressed }) => [{ flex: 1, height: 44, borderRadius: 12, backgroundColor: keyBg, alignItems: 'center', justifyContent: 'center' }, pressed && { opacity: 0.6 }]}>
+                  <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '600' }}>{label as string}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {keys.map((k) => (
+              <Pressable
+                key={k} onPress={() => press(k)} onLongPress={k === 'del' ? () => { tick(); setVal(''); } : undefined}
+                style={({ pressed }) => [{ width: '31.9%', height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: k === '.' || k === 'del' ? 'transparent' : keyBg }, pressed && { backgroundColor: C.bgHover, transform: [{ scale: 0.97 }] }]}
+              >
+                {k === 'del'
+                  ? <DeleteKey size={24} color={C.textPrimary}/>
+                  : <Text style={{ color: C.textPrimary, fontSize: 28, fontWeight: '600' }}>{k}</Text>}
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            disabled={!ready}
+            onPress={() => onDone(trimAmount(assetAmt, 8))}
+            style={({ pressed }) => [{ height: 54, borderRadius: 27, marginTop: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: C.blue, opacity: ready ? 1 : 0.4 }, pressed && ready && { opacity: 0.85 }]}
+          >
+            <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700' }}>Continue</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialTo }: { goBack: () => void; initialChain?: SendChainOption; initialSym?: string; initialChainId?: number; initialTo?: string }) {
   const C = useColors();
   const styles = useStyles();
@@ -3583,6 +3705,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [padOpen, setPadOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [memo, setMemo] = useState('');
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
@@ -3844,13 +3967,21 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
             </Pressable>
           )}
         </View>
-        <TextInput
-          style={styles.bigAmountInput}
-          placeholder="0.00"
-          placeholderTextColor={C.textMuted}
-          value={amt}
-          onChangeText={setAmt}
-          keyboardType="decimal-pad"
+        {/* Tap opens the full-screen keypad (SendAmountPad) instead of the
+            system keyboard. */}
+        <Pressable onPress={() => setPadOpen(true)} accessibilityRole="button" accessibilityLabel="Enter amount">
+          <Text style={[styles.bigAmountInput, !amt && { color: C.textMuted }]} numberOfLines={1} adjustsFontSizeToFit>
+            {amt || '0.00'}
+          </Text>
+        </Pressable>
+        <SendAmountPad
+          visible={padOpen}
+          sym={reviewSym}
+          available={chain === 'evm' && coin ? coin.balance : undefined}
+          priceUsd={chain === 'evm' && coin ? coin.priceUsd : undefined}
+          initial={amt}
+          onClose={() => setPadOpen(false)}
+          onDone={(a) => { setAmt(a); setPadOpen(false); }}
         />
         <Text style={[styles.amountUsdSub, overBalance && { color: C.red }]}>
           {chain === 'evm'
