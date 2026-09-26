@@ -217,8 +217,11 @@ export class QuanttClient {
     await this.setSession(null);
   }
 
-  private authHeaders(s: QuanttSession): Record<string, string> {
-    const h: Record<string, string> = { 'content-type': 'application/json' };
+  /** content-type only when there's a body: Quantts' Fastify server rejects
+   *  'application/json' with an empty body (FST_ERR_CTP_EMPTY_JSON_BODY) —
+   *  which broke the body-less deposit-confirm, delete-agent and logout calls. */
+  private authHeaders(s: QuanttSession, withBody = false): Record<string, string> {
+    const h: Record<string, string> = withBody ? { 'content-type': 'application/json' } : {};
     if (s.accessToken) h.authorization = `Bearer ${s.accessToken}`;
     return h;
   }
@@ -230,7 +233,7 @@ export class QuanttClient {
       method: init.method ?? 'GET',
       credentials: 'omit',
       body: init.body,
-      headers: { ...this.authHeaders(s), ...(init.headers ?? {}) },
+      headers: { ...this.authHeaders(s, init.body != null), ...(init.headers ?? {}) },
     });
     if (res.status === 401 && allowRetry) {
       const refreshed = await this.refresh();
