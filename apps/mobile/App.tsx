@@ -1155,9 +1155,11 @@ function PortfolioChart({ holdings }: { holdings: Holding[] }) {
 const laxApplyUrl = (_address?: string) => 'https://widget.lax.money/3he2i50cluol4qdnp22y6t99b9fhuqyeo09z6xm0znpakrawjwe9ok7hgycn?collapse';
 const QUANTT_AGENTS_URL = 'https://quantts.ai';
 const LAX_BENEFITS = [
-  'Get a LAX Debit Card for free',
-  'Unlimited top-ups with 0 fees',
-  'Accepted worldwide where Visa™ is accepted',
+  // Client copy (Alex, 2026-09-27).
+  'Spend online and in-store',
+  'Manage your card instantly',
+  'Track transactions in real time',
+  'Secure payments wherever you go',
 ];
 
 /* ─── LAX card flow ──────────────────────────────────────────────────────
@@ -1341,9 +1343,9 @@ function LaxComingSoon({ C, onClose, onLearn }: any) {
     <View style={{ gap: 16, paddingTop: 20 }}>
       <LaxCardArt/>
       <View style={{ gap: 6, marginTop: 6 }}>
-        <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>LAX Visa Card</Text>
+        <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>Welcome to LAX Cash!</Text>
         <Text style={{ color: C.textSecondary, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>
-          Spend your crypto anywhere Visa is accepted — online and in store.
+          Your money. Ready for anywhere. Spend, send, and manage your money with the LAX Card — built for a faster, more flexible financial experience.
         </Text>
       </View>
       <View style={{ backgroundColor: C.bgElevated, borderRadius: 16, padding: 16, gap: 10 }}>
@@ -1355,10 +1357,10 @@ function LaxComingSoon({ C, onClose, onLearn }: any) {
         ))}
       </View>
       <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 52, borderRadius: 26, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', marginTop: 4 }, pressed && { opacity: 0.85 }]}>
-        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Get your LAX Card</Text>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Get Started →</Text>
       </Pressable>
       <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
-        Your application is completed securely with LAX. Takes a few minutes.
+        Your LAX Card is ready when you are.
       </Text>
       <Pressable onPress={onClose} style={{ paddingVertical: 6, alignSelf: 'center' }}>
         <Text style={{ color: C.textSecondary, fontSize: 13 }}>Not now</Text>

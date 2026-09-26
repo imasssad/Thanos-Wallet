@@ -96,9 +96,11 @@ function LaxCardArt({ last4, active }: { last4?: string; active?: boolean }) {
 }
 
 const BENEFITS = [
-  'Get a LAX Debit Card for free',
-  'Unlimited top-ups with 0 fees',
-  'Accepted worldwide where Visa™ is accepted',
+  // Client copy (Alex, 2026-09-27).
+  'Spend online and in-store',
+  'Manage your card instantly',
+  'Track transactions in real time',
+  'Secure payments wherever you go',
 ];
 
 function Benefits() {
@@ -195,9 +197,9 @@ function LaxComingSoon({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 20 }}>
       <LaxCardArt />
-      <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', marginTop: 6 }}>LAX Visa Card</div>
+      <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', marginTop: 6 }}>Welcome to LAX Cash!</div>
       <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, textAlign: 'center', marginTop: -6 }}>
-        Spend your crypto anywhere Visa is accepted — online and in store.
+        Your money. Ready for anywhere. Spend, send, and manage your money with the LAX Card — built for a faster, more flexible financial experience.
       </div>
       <div style={{ alignSelf: 'stretch', background: 'var(--bg-elevated)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {BENEFITS.map((b: string) => (
@@ -208,8 +210,8 @@ function LaxComingSoon({ onClose }: { onClose: () => void }) {
       </div>
       {/* Own branded intro (client 2026-09-27) — the partner widget's landing page
           shows third-party branding, so it opens only when the user applies. */}
-      <button className="btn-primary" style={{ alignSelf: 'stretch', marginTop: 2 }} onClick={onLearn}>Get your LAX Card</button>
-      <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>Your application is completed securely with LAX. Takes a few minutes.</div>
+      <button className="btn-primary" style={{ alignSelf: 'stretch', marginTop: 2 }} onClick={onLearn}>Get Started →</button>
+      <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>Your LAX Card is ready when you are.</div>
       <button className="btn-link" onClick={onClose}>Not now</button>
     </div>
   );
