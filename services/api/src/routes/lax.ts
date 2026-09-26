@@ -109,7 +109,9 @@ function validBaseUrl(value: string): boolean {
 const configured = (): boolean => Boolean(LAX_API_KEY && validBaseUrl(LAX_API_BASE));
 const projectConfigured = (): boolean => /^\d+$/.test(LAX_PROJECT_ID) && Number(LAX_PROJECT_ID) > 0;
 const integerConfig = (value: string): number | null => /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : null;
-const configuredForIssuance = (): boolean => Boolean(configured() && integerConfig(LAX_IFRAME_ID) && integerConfig(LAX_PRODUCT_ID));
+// Zypto product ids are alphanumeric (e.g. 'OB03362'), not integers.
+const productConfig = (value: string): string | null => /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : null;
+const configuredForIssuance = (): boolean => Boolean(configured() && integerConfig(LAX_IFRAME_ID) && productConfig(LAX_PRODUCT_ID));
 
 interface CurrenciesCache { at: number; status: number; json: unknown }
 let currenciesCache: CurrenciesCache | null = null;
@@ -242,7 +244,7 @@ laxRouter.get('/status', async (_req, res: Response) => {
     projectId:             projectConfigured() ? Number(LAX_PROJECT_ID) : null,
     virtualCard: {
       iframeId: Boolean(integerConfig(LAX_IFRAME_ID)),
-      productId: Boolean(integerConfig(LAX_PRODUCT_ID)),
+      productId: Boolean(productConfig(LAX_PRODUCT_ID)),
     },
     have: {
       apiKey:    Boolean(LAX_API_KEY),
@@ -460,7 +462,7 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
   if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const iframeId = integerConfig(LAX_IFRAME_ID);
-  const productId = integerConfig(LAX_PRODUCT_ID);
+  const productId = productConfig(LAX_PRODUCT_ID);
   if (!iframeId || !productId) {
     return res.status(503).json({
       error: 'Virtual card issuance is not configured',
