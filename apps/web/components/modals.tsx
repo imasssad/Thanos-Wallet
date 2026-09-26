@@ -65,7 +65,7 @@ import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
 import { SimulationPanel, hasCriticalIssue } from './SimulationPanel';
 import { bridgePollBackoffMs, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import * as RadixSelect from '@radix-ui/react-select';
-import { QrCode, Check, ChevronDown } from 'lucide-react';
+import { QrCode, Check, ChevronDown, Wallet } from 'lucide-react';
 
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
 /** Swap pickers also offer the stablecoin counter-assets (USDC/USDT/DAI). */
@@ -1290,6 +1290,44 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
             <QrCode size={18} color="var(--text-secondary)"/>
           </button>
         </div>
+
+        {/* Own accounts — one-tap transfer between the user's wallets (EVM
+            addresses are shared across Lithosphere and every EVM network). */}
+        {!isSolanaSend && !isBitcoinSend && !isCosmosSend && (() => {
+          const mine = (wallet?.ownAccounts ?? []).filter(a => a.address.toLowerCase() !== (wallet?.evmAddress ?? '').toLowerCase());
+          if (mine.length === 0) return null;
+          return (
+            <div style={{ marginTop: 10 }}>
+              <div className="field-label" style={{ marginBottom: 4 }}>My accounts</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {mine.map(a => {
+                  const sel = to.trim().toLowerCase() === a.address.toLowerCase();
+                  return (
+                    <button
+                      key={a.idx} type="button" onClick={() => { setTo(a.address); setShowSuggest(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px',
+                        borderRadius: 10, border: '1px solid ' + (sel ? 'var(--blue)' : 'transparent'),
+                        background: sel ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer', color: 'inherit', textAlign: 'left',
+                      }}
+                      onMouseOver={e => { if (!sel) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                      onMouseOut={e  => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <span style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(59,122,247,0.14)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Wallet size={15}/>
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{a.address.slice(0, 8)}…{a.address.slice(-6)}</span>
+                      </span>
+                      {sel && <span style={{ marginLeft: 'auto', color: 'var(--blue)', fontSize: 13 }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Saved-contact autocomplete — shows up to 5 matches as the user types. */}
         {showSuggest && contactSuggestions.length > 0 && (

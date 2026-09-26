@@ -3175,6 +3175,53 @@ function buildEvmSendAssets(coins: DisplayCoin[]): DisplayCoin[] {
   return [...makalu, ...external];
 }
 
+/** One-tap recipients for moving funds between the user's own accounts.
+ *  EVM addresses are shared across Lithosphere and every EVM network, so this
+ *  is offered for EVM sends only. Private-key wallets have a single account. */
+function OwnAccountPicker({ seed, current, to, onPick }: {
+  seed: string[]; current: string; to: string; onPick: (address: string) => void;
+}) {
+  const mine = useMemo(() => {
+    if (seed.length < 12) return [] as Array<{ idx: number; name: string; address: string }>;
+    try {
+      const root = HDNodeWallet.fromPhrase(seed.join(' '), undefined, "m/44'/60'/0'/0");
+      return getVisibleAccountIndices()
+        .map((i) => ({ idx: i, name: getAccountName(i), address: root.deriveChild(i).address }))
+        .filter((a) => a.address.toLowerCase() !== current.toLowerCase());
+    } catch { return []; }
+  }, [seed, current]);
+  if (mine.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="field-label" style={{ marginBottom: 4 }}>My accounts</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {mine.map((a) => {
+          const sel = to.trim().toLowerCase() === a.address.toLowerCase();
+          return (
+            <button
+              key={a.idx} type="button" onClick={() => onPick(a.address)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px',
+                borderRadius: 10, border: '1px solid ' + (sel ? 'var(--blue, #3b7af7)' : 'transparent'),
+                background: sel ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer', color: 'inherit', textAlign: 'left',
+              }}
+            >
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,122,247,0.14)', color: 'var(--blue, #3b7af7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700 }}>
+                {a.idx + 1}
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{a.address.slice(0, 8)}…{a.address.slice(-6)}</span>
+              </span>
+              {sel && <span style={{ marginLeft: 'auto', color: 'var(--blue, #3b7af7)' }}>✓</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SendModal({ onClose, initialChain, initialCoin, address, initialTo }: {
   onClose: () => void;
   /** Pre-select chain + asset (opened from the token detail screen). */
@@ -3459,6 +3506,7 @@ function SendModal({ onClose, initialChain, initialCoin, address, initialTo }: {
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
         <input className="field-input" placeholder={DESKTOP_CHAIN_META[chain].placeholder} value={to} onChange={e => setTo(e.target.value)}/>
+        {chain === 'evm' && <OwnAccountPicker seed={seed} current={address ?? ''} to={to} onPick={setTo}/>}
         {!!initialTo && to === initialTo && (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
             Pre-filled — Quantt agent deposit address.

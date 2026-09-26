@@ -14,6 +14,7 @@ import {
   getActiveAccountIndex, setActiveAccountIndex,
   getAccountCount, setAccountCount, MAX_ACCOUNTS,
   getCustomAccountName, setAccountName, hideAccount,
+  getAccountName, getVisibleAccountIndices,
 } from '../../lib/vault';
 import { accountUsdValue, DELETE_MAX_USD } from '../../lib/account-balance';
 import { usePrices } from '../../lib/usePrices';
@@ -36,6 +37,9 @@ interface WalletContextValue {
   /** Raw 0x-prefixed private key, set ONLY when the wallet was imported
    *  via private key (not derived from a mnemonic). */
   privateKey?: string;
+  /** The user's own accounts (visible HD indices) — Send offers them as
+   *  one-tap recipients for moving funds between owned wallets. */
+  ownAccounts?: Array<{ idx: number; name: string; address: string }>;
 }
 const WalletContext = createContext<WalletContextValue | null>(null);
 export function useWallet(): WalletContextValue | null {
@@ -108,6 +112,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const accountAddresses = useMemo(
     () => (isMnemonicWallet ? deriveAccountAddresses(walletSeed, accountCount) : []),
     [isMnemonicWallet, walletSeed, accountCount],
+  );
+
+  const ownAccounts = useMemo(
+    () => getVisibleAccountIndices().filter((i) => !!accountAddresses[i]).map((i) => ({ idx: i, name: getAccountName(i), address: accountAddresses[i] })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [accountAddresses, accountCount],
   );
 
   const switchAccount = (idx: number) => {
@@ -206,7 +216,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const addresses = dualFromEvm(derivedEvm);
 
   return (
-    <WalletContext.Provider value={{ evmAddress: derivedEvm, addresses, seed: walletSeed, privateKey: walletPrivateKey }}>
+    <WalletContext.Provider value={{ evmAddress: derivedEvm, addresses, seed: walletSeed, privateKey: walletPrivateKey, ownAccounts }}>
       <WalletConnectHost/>
       {/* First-run Lithosphere Makalu prompts — both self-gate via
           localStorage, so they appear at most once per browser. The welcome
