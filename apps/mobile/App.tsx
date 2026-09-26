@@ -1177,7 +1177,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const openBrowser = useBrowser();
   const openLax = async () => {
     try {
-      await Linking.openURL(laxApplyUrl());
+      onClose();
+      openBrowser(laxApplyUrl());
     } catch {
       Alert.alert('LAX is unavailable', 'Please open the LAX application link in your browser to continue.');
     }
@@ -1332,37 +1333,34 @@ function LaxIntro({ C, styles, notLive, onStart, onLearn }: any) {
   );
 }
 
-function LaxComingSoon({ C, styles, have, onClose, onLearn }: any) {
-  const [widgetReady, setWidgetReady] = useState(false);
-  const [widgetFailed, setWidgetFailed] = useState(false);
+function LaxComingSoon({ C, onClose, onLearn }: any) {
+  // Our own branded intro (client 2026-09-27): the partner widget's landing page
+  // carries third-party branding, so it's no longer embedded here. The card
+  // application opens in the in-app browser only when the user taps Apply.
   return (
-    <View style={{ gap: 14, alignItems: 'center', paddingTop: 20 }}>
+    <View style={{ gap: 16, paddingTop: 20 }}>
       <LaxCardArt/>
-      <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 8 }}>Apply for your LAX Card</Text>
-      <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
-        Complete your card application securely through the LAX partner widget.
-      </Text>
-      {!widgetFailed && <View style={{ width: '100%', height: 600, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
-        {!widgetReady && <View style={{ ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bgElevated }}><ActivityIndicator color={C.blue}/></View>}
-        <WebView
-          source={{ uri: laxApplyUrl() }}
-          onLoadEnd={() => setWidgetReady(true)}
-          onError={() => setWidgetFailed(true)}
-          startInLoadingState
-          javaScriptEnabled
-          domStorageEnabled
-          style={{ flex: 1, opacity: widgetReady ? 1 : 0 }}
-        />
-      </View>}
-      {widgetFailed && <View style={{ width: '100%', backgroundColor: C.bgElevated, borderRadius: 12, padding: 14 }}>
-        <Text style={{ color: C.textSecondary, fontSize: 12, lineHeight: 18, textAlign: 'center' }}>
-          The LAX application could not load inside Thanos. Use the fallback below to continue.
+      <View style={{ gap: 6, marginTop: 6 }}>
+        <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800', textAlign: 'center' }}>LAX Visa Card</Text>
+        <Text style={{ color: C.textSecondary, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>
+          Spend your crypto anywhere Visa is accepted — online and in store.
         </Text>
-      </View>}
-      <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 46, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 0 }, pressed && { opacity: 0.85 }]}>
-        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Apply on lax.money ↗</Text>
+      </View>
+      <View style={{ backgroundColor: C.bgElevated, borderRadius: 16, padding: 16, gap: 10 }}>
+        {LAX_BENEFITS.map((b) => (
+          <View key={b} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+            <Check size={16} color={C.blue} strokeWidth={2.6} style={{ marginTop: 2 }}/>
+            <Text style={{ color: C.textSecondary, fontSize: 14, lineHeight: 20, flex: 1 }}>{b}</Text>
+          </View>
+        ))}
+      </View>
+      <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 52, borderRadius: 26, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', marginTop: 4 }, pressed && { opacity: 0.85 }]}>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Apply for LAX Card</Text>
       </Pressable>
-      <Pressable onPress={onClose} style={{ paddingVertical: 8 }}>
+      <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
+        Your application is completed securely with LAX. Takes a few minutes.
+      </Text>
+      <Pressable onPress={onClose} style={{ paddingVertical: 6, alignSelf: 'center' }}>
         <Text style={{ color: C.textSecondary, fontSize: 13 }}>Not now</Text>
       </Pressable>
     </View>

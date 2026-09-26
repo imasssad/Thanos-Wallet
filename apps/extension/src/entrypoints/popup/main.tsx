@@ -944,14 +944,21 @@ function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 20 }}>
       <LaxCardArt/>
-      <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 800, textAlign: 'center', marginTop: 8 }}>
-        Apply for your LAX Card
+      <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', marginTop: 6 }}>LAX Visa Card</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, textAlign: 'center', marginTop: -6 }}>
+        Spend your crypto anywhere Visa is accepted — online and in store.
       </div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
-        Complete your card application securely through the LAX partner widget.
+      <div style={{ alignSelf: 'stretch', background: 'var(--bg-elevated)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {LAX_BENEFITS.map((b: string) => (
+          <div key={b} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.45 }}>
+            <span style={{ color: 'var(--blue, #3b7af7)', fontWeight: 800 }}>✓</span><span>{b}</span>
+          </div>
+        ))}
       </div>
-      <iframe title="LAX Card application" src={LAX_LEARN_MORE_URL} style={{ width: '100%', height: 560, border: 0, borderRadius: 12, background: '#fff' }} allow="payment; camera; geolocation" />
-      <button className="btn-primary" style={{ marginTop: 6 }} onClick={onLearn}>Apply on lax.money ↗</button>
+      {/* Own branded intro (client 2026-09-27) — the partner widget's landing page
+          shows third-party branding, so it opens only when the user applies. */}
+      <button className="btn-primary" style={{ alignSelf: 'stretch', marginTop: 2 }} onClick={onLearn}>Apply for LAX Card</button>
+      <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>Your application is completed securely with LAX. Takes a few minutes.</div>
       <button className="btn-link" onClick={onClose}>Not now</button>
     </div>
   );
