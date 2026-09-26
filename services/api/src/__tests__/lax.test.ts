@@ -107,6 +107,22 @@ describe('GET /lax/status', () => {
 
 /* ─── card ownership — the lax_cards scoping check ──────────────────── */
 
+describe('GET /lax/products', () => {
+  it('rejects an unauthenticated call with 401', async () => {
+    const res = await request(app).get('/lax/products');
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('proxies Zypto get-products so the product_id can be read', async () => {
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { data: [{ product_id: 7, name: 'LAX Visa' }] }));
+    const res = await request(app).get('/lax/products').set('Authorization', auth());
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ data: [{ product_id: 7, name: 'LAX Visa' }] });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/cards/get-products');
+  });
+});
+
 describe('GET /lax/card/:cardNumber/balance', () => {
   it('404s a card the caller does not own, without calling upstream', async () => {
     dbQueryOne.mockResolvedValueOnce(null); // not found in lax_cards for this user

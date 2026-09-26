@@ -355,6 +355,17 @@ laxRouter.post('/physical/submit', laxOpLimiter, async (req, res: Response) => {
 /** GET /lax/currencies — dash.zypto.com/docs/cards → available_currencies.
  *  Must be re-checked at least once per 24h (partner requirement). Server
  *  caches successful responses for 24h; serves stale cache on upstream failure. */
+/** GET /lax/products — proxies Zypto GET /api/cards/get-products ("Get Prepaid
+ *  Products"). Each item carries the product_id that LAX_PRODUCT_ID needs, plus
+ *  the card network (Visa / Mastercard). Read-only; authenticated like the rest. */
+laxRouter.get('/products', async (_req, res) => {
+  if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
+  try {
+    const upstream = await laxFetch('/api/cards/get-products');
+    return res.status(upstream.status).json(upstream.json);
+  } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
+});
+
 laxRouter.get('/currencies', async (_req, res) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   if (currenciesCache && Date.now() - currenciesCache.at < CURRENCIES_TTL_MS) {
