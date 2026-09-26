@@ -112,6 +112,32 @@ const integerConfig = (value: string): number | null => /^\d+$/.test(value) && N
 // Zypto product ids are alphanumeric (e.g. 'OB03362'), not integers.
 const productConfig = (value: string): string | null => /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : null;
 const configuredForIssuance = (): boolean => Boolean(configured() && integerConfig(LAX_IFRAME_ID) && productConfig(LAX_PRODUCT_ID));
+/** Whether the configured card product can be refilled. The current Zypto
+ *  product (OB03362, Obsidian Global Gold Mastercard) is a non-reloadable
+ *  prepaid card, so top-up stays off unless LAX_CARD_RELOADABLE=true. */
+const cardReloadable = (): boolean => (process.env.LAX_CARD_RELOADABLE ?? '').toLowerCase() === 'true';
+
+/** Zypto's order endpoints return the checkout page either as a bare URL in
+ *  `message` or as `checkout_page_url`. */
+function findCheckoutUrl(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const o = value as Record<string, unknown>;
+  for (const key of ['checkout_page_url', 'checkout_url', 'message', 'url']) {
+    const v = o[key];
+    if (typeof v === 'string' && /^https:\/\//.test(v)) return v;
+  }
+  return undefined;
+}
+function findOrderId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const o = value as Record<string, unknown>;
+  for (const key of ['order_id', 'orderId', 'order']) {
+    const v = o[key];
+    if (typeof v === 'string' && v) return v;
+    if (typeof v === 'number') return String(v);
+  }
+  return undefined;
+}
 
 interface CurrenciesCache { at: number; status: number; json: unknown }
 let currenciesCache: CurrenciesCache | null = null;
@@ -245,7 +271,9 @@ laxRouter.get('/status', async (_req, res: Response) => {
     virtualCard: {
       iframeId: Boolean(integerConfig(LAX_IFRAME_ID)),
       productId: Boolean(productConfig(LAX_PRODUCT_ID)),
+      reloadable: cardReloadable(),
     },
+    reloadable: cardReloadable(),
     have: {
       apiKey:    Boolean(LAX_API_KEY),
       apiBase:   validBaseUrl(LAX_API_BASE),
@@ -423,7 +451,8 @@ laxRouter.get('/card/:cardNumber/balance', async (req, res: Response) => {
   );
   if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/physical-cards/get-balance', {
+    // Virtual-card balance (the cards Thanos issues are Zypto virtual cards).
+    const { status, json } = await laxFetch('/api/cards/get-card-balance', {
       method: 'POST', body: JSON.stringify({ card_number: cardParse.data }),
     });
     return res.status(status).json(json);
@@ -444,11 +473,26 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
     [userId, cardNumber],
   );
   if (!owned) return res.status(404).json({ error: 'Card not found' });
+  if (!cardReloadable()) {
+    return res.status(409).json({ error: 'This card can’t be topped up', detail: 'The current LAX card product is non-reloadable.' });
+  }
   try {
-    const { status, json } = await laxFetch('/api/physical-cards/load', {
-      method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount, ...(currency ? { currency } : {}) }),
+    // User-paid refill: Zypto returns a checkout page; the card is loaded
+    // after the user pays there (never from the merchant allowance).
+    const upstream = await laxFetch('/api/cards/create-refill-card-order-api', {
+      method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount }),
     });
-    return res.status(status).json(json);
+    if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
+    const checkoutUrl = findCheckoutUrl(upstream.json);
+    if (!checkoutUrl) return res.status(502).json({ error: 'LAX did not return a checkout page' });
+    const orderId = findOrderId(upstream.json);
+    if (orderId) {
+      await query(
+        `insert into lax_card_orders (user_id, order_id, kind, card_number, amount, currency) values ($1, $2, 'refill', $3, $4, $5) on conflict (order_id) do nothing`,
+        [userId, orderId, cardNumber, amount, currency ?? null],
+      );
+    }
+    return res.status(200).json({ success: true, order_id: orderId ?? null, checkout_url: checkoutUrl, redirect_url: checkoutUrl });
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
@@ -472,18 +516,25 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
   }
   const userId = (req as unknown as AuthRequest).userId;
   try {
-    const upstream = await laxFetch('/api/cards/issue-card-api', {
+    // User-paid order (create-card-order-api), NOT issue-card-api: the latter
+    // is funded from the merchant's allowance, i.e. every signed-in user could
+    // mint cards on Thanos' account. Zypto returns a checkout page; the card is
+    // issued after the user pays and the webhook links it back (lax_card_orders).
+    const upstream = await laxFetch('/api/cards/create-card-order-api', {
       method: 'POST',
       body: JSON.stringify({ iframe_id: iframeId, product_id: productId, ...parse.data }),
     });
     if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
-    const cardNumber = findCardNumber(upstream.json);
-    if (!cardNumber) return res.status(502).json({ error: 'LAX did not return a virtual card number' });
-    await query(
-      `insert into lax_cards (user_id, card_number, currency, issued_amount) values ($1, $2, $3, $4) on conflict (card_number) do update set user_id = excluded.user_id, currency = excluded.currency, issued_amount = excluded.issued_amount`,
-      [userId, cardNumber, parse.data.currency, parse.data.amount],
-    );
-    return res.status(upstream.status).json(upstream.json);
+    const checkoutUrl = findCheckoutUrl(upstream.json);
+    if (!checkoutUrl) return res.status(502).json({ error: 'LAX did not return a checkout page' });
+    const orderId = findOrderId(upstream.json);
+    if (orderId) {
+      await query(
+        `insert into lax_card_orders (user_id, order_id, kind, email, amount, currency) values ($1, $2, 'issue', $3, $4, $5) on conflict (order_id) do nothing`,
+        [userId, orderId, parse.data.email, parse.data.amount, parse.data.currency],
+      );
+    }
+    return res.status(200).json({ success: true, order_id: orderId ?? null, checkout_url: checkoutUrl, redirect_url: checkoutUrl });
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
@@ -497,7 +548,7 @@ laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
   if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/physical-cards/get-transactions-current-month', {
+    const { status, json } = await laxFetch('/api/cards/get-card-transactions', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
     });
     return res.status(status).json(json);
@@ -515,7 +566,7 @@ laxRouter.get('/card/:cardNumber/details', laxOpLimiter, async (req, res: Respon
   if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/physical-cards/view-card', {
+    const { status, json } = await laxFetch('/api/cards/get-card-details', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
     });
     return res.status(status).json(json);
@@ -639,6 +690,22 @@ laxWebhookRouter.post('/', async (req, res: Response) => {
       `insert into lax_webhook_events (event_type, card_number, payload) values ($1, $2, $3)`,
       [eventType, cardNumber, JSON.stringify(body)],
     );
+    // A paid card order → link the issued card to the user who ordered it, so
+    // it appears in their in-app dashboard (balance/transactions/details).
+    const orderId = findOrderId(body) ?? findOrderId(body.data) ?? findOrderId(body.message);
+    const issuedCard = cardNumber ?? findCardNumber(body);
+    if (orderId && issuedCard) {
+      const order = await queryOne<{ user_id: string; kind: string; amount: string | null; currency: string | null }>(
+        `update lax_card_orders set status = 'completed', card_number = coalesce(card_number, $2) where order_id = $1 returning user_id, kind, amount, currency`,
+        [orderId, issuedCard],
+      );
+      if (order && order.kind === 'issue') {
+        await query(
+          `insert into lax_cards (user_id, card_number, currency, issued_amount) values ($1, $2, $3, $4) on conflict (card_number) do nothing`,
+          [order.user_id, issuedCard, order.currency, order.amount],
+        );
+      }
+    }
   } catch (e) {
     // Never fail the webhook response over our own logging — log server-side
     // and still ack, so Zypto doesn't retry-storm us over a DB hiccup.

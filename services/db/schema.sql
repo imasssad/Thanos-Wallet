@@ -451,6 +451,24 @@ CREATE TABLE IF NOT EXISTS lax_webhook_events (
 CREATE INDEX IF NOT EXISTS lax_webhook_events_card_number_idx ON lax_webhook_events(card_number);
 CREATE INDEX IF NOT EXISTS lax_webhook_events_received_at_idx ON lax_webhook_events(received_at DESC);
 
+-- User-paid LAX virtual-card orders (migration 005_lax_card_orders). The
+-- webhook links a paid order's card_number back to the ordering user.
+CREATE TABLE IF NOT EXISTS lax_card_orders (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  order_id        TEXT NOT NULL,
+  kind            TEXT NOT NULL DEFAULT 'issue',
+  card_number     TEXT,
+  email           TEXT,
+  amount          NUMERIC,
+  currency        TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (order_id)
+);
+CREATE INDEX IF NOT EXISTS lax_card_orders_user_id_idx ON lax_card_orders(user_id);
+
 -- =============================================================================
 -- 12. UPDATED_AT AUTO-TRIGGER
 -- =============================================================================
@@ -471,7 +489,7 @@ BEGIN
     'users','wallets','accounts','transactions','contacts',
     'wc_sessions','wc_requests','tokens','portfolio_snapshots',
     'bridge_jobs','lep100_tokens','lep100_balances','lep100_allowances','job_audit',
-    'push_tokens','lax_cards'
+    'push_tokens','lax_cards','lax_card_orders'
   ] LOOP
     EXECUTE format(
       'DROP TRIGGER IF EXISTS trg_%I_updated_at ON %I;

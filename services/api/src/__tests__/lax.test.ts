@@ -95,7 +95,8 @@ describe('GET /lax/status', () => {
       configured: true,
       configuredForIssuance: false,
       projectId: 612,
-      virtualCard: { iframeId: false, productId: false },
+      virtualCard: { iframeId: false, productId: false, reloadable: false },
+      reloadable: false,
       have: { apiKey: true, apiBase: true, projectId: true },
     });
     // The actual secret values must never appear in the response body.
@@ -181,15 +182,32 @@ describe('POST /lax/card/topup', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('proxies a top-up for a card the caller owns', async () => {
+  it('refuses a top-up when the card product is non-reloadable (default)', async () => {
     dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
-    fetchMock.mockResolvedValueOnce(jsonRes(200, { ok: true }));
     const res = await request(app)
       .post('/lax/card/topup')
       .set('Authorization', auth())
       .send({ cardNumber: 'card-1', amount: 25 });
-    expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a user-paid refill checkout when the product is reloadable', async () => {
+    process.env.LAX_CARD_RELOADABLE = 'true';
+    try {
+      dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
+      fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, checkout_page_url: 'https://checkout.lax.test/refill/1', order_id: 'R1' }));
+      dbQuery.mockResolvedValueOnce([]);
+      const res = await request(app)
+        .post('/lax/card/topup')
+        .set('Authorization', auth())
+        .send({ cardNumber: 'card-1', amount: 25 });
+      expect(res.status).toBe(200);
+      expect(res.body.checkout_url).toBe('https://checkout.lax.test/refill/1');
+      expect(String(fetchMock.mock.calls[0][0])).toContain('/api/cards/create-refill-card-order-api');
+      // never the merchant-funded physical load
+      expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/physical-cards/load');
+    } finally { delete process.env.LAX_CARD_RELOADABLE; }
   });
 });
 
@@ -254,24 +272,14 @@ describe('POST /lax/card/issue', () => {
 });
 
 describe('physical card upstream paths', () => {
-  it('proxies balance to /api/physical-cards/get-balance', async () => {
+  it('proxies balance to the virtual-card /api/cards/get-card-balance', async () => {
     dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
     fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: '10.00' }));
     const res = await request(app).get('/lax/card/card-1/balance').set('Authorization', auth());
     expect(res.status).toBe(200);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/physical-cards/get-balance');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/cards/get-card-balance');
   });
 
-  it('proxies top-up to /api/physical-cards/load', async () => {
-    dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
-    fetchMock.mockResolvedValueOnce(jsonRes(200, { ok: true }));
-    const res = await request(app)
-      .post('/lax/card/topup')
-      .set('Authorization', auth())
-      .send({ cardNumber: 'card-1', amount: 25 });
-    expect(res.status).toBe(200);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/physical-cards/load');
-  });
 
   it('creates and records a physical card holder', async () => {
     dbQueryOne.mockResolvedValueOnce(null);
