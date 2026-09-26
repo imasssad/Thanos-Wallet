@@ -208,7 +208,7 @@ function LaxComingSoon({ onClose }: { onClose: () => void }) {
       </div>
       {/* Own branded intro (client 2026-09-27) — the partner widget's landing page
           shows third-party branding, so it opens only when the user applies. */}
-      <button className="btn-primary" style={{ alignSelf: 'stretch', marginTop: 2 }} onClick={onLearn}>Apply for LAX Card</button>
+      <button className="btn-primary" style={{ alignSelf: 'stretch', marginTop: 2 }} onClick={onLearn}>Get your LAX Card</button>
       <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>Your application is completed securely with LAX. Takes a few minutes.</div>
       <button className="btn-link" onClick={onClose}>Not now</button>
     </div>

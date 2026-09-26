@@ -1355,7 +1355,7 @@ function LaxComingSoon({ C, onClose, onLearn }: any) {
         ))}
       </View>
       <Pressable onPress={onLearn} style={({ pressed }: any) => [{ height: 52, borderRadius: 26, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', marginTop: 4 }, pressed && { opacity: 0.85 }]}>
-        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Apply for LAX Card</Text>
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Get your LAX Card</Text>
       </Pressable>
       <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
         Your application is completed securely with LAX. Takes a few minutes.
