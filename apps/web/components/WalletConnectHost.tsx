@@ -1,16 +1,15 @@
 'use client';
 /**
  * Listens for incoming WalletConnect session_request events (after the user
- * has approved a session via WalletConnectModal) and routes them to the
- * appropriate signer in apps/web/lib/signer.ts.
+ * has approved a session via WalletConnectModal) and answers them.
  *
- * Methods handled:
- *   - personal_sign           — wallet signs the raw message
- *   - eth_signTypedData_v4    — wallet signs the EIP-712 typed data
- *   - eth_sendTransaction     — wallet signs + broadcasts the tx via
- *                                makeProvider() and returns the hash
- *
- * Everything else gets responded with a 4200 'method not supported'.
+ * Routing lives in lib/wc-requests.ts (pure, unit-tested): every
+ * personal_sign / eth_signTypedData_v4 / eth_sendTransaction waits for the
+ * user in the confirm sheet below, decoded by sdk-core reviewSigningRequest
+ * (permits, Permit2, Seaport, approve, … into spender / amount / "you give,
+ * you get"). A `block` verdict can only be rejected. Requests queue — a new
+ * one never replaces the sheet on screen. Signing runs in the web worker,
+ * falling back to the main thread only if the worker isn't up.
  *
  * Mount this once inside the AppShell so it survives navigation.
  */
@@ -26,22 +25,29 @@ import { walletFromSeed, makeProvider } from '../lib/signer';
 import {
   signerSignMessage, signerSignTypedData, signerSignTransaction, SignerError,
 } from '../lib/signer-client';
-import {
-  classifyTransaction, classifyTypedData, type Verdict, type TxLike,
-} from '../lib/phishing';
-import { PhishingBanner } from './PhishingBanner';
+import { classifyOrigin } from '../lib/phishing';
+import { createSessionRequestHandler, type ConfirmEntry } from '../lib/wc-requests';
+import { SignReviewPanel } from './SignReviewPanel';
 import { EVM_CHAINS } from '../lib/evm-chains';
 import { MAKALU_CHAIN_ID } from '../lib/rpc';
 
-interface PendingRequest {
-  request: WalletKitTypes.SessionRequest;
-  /** Risk verdict so the confirm UI can render the banner. */
-  verdict: Verdict;
-  /** Short human-readable summary of the action — used in the modal. */
-  summary: string;
-  /** Approve resumes the original signing flow. */
-  approve: () => Promise<void>;
-  reject:  (reason?: string) => Promise<void>;
+type PendingRequest = ConfirmEntry<WalletKitTypes.SessionRequest>;
+
+/** The dApp origin WalletConnect verified for this request, if any. */
+function requestOrigin(request: WalletKitTypes.SessionRequest): string | undefined {
+  return (request as unknown as { verifyContext?: { verified?: { origin?: string } } }).verifyContext?.verified?.origin;
+}
+
+/** Worker first; on worker_locked / worker_crashed (early cold start) fall
+ *  back to signing in-process so the request doesn't fail outright. */
+async function withWorker<T>(viaWorker: () => Promise<T>, inProcess: () => Promise<T>): Promise<T> {
+  try {
+    return await viaWorker();
+  } catch (wErr) {
+    const code = wErr instanceof SignerError ? wErr.code : '';
+    if (code === 'worker_locked' || code === 'worker_crashed') return inProcess();
+    throw wErr;
+  }
 }
 
 export function WalletConnectHost() {
@@ -77,277 +83,67 @@ export function WalletConnectHost() {
     ...EVM_CHAINS.map(c => c.chainId),
   ]);
   const sessionChainsRef = useRef<Map<string, number>>(new Map());
-  const getSessionChainId = (topic: string): number =>
-    sessionChainsRef.current.get(topic) ?? MAKALU_CHAIN_ID;
-  const setSessionChainId = (topic: string, chainId: number): void => {
-    sessionChainsRef.current.set(topic, chainId);
-  };
-  const toHexChainId = (n: number): string => `0x${n.toString(16)}`;
 
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [busy, setBusy]       = useState<'approve' | 'reject' | null>(null);
 
-  /* Hand a risky request to the user. We only allow one at a time —
-     concurrent dApp requests stack in dedup; the second tries again
-     when the user resolves the first. */
+  /* Every signing request waits for the user, one at a time: later ones
+     queue behind the sheet on screen instead of replacing it (a page must
+     not be able to swap the request just before the user taps Approve). */
+  const queueRef = useRef<PendingRequest[]>([]);
+  const [queued, setQueued] = useState(0);
   const queueForConfirm = (entry: PendingRequest) => {
-    setPending(entry);
+    queueRef.current.push(entry);
+    setQueued(queueRef.current.length);
+    if (queueRef.current.length === 1) setPending(queueRef.current[0]);
   };
-
-  /* ─── Signature-spam dedup ──────────────────────────────────────────
-     dApps occasionally fire two identical sign requests in quick
-     succession (race conditions in their state machines, double-clicks
-     on a Connect button, hot-reload glitches in dev, etc). The wallet
-     can't tell *intent* apart from *spam* — so we coalesce: any request
-     whose (method + JSON-serialised params) matches one we've seen in
-     the last 3 seconds gets a soft-reject with code -32002. The user
-     sees a single prompt instead of N stacked pop-ups. */
-  const recentSigsRef = useRef<Map<string, number>>(new Map());
-  const DEDUP_WINDOW_MS = 3000;
-  const dedupCheck = (method: string, params: unknown[]): { duplicate: boolean; key: string } => {
-    const key = `${method}::${JSON.stringify(params)}`;
-    const now = Date.now();
-    const last = recentSigsRef.current.get(key);
-    // Sweep old entries on the way through.
-    for (const [k, t] of recentSigsRef.current) {
-      if (now - t > DEDUP_WINDOW_MS) recentSigsRef.current.delete(k);
-    }
-    if (last !== undefined && now - last < DEDUP_WINDOW_MS) return { duplicate: true, key };
-    recentSigsRef.current.set(key, now);
-    return { duplicate: false, key };
-  };
-
-  /* ─── Permit-pattern detection ──────────────────────────────────────
-     If a dApp pushes an `eth_sendTransaction` whose `data` field is an
-     ERC-20 `approve(spender, amount)` call, log a one-time hint about
-     EIP-2612 Permit being a single-signature alternative. We don't
-     auto-translate — that's dApp work — but the hint surfaces in
-     devtools so integrators see it. */
-  const ERC20_APPROVE_SIG = '0x095ea7b3';
-  const permitHintShownRef = useRef<Set<string>>(new Set());
-  const maybePermitHint = (data: string | undefined, topic: string) => {
-    if (typeof data !== 'string' || !data.toLowerCase().startsWith(ERC20_APPROVE_SIG)) return;
-    if (permitHintShownRef.current.has(topic)) return;
-    permitHintShownRef.current.add(topic);
-    // eslint-disable-next-line no-console
-    console.info(
-      '[wc] dApp requested ERC-20 approve(). If this dApp adopts EIP-2612 '
-      + 'Permit or Uniswap Permit2, the user can authorise the same flow '
-      + 'with a single off-chain signature instead of two on-chain txs. '
-      + 'See https://eips.ethereum.org/EIPS/eip-2612.',
-    );
+  const advanceQueue = () => {
+    queueRef.current.shift();
+    setQueued(queueRef.current.length);
+    setPending(queueRef.current[0] ?? null);
+    setBusy(null);
   };
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
-
-    onSessionRequest(async (request) => {
-      const topic  = request.topic;
-      const id     = request.id;
-      const method = request.params.request.method;
-      const params = request.params.request.params as unknown[];
-
-      const sendOk    = (result: unknown) => respondRequest({ topic, id, result });
-      const sendErr   = (code: number, message: string) => respondError({ topic, id, code, message });
-
-      // Dedup signature spam BEFORE any heavy work / pop-up.
-      const dup = dedupCheck(method, params);
-      if (dup.duplicate) {
-        await sendErr(-32002, 'Duplicate request rejected (already submitted within 3s)');
-        return;
-      }
-
-      try {
-        switch (method) {
-          case 'personal_sign': {
-            // params: [hexMessage, fromAddress] — the address may or may not
-            // be checksummed; we sign regardless of order as long as one of
-            // the entries matches our address.
-            const messageHex = (params[0] as string) ?? '';
-            // Auto-approve for MVP. UI approval pass is the next iteration.
-            // Worker-isolated signing first; on worker_locked we fall back
-            // to in-process signing so an early-cold-start race doesn't fail.
-            let signature: string;
-            try {
-              const r = await signerSignMessage(messageHex);
-              signature = r.signature;
-            } catch (wErr) {
-              const code = wErr instanceof SignerError ? wErr.code : '';
-              if (code === 'worker_locked' || code === 'worker_crashed') {
-                const wallet = currentWallet();
-                const messageBytes = messageHex.startsWith('0x')
-                  ? Buffer.from(messageHex.slice(2), 'hex')
-                  : new TextEncoder().encode(String(messageHex));
-                signature = await wallet.signMessage(messageBytes);
-              } else {
-                throw wErr;
-              }
-            }
-            await sendOk(signature);
-            break;
-          }
-          case 'eth_signTypedData_v4': {
-            const typedData = JSON.parse(params[1] as string) as {
-              domain: Record<string, unknown>;
-              types:  Record<string, Array<{ name: string; type: string }>>;
-              message: Record<string, unknown>;
-              primaryType: string;
-            };
-            // ethers v6 wants {types} *without* EIP712Domain — strip if present.
-            const { EIP712Domain, ...types } = typedData.types as Record<string, unknown>;
-            void EIP712Domain;
-            const cleanTypes = types as Record<string, Array<{ name: string; type: string }>>;
-
-            const doSign = async () => {
-              let sig: string;
-              try {
-                const r = await signerSignTypedData({ domain: typedData.domain, types: cleanTypes, message: typedData.message });
-                sig = r.signature;
-              } catch (wErr) {
-                const code = wErr instanceof SignerError ? wErr.code : '';
-                if (code === 'worker_locked' || code === 'worker_crashed') {
-                  const wallet = currentWallet();
-                  sig = await wallet.signTypedData(typedData.domain, cleanTypes, typedData.message);
-                } else {
-                  throw wErr;
-                }
-              }
-              await sendOk(sig);
-            };
-
-            const verdict = classifyTypedData({
-              primaryType: typedData.primaryType,
-              domain:      typedData.domain as { name?: string; verifyingContract?: string },
-              message:     typedData.message,
-            });
-            if (verdict.risk === 'safe') {
-              await doSign();
-            } else {
-              // Hand to the confirm modal; resume on user approve.
-              await queueForConfirm({
-                request, verdict,
-                summary: `Sign typed data: ${typedData.primaryType || 'unknown'} on ${(typedData.domain as { name?: string })?.name ?? 'this dApp'}.`,
-                approve: doSign,
-                reject:  async () => { await sendErr(4001, 'User rejected the signature'); },
-              });
-            }
-            break;
-          }
-          case 'eth_sendTransaction': {
-            const txParams = params[0] as {
-              to: string; value?: string; data?: string; gas?: string; gasLimit?: string;
-              maxFeePerGas?: string; maxPriorityFeePerGas?: string;
-            };
-            // Surface the Permit hint when the dApp is asking us to sign
-            // an ERC-20 approve() — once per session topic, in console only.
-            maybePermitHint(txParams.data, topic);
-
-            const doSend = async () => {
-              let hash: string;
-              try {
-                const r = await signerSignTransaction({
-                  to:                   txParams.to,
-                  value:                txParams.value,
-                  data:                 txParams.data,
-                  gasLimit:             txParams.gas ?? txParams.gasLimit,
-                  maxFeePerGas:         txParams.maxFeePerGas,
-                  maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
-                });
-                hash = r.hash;
-              } catch (wErr) {
-                const code = wErr instanceof SignerError ? wErr.code : '';
-                if (code === 'worker_locked' || code === 'worker_crashed') {
-                  const w = currentWallet(makeProvider());
-                  const tx = await w.sendTransaction({
-                    to:    txParams.to,
-                    value: txParams.value ? BigInt(txParams.value) : undefined,
-                    data:  txParams.data,
-                    gasLimit:             txParams.gas ?? txParams.gasLimit,
-                    maxFeePerGas:         txParams.maxFeePerGas,
-                    maxPriorityFeePerGas: txParams.maxPriorityFeePerGas,
-                  });
-                  hash = tx.hash;
-                } else {
-                  throw wErr;
-                }
-              }
-              await sendOk(hash);
-            };
-
-            const verdict = classifyTransaction({
-              to:    txParams.to,
-              value: txParams.value,
-              data:  txParams.data,
-            } satisfies TxLike);
-            if (verdict.risk === 'safe') {
-              await doSend();
-            } else {
-              await queueForConfirm({
-                request, verdict,
-                summary: `Send transaction to ${txParams.to}`,
-                approve: doSend,
-                reject:  async () => { await sendErr(4001, 'User rejected the transaction'); },
-              });
-            }
-            break;
-          }
-          case 'eth_accounts':
-          case 'eth_requestAccounts': {
-            await sendOk([evmRef.current]);
-            break;
-          }
-          case 'eth_chainId': {
-            await sendOk(toHexChainId(getSessionChainId(topic)));
-            break;
-          }
-          case 'wallet_switchEthereumChain': {
-            // Spec: params is [{ chainId: '0xHEX' }]. Reply null on success;
-            // 4902 if the chain is unknown (dApp may follow with addEthereumChain).
-            const p = (params[0] as { chainId?: string } | undefined) ?? {};
-            const requested = typeof p.chainId === 'string' ? parseInt(p.chainId, 16) : NaN;
-            if (!Number.isFinite(requested)) {
-              await sendErr(-32602, 'Invalid chainId');
-              break;
-            }
-            if (!SUPPORTED_CHAIN_IDS.has(requested)) {
-              await sendErr(4902, `Unrecognised chain ${requested}. Call wallet_addEthereumChain first.`);
-              break;
-            }
-            setSessionChainId(topic, requested);
-            // Emit chainChanged so the dApp's provider can re-read state.
-            // Failure here is non-fatal — the dApp would just poll instead.
-            void emitChainChanged(topic, requested).catch(() => {});
-            await sendOk(null);
-            break;
-          }
-          case 'wallet_addEthereumChain': {
-            // We accept the call iff we already know the chain — there's no
-            // dynamic registry today. Spec returns null on success.
-            const p = (params[0] as { chainId?: string } | undefined) ?? {};
-            const requested = typeof p.chainId === 'string' ? parseInt(p.chainId, 16) : NaN;
-            if (!Number.isFinite(requested)) {
-              await sendErr(-32602, 'Invalid chainId');
-              break;
-            }
-            if (!SUPPORTED_CHAIN_IDS.has(requested)) {
-              // 4001 (declined to add), NOT 4902 — 4902 means "switch needs
-              // an add first" and would loop a standard switch().catch(add).
-              await sendErr(4001, `Chain ${p.chainId} is not supported by this wallet.`);
-              break;
-            }
-            setSessionChainId(topic, requested);
-            void emitChainChanged(topic, requested).catch(() => {});
-            await sendOk(null);
-            break;
-          }
-          default:
-            await sendErr(4200, `Method not supported: ${method}`);
-        }
-      } catch (e) {
-        const err = e as { code?: number; message?: string };
-        await sendErr(err.code ?? -32603, err.message ?? 'Internal error');
-      }
-    })
+    const handler = createSessionRequestHandler<WalletKitTypes.SessionRequest>({
+      account: () => evmRef.current,
+      sessionChainId: (topic) => sessionChainsRef.current.get(topic) ?? MAKALU_CHAIN_ID,
+      setSessionChainId: (topic, chainId) => { sessionChainsRef.current.set(topic, chainId); },
+      supportedChainIds: SUPPORTED_CHAIN_IDS,
+      // The signing worker (and its fallback) broadcast on Makalu.
+      broadcastChainId: MAKALU_CHAIN_ID,
+      respond: (topic, id, result) => respondRequest({ topic, id, result }),
+      respondError: (topic, id, code, message) => respondError({ topic, id, code, message }),
+      emitChainChanged,
+      signMessage: (messageHex) => withWorker(
+        async () => (await signerSignMessage(messageHex)).signature,
+        () => currentWallet().signMessage(messageHex.startsWith('0x')
+          ? Buffer.from(messageHex.slice(2), 'hex')
+          : new TextEncoder().encode(messageHex)),
+      ),
+      signTypedData: (typed) => withWorker(
+        async () => (await signerSignTypedData(typed)).signature,
+        () => currentWallet().signTypedData(typed.domain, typed.types, typed.message),
+      ),
+      sendTransaction: (tx) => withWorker(
+        async () => (await signerSignTransaction(tx)).hash,
+        async () => (await currentWallet(makeProvider()).sendTransaction({
+          to: tx.to,
+          value: tx.value ? BigInt(tx.value) : undefined,
+          data: tx.data,
+          gasLimit: tx.gasLimit,
+          maxFeePerGas: tx.maxFeePerGas,
+          maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+        })).hash,
+      ),
+      confirm: queueForConfirm,
+      blockedOrigin: (origin) => {
+        const v = classifyOrigin(origin);
+        return v.risk === 'critical' ? (v.reasons[0] ?? 'Known phishing site.') : null;
+      },
+    });
+    onSessionRequest(handler)
       .then(fn => { unsub = fn; })
       .catch(() => {});
 
@@ -355,14 +151,13 @@ export function WalletConnectHost() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount once; refs keep latest seed/address
 
-  /* ─── Risky-request confirm modal ──────────────────────────────────
-     Only rendered when classifyTransaction / classifyTypedData flagged
-     a non-safe risk. Safe requests pass through silently. */
+  /* ─── Confirm sheet — every signing request, one at a time ─────────── */
   if (!pending) return null;
 
-  const close   = () => { setPending(null); setBusy(null); };
+  const close   = advanceQueue;
+  const blocked = pending.review.risk === 'block';
   const onApprove = async () => {
-    if (busy) return;
+    if (busy || blocked) return;
     setBusy('approve');
     try { await pending.approve(); } catch (e) {
       // eslint-disable-next-line no-console
@@ -378,8 +173,7 @@ export function WalletConnectHost() {
   };
 
   const peer = pending.request.params?.request as { method?: string } | undefined;
-  const dAppName = (pending.request as unknown as { verifyContext?: { verified?: { origin?: string } } })
-    .verifyContext?.verified?.origin ?? 'dApp';
+  const dAppName = requestOrigin(pending.request) ?? 'dApp';
 
   /* Chain badge — every WC v2 request carries its EIP-155 chainId in
      `params.chainId` (e.g. "eip155:137"). Resolve to a human label so
@@ -417,10 +211,7 @@ export function WalletConnectHost() {
               </span>
             )}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600, wordBreak: 'break-all' }}>
-            {pending.summary}
-          </div>
-          <PhishingBanner verdict={pending.verdict}/>
+          <SignReviewPanel review={pending.review}/>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button
               className="btn-outline"
@@ -430,21 +221,28 @@ export function WalletConnectHost() {
             >
               {busy === 'reject' ? 'Rejecting…' : 'Reject'}
             </button>
-            <button
-              className="btn-primary"
-              style={{
-                flex: 1,
-                background: pending.verdict.risk === 'critical' ? 'var(--red)' : undefined,
-                opacity: busy ? 0.6 : 1,
-              }}
-              onClick={onApprove}
-              disabled={busy === 'reject'}
-            >
-              {busy === 'approve'
-                ? 'Signing…'
-                : pending.verdict.risk === 'critical' ? 'Sign anyway' : 'Approve & sign'}
-            </button>
+            {!blocked && (
+              <button
+                className="btn-primary"
+                style={{
+                  flex: 1,
+                  background: pending.review.risk === 'review' ? 'var(--red)' : undefined,
+                  opacity: busy ? 0.6 : 1,
+                }}
+                onClick={onApprove}
+                disabled={busy === 'reject'}
+              >
+                {busy === 'approve'
+                  ? 'Signing…'
+                  : pending.review.risk === 'review' ? 'I understand — sign' : 'Approve & sign'}
+              </button>
+            )}
           </div>
+          {queued > 1 && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
+              {queued - 1} more request{queued > 2 ? 's' : ''} waiting
+            </div>
+          )}
         </div>
       </div>
     </div>
