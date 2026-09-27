@@ -919,7 +919,10 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <div style={{ display: 'flex', gap: 6, padding: '0 20px 10px', overflowX: 'auto' }}>
+        {/* flexShrink 0, like .modal-header: .modal-popup is a height-capped
+            flex column, and this row (a scroll container, so min-height 0)
+            was squeezed whenever a tab's content was tall. */}
+        <div style={{ display: 'flex', gap: 6, padding: '0 20px 10px', overflowX: 'auto', flexShrink: 0 }}>
           {TABS.map(t => (
             <button
               key={t.id}

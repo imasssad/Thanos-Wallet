@@ -1586,7 +1586,10 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
 
   return (
     <Modal title={agent.name} onClose={onClose}>
-      <div style={{ display: 'flex', gap: 4, padding: '10px 16px 0', overflowX: 'auto' }}>
+      {/* flexShrink 0, like .modal-header: .modal-box is a height-capped flex
+          column, and this row (a scroll container, so min-height 0) was
+          squeezed whenever a tab's content was tall. */}
+      <div style={{ display: 'flex', gap: 4, padding: '10px 16px 0', overflowX: 'auto', flexShrink: 0 }}>
         {QUANTT_DETAIL_TABS.map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             padding: '6px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
