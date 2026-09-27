@@ -12,12 +12,27 @@
  * Security: the seed never enters the WebView. The page can only ask;
  * RN signs after the user approves. isMetaMask is emulated because many
  * dApps gate their connect button on it.
+ *
+ * Every request carries a per-browser nonce that lives only in this
+ * script's closure. The script is injected into the MAIN frame only, and on
+ * Android `window.ReactNativeWebView.postMessage` is reachable from every
+ * frame — so without the nonce a cross-origin iframe (an ad on a connected
+ * dApp) could raise approval sheets attributed to the dApp. The RN side
+ * drops any message without the right nonce.
  */
 
 const MAKALU_CHAIN_HEX = `0x${(700777).toString(16)}`; // 0xab169
 
-export const INJECTED_PROVIDER_JS = `(function () {
+/** The provider script for one browser instance; `nonce` must be random
+ *  and [A-Za-z0-9] only (it is spliced into the script source). */
+export function injectedProviderJs(nonce: string): string {
+  if (!/^[A-Za-z0-9]{16,}$/.test(nonce)) throw new Error('bad provider nonce');
+  return INJECTED_PROVIDER_TEMPLATE.replace('__THANOS_NONCE__', nonce);
+}
+
+const INJECTED_PROVIDER_TEMPLATE = `(function () {
   if (window.ethereum && window.ethereum.__thanos) return;
+  var NONCE = '__THANOS_NONCE__';
   var cbs = {}, nextId = 1, listeners = {};
   var CHAIN_ID = '${MAKALU_CHAIN_HEX}';
 
@@ -64,7 +79,7 @@ export const INJECTED_PROVIDER_JS = `(function () {
       var id = nextId++;
       cbs[id] = { resolve: resolve, reject: reject };
       window.ReactNativeWebView.postMessage(JSON.stringify({
-        __thanos: true, id: id, method: method, params: normSignParams(method, params || [])
+        __thanos: true, nonce: NONCE, id: id, method: method, params: normSignParams(method, params || [])
       }));
     });
   }

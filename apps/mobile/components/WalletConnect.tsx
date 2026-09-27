@@ -30,7 +30,9 @@ import {
   getActiveSessions, disconnectSession,
   respondRequest, respondError, onSessionProposal, onSessionRequest,
 } from '../lib/walletconnect';
-import { executeWcRequest, summariseRequest, WcSignerError } from '../lib/wc-signer';
+import { executeWcRequest, WcSignerError } from '../lib/wc-signer';
+import { reviewSigningRequest } from '../lib/sign-review';
+import { SignReviewPanel } from './SignReviewPanel';
 import { QrScannerModal } from './QrScannerModal';
 import { isWalletConnectUri } from '../lib/qr';
 import { notifyIfEnabled, wcRequestTitle } from '../lib/notifications';
@@ -283,12 +285,18 @@ interface PendingReq {
   id:      number;
   method:  string;
   params:  unknown;
-  summary: string;
   dApp:    string;
 }
 
-export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
+/** The chain mobile WalletConnect sessions sign on (lib/wc-signer: Makalu). */
+const WC_CHAIN_ID = 700777;
+
+export function WalletConnectRequestHost({ seed, account }: { seed: string[]; account?: string }) {
   const [pending, setPending] = useState<PendingReq | null>(null);
+  /* Requests queue: a new one never replaces the sheet on screen (a dApp
+     could otherwise swap it just before Approve, and the first request
+     would never be answered). `pending` is always queue[0]. */
+  const queueRef = useRef<PendingReq[]>([]);
   const [busy, setBusy]       = useState<'approve' | 'reject' | null>(null);
   // Pre-sign simulation — runs whenever a pending eth_sendTransaction
   // arrives. Other methods (personal_sign, eth_signTypedData_v4) don't
@@ -302,14 +310,8 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
       const params = req.params.request.params;
       const dApp = (req as unknown as { verifyContext?: { verified?: { origin?: string } } })
                      .verifyContext?.verified?.origin ?? 'A connected dApp';
-      setPending({
-        topic:   req.topic,
-        id:      req.id,
-        method,
-        params,
-        summary: summariseRequest(method, params),
-        dApp,
-      });
+      queueRef.current.push({ topic: req.topic, id: req.id, method, params, dApp });
+      if (queueRef.current.length === 1) setPending(queueRef.current[0]);
       // Alert the user even if the app is backgrounded — this host is always
       // mounted, so the notification fires for every incoming dApp request.
       void notifyIfEnabled(wcRequestTitle(method), `${dApp} is requesting your approval.`);
@@ -346,10 +348,16 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
     return () => { cancelled = true; };
   }, [pending]);
 
-  const close = () => { setPending(null); setBusy(null); };
+  const close = () => { queueRef.current.shift(); setPending(queueRef.current[0] ?? null); setBusy(null); };
+
+  // Decoded request + verdict (lib/sign-review); a block offers Reject only.
+  const review = pending
+    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: WC_CHAIN_ID, account })
+    : null;
+  const blocked = review?.risk === 'block';
 
   const onApprove = async () => {
-    if (!pending || busy) return;
+    if (!pending || busy || blocked) return;
     setBusy('approve');
     try {
       const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params } });
@@ -383,7 +391,7 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
           <Text style={s.rowSub}>{pending.dApp}</Text>
           <View style={s.permCard}>
             <Text style={s.permTitle}>{pending.method}</Text>
-            <Text style={s.permBody}>{pending.summary}</Text>
+            {review && <SignReviewPanel review={review} palette={{ text: P.text, sub: P.text, muted: P.sub, card: P.bg }}/>}
           </View>
 
           {/* Pre-sign simulation — warning/critical issues for tx requests.
@@ -413,18 +421,20 @@ export function WalletConnectRequestHost({ seed }: { seed: string[] }) {
             <Pressable style={[s.secondaryBtn, { flex: 1 }]} onPress={onReject} disabled={busy === 'approve'}>
               <Text style={s.secondaryBtnText}>{busy === 'reject' ? '…' : 'Reject'}</Text>
             </Pressable>
-            <Pressable
-              style={[s.primaryBtn, { flex: 1, marginTop: 0, opacity:
-                busy === 'reject' || (simReport?.issues.some(i => i.level === 'critical') ?? false) ? 0.5 : 1 }]}
-              onPress={onApprove}
-              disabled={busy === 'reject' || (simReport?.issues.some(i => i.level === 'critical') ?? false)}
-            >
-              {busy === 'approve'
-                ? <ActivityIndicator color="#fff"/>
-                : <Text style={s.primaryBtnText}>
-                    {simReport?.issues.some(i => i.level === 'critical') ? 'Blocked' : 'Approve'}
-                  </Text>}
-            </Pressable>
+            {!blocked && (
+              <Pressable
+                style={[s.primaryBtn, { flex: 1, marginTop: 0, backgroundColor: review?.risk === 'review' ? '#ef4444' : P.blue, opacity:
+                  busy === 'reject' || (simReport?.issues.some(i => i.level === 'critical') ?? false) ? 0.5 : 1 }]}
+                onPress={onApprove}
+                disabled={busy === 'reject' || (simReport?.issues.some(i => i.level === 'critical') ?? false)}
+              >
+                {busy === 'approve'
+                  ? <ActivityIndicator color="#fff"/>
+                  : <Text style={s.primaryBtnText}>
+                      {simReport?.issues.some(i => i.level === 'critical') ? 'Blocked' : review?.risk === 'review' ? 'I understand — sign' : 'Approve'}
+                    </Text>}
+              </Pressable>
+            )}
           </View>
         </View>
       </View>

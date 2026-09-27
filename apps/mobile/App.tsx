@@ -149,8 +149,10 @@ import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from './lib/bridge-meta'
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
-import { sendAsset, executeWcRequest, summariseRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
-import { INJECTED_PROVIDER_JS, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
+import { sendAsset, executeWcRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
+import { injectedProviderJs, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
+import { reviewSigningRequest } from './lib/sign-review';
+import { SignReviewPanel } from './components/SignReviewPanel';
 import { loadDappConnections, getGrant, grantConnection } from './lib/dapp-connections';
 import {
   loadBrowserHistory, getRecents, getFavorites, isFavorited,
@@ -8344,7 +8346,17 @@ function OnboardingScreen({
 }
 
 /* ─────────────────── In-app browser (WebView overlay) ─────────────────── */
-interface DappRequest { id: number; method: string; params: unknown[] }
+/** `host` is the page that sent the request (from the message's URL), not
+ *  whatever the browser shows by the time the user looks at the sheet. */
+interface DappRequest { id: number; method: string; params: unknown[]; host: string }
+
+/** Random [A-Za-z0-9] token for the injected provider (lib/dapp-provider). */
+function providerNonce(): string {
+  const abc = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => abc[x % abc.length]).join('');
+}
 
 const MAKALU_CHAIN_ID_NUM = 700777;
 /** EVM chains the in-app browser will switch to — the wallet's KNOWN set only
@@ -8372,6 +8384,13 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   // (mirrors the desktop connectedOrigin gate).
   const [connectedHost, setConnectedHost] = useState('');
   const [pending, setPending] = useState<DappRequest | null>(null);
+  // One approval at a time, tracked synchronously: two requests in the same
+  // tick must not both pass, and a new one never replaces the sheet shown.
+  const pendingRef = useRef<DappRequest | null>(null);
+  // Per-browser secret the injected provider stamps on every request; only
+  // the main frame gets the provider, so an iframe can't forge requests.
+  const nonce = useMemo(providerNonce, []);
+  const providerJs = useMemo(() => injectedProviderJs(nonce), [nonce]);
   // The EVM chain the dApp is currently on. Starts on Makalu; a dApp can
   // wallet_switchEthereumChain to any BROWSER_EVM_CHAIN_IDS member, which
   // routes eth_sendTransaction + reads to that chain.
@@ -8417,8 +8436,8 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
         result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
       }
       if (req.method === 'eth_requestAccounts') {
-        setConnected(true); setConnectedHost(host);
-        grantConnection(host, address, currentChainId);
+        setConnected(true); setConnectedHost(req.host);
+        grantConnection(req.host, address, currentChainId);
       }
       send(resolveJs(req.id, result));
     } catch (e) {
@@ -8427,18 +8446,21 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
     }
   };
 
-  const onMessage = (raw: string) => {
-    let msg: DappRequest & { __thanos?: boolean };
+  const onMessage = (raw: string, frameUrl: string) => {
+    let msg: DappRequest & { __thanos?: boolean; nonce?: string };
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || !msg.__thanos || typeof msg.id !== 'number') return;
-    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [] };
+    if (msg.nonce !== nonce) return; // not our provider (e.g. a cross-origin iframe)
+    let reqHost = host;
+    try { reqHost = new URL(frameUrl).host || host; } catch { /* keep the shown host */ }
+    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost };
 
     // Read-only / already-authorised methods resolve immediately.
     if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${currentChainId.toString(16)}`)); return; }
     if (req.method === 'net_version')  { send(resolveJs(req.id, String(currentChainId))); return; }
     // Address is disclosed ONLY to the host that was granted the connection —
     // a page the WebView later navigated to (redirect/link) must re-prompt.
-    const grantedHere = connected && !!address && !!connectedHost && connectedHost === host;
+    const grantedHere = connected && !!address && !!connectedHost && connectedHost === req.host;
     if (req.method === 'eth_accounts') {
       send(resolveJs(req.id, grantedHere ? [address] : []));
       return;
@@ -8465,7 +8487,15 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       }
       return;
     }
-    if (APPROVAL_METHODS.has(req.method)) { setPending(req); return; }
+    if (APPROVAL_METHODS.has(req.method)) {
+      if (pendingRef.current) {
+        send(rejectJs(req.id, -32002, 'Another request is already waiting — approve or reject it first.'));
+        return;
+      }
+      pendingRef.current = req;
+      setPending(req);
+      return;
+    }
     // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
     // read — proxy straight to the Makalu RPC.
     rpcProxy(req.method, req.params, currentChainId)
@@ -8473,11 +8503,17 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       .catch(e => send(rejectJs(req.id, -32603, (e as Error)?.message || 'RPC error')));
   };
 
-  const approve = () => { if (pending) { void run(pending); setPending(null); } };
-  const reject  = () => { if (pending) { send(rejectJs(pending.id, 4001, 'User rejected')); setPending(null); } };
-
   const isConnect = pending?.method === 'eth_requestAccounts';
-  const summary = pending ? (isConnect ? `Connect your wallet to ${host}?` : summariseRequest(pending.method, pending.params)) : '';
+  // Decoded request + verdict (lib/sign-review) for every signing request.
+  const review = pending && !isConnect
+    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: currentChainId, account: address })
+    : null;
+  const blocked = review?.risk === 'block';
+
+  const approve = () => { if (pending && !blocked) { void run(pending); pendingRef.current = null; setPending(null); } };
+  const reject  = () => { if (pending) { send(rejectJs(pending.id, 4001, blocked ? (review?.blockReason ?? 'Refused by the wallet') : 'User rejected')); pendingRef.current = null; setPending(null); } };
+
+  const summary = pending && isConnect ? `Connect your wallet to ${pending.host}?` : '';
 
   useEffect(() => {
     if (minimized) return;
@@ -8543,8 +8579,11 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
           onNavigationStateChange={(s) => { setCurrent(s.url); setCanGoBack(s.canGoBack); setCanGoForward(s.canGoForward); }}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
-          onMessage={(e) => onMessage(e.nativeEvent.data)}
-          injectedJavaScriptBeforeContentLoaded={INJECTED_PROVIDER_JS}
+          onMessage={(e) => onMessage(e.nativeEvent.data, e.nativeEvent.url)}
+          injectedJavaScriptBeforeContentLoaded={providerJs}
+          // Main frame only (also the library default): iframes get no
+          // provider and never learn the nonce.
+          injectedJavaScriptBeforeContentLoadedForMainFrameOnly
           // Hide third-party Google Play / App Store badges rendered by dApp
           // sites (iOS App Review flagged cross-platform store references).
           injectedJavaScript={STORE_BADGE_SCRUBBER_JS}
@@ -8575,15 +8614,19 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
                   {isConnect ? 'Connection request' : pending.method === 'eth_sendTransaction' ? 'Confirm transaction' : 'Signature request'}
                 </Text>
               </View>
-              <Text style={{ fontSize: 13, color: C.textSecondary, lineHeight: 19 }}>{summary}</Text>
-              <Text style={{ fontSize: 11, color: C.textMuted }} numberOfLines={1}>From {host}</Text>
+              {review
+                ? <SignReviewPanel review={review} palette={{ text: C.textPrimary, sub: C.textSecondary, muted: C.textMuted, card: C.bgElevated }}/>
+                : <Text style={{ fontSize: 13, color: C.textSecondary, lineHeight: 19 }}>{summary}</Text>}
+              <Text style={{ fontSize: 11, color: C.textMuted }} numberOfLines={1}>From {pending.host}</Text>
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
                 <Pressable onPress={reject} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}>
                   <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Reject</Text>
                 </Pressable>
-                <Pressable onPress={approve} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>{isConnect ? 'Connect' : 'Approve'}</Text>
-                </Pressable>
+                {!blocked && (
+                  <Pressable onPress={approve} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: review?.risk === 'review' ? '#ef4444' : C.blue, alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>{isConnect ? 'Connect' : review?.risk === 'review' ? 'I understand — sign' : 'Approve'}</Text>
+                  </Pressable>
+                )}
               </View>
             </View>
           </View>
@@ -9538,7 +9581,7 @@ function App() {
 
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}
-            <WalletConnectRequestHost seed={walletSeed}/>
+            <WalletConnectRequestHost seed={walletSeed} account={walletAddr}/>
 
             {/* WalletConnect deep-link pairing — opens + auto-pairs when a dApp
                 hands off a wc: URI via thanoswallet://wc?uri=… Rendered app-level
