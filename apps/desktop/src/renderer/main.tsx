@@ -5374,6 +5374,9 @@ type OnboardStep = 'welcome' | 'create-warn' | 'create-show' | 'create-confirm' 
 
 function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[], pwd: string) => void; hasVault: boolean }) {
   const [step, setStep] = useState<OnboardStep>(hasVault ? 'unlock' : 'welcome');
+  // A vault that turns up after mount (legacy migration at boot) means Unlock,
+  // not the create/import welcome.
+  useEffect(() => { if (hasVault) setStep(s => (s === 'welcome' ? 'unlock' : s)); }, [hasVault]);
   const [seed, setSeed] = useState<string[]>([]);
   const [seedLen, setSeedLen] = useState<12 | 24>(12);
   const [importInput, setImportInput] = useState('');
@@ -6088,7 +6091,11 @@ function App() {
   const [dapp, setDapp]     = useState<{ url: string; name: string } | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
-  const [hasVault, setHasVault] = useState(false);
+  // Known before the first render: the keychain hydration finishes before
+  // React mounts (bottom of this file), so localStorage already holds the
+  // vault. Starting from `false` opened every cold start on the "Create a new
+  // wallet" screen instead of Unlock — one click from overwriting the vault.
+  const [hasVault, setHasVault] = useState(() => { try { return !!loadVault() || hasLegacyPlaintext(); } catch { return false; } });
   const [liveEth, setLiveEth] = useState<string | null>(null);
   const [accountMenu, setAccountMenu] = useState(false);
   // Multi-account state — mirrors web. Storage helpers live in vault.ts.
