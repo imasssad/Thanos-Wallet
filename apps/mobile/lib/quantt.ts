@@ -18,8 +18,11 @@
  * blindly, back off.
  */
 import * as SecureStore from 'expo-secure-store';
+import { fetch as expoFetch } from 'expo/fetch';
 import { HDNodeWallet } from 'ethers';
 import { assertQuanttChallenge } from './quantt-challenge';
+import { validateAgentUpdate } from './quantt-agent-config';
+import { SseParser } from './quantt-sse';
 
 export interface Eip712TypedData {
   domain: Record<string, unknown>;
@@ -109,6 +112,31 @@ export interface BindWithdrawalAddressInput {
 
 export type SignTypedDataFn = (typedData: Eip712TypedData) => Promise<string>;
 
+/** GET /v1/kill-switch — the documented global trading-halt state. */
+export interface QuanttKillSwitch {
+  armed: boolean;
+  reason: string | null;
+  armedBy: string | null;
+  armedAt: string | null;
+}
+
+/** One event from an agent's decision stream: `decision` or `risk_rejected`.
+ *  `data` is the parsed JSON payload, or the raw string if it isn't JSON. */
+export interface QuanttStreamEvent {
+  type: string;
+  data: unknown;
+}
+export type QuanttStreamStatus = 'connecting' | 'live' | 'retrying' | 'stopped';
+export interface QuanttStreamHandlers {
+  onEvent: (event: QuanttStreamEvent) => void;
+  /** Connection state for a "Live" indicator; `detail` explains 'stopped'. */
+  onStatus?: (status: QuanttStreamStatus, detail?: string) => void;
+}
+
+/** The fetch used for the SSE streams. React Native's global fetch never
+ *  exposes a readable body; expo/fetch streams it. */
+type StreamFetch = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<Response>;
+
 interface SessionStore {
   get(): Promise<QuanttSession | null> | QuanttSession | null;
   set(session: QuanttSession | null): Promise<void> | void;
@@ -138,11 +166,17 @@ const DEFAULT_BASE = 'https://api.quantts.ai';
 export class QuanttClient {
   private readonly base: string;
   private readonly store?: SessionStore;
+  private readonly streamFetch: StreamFetch;
   private mem: QuanttSession | null = null;
 
-  constructor(opts: { baseUrl?: string; store?: SessionStore } = {}) {
+  constructor(opts: { baseUrl?: string; store?: SessionStore; streamFetch?: StreamFetch } = {}) {
     this.base = (opts.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, '');
     this.store = opts.store;
+    // Called as a plain function, never as a method of this client: on web
+    // expo/fetch IS window.fetch, which throws "Illegal invocation" when
+    // `this` isn't the window.
+    const sf = opts.streamFetch ?? (expoFetch as unknown as StreamFetch);
+    this.streamFetch = (url, init) => sf(url, init);
   }
 
   async session(): Promise<QuanttSession | null> {
@@ -211,13 +245,16 @@ export class QuanttClient {
     return session;
   }
 
+  /** Forget the session locally FIRST, then tell Quantt (best effort) — a
+   *  slow or failing logout call must never leave the tokens behind (this
+   *  runs when the wallet locks or is wiped). Mirrors sdk-core. */
   async signOut(): Promise<void> {
     const cur = await this.session();
+    await this.setSession(null);
     if (cur?.accessToken) {
       try { await fetch(`${this.base}/v1/auth/logout`, { method: 'POST', credentials: 'omit', headers: this.authHeaders(cur) }); }
-      catch { /* ignore — local clear below is what matters */ }
+      catch { /* ignore — the local copy is already gone */ }
     }
-    await this.setSession(null);
   }
 
   /** content-type only when there's a body: Quantts' Fastify server rejects
@@ -275,7 +312,13 @@ export class QuanttClient {
   createAgent(body: CreateAgentInput): Promise<unknown> {
     return this.authed('/v1/agents', { method: 'POST', body: JSON.stringify(body) });
   }
-  updateAgent(id: string, body: Partial<CreateAgentInput>): Promise<unknown> {
+  /** PATCH the agent's config. The body is checked against the documented
+   *  update schema first (lib/quantt-agent-config.ts) — an invalid or empty
+   *  update throws before anything is sent to production. */
+  async updateAgent(id: string, body: UpdateAgentInput): Promise<unknown> {
+    const problems = validateAgentUpdate(body);
+    if (problems.length) throw new QuanttError(400, problems.join(' '), 'agents/update');
+    if (Object.keys(body).length === 0) throw new QuanttError(400, 'nothing to update', 'agents/update');
     return this.authed(`/v1/agents/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
   }
   deleteAgent(id: string): Promise<unknown> {
@@ -316,6 +359,82 @@ export class QuanttClient {
    *  auth note below, shared by all three stream endpoints. */
   agentDecisionsStreamUrl(id: string): string {
     return `${this.base}/v1/agents/${encodeURIComponent(id)}/decisions/stream`;
+  }
+
+  /** Live `decision` / `risk_rejected` events for one agent over the
+   *  bearer-authenticated SSE stream (expo/fetch body reader). Returns an
+   *  unsubscribe function. Refreshes once on a 401; reconnects after a drop
+   *  with backoff (2 s → 60 s) and recycles a connection silent for 5
+   *  minutes (the stream has no heartbeat); stops on 4xx other than
+   *  408/429. Mirrors sdk-core's subscribeAgentDecisions. */
+  subscribeAgentDecisions(id: string, handlers: QuanttStreamHandlers): () => void {
+    const stop = new AbortController();
+    const status = handlers.onStatus ?? (() => {});
+    const IDLE_MS = 5 * 60_000;
+    const run = async (): Promise<void> => {
+      let delay = 2_000;
+      let refreshed = false;
+      while (!stop.signal.aborted) {
+        status('connecting');
+        const conn = new AbortController();
+        const onStop = () => conn.abort();
+        stop.signal.addEventListener('abort', onStop);
+        let idle: ReturnType<typeof setTimeout> | undefined;
+        const armIdle = () => { clearTimeout(idle); idle = setTimeout(() => conn.abort(), IDLE_MS); };
+        try {
+          const s = await this.session();
+          if (!s) { status('stopped', 'not signed in'); return; }
+          armIdle();
+          const res = await this.streamFetch(this.agentDecisionsStreamUrl(id), {
+            headers: { ...this.authHeaders(s), accept: 'text/event-stream' },
+            signal: conn.signal,
+          });
+          if (res.status === 401 && !refreshed) {
+            refreshed = true;
+            if (await this.refresh()) continue;
+            status('stopped', 'session expired — sign in again'); return;
+          }
+          if (!res.ok) {
+            if (res.status < 500 && res.status !== 408 && res.status !== 429) {
+              status('stopped', `HTTP ${res.status}`); return;
+            }
+            throw new QuanttError(res.status, await safeText(res), 'decisions/stream');
+          }
+          if (!res.body) { status('stopped', 'live updates are not supported here'); return; }
+          refreshed = false;
+          delay = 2_000;
+          status('live');
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          const parser = new SseParser();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            armIdle();
+            for (const ev of parser.push(decoder.decode(value, { stream: true }))) {
+              let data: unknown = ev.data;
+              try { data = JSON.parse(ev.data); } catch { /* not JSON — hand over the raw text */ }
+              handlers.onEvent({ type: ev.event, data });
+            }
+          }
+        } catch {
+          /* dropped / timed out / 5xx — reconnect below unless unsubscribed */
+        } finally {
+          clearTimeout(idle);
+          stop.signal.removeEventListener('abort', onStop);
+        }
+        if (stop.signal.aborted) break;
+        status('retrying');
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(() => { stop.signal.removeEventListener('abort', wake); resolve(); }, delay);
+          const wake = () => { clearTimeout(t); resolve(); };
+          stop.signal.addEventListener('abort', wake);
+        });
+        delay = Math.min(delay * 2, 60_000);
+      }
+    };
+    void run();
+    return () => stop.abort();
   }
   /** SSE URL for the UNFILTERED platform activity bus — every event, not
    *  just this session's agents. Sends `event: snapshot` (10 most recent)
@@ -372,8 +491,31 @@ export class QuanttClient {
     return this.authed('/v1/user/withdrawal-address', { method: 'POST', body: JSON.stringify(body) });
   }
 
-  getKillSwitch(): Promise<unknown> { return this.authed('/v1/kill-switch'); }
+  /** Current global trading-halt state, or null if the response doesn't
+   *  carry the documented boolean `armed` (the UI then shows nothing). */
+  async getKillSwitch(): Promise<QuanttKillSwitch | null> {
+    return normalizeKillSwitch(await this.authed('/v1/kill-switch'));
+  }
   getTelemetry(): Promise<unknown> { return this.authed('/v1/telemetry'); }
+}
+
+/** The banner sentence for an armed kill switch: the operator's reason
+ *  (punctuated), then what it means for the user. */
+export function killSwitchMessage(ks: Pick<QuanttKillSwitch, 'reason'>): string {
+  const reason = ks.reason?.trim();
+  const lead = reason
+    ? `Quantts has halted all agent trading: ${reason}${/[.!?]$/.test(reason) ? '' : '.'}`
+    : 'Quantts has halted all agent trading.';
+  return `${lead} Agents can't be started until the halt is lifted.`;
+}
+
+/** GET /v1/kill-switch → QuanttKillSwitch, or null without a boolean `armed`. */
+function normalizeKillSwitch(raw: unknown): QuanttKillSwitch | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.armed !== 'boolean') return null;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  return { armed: o.armed, reason: str(o.reason), armedBy: str(o.armedBy), armedAt: str(o.armedAt) };
 }
 
 async function safeText(res: { text(): Promise<string> }): Promise<string> {
@@ -466,6 +608,13 @@ const store: SessionStore = {
 };
 
 export const quantt = new QuanttClient({ store });
+
+/** Drop the Quantt session (stored copy first, then a best-effort server
+ *  logout). Called when the wallet locks or is wiped, so a locked phone
+ *  keeps no live Quantt login. */
+export function forgetQuanttSession(): Promise<void> {
+  return quantt.signOut();
+}
 
 /** Sign in to Quantt with the unlocked wallet seed (inline EIP-712). */
 export async function quanttSignIn(seed: string[], accountIdx: number): Promise<QuanttSession> {

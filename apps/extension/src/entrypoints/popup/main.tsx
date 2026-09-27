@@ -47,7 +47,7 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
 } from '@thanos/sdk-core';
-import { toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES } from '@thanos/sdk-core';
+import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
@@ -1648,7 +1648,7 @@ function QuanttKillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
       background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)',
       borderRadius: 9, padding: '8px 10px', fontSize: 11, color: '#f59e0b', lineHeight: 1.4, marginBottom: 8,
     }}>
-      Quantts has halted all agent trading{ks.reason ? `: ${ks.reason}` : '.'} Agents can&apos;t be started until the halt is lifted.
+      {killSwitchMessage(ks)}
     </div>
   );
 }

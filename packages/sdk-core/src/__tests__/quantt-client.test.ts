@@ -1,8 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  QuanttClient, QuanttError, SseParser, toAgentConfig, validateAgentUpdate, diffAgentConfig,
+  QuanttClient, QuanttError, SseParser as CoreSseParser, killSwitchMessage,
+  toAgentConfig as coreToAgentConfig, validateAgentUpdate as coreValidateAgentUpdate,
+  diffAgentConfig as coreDiffAgentConfig,
   type QuanttSession, type QuanttStreamEvent, type QuanttStreamStatus,
 } from '../index';
+
+// The mobile app carries detached copies (EAS can't resolve this workspace
+// package); run the parser and agent-config suites against those too. Loaded
+// at runtime so they stay outside this package's tsc rootDir.
+const MOBILE_SSE = '../../../../apps/mobile/lib/quantt-sse';
+const MOBILE_AGENT_CONFIG = '../../../../apps/mobile/lib/quantt-agent-config';
+const mobileSse = (await import(/* @vite-ignore */ MOBILE_SSE)) as typeof import('../quantt/sse');
+const mobileAgentConfig = (await import(/* @vite-ignore */ MOBILE_AGENT_CONFIG)) as typeof import('../quantt/agent-config');
+const IMPLS = [
+  ['sdk-core', { SseParser: CoreSseParser, toAgentConfig: coreToAgentConfig, validateAgentUpdate: coreValidateAgentUpdate, diffAgentConfig: coreDiffAgentConfig }],
+  ['mobile mirror', { ...mobileSse, ...mobileAgentConfig }],
+] as const;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -21,7 +35,8 @@ const AGENT = {
   createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-02T00:00:00Z',
 };
 
-describe('SseParser', () => {
+for (const [impl, { SseParser, toAgentConfig, validateAgentUpdate, diffAgentConfig }] of IMPLS) {
+describe(`SseParser (${impl})`, () => {
   it('parses events split at arbitrary chunk boundaries', () => {
     const p = new SseParser();
     const text = 'event: decision\ndata: {"id":"d1"}\n\n: keep-alive comment\nevent: risk_rejected\ndata: {"id":"d2"}\n\n';
@@ -46,7 +61,7 @@ describe('SseParser', () => {
   });
 });
 
-describe('agent config', () => {
+describe(`agent config (${impl})`, () => {
   it('extracts the editable config from a documented agent record', () => {
     const cfg = toAgentConfig(AGENT);
     expect(cfg).toMatchObject({ name: 'Momentum ETH', stopLoss: 5, timeframe: '1h', autopilot: true, chains: ['arbitrum'] });
@@ -78,6 +93,17 @@ describe('agent config', () => {
       .toEqual({ stopLoss: 7, autopilot: false, tokens: ['ETH', 'ARB'] });
   });
 });
+}
+
+describe('killSwitchMessage', () => {
+  it('punctuates the operator reason exactly once', () => {
+    expect(killSwitchMessage({ reason: 'Exchange maintenance' }))
+      .toBe("Quantts has halted all agent trading: Exchange maintenance. Agents can't be started until the halt is lifted.");
+    expect(killSwitchMessage({ reason: ' Oracle outage! ' })).toMatch(/trading: Oracle outage! Agents/);
+    expect(killSwitchMessage({ reason: null }))
+      .toBe("Quantts has halted all agent trading. Agents can't be started until the halt is lifted.");
+  });
+});
 
 describe('QuanttClient additions', () => {
   it('updateAgent refuses an invalid or empty body before any request', async () => {
@@ -96,6 +122,15 @@ describe('QuanttClient additions', () => {
     expect(init.method).toBe('PATCH');
     expect(JSON.parse(init.body)).toEqual({ stopLoss: 7 });
     expect(init.headers).toMatchObject({ authorization: 'Bearer at', 'content-type': 'application/json' });
+  });
+
+  it('calls a caller-supplied fetch as a plain function (window.fetch rejects a foreign this)', async () => {
+    const strictFetch = vi.fn(function (this: unknown) {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+      return Promise.resolve(jsonResponse({ armed: false }));
+    });
+    expect(await signedIn(strictFetch as unknown as typeof fetch).getKillSwitch())
+      .toEqual({ armed: false, reason: null, armedBy: null, armedAt: null });
   });
 
   it('getKillSwitch normalises the documented shape and rejects others', async () => {

@@ -33,7 +33,7 @@ import { quantt, quanttSignIn, quanttBindWithdrawalAddress } from '../lib/quantt
 import { useWallet } from './shell/AppShell';
 import { SendModal } from './modals';
 import {
-  toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES,
+  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
   type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
   type CreateAgentInput, type WithdrawInput, type QuanttStrategy, type QuanttChain, type QuanttDexPreference,
   type QuanttAgentConfig, type QuanttKillSwitch, type QuanttStreamStatus, type QuanttTimeframe, type UpdateAgentInput,
@@ -245,7 +245,7 @@ function KillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
   if (!ks?.armed) return null;
   return (
     <WarningBanner>
-      Quantts has halted all agent trading{ks.reason ? `: ${ks.reason}` : '.'} Agents can&apos;t be started until the halt is lifted.
+      {killSwitchMessage(ks)}
     </WarningBanner>
   );
 }

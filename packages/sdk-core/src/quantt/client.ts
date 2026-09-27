@@ -243,7 +243,11 @@ export class QuanttClient {
     // Bind to globalThis — an unbound `fetch` reference invoked as `this.f(...)`
     // runs with `this` = the QuanttClient instance, and browsers reject that
     // ("Illegal invocation": fetch requires `this` to be a real Window/Worker).
-    this.f = opts.fetchImpl ?? fetch.bind(globalThis);
+    // A caller's fetchImpl is invoked the same way: a bare window.fetch (or
+    // expo/fetch on web, which IS window.fetch) passed in unbound would
+    // otherwise throw on every request.
+    const f = opts.fetchImpl ?? fetch.bind(globalThis);
+    this.f = (input, init) => f(input, init);
   }
 
   /* ── session ──────────────────────────────────────────────────────── */
@@ -552,8 +556,11 @@ export class QuanttClient {
         if (stop.signal.aborted) break;
         status('retrying');
         await new Promise<void>((resolve) => {
-          const t = setTimeout(resolve, delay);
-          stop.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+          // Drop the abort hook once the timer fires, so a long reconnect
+          // loop doesn't pile up one listener per retry on the signal.
+          const t = setTimeout(() => { stop.signal.removeEventListener('abort', wake); resolve(); }, delay);
+          const wake = () => { clearTimeout(t); resolve(); };
+          stop.signal.addEventListener('abort', wake);
         });
         delay = Math.min(delay * 2, 60_000);
       }
@@ -717,6 +724,16 @@ function query(params: Record<string, string | number | undefined>): string {
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v));
   const s = qs.toString();
   return s ? `?${s}` : '';
+}
+
+/** The banner sentence for an armed kill switch: the operator's reason
+ *  (punctuated), then what it means for the user. */
+export function killSwitchMessage(ks: Pick<QuanttKillSwitch, 'reason'>): string {
+  const reason = ks.reason?.trim();
+  const lead = reason
+    ? `Quantts has halted all agent trading: ${reason}${/[.!?]$/.test(reason) ? '' : '.'}`
+    : 'Quantts has halted all agent trading.';
+  return `${lead} Agents can't be started until the halt is lifted.`;
 }
 
 /** GET /v1/kill-switch → QuanttKillSwitch, or null without a boolean `armed`. */

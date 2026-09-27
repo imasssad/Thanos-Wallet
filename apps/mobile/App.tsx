@@ -70,10 +70,14 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Wallet, HDNodeWallet, Mnemonic, formatUnits, randomBytes } from 'ethers';
 import {
-  quantt, quanttSignIn, quanttBindWithdrawalAddress,
+  quantt, quanttSignIn, quanttBindWithdrawalAddress, forgetQuanttSession, killSwitchMessage,
   type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
   type QuanttStrategy, type QuanttChain, type QuanttDexPreference, type CreateAgentInput,
+  type QuanttKillSwitch, type QuanttStreamStatus, type QuanttTimeframe, type UpdateAgentInput,
 } from './lib/quantt';
+import {
+  toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES, type QuanttAgentConfig,
+} from './lib/quantt-agent-config';
 import {
   createVault, openVault, openVaultWithKey,
   loadVault, clearVault as clearVaultStore, hasVault as vaultExists,
@@ -2338,6 +2342,28 @@ function QuanttFieldsCard({ C, raw, empty }: { C: ReturnType<typeof useColors>; 
    Thanos" runs the EIP-712 wallet login (lib/quantt.ts) signed inline at the
    active HD path; the live portfolio/agents panel loads from /v1/mobile/overview.
    Still opens quantts.ai in the in-app browser. */
+/** Global trading halt (GET /v1/kill-switch) — null until known, or when the
+ *  response isn't the documented shape (nothing is shown then). */
+function useQuanttKillSwitch(enabled: boolean): QuanttKillSwitch | null {
+  const [ks, setKs] = useState<QuanttKillSwitch | null>(null);
+  useEffect(() => {
+    if (!enabled) { setKs(null); return; }
+    let live = true;
+    quantt.getKillSwitch().then((k) => { if (live) setKs(k); }).catch(() => { if (live) setKs(null); });
+    return () => { live = false; };
+  }, [enabled]);
+  return ks;
+}
+
+function QuanttKillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
+  if (!ks?.armed) return null;
+  return (
+    <View accessibilityRole="alert" style={{ backgroundColor: 'rgba(245,158,11,0.12)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10 }}>
+      <Text style={{ color: '#f59e0b', fontSize: 12, lineHeight: 17 }}>{killSwitchMessage(ks)}</Text>
+    </View>
+  );
+}
+
 function QuanttAgentsCard() {
   const C = useColors();
   const styles = useStyles();
@@ -2350,6 +2376,7 @@ function QuanttAgentsCard() {
   const [detailAgent, setDetailAgent] = useState<QuanttAgent | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const killSwitch = useQuanttKillSwitch(!!session);
 
   // If the overview fetch fails, it might be because the refresh token
   // itself expired (QuanttClient clears its internal session when that
@@ -2400,6 +2427,7 @@ function QuanttAgentsCard() {
               ? 'Signed in with your wallet — your AI trading agents.'
               : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
           </Text>
+          {session ? <QuanttKillSwitchBanner ks={killSwitch}/> : null}
 
           {session && p ? (
             <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: divider, paddingTop: 10 }}>
@@ -2502,14 +2530,171 @@ function quanttExtraDetailEntries(agent: QuanttAgent, raw: unknown): Array<[stri
  *  action against production with no sandbox to rehearse in, so it's a
  *  deliberate one-tap toggle with a clear busy/error state. Mirrors
  *  apps/web/components/QuanttCard.tsx. */
-type QuanttManageTab = 'overview' | 'wallet' | 'decisions' | 'trades' | 'positions';
+type QuanttManageTab = 'overview' | 'settings' | 'wallet' | 'decisions' | 'trades' | 'positions';
 const QUANTT_MANAGE_TABS: Array<{ key: QuanttManageTab; label: string }> = [
   { key: 'overview',  label: 'Overview' },
+  { key: 'settings',  label: 'Settings' },
   { key: 'wallet',    label: 'Wallet' },
   { key: 'decisions', label: 'Decisions' },
   { key: 'trades',    label: 'Trades' },
   { key: 'positions', label: 'Positions' },
 ];
+
+/** Append `incoming` to `base`, skipping rows whose id `base` already has. */
+function qMergeById(base: unknown[], incoming: unknown[]): unknown[] {
+  const idOf = (x: unknown) => qStr(qAsObj(x), 'id', '_id');
+  const seen = new Set(base.map(idOf).filter(Boolean));
+  return [...base, ...incoming.filter((x) => { const id = idOf(x); return !id || !seen.has(id); })];
+}
+
+/* ── Agent settings (PATCH /v1/agents/{id}) ───────────────────────────
+   Strategy, chains, tokens, DEX and quote asset stay fixed: re-pointing a
+   funded agent at other markets could strand its capital — that means a new
+   agent. The body is schema-checked (lib/quantt-agent-config) and only the
+   changed fields are sent. Mirrors the web / desktop / extension tab. */
+const QUANTT_EDITABLE_NUMBERS = [
+  ['maxPositionPct', 'Max position %'],
+  ['stopLoss', 'Stop loss %'],
+  ['takeProfit', 'Take profit %'],
+  ['maxDailyLoss', 'Max daily loss %'],
+] as const;
+type QuanttEditableNumber = typeof QUANTT_EDITABLE_NUMBERS[number][0];
+const QUANTT_SETTING_LABELS: Partial<Record<keyof UpdateAgentInput, string>> = {
+  name: 'Name', timeframe: 'Timeframe', autopilot: 'Autopilot', strategyPrompt: 'Strategy guidance',
+  maxPositionPct: 'Max position', stopLoss: 'Stop loss', takeProfit: 'Take profit', maxDailyLoss: 'Max daily loss',
+};
+function quanttDescribeSetting(key: keyof UpdateAgentInput, value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (key === 'maxPositionPct' || key === 'stopLoss' || key === 'takeProfit' || key === 'maxDailyLoss') return `${value}%`;
+  const text = String(value);
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
+}
+
+function QuanttSettingsTab({ C, agentId, raw, onSaved }: {
+  C: ReturnType<typeof useColors>; agentId: string; raw: unknown; onSaved: () => void;
+}) {
+  const styles = useStyles();
+  const config = useMemo(() => toAgentConfig(raw), [raw]);
+  const [name, setName] = useState('');
+  const [timeframe, setTimeframe] = useState<QuanttTimeframe>('1h');
+  const [autopilot, setAutopilot] = useState(true);
+  const [prompt, setPrompt] = useState('');
+  const [numbers, setNumbers] = useState<Record<QuanttEditableNumber, string>>({ maxPositionPct: '', stopLoss: '', takeProfit: '', maxDailyLoss: '' });
+  const [errors, setErrors] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const reset = (c: QuanttAgentConfig) => {
+    setName(c.name); setTimeframe(c.timeframe); setAutopilot(c.autopilot); setPrompt(c.strategyPrompt ?? '');
+    setNumbers({ maxPositionPct: String(c.maxPositionPct), stopLoss: String(c.stopLoss), takeProfit: String(c.takeProfit), maxDailyLoss: String(c.maxDailyLoss) });
+  };
+  useEffect(() => { if (config) reset(config); }, [config]);
+
+  if (!raw) return <ActivityIndicator color={C.blue} style={{ marginTop: 20 }}/>;
+  if (!config) {
+    return <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12, lineHeight: 17 }}>Settings aren&apos;t available for this agent right now — Quantts didn&apos;t return its full configuration.</Text>;
+  }
+
+  // Decimal pads in comma-decimal locales type "7,5".
+  const num = (v: string) => Number(v.trim().replace(',', '.'));
+  const save = () => {
+    setSaved(false);
+    const edited: QuanttAgentConfig = {
+      ...config, name, timeframe, autopilot,
+      strategyPrompt: prompt.trim() ? prompt.trim() : null,
+      maxPositionPct: num(numbers.maxPositionPct), stopLoss: num(numbers.stopLoss),
+      takeProfit: num(numbers.takeProfit), maxDailyLoss: num(numbers.maxDailyLoss),
+    };
+    const blank = QUANTT_EDITABLE_NUMBERS.filter(([k]) => numbers[k].trim() === '').map(([, label]) => `${label} is required.`);
+    const changes = diffAgentConfig(config, edited);
+    const problems = [...blank, ...validateAgentUpdate(changes)];
+    if (!problems.length && Object.keys(changes).length === 0) problems.push('Nothing has changed.');
+    setErrors(problems);
+    if (problems.length) return;
+    const summary = Object.entries(changes).map(([k, v]) => {
+      const key = k as keyof UpdateAgentInput;
+      return `${QUANTT_SETTING_LABELS[key] ?? k}: ${quanttDescribeSetting(key, config[key as keyof QuanttAgentConfig])} → ${quanttDescribeSetting(key, v)}`;
+    }).join('\n');
+    Alert.alert('Update this agent?', `${summary}\n\nThis changes the live agent on Quantts — no sandbox.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Save',
+        onPress: async () => {
+          setBusy(true);
+          try { await quantt.updateAgent(agentId, changes); setSaved(true); onSaved(); }
+          catch (e) { setErrors([e instanceof Error ? e.message : 'Could not save the settings — try again.']); }
+          finally { setBusy(false); }
+        },
+      },
+    ]);
+  };
+
+  const showPrompt = config.strategy === 'custom' || config.strategyPrompt !== null;
+  return (
+    <View>
+      <Text style={styles_quanttLabel(C)}>Name</Text>
+      <TextInput value={name} onChangeText={setName} maxLength={64} placeholderTextColor={C.textMuted} style={styles_quanttInput(C)} accessibilityLabel="Name"/>
+
+      <Text style={styles_quanttLabel(C)}>Decision timeframe</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        {QUANTT_TIMEFRAMES.map((t) => (
+          <Pressable key={t} onPress={() => setTimeframe(t)} accessibilityRole="button" accessibilityState={{ selected: timeframe === t }}
+            style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: timeframe === t ? C.blue : C.bgElevated }, pressed && { opacity: 0.8 }]}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: timeframe === t ? '#fff' : C.textSecondary }}>{t}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Pressable onPress={() => setAutopilot((v) => !v)} accessibilityRole="switch" accessibilityState={{ checked: autopilot }}
+        style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }, pressed && { opacity: 0.8 }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: C.textPrimary }}>Autopilot</Text>
+          <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Execute decisions without asking first</Text>
+        </View>
+        <View style={[styles.toggleSwitch, autopilot && styles.toggleSwitchOn]}>
+          <View style={[styles.toggleThumb, autopilot && styles.toggleThumbOn]}/>
+        </View>
+      </Pressable>
+
+      {showPrompt && (
+        <>
+          <Text style={styles_quanttLabel(C)}>Strategy guidance</Text>
+          <TextInput value={prompt} onChangeText={setPrompt} multiline maxLength={2000} placeholderTextColor={C.textMuted}
+            style={[styles_quanttInput(C), { minHeight: 80, textAlignVertical: 'top' }]} accessibilityLabel="Strategy guidance"/>
+        </>
+      )}
+
+      {QUANTT_EDITABLE_NUMBERS.map(([key, label]) => (
+        <View key={key} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Text style={{ fontSize: 13, color: C.textSecondary }}>{label}</Text>
+          <TextInput
+            value={numbers[key]} onChangeText={(v) => setNumbers((n) => ({ ...n, [key]: v }))} keyboardType="decimal-pad"
+            accessibilityLabel={label} placeholderTextColor={C.textMuted}
+            style={{ backgroundColor: C.bgElevated, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: C.textPrimary, fontSize: 13, width: 90, textAlign: 'right' }}
+          />
+        </View>
+      ))}
+
+      <Text style={{ fontSize: 11, color: C.textMuted, lineHeight: 16, marginTop: 4 }}>
+        {[config.strategy, config.chains.join(', '), config.tokens.join(', '), config.quoteAsset].join(' · ')} — to trade other markets, create a new agent.
+      </Text>
+      {errors.map((e) => <Text key={e} style={{ fontSize: 12, color: '#ef4444', marginTop: 8 }}>{e}</Text>)}
+      {saved && <Text style={{ fontSize: 12, color: '#22c55e', marginTop: 8 }}>Settings saved.</Text>}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+        <Pressable onPress={() => { reset(config); setErrors([]); setSaved(false); }}
+          style={({ pressed }) => [{ flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault }, pressed && { opacity: 0.7 }]}>
+          <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>Reset</Text>
+        </Pressable>
+        <Pressable disabled={busy} onPress={save}
+          style={({ pressed }) => [{ flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, opacity: busy ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{busy ? 'Saving…' : 'Save changes'}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 /** Full agent management screen — reached from the AI Assistant card's quick
  *  taps or "All Agents". Pause/resume/stop call POST /v1/agents/{id}/state,
@@ -2537,6 +2722,9 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
   const [decisionsLoading, setDecisionsLoading] = useState(false);
   const [trades, setTrades] = useState<unknown[] | null>(null);
   const [positions, setPositions] = useState<unknown[] | null>(null);
+  const [liveStatus, setLiveStatus] = useState<QuanttStreamStatus | null>(null);
+  const killSwitch = useQuanttKillSwitch(true);
+  const halted = killSwitch?.armed === true;
 
   const reload = () => {
     quantt.getAgent(agentId).then((r) => { setRaw(r); const o = qAsObj(r); const s = qStr(o, 'status', 'state'); if (s) setStatus(s); }).catch(() => setLoadErr(true));
@@ -2557,12 +2745,27 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // New decisions (and risk-engine rejections) stream in while the tab is open.
+  useEffect(() => {
+    if (tab !== 'decisions') { setLiveStatus(null); return; }
+    return quantt.subscribeAgentDecisions(agentId, {
+      onEvent: ({ type, data }) => {
+        const o = qAsObj(data);
+        if (!o) return;
+        const row = type === 'risk_rejected' ? { action: 'Rejected by risk checks', ...o } : o;
+        setDecisions((prev) => qMergeById([row], prev));
+      },
+      onStatus: (st) => setLiveStatus(st),
+    });
+  }, [tab, agentId]);
+
   const loadMoreDecisions = async () => {
     setDecisionsLoading(true);
     try {
       const r = await quantt.getAgentDecisions(agentId, { cursor: decisionsCursor, limit: 20 });
       const page = qPickList(r, ['decisions', 'items', 'data', 'results']);
-      setDecisions((d) => [...d, ...page]);
+      // Keep anything the live stream delivered while this page loaded.
+      setDecisions((d) => qMergeById(d, page));
       setDecisionsCursor(qDecisionsCursor(r));
     } catch { /* keep whatever's already loaded */ }
     finally { setDecisionsLoading(false); }
@@ -2659,8 +2862,11 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
             </Pressable>
           ))}
         </ScrollView>
+        {halted && <View style={{ paddingHorizontal: 20, marginTop: -4, marginBottom: 6 }}><QuanttKillSwitchBanner ks={killSwitch}/></View>}
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {tab === 'settings' && <QuanttSettingsTab C={C} agentId={agentId} raw={raw} onSaved={() => { reload(); onChanged(); }}/>}
+
           {tab === 'overview' && (
             <>
               <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14 }}>
@@ -2694,6 +2900,8 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
 
           {tab === 'decisions' && (
             <>
+              {liveStatus === 'live' && <Text style={{ color: '#22c55e', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>● Live</Text>}
+              {(liveStatus === 'connecting' || liveStatus === 'retrying') && <Text style={{ color: C.textMuted, fontSize: 11, marginBottom: 6 }}>Connecting to live updates…</Text>}
               {decisions.length === 0 && decisionsLoading && <ActivityIndicator color={C.blue} style={{ marginTop: 20 }}/>}
               {decisions.length === 0 && !decisionsLoading && <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>No decisions yet — the AI logs each trade suggestion and its reasoning here.</Text>}
               {decisions.map((d, i) => <QuanttFieldsCard key={i} C={C} raw={d} empty=""/>)}
@@ -2740,7 +2948,7 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
           {/* Start / pause / stop */}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
             {status !== 'active' && (
-              <Pressable disabled={busyAction === 'state'} onPress={() => confirmSetState('active')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.14)', opacity: busyAction === 'state' ? 0.6 : 1 }, pressed && { opacity: 0.85 }]}>
+              <Pressable disabled={busyAction === 'state' || halted} accessibilityState={{ disabled: busyAction === 'state' || halted }} onPress={() => confirmSetState('active')} style={({ pressed }) => [{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: 'rgba(34,197,94,0.14)', opacity: busyAction === 'state' || halted ? 0.4 : 1 }, pressed && { opacity: 0.85 }]}>
                 <Play size={15} color="#22c55e"/>
                 <Text style={{ color: '#22c55e', fontSize: 13, fontWeight: '700' }}>Start</Text>
               </Pressable>
@@ -9146,6 +9354,13 @@ function App() {
   useEffect(() => {
     AsyncStorage.getItem(PREF_CUSTOM_RPC).then(url => setRpcOverride(url || null)).catch(() => {});
   }, []);
+
+  // A locked (or wiped) wallet keeps no live Quantt login: whenever the app
+  // is locked — at launch, on "Lock", auto-lock or Delete wallet — the stored
+  // session goes, with a best-effort server logout (lib/quantt.ts).
+  useEffect(() => {
+    if (!unlocked) void forgetQuanttSession().catch(() => { /* nothing to forget */ });
+  }, [unlocked]);
 
   // Auto-lock: when the app returns from the background, lock if it was
   // away longer than the configured timeout (0 = never).

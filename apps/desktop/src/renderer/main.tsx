@@ -30,7 +30,7 @@ import { quantt, quanttSignIn, forgetQuanttSession } from './quantt';
 import { isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from './asset-visibility';
 import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState, QuanttStrategy, QuanttChain } from '@thanos/sdk-core';
 import {
-  toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES,
+  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
 } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
@@ -665,7 +665,7 @@ function QuanttKillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
   if (!ks?.armed) return null;
   return (
     <div role="alert" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 10, padding: 12, fontSize: 12, color: '#f59e0b', lineHeight: 1.5 }}>
-      ⚠ Quantts has halted all agent trading{ks.reason ? `: ${ks.reason}` : '.'} Agents can&apos;t be started until the halt is lifted.
+      ⚠ {killSwitchMessage(ks)}
     </div>
   );
 }
