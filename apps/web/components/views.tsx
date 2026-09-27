@@ -32,6 +32,7 @@ import { TokenDetailModal } from './TokenDetailModal';
 import { getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from '../lib/asset-visibility';
 import * as customAssets from '../lib/custom-assets';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { forgetQuanttSession } from '../lib/quantt';
 
 /* Lithosphere rows shown at the top of the Market view. Prices come
    from usePrices() at runtime; caps and volumes are intentionally
@@ -1446,6 +1447,9 @@ export function SettingsView() {
     }
     setConfirmDelete(false);
     clearVault();
+    // Drop the Quantt login with the wallet — the local clear is synchronous,
+    // so it lands before the reload below; the server logout is best-effort.
+    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     // Full reload so the wallet gate re-evaluates and lands on onboarding —
     // no stale unlocked state left in memory.
     window.location.href = '/app';

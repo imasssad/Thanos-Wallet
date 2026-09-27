@@ -18,7 +18,7 @@ export async function createWallet(page: Page, password = 'test-password-123'): 
   await page.goto('/app');
 
   // welcome
-  await page.getByRole('button', { name: 'Create new wallet' }).click();
+  await page.getByRole('button', { name: /^create (a )?new wallet$/i }).click();
 
   // create-length — pick the 12-word option (first phrase-length tile)
   await page.locator('.phrase-len-tile').first().click();
@@ -63,4 +63,13 @@ export async function createWallet(page: Page, password = 'test-password-123'): 
 
   // Dashboard — the 4 action buttons confirm we landed.
   await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 30_000 });
+  await dismissWelcome(page);
+}
+
+/** First-run "Welcome to Thanos" dialog overlays the dashboard and swallows
+ *  clicks until dismissed. Shown once per browser profile, so tolerate its
+ *  absence. */
+export async function dismissWelcome(page: Page): Promise<void> {
+  const gotIt = page.getByRole('button', { name: 'Got it' });
+  await gotIt.waitFor({ state: 'visible', timeout: 5_000 }).then(() => gotIt.click()).catch(() => { /* not shown */ });
 }

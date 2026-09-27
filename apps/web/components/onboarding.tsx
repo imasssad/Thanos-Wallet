@@ -237,6 +237,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     }
     setConfirmReset(false);
     clearVault();
+    // The next wallet on this tab must not inherit this one's Quantt login.
+    void import('../lib/quantt').then(q => q.forgetQuanttSession()).catch(() => { /* nothing to forget */ });
     setStep('welcome');
     setUnlockPwd('');
     setUnlockErr('');
@@ -681,6 +683,8 @@ export function useWalletGate() {
     // Wipe the secret from the signing worker too — otherwise it'd keep
     // signing on behalf of the locked wallet.
     void lockSigner().catch(() => { /* worker may already be torn down */ });
+    // A locked wallet keeps no live Quantt login either (lib/quantt.ts).
+    void import('../lib/quantt').then(q => q.forgetQuanttSession()).catch(() => { /* nothing to forget */ });
   };
   const onComplete = (source: WalletSource) => {
     applySource(source);

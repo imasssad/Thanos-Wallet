@@ -319,17 +319,18 @@ export class QuanttClient {
     return session;
   }
 
-  /** Best-effort server logout, then clear the local session. */
+  /** Clear the local session first — callers sign out on wallet lock / reset
+   *  and may navigate away at once — then a best-effort server logout. */
   async signOut(): Promise<void> {
     const cur = await this.session();
+    await this.setSession(null);
     if (cur?.accessToken) {
       try {
         await this.f(`${this.base}/v1/auth/logout`, { method: 'POST', headers: this.authHeaders(cur) });
       } catch {
-        /* ignore — local clear below is what matters */
+        /* ignore — the local clear above is what matters */
       }
     }
-    await this.setSession(null);
   }
 
   /* ── authed requests (auto-refresh once on 401) ───────────────────── */

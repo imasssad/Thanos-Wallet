@@ -26,8 +26,8 @@ test.describe('Onboarding', () => {
   test('fresh context shows the welcome screen, not unlock', async ({ page }) => {
     await page.goto('/app');
     // No vault on a fresh context → onboarding offers wallet creation.
-    await expect(page.getByRole('button', { name: 'Create new wallet' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Import existing wallet' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^create (a )?new wallet$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^(import existing wallet|i already have a wallet)$/i })).toBeVisible();
   });
 
   test('created wallet survives a reload and re-prompts for the password', async ({ page }) => {

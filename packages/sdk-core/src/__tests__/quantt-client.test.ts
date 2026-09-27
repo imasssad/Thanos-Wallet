@@ -106,6 +106,20 @@ describe('QuanttClient additions', () => {
       .toBeNull();
   });
 
+  it('signOut clears the stored session before (and regardless of) the server logout', async () => {
+    let stored: QuanttSession | null = { accessToken: 'at', refreshToken: 'rt' };
+    let storedAtLogout: QuanttSession | null | undefined;
+    const fetchImpl = vi.fn(async () => { storedAtLogout = stored; throw new Error('offline'); }) as unknown as typeof fetch;
+    const c = new QuanttClient({ fetchImpl, store: { get: () => stored, set: (n) => { stored = n; } } });
+    await c.signOut();
+    expect(storedAtLogout).toBeNull();
+    expect(stored).toBeNull();
+    expect(await c.isSignedIn()).toBe(false);
+    const [url, init] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://api.quantts.ai/v1/auth/logout');
+    expect(init.headers).toEqual({ authorization: 'Bearer at' });
+  });
+
   it('market routes carry their documented query parameters', async () => {
     const urls: string[] = [];
     const fetchImpl = vi.fn(async (u: string) => { urls.push(u); return jsonResponse({}); }) as unknown as typeof fetch;
