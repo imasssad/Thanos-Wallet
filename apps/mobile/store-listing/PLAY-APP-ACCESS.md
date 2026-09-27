@@ -71,19 +71,20 @@ App-access/review-access issue, not a licensing one.)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │  DEMO WALLET — review use only, no personal funds                            │
 │                                                                              │
-│  Demo private key:                                                           │
-│      0xc82813c04ea8b0b0d2db85d1bc808db94de4d2161aff6a5e1b008360be5dccf0      │
+│  Reviewer private key: entered ONLY in Play Console → App access, never     │
+│  in this repository. (The key once printed here is public in git history   │
+│  and must be treated as burned — never fund or reuse it.)                   │
 │                                                                              │
-│  Derived address (auto-shown in-app after import):                           │
-│      0xD4dA17DD383cA23582B1eAe470Ce79298421190A                              │
+│  Derived address: shown in-app after import; note it next to the key in    │
+│  Play Console so it can be topped up.                                       │
 │                                                                              │
 │  Network: Lithosphere Makalu (chain 700777) — the app's fixed default.       │
-│  This is a throwaway test key. Do not send real/personal assets to it.       │
+│  Generate a fresh throwaway key for each review cycle.                       │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 > **RECOMMENDED — fund the demo wallet before submitting.** Send a small amount of
-> **Makalu (LITHO) native token** to `0xD4dA17DD383cA23582B1eAe470Ce79298421190A`
+> **Makalu (LITHO) native token** to the reviewer key's address (noted in Play Console)
 > so the reviewer sees a **non-zero balance** and can actually exercise **Send**.
 > An **empty** demo wallet is the single most common cause of a *repeat* rejection:
 > the reviewer imports it, sees 0 balance and a greyed-out Send, and concludes
@@ -91,8 +92,8 @@ App-access/review-access issue, not a licensing one.)
 > access be reusable and valid at all times. (The app opens on Makalu by default,
 > so funding on Makalu is what the reviewer will see — no wrong-network trap.)
 >
-> Tip: also attach the demo key as a **static URL** (a plain-text file or private
-> gist) in the App access resource, in case the instructions field mangles spacing.
+> Keep the key inside Play Console's App access fields only — don't host it at a
+> URL (a "private" gist or file link is readable by anyone who has the link).
 
 ---
 

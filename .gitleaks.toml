@@ -8,5 +8,9 @@ regexes = [
   '''thanos\.fx\.rates\.v1''',
   '''quantt_withdrawal_addr_verified_v1''',
   '''AIzaSyAQDuz1uLi_myYNh6N7Im3jRf71Cdnbt2Y''',
+  # Burned demo reviewer key (apps/mobile/store-listing/PLAY-APP-ACCESS.md,
+  # 2026-07 → 2026-09). Removed from the tree 2026-09-27; it stays in git
+  # history, which `gitleaks detect` scans, so the exact literal stays
+  # allowlisted. Never fund or reuse the key or its address.
   '''0xc82813c04ea8b0b0d2db85d1bc808db94de4d2161aff6a5e1b008360be5dccf0''',
 ]
