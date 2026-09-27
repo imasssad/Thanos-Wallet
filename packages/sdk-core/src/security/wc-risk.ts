@@ -17,6 +17,7 @@
  */
 
 import { inspectWebsite } from './phishing';
+import { reviewSigningRequest } from './sign-review';
 import type { WebsiteRiskReport } from '../types';
 
 export type WcRiskVerdict = 'safe' | 'caution' | 'review' | 'block';
@@ -36,14 +37,13 @@ export interface WcRiskInput {
   /** Decoded params, when the wallet has been able to parse them.
    *  Used for value-magnitude + unlimited-approval heuristics. */
   params?:    unknown;
-  /** The active chain id, in case method-specific rules differ
-   *  per chain (none today, but kept for forward compat). */
+  /** The chain the wallet signs for — a typed signature or transaction
+   *  naming another chain is blocked (see sign-review.ts). */
   chainId?:   number;
 }
 
-const APPROVE_SELECTOR     = '0x095ea7b3';                          // approve(address,uint256)
-const SET_APPROVAL_FOR_ALL = '0xa22cb465';                          // setApprovalForAll(address,bool)
-const MAX_UINT_HEX         = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+/** How much a decoded-request verdict adds to the score. */
+const REVIEW_SCORE = { safe: 0, caution: 20, review: 60, block: 100 } as const;
 
 export function scoreWcRequest(input: WcRiskInput): WcRiskReport {
   const reasons: string[] = [];
@@ -60,51 +60,11 @@ export function scoreWcRequest(input: WcRiskInput): WcRiskReport {
     } catch { /* malformed URL — treat as no signal */ }
   }
 
-  /* ─── Method-specific signals ────────────────────────────────────── */
-  if (input.method === 'eth_sendTransaction') {
-    const tx = Array.isArray(input.params)
-      ? (input.params as Array<{ to?: string; value?: string; data?: string }>)[0]
-      : (input.params as { to?: string; value?: string; data?: string });
-    if (tx && typeof tx === 'object') {
-      // ERC-20 approve with MaxUint256 — the canonical drainer setup.
-      const data = (tx.data ?? '').toLowerCase();
-      if (data.startsWith(APPROVE_SELECTOR) && data.includes(MAX_UINT_HEX)) {
-        reasons.push('Unlimited ERC-20 approval — the contract can spend the entire balance forever.');
-        score += 60;
-      } else if (data.startsWith(APPROVE_SELECTOR)) {
-        reasons.push('ERC-20 spend approval — verify the spender and amount.');
-        score += 15;
-      }
-      // setApprovalForAll — NFT-equivalent of "drain everything".
-      if (data.startsWith(SET_APPROVAL_FOR_ALL)) {
-        reasons.push('setApprovalForAll — grants the contract full transfer rights over your NFT collection.');
-        score += 70;
-      }
-      // Value flag — sending native ETH/LITHO without data is normal;
-      // sending value AND calldata is a contract call that should be
-      // inspected. We don't penalise it heavily but surface as info.
-      if (tx.value && tx.value !== '0x0' && data.length > 2 && !data.startsWith(APPROVE_SELECTOR)) {
-        reasons.push('Transaction sends value AND calls a contract method — review the call data.');
-        score += 5;
-      }
-    }
-  }
-
-  if (input.method === 'eth_signTypedData_v4') {
-    // EIP-712 typed-data signs are commonly used by Permit / Permit2
-    // off-chain approvals. We don't fully decode here but surface the
-    // category so the UI can warn.
-    reasons.push('EIP-712 typed-data signature — often used for off-chain Permit approvals; verify the spender.');
-    score += 20;
-  }
-
-  if (input.method === 'eth_sign') {
-    // Legacy eth_sign is famously dangerous — the signed payload is
-    // an arbitrary hash, so a malicious dApp can craft it to match a
-    // real tx. Best practice: refuse.
-    reasons.push('Legacy eth_sign is unsafe — the payload is an arbitrary hash that can be reused to authorise a transaction.');
-    score += 80;
-  }
+  /* ─── What is being signed — decoded by reviewSigningRequest ────────
+     (permits, Permit2, Seaport, approve / setApprovalForAll, chainId). */
+  const review = reviewSigningRequest({ method: input.method, params: input.params, activeChainId: input.chainId });
+  score += REVIEW_SCORE[review.risk];
+  reasons.push(...review.warnings);
 
   /* ─── Verdict mapping ────────────────────────────────────────────── */
   let verdict: WcRiskVerdict;
