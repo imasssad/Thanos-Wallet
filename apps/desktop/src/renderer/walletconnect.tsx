@@ -11,11 +11,16 @@
  * unlocked seed) is the next slice: this module gets the pairing live
  * end-to-end against any production dApp's WalletConnect button.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
 import { useWalletSeed } from './send';
-import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
+import { executeWcRequest, WcSignerError } from './wc-signer';
+import { reviewSigningRequest } from '@thanos/sdk-core';
+import { SignReviewPanel } from './SignReviewPanel';
+
+/** The only chain the desktop WalletConnect signer uses (see wc-signer). */
+const WC_CHAIN_ID = 700777;
 
 interface PendingRequest {
   id:     number;
@@ -94,6 +99,15 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const [sessions, setSessions]     = useState<SessionRow[]>([]);
   const [proposal, setProposal]     = useState<{ id: number; name: string } | null>(null);
   const [pending, setPending]       = useState<PendingRequest | null>(null);
+  /* Requests queue: a new one never replaces the sheet on screen (a dApp
+     could otherwise swap it just before Approve, and the first request
+     would never be answered). `pending` is always queue[0]. */
+  const queueRef = useRef<PendingRequest[]>([]);
+  const nextRequest = () => { queueRef.current.shift(); setPending(queueRef.current[0] ?? null); };
+  const review = pending
+    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: WC_CHAIN_ID, account: evmAddress })
+    : null;
+  const blocked = review?.risk === 'block';
 
   // Keep the active-sessions list in sync.
   const refresh = async () => {
@@ -118,13 +132,14 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         const session = kit.getActiveSessions()[event.topic];
         const method = event.params.request.method;
         const name = session?.peer?.metadata?.name ?? 'dApp';
-        setPending({
+        queueRef.current.push({
           id:     event.id,
           topic:  event.topic,
           method,
           params: (event.params.request.params as unknown[]) ?? [],
           name,
         });
+        if (queueRef.current.length === 1) setPending(queueRef.current[0]);
         const title = method === 'eth_sendTransaction' || method === 'eth_signTransaction'
           ? 'Transaction request' : 'Signature request';
         void window.thanosDesktop?.notify?.(title, `${name} is requesting your approval.`);
@@ -135,7 +150,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   }, []);
 
   const approveRequest = async () => {
-    if (!pending) return;
+    if (!pending || blocked) return;
     setBusy(true); setErr(null);
     try {
       const kit = await getKit();
@@ -144,7 +159,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         topic:    pending.topic,
         response: { id: pending.id, jsonrpc: '2.0', result },
       });
-      setPending(null);
+      nextRequest();
     } catch (e) {
       const code = e instanceof WcSignerError ? e.code : -32603;
       const message = (e as Error)?.message || 'Sign failed';
@@ -156,7 +171,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           response: { id: pending.id, jsonrpc: '2.0', error: { code, message } },
         });
       } catch { /* ignore */ }
-      setPending(null);
+      nextRequest();
       setErr(message);
     } finally {
       setBusy(false);
@@ -171,7 +186,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         topic:    pending.topic,
         response: { id: pending.id, jsonrpc: '2.0', error: { code: 5000, message: 'User rejected' } },
       });
-    } finally { setPending(null); }
+    } finally { nextRequest(); }
   };
 
   const pair = async () => {
@@ -236,19 +251,16 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
               {pending.method === 'eth_sendTransaction' ? 'Transaction request' : 'Signature request'} from
             </div>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{pending.name}</div>
-            <div style={{
-              fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-              borderRadius: 10, padding: 12, maxHeight: 200, overflowY: 'auto', marginBottom: 14,
-            }}>
-              {summariseRequest(pending.method, pending.params)}
-            </div>
+            {review && <div style={{ marginBottom: 14, maxHeight: 360, overflowY: 'auto' }}><SignReviewPanel review={review}/></div>}
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={rejectRequest}  disabled={busy} style={{ ...btn, background: 'transparent', border: '1px solid var(--border-default)', color: 'var(--text-primary)', opacity: busy ? 0.6 : 1 }}>Reject</button>
-              <button onClick={approveRequest} disabled={busy || !seed.length} style={{ ...btn, background: 'var(--blue, #3b7af7)', color: '#fff', opacity: (busy || !seed.length) ? 0.6 : 1 }}>
-                {busy ? 'Signing…' : pending.method === 'eth_sendTransaction' ? 'Approve & Send' : 'Approve & Sign'}
-              </button>
+              {!blocked && (
+                <button onClick={approveRequest} disabled={busy || !seed.length} style={{ ...btn, background: review?.risk === 'review' ? '#ef4444' : 'var(--blue, #3b7af7)', color: '#fff', opacity: (busy || !seed.length) ? 0.6 : 1 }}>
+                  {busy ? 'Signing…' : review?.risk === 'review' ? 'I understand — sign' : pending.method === 'eth_sendTransaction' ? 'Approve & Send' : 'Approve & Sign'}
+                </button>
+              )}
             </div>
+            {queueRef.current.length > 1 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>{queueRef.current.length - 1} more waiting</div>}
             {!seed.length && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Wallet is locked — unlock to sign.</div>}
           </>
         ) : proposal ? (

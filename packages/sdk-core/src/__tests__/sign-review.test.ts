@@ -7,6 +7,9 @@ import * as core from '../security/sign-review';
 // outside this package's tsc rootDir.
 const MOBILE_TWIN = '../../../../apps/mobile/lib/sign-review';
 const mobile = (await import(/* @vite-ignore */ MOBILE_TWIN)) as typeof import('../security/sign-review');
+// …and so does the desktop main process (its approval dialog).
+const DESKTOP_TWIN = '../../../../apps/desktop/src/main/sign-review';
+const desktop = (await import(/* @vite-ignore */ DESKTOP_TWIN)) as typeof import('../security/sign-review');
 
 const ME = '0x1111111111111111111111111111111111111111';
 const SPENDER = '0x2222222222222222222222222222222222222222';
@@ -20,7 +23,7 @@ const MAX160 = (1n << 160n) - 1n;
 const typed = (primaryType: string, message: Record<string, unknown>, domain: Record<string, unknown> = { name: 'USD Coin', version: '2', chainId: 1, verifyingContract: TOKEN }) =>
   ['eth_signTypedData_v4', [ME, JSON.stringify({ domain, primaryType, types: { EIP712Domain: [] }, message })]] as const;
 
-for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile]] as const) {
+for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop main twin', desktop]] as const) {
   const review = (method: string, params: unknown, activeChainId = 1) =>
     m.reviewSigningRequest({ method, params, activeChainId, account: ME });
   const rowOf = (r: core.SignReview, label: string) => r.rows.find((x) => x.label === label)?.value;

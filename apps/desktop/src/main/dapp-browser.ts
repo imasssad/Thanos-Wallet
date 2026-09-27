@@ -26,6 +26,7 @@
 const { WebContentsView, shell, BrowserWindow, ipcMain, dialog } = require('electron') as typeof import('electron');
 const path = require('path') as typeof import('path');
 import { handleTrusted } from './ipc-guard';
+import { reviewSigningRequest, type SignReview } from './sign-review';
 const { JsonRpcProvider } = require('ethers') as typeof import('ethers');
 
 interface ViewBounds { x: number; y: number; width: number; height: number }
@@ -113,16 +114,16 @@ function chainRead(chainId: number): import('ethers').JsonRpcProvider {
 
 /** Native approval dialog — the only surface that reliably draws ABOVE the
  *  dApp WebContentsView. Returns true if the user approved. */
-async function approveViaDialog(kind: 'connect' | 'sign' | 'tx', originHost: string, detail: string): Promise<boolean> {
+async function approveViaDialog(kind: 'connect' | 'sign' | 'tx', originHost: string, detail: string, highRisk = false): Promise<boolean> {
   if (!host) return false;
   const site = originHost || 'this site';
-  const confirmLabel = kind === 'connect' ? 'Connect' : kind === 'tx' ? 'Approve & Send' : 'Sign';
+  const confirmLabel = highRisk ? 'I understand — sign' : kind === 'connect' ? 'Connect' : kind === 'tx' ? 'Approve & Send' : 'Sign';
   const message =
     kind === 'connect' ? `Connect to ${site}?`
     : kind === 'tx'    ? `Approve transaction from ${site}?`
     :                    `Signature request from ${site}`;
   const { response } = await dialog.showMessageBox(host, {
-    type: 'question',
+    type: highRisk ? 'warning' : 'question',
     buttons: ['Cancel', confirmLabel],
     // Default to Cancel: a stray Enter must never approve a signature or tx.
     defaultId: 0,
@@ -135,28 +136,13 @@ async function approveViaDialog(kind: 'connect' | 'sign' | 'tx', originHost: str
   return response === 1;
 }
 
-/** Human-readable detail for the approval dialog. */
-function describeForApproval(method: string, params: unknown[]): string {
-  try {
-    if (method === 'personal_sign' || method === 'eth_sign') {
-      const raw = method === 'personal_sign' ? params[0] : params[1];
-      let text = typeof raw === 'string' ? raw : '';
-      if (/^0x[0-9a-fA-F]*$/.test(text)) {
-        try { text = Buffer.from(text.slice(2), 'hex').toString('utf8'); } catch { /* keep hex */ }
-      }
-      return `Message:\n${text.slice(0, 300)}`;
-    }
-    if (method === 'eth_signTypedData_v4') {
-      const typed = JSON.parse(params[1] as string) as { domain?: { name?: string }; primaryType?: string };
-      const bits = [typed.domain?.name, typed.primaryType].filter(Boolean).join(' · ');
-      return `Typed data (EIP-712)${bits ? `\n${bits}` : ''}`;
-    }
-    if (method === 'eth_sendTransaction') {
-      const tx = (params[0] as { to?: string; value?: string }) ?? {};
-      return `To: ${tx.to ?? '—'}${tx.value ? `\nValue (wei): ${tx.value}` : ''}`;
-    }
-  } catch { /* fall through to the bare method name */ }
-  return method;
+/** Dialog text for a decoded request (./sign-review): headline, the
+ *  decoded rows (spender / token / amount / expiry, "you give / you get"),
+ *  then the warnings. */
+function describeReview(r: SignReview): string {
+  const rows = r.rows.map((x) => `${x.label}: ${x.value}`).join('\n');
+  const warnings = r.warnings.map((w) => `⚠ ${w}`).join('\n');
+  return [r.title, rows, warnings].filter(Boolean).join('\n\n');
 }
 
 /** Send a navigation/title event back to the renderer chrome. */
@@ -339,7 +325,10 @@ function attachIpc(): void {
     }
     const method = req.method;
     const params = (req.params ?? []) as unknown[];
-    const originHost = (() => { try { return new URL(currentUrl).host; } catch { return ''; } })();
+    // The origin of the frame that actually sent this request — not the
+    // view's last-known URL, which a navigation racing the request could
+    // have changed.
+    const originHost = (() => { try { return new URL(e.senderFrame?.url || currentUrl).host; } catch { return ''; } })();
 
     // Trivially-known / already-authorised reads — no prompt.
     if (method === 'eth_chainId')  return `0x${currentChainId.toString(16)}`;
@@ -387,7 +376,18 @@ function attachIpc(): void {
         return { __thanosError: true, code: 4100, message: 'Unauthorized — connect the wallet to this site first.' };
       }
       const kind = method === 'eth_sendTransaction' ? 'tx' : 'sign';
-      const ok = await approveViaDialog(kind, originHost, describeForApproval(method, params));
+      const review = reviewSigningRequest({ method, params, activeChainId: currentChainId, account: connectedAddress });
+      if (review.risk === 'block') {
+        // Another chain / account, a scam address, a Seaport order that pays
+        // nothing, malformed data — explained, never offered for signing.
+        await dialog.showMessageBox(host, {
+          type: 'warning', buttons: ['OK'], defaultId: 0, noLink: true, title: 'Thanos Wallet',
+          message: `The wallet won't sign this request from ${originHost || 'this site'}`,
+          detail: describeReview(review),
+        });
+        return { __thanosError: true, code: 4001, message: review.blockReason ?? 'Request refused by the wallet.' };
+      }
+      const ok = await approveViaDialog(kind, originHost, describeReview(review), review.risk === 'review');
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the request.' };
       const out = await execViaRenderer(method, params, currentChainId);
       if (out.error) return { __thanosError: true, code: out.error.code, message: out.error.message };
