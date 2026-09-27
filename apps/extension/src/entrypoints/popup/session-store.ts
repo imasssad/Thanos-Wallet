@@ -5,26 +5,27 @@
  * which is destroyed every time the popup closes. So on every reopen the key was
  * gone and the user was re-prompted for their password — "session expires too
  * quickly". This persists the key in `chrome.storage.session` (kept until the
- * BROWSER closes) with an expiry based on the user's chosen duration. 'never'
- * mirrors to `chrome.storage.local` so it survives a browser restart.
+ * BROWSER closes) with an expiry based on the user's chosen duration.
  *
  * SECURITY: while unlocked, the raw AES key lives in extension storage — that is
- * the point of "stay unlocked". Default is 1h in storage.session (RAM-backed,
- * never written to disk, cleared on browser close). 'never' writes to
- * storage.local (disk) and is an explicit user opt-in.
+ * the point of "stay unlocked". It only ever goes to storage.session (RAM-backed,
+ * never written to disk, cleared on browser close); default 1h. There is no
+ * "Never" option any more: it copied the key to storage.local — on disk, right
+ * beside the vault it decrypts — which removed encryption at rest. A copy left
+ * by an older build is deleted on the next load, and a saved 'never' preference
+ * reads as 'until-close'.
  *
  * Uses a SLIDING window: each successful use renews the expiry, so an active
  * user stays unlocked and an idle one locks after the chosen duration.
  */
 
-export type SessionDuration = '15m' | '1h' | '4h' | 'until-close' | 'never';
+export type SessionDuration = '15m' | '1h' | '4h' | 'until-close';
 
 export const SESSION_DURATION_OPTIONS: Array<{ value: SessionDuration; label: string }> = [
   { value: '15m',         label: '15 minutes' },
   { value: '1h',          label: '1 hour' },
   { value: '4h',          label: '4 hours' },
   { value: 'until-close', label: 'Until browser closes' },
-  { value: 'never',       label: 'Never (stay unlocked)' },
 ];
 
 const DEFAULT_DURATION: SessionDuration = '1h';
@@ -37,7 +38,7 @@ const DUR_MS: Record<'15m' | '1h' | '4h', number> = {
 
 const PREF_KEY    = 'thanos.session_duration';    // storage.local — the chosen pref
 const KEY_SESSION = 'thanos.session_key_v2';      // storage.session — { keyHex, expiresAt }
-const KEY_LOCAL   = 'thanos.session_key_persist'; // storage.local  — only for 'never'
+const KEY_LOCAL   = 'thanos.session_key_persist'; // storage.local — legacy 'never' copy, purged on sight
 
 interface KeyRecord { keyHex: string; expiresAt: number | null } // null = no expiry
 
@@ -53,13 +54,19 @@ function fromHex(hex: string): Uint8Array {
 }
 
 function isDuration(v: unknown): v is SessionDuration {
-  return v === '15m' || v === '1h' || v === '4h' || v === 'until-close' || v === 'never';
+  return v === '15m' || v === '1h' || v === '4h' || v === 'until-close';
+}
+
+/** Delete the on-disk key copy older builds wrote for 'never'. */
+async function purgeLegacyDiskKey(): Promise<void> {
+  try { await browser.storage.local.remove(KEY_LOCAL); } catch { /* ignore */ }
 }
 
 export async function getSessionDuration(): Promise<SessionDuration> {
   try {
     const r = await browser.storage.local.get(PREF_KEY);
     const v = (r as Record<string, unknown>)[PREF_KEY];
+    if (v === 'never') return 'until-close'; // retired option — nearest that stays off disk
     return isDuration(v) ? v : DEFAULT_DURATION;
   } catch { return DEFAULT_DURATION; }
 }
@@ -72,28 +79,20 @@ export async function setSessionDuration(d: SessionDuration): Promise<void> {
 export async function persistSessionKey(key: Uint8Array): Promise<void> {
   const dur = await getSessionDuration();
   const keyHex = toHex(key);
+  await purgeLegacyDiskKey();
   try {
-    if (dur === 'never') {
-      await browser.storage.local.set({ [KEY_LOCAL]: { keyHex, expiresAt: null } satisfies KeyRecord });
-      await browser.storage.session.remove(KEY_SESSION).catch(() => {});
-    } else {
-      const expiresAt = dur === 'until-close' ? null : Date.now() + DUR_MS[dur];
-      await browser.storage.session.set({ [KEY_SESSION]: { keyHex, expiresAt } satisfies KeyRecord });
-      await browser.storage.local.remove(KEY_LOCAL).catch(() => {});
-    }
+    const expiresAt = dur === 'until-close' ? null : Date.now() + DUR_MS[dur];
+    await browser.storage.session.set({ [KEY_SESSION]: { keyHex, expiresAt } satisfies KeyRecord });
   } catch { /* best-effort — worst case the user re-enters the password */ }
 }
 
-/** Load the persisted key if present and unexpired. Renews the sliding window. */
+/** Load the persisted key if present and unexpired. Renews the sliding window.
+ *  Never reads (and always deletes) an on-disk copy left by an older build. */
 export async function loadPersistedSessionKey(): Promise<Uint8Array | null> {
+  await purgeLegacyDiskKey();
   try {
-    let rec: KeyRecord | undefined;
     const s = await browser.storage.session.get(KEY_SESSION);
-    rec = (s as Record<string, unknown>)[KEY_SESSION] as KeyRecord | undefined;
-    if (!rec) {
-      const l = await browser.storage.local.get(KEY_LOCAL);
-      rec = (l as Record<string, unknown>)[KEY_LOCAL] as KeyRecord | undefined;
-    }
+    const rec = (s as Record<string, unknown>)[KEY_SESSION] as KeyRecord | undefined;
     if (!rec?.keyHex) return null;
 
     if (rec.expiresAt != null && Date.now() > rec.expiresAt) {
@@ -102,7 +101,7 @@ export async function loadPersistedSessionKey(): Promise<Uint8Array | null> {
     }
     const key = fromHex(rec.keyHex);
 
-    // Sliding renewal for the timed durations (leave 'until-close'/'never' as-is).
+    // Sliding renewal for the timed durations (leave 'until-close' as-is).
     if (rec.expiresAt != null) {
       const dur = await getSessionDuration();
       if (dur === '15m' || dur === '1h' || dur === '4h') {
@@ -117,5 +116,5 @@ export async function loadPersistedSessionKey(): Promise<Uint8Array | null> {
 
 export async function clearPersistedSessionKey(): Promise<void> {
   try { await browser.storage.session.remove(KEY_SESSION); } catch { /* ignore */ }
-  try { await browser.storage.local.remove(KEY_LOCAL); } catch { /* ignore */ }
+  await purgeLegacyDiskKey();
 }
