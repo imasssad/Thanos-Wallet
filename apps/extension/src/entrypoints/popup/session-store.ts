@@ -71,6 +71,21 @@ export async function getSessionDuration(): Promise<SessionDuration> {
   } catch { return DEFAULT_DURATION; }
 }
 
+/** The duration as an inactivity timeout for the open popup (0 = none). */
+export function sessionDurationMinutes(d: SessionDuration): number {
+  return d === '15m' ? 15 : d === '1h' ? 60 : d === '4h' ? 240 : 0;
+}
+
+/** Calls `cb` when the saved duration changes (any extension page). */
+export function onSessionDurationChanged(cb: (d: SessionDuration) => void): () => void {
+  const listener = (changes: Record<string, { newValue?: unknown }>, area: string) => {
+    const v = changes[PREF_KEY]?.newValue;
+    if (area === 'local' && PREF_KEY in changes) cb(v === 'never' ? 'until-close' : isDuration(v) ? v : DEFAULT_DURATION);
+  };
+  try { browser.storage.onChanged.addListener(listener); } catch { return () => {}; }
+  return () => { try { browser.storage.onChanged.removeListener(listener); } catch { /* ignore */ } };
+}
+
 export async function setSessionDuration(d: SessionDuration): Promise<void> {
   try { await browser.storage.local.set({ [PREF_KEY]: d }); } catch { /* best-effort */ }
 }

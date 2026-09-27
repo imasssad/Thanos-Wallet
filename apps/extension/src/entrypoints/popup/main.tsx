@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
 // NOTE: bridgeMakaluToKamet (heavy — MultX SDK + ethers v5) is lazy-imported at
@@ -26,7 +26,7 @@ import {
 } from '../../lib/vault';
 import {
   persistSessionKey, loadPersistedSessionKey, clearPersistedSessionKey,
-  getSessionDuration, setSessionDuration,
+  getSessionDuration, setSessionDuration, sessionDurationMinutes, onSessionDurationChanged,
   SESSION_DURATION_OPTIONS, type SessionDuration,
 } from './session-store';
 import {
@@ -47,7 +47,7 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
 } from '@thanos/sdk-core';
-import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES } from '@thanos/sdk-core';
+import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
@@ -5626,6 +5626,20 @@ function App() {
     // Tell the background SW the wallet is locked so dApps see accountsChanged([]).
     try { browser?.runtime?.sendMessage({ type: 'thanos-lock' }); } catch {}
   };
+
+  // The stored session window is only checked when the popup opens; an open
+  // popup (or the wallet in a full tab) locks after the same duration without
+  // input. "Until browser closes" never idles out. Declared above the early
+  // returns below: hooks must run in the same order on every render.
+  const idleMinutes = useRef(sessionDurationMinutes('1h'));
+  useEffect(() => {
+    if (!unlocked) return;
+    void getSessionDuration().then((d) => { idleMinutes.current = sessionDurationMinutes(d); }).catch(() => {});
+    const offPref = onSessionDurationChanged((d) => { idleMinutes.current = sessionDurationMinutes(d); });
+    const stop = startIdleLock({ minutes: () => idleMinutes.current, onLock: lock, target: window, doc: document });
+    return () => { offPref(); stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lock only calls stable setters
+  }, [unlocked]);
   const onComplete = (s: string[]) => {
     setSeed(s);
     setHasVault(true);
