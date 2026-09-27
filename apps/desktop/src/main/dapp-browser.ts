@@ -25,6 +25,7 @@
  */
 const { WebContentsView, shell, BrowserWindow, ipcMain, dialog } = require('electron') as typeof import('electron');
 const path = require('path') as typeof import('path');
+import { handleTrusted } from './ipc-guard';
 const { JsonRpcProvider } = require('ethers') as typeof import('ethers');
 
 interface ViewBounds { x: number; y: number; width: number; height: number }
@@ -251,7 +252,7 @@ function createView(): import('electron').WebContentsView {
 }
 
 function attachIpc(): void {
-  ipcMain.handle('dapp:open', async (_e, payload: DappOpenPayload) => {
+  handleTrusted('dapp:open', async (_e, payload: DappOpenPayload) => {
     if (!host) return { ok: false, error: 'no_host' };
     const url = ensureHttps(payload.url);
     if (!view) {
@@ -269,12 +270,12 @@ function attachIpc(): void {
     return { ok: true, url };
   });
 
-  ipcMain.handle('dapp:close', () => {
+  handleTrusted('dapp:close', () => {
     destroy();
     return { ok: true };
   });
 
-  ipcMain.handle('dapp:set-bounds', (_e, bounds: ViewBounds) => {
+  handleTrusted('dapp:set-bounds', (_e, bounds: ViewBounds) => {
     if (!view) return { ok: false };
     view.setBounds({
       x:      Math.round(bounds.x),
@@ -285,34 +286,34 @@ function attachIpc(): void {
     return { ok: true };
   });
 
-  ipcMain.handle('dapp:back', () => {
+  handleTrusted('dapp:back', () => {
     if (!view) return { ok: false };
     const h = view.webContents.navigationHistory;
     if (h.canGoBack()) h.goBack();
     return { ok: true };
   });
 
-  ipcMain.handle('dapp:forward', () => {
+  handleTrusted('dapp:forward', () => {
     if (!view) return { ok: false };
     const h = view.webContents.navigationHistory;
     if (h.canGoForward()) h.goForward();
     return { ok: true };
   });
 
-  ipcMain.handle('dapp:reload', () => {
+  handleTrusted('dapp:reload', () => {
     if (!view) return { ok: false };
     view.webContents.reload();
     return { ok: true };
   });
 
-  ipcMain.handle('dapp:navigate', async (_e, rawUrl: string) => {
+  handleTrusted('dapp:navigate', async (_e, rawUrl: string) => {
     if (!view) return { ok: false };
     const url = ensureHttps(rawUrl);
     await view.webContents.loadURL(url);
     return { ok: true, url };
   });
 
-  ipcMain.handle('dapp:current', () => ({
+  handleTrusted('dapp:current', () => ({
     open: !!view,
     url:  currentUrl,
     canGoBack:    view?.webContents.navigationHistory.canGoBack()    ?? false,

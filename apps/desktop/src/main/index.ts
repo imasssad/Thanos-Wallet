@@ -1,6 +1,6 @@
 // Use require() directly — Electron's module interceptor matches the literal "electron" string
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
-const { app, BrowserWindow, ipcMain, nativeTheme, shell, session, clipboard, Notification } = require('electron') as typeof import('electron');
+const { app, BrowserWindow, nativeTheme, session, clipboard, Notification } = require('electron') as typeof import('electron');
 
 /* USB / HID vendor IDs we let the renderer enumerate. Hardware-wallet
    manufacturers only — never a blanket "allow all devices" handler. */
@@ -12,6 +12,7 @@ import { startAutoUpdater } from './updater';
 import * as signer from './signer';
 import * as ledgerHid from './ledger-hid-bridge';
 import { installDappBrowser } from './dapp-browser';
+import { handleTrusted, lockToApp, openInBrowser } from './ipc-guard';
 
 const SERVICE = 'thanos-wallet';
 
@@ -41,6 +42,8 @@ const createWindow = () => {
       : { backgroundColor: '#080809' }),
     webPreferences: {
       contextIsolation: true,
+      nodeIntegration:  false,
+      sandbox:          true,
       preload: path.join(__dirname, 'preload.js'),
       // 1.1 UI scale-up applied at the Chromium level (NOT CSS `zoom`, which
       // desynced click hit-testing so buttons across the app stopped
@@ -51,6 +54,10 @@ const createWindow = () => {
   // The renderer's own <title> (index.html, "Thanos Wallet") would otherwise
   // clobber the option above on load/navigation — pin it explicitly.
   win.on('page-title-updated', (e) => { e.preventDefault(); });
+
+  // The preload hands the signer + vault bridge to whatever this window
+  // shows, so it must only ever show the app itself — see ipc-guard.ts.
+  lockToApp(win);
 
   /* Hardware-wallet USB / HID transport — Electron denies device access
      by default. We allow Ledger / Trezor vendor IDs only so the
@@ -140,32 +147,29 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
-  // Register IPC handlers AFTER app is ready
-  ipcMain.handle('vault:get',    (_e, key: string)               => keytar?.getPassword(SERVICE, key)    ?? null);
-  ipcMain.handle('vault:set',    (_e, key: string, value: string) => keytar?.setPassword(SERVICE, key, value));
-  ipcMain.handle('vault:remove', (_e, key: string)               => keytar?.deletePassword(SERVICE, key));
+  // Register IPC handlers AFTER app is ready. Every handler below is
+  // handleTrusted: only the wallet window's own document may call it.
+  handleTrusted('vault:get',    (_e, key: string)               => keytar?.getPassword(SERVICE, key)    ?? null);
+  handleTrusted('vault:set',    (_e, key: string, value: string) => keytar?.setPassword(SERVICE, key, value));
+  handleTrusted('vault:remove', (_e, key: string)               => keytar?.deletePassword(SERVICE, key));
 
   // Open external links (Discover ecosystem apps) in the user's default
   // browser. Restricted to http/https so a compromised renderer can't
   // launch arbitrary protocols/handlers.
-  ipcMain.handle('shell:openExternal', (_e, url: string) => {
-    try {
-      const u = new URL(url);
-      if (u.protocol === 'https:' || u.protocol === 'http:') return shell.openExternal(url);
-    } catch { /* malformed URL — ignore */ }
-    return Promise.resolve();
+  handleTrusted('shell:openExternal', (_e, url: string) => {
+    openInBrowser(String(url ?? ''));
   });
 
   // Clipboard via the main process — navigator.clipboard is blocked in the
   // packaged file:// renderer, so every Copy button needs this bridge.
-  ipcMain.handle('clipboard:write', (_e, text: string) => {
+  handleTrusted('clipboard:write', (_e, text: string) => {
     clipboard.writeText(String(text ?? ''));
     return { ok: true };
   });
 
   // OS notification for wallet activity (WC requests, tx confirm/fail, bridge/
   // swap). Notification is a main-process API; the renderer calls it over IPC.
-  ipcMain.handle('notify:show', (_e, title: string, body: string) => {
+  handleTrusted('notify:show', (_e, title: string, body: string) => {
     try {
       if (Notification.isSupported()) new Notification({ title: String(title ?? ''), body: String(body ?? '') }).show();
     } catch { /* notifications unavailable / disabled */ }
@@ -175,23 +179,23 @@ app.whenReady().then(() => {
   /* Main-process signer — keys never leave this process once `set-seed`
      has cached the seed in main memory. The renderer holds an "is
      unlocked" flag only; signing requests round-trip through IPC. */
-  ipcMain.handle('signer:set-seed',    (_e, seed: string)            => { signer.setSeed(seed); });
-  ipcMain.handle('signer:clear-seed',  ()                            => { signer.clearSeed(); });
-  ipcMain.handle('signer:has-seed',    ()                            => signer.hasSeed());
-  ipcMain.handle('signer:address',     (_e, hdPath: string)          => signer.deriveAddress(hdPath));
-  ipcMain.handle('signer:send-tx',     (_e, hdPath: string, tx)      => signer.signAndBroadcast(hdPath, tx));
-  ipcMain.handle('signer:sign-tx',     (_e, hdPath: string, tx)      => signer.signTransaction(hdPath, tx));
-  ipcMain.handle('signer:personal',    (_e, hdPath: string, msg)     => signer.signPersonalMessage(hdPath, msg));
-  ipcMain.handle('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
-  ipcMain.handle('signer:erc20-transfer', (_e, hdPath: string, args) => signer.transferErc20(hdPath, args));
+  handleTrusted('signer:set-seed',    (_e, seed: string)            => { signer.setSeed(seed); });
+  handleTrusted('signer:clear-seed',  ()                            => { signer.clearSeed(); });
+  handleTrusted('signer:has-seed',    ()                            => signer.hasSeed());
+  handleTrusted('signer:address',     (_e, hdPath: string)          => signer.deriveAddress(hdPath));
+  handleTrusted('signer:send-tx',     (_e, hdPath: string, tx)      => signer.signAndBroadcast(hdPath, tx));
+  handleTrusted('signer:sign-tx',     (_e, hdPath: string, tx)      => signer.signTransaction(hdPath, tx));
+  handleTrusted('signer:personal',    (_e, hdPath: string, msg)     => signer.signPersonalMessage(hdPath, msg));
+  handleTrusted('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
+  handleTrusted('signer:erc20-transfer', (_e, hdPath: string, args) => signer.transferErc20(hdPath, args));
 
   /* Native-HID Ledger bridge — used by the renderer as a fallback when
      WebHID is unavailable (typically Linux). Lazy-loaded so a missing
      @ledgerhq/hw-transport-node-hid-noevents dep just makes `available`
      return false; the wallet still works via WebHID on macOS/Windows. */
-  ipcMain.handle('ledger-native:available',   ()                            => ledgerHid.isAvailable());
-  ipcMain.handle('ledger-native:get-address', (_e, hdPath?: string)         => ledgerHid.getAddress(hdPath));
-  ipcMain.handle('ledger-native:sign-evm-tx', (_e, hdPath: string, hex: string) => ledgerHid.signTransaction(hdPath, hex));
+  handleTrusted('ledger-native:available',   ()                            => ledgerHid.isAvailable());
+  handleTrusted('ledger-native:get-address', (_e, hdPath?: string)         => ledgerHid.getAddress(hdPath));
+  handleTrusted('ledger-native:sign-evm-tx', (_e, hdPath: string, hex: string) => ledgerHid.signTransaction(hdPath, hex));
 
   nativeTheme.themeSource = 'system';
   createWindow();

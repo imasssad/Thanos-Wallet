@@ -20,7 +20,7 @@
  * (Windows). Helps debug update issues from user reports.
  */
 
-const { app, ipcMain } = require('electron') as typeof import('electron');
+const { app } = require('electron') as typeof import('electron');
 // NB: do NOT destructure `autoUpdater` here. electron-updater exposes it via a
 // lazy getter that constructs the AppUpdater (which reads app.getVersion()) on
 // FIRST access — doing that at import time throws "Cannot read properties of
@@ -30,6 +30,7 @@ const { app, ipcMain } = require('electron') as typeof import('electron');
 const electronUpdater = require('electron-updater') as typeof import('electron-updater');
 const electronLog = require('electron-log') as typeof import('electron-log');
 import type { BrowserWindow } from 'electron';
+import { handleTrusted } from './ipc-guard';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 electronLog.transports.file.level = 'info';
@@ -108,8 +109,8 @@ export function startAutoUpdater(window: BrowserWindow): void {
     }));
     autoUpdater.on('error', err => emit({ kind: 'error', message: (err as Error).message || 'updater error' }));
 
-    ipcMain.handle('updater:check',  () => autoUpdater.checkForUpdates().catch(e => ({ error: (e as Error).message })));
-    ipcMain.handle('updater:install', () => {
+    handleTrusted('updater:check',  () => autoUpdater.checkForUpdates().catch(e => ({ error: (e as Error).message })));
+    handleTrusted('updater:install', () => {
       // false = don't silent-install (show progress); true = force-close even
       // if app is still busy. The user's intent is explicit at this point.
       autoUpdater.quitAndInstall(false, true);
