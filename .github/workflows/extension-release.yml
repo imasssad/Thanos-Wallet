@@ -19,7 +19,7 @@ jobs:
           node-version: 20
 
       - run: corepack enable
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       - name: Build Chrome and Firefox packages
         run: |
