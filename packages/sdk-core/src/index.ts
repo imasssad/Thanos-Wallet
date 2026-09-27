@@ -45,6 +45,8 @@ export * from './dex/ignite';
 /* ── Quantt (AI trading agents) ──────────────────────────────────────── */
 export * from './quantt/client';
 export * from './quantt/challenge';
+export * from './quantt/agent-config';
+export * from './quantt/sse';
 
 /* ── Names (DNNS) ────────────────────────────────────────────────────── */
 export * from './dnns/service';

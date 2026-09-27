@@ -48,6 +48,8 @@
  * a tampered response can never reach the caller's signer as, say, a Permit.
  */
 import { assertQuanttChallenge } from './challenge';
+import { validateAgentUpdate } from './agent-config';
+import { SseParser } from './sse';
 
 export interface Eip712TypedData {
   domain: Record<string, unknown>;
@@ -160,6 +162,30 @@ export interface KillSwitchInput {
 export interface BindWithdrawalAddressInput {
   address: string;   // 0x…40
   signature: string; // 0x… over the EIP-712 challenge from the /challenge endpoint
+}
+
+/** GET /v1/kill-switch — the documented global trading-halt state. */
+export interface QuanttKillSwitch {
+  armed: boolean;
+  reason: string | null;
+  armedBy: string | null;
+  armedAt: string | null;
+}
+
+/** One event from an agent's decision stream: `decision` or `risk_rejected`
+ *  per the spec. `data` is the parsed JSON payload (the same record shape as
+ *  GET /v1/agents/{id}/decisions items), or the raw string if it isn't JSON. */
+export interface QuanttStreamEvent {
+  type: string;
+  data: unknown;
+}
+
+export type QuanttStreamStatus = 'connecting' | 'live' | 'retrying' | 'stopped';
+
+export interface QuanttStreamHandlers {
+  onEvent: (event: QuanttStreamEvent) => void;
+  /** Connection state for a "Live" indicator; `detail` explains 'stopped'. */
+  onStatus?: (status: QuanttStreamStatus, detail?: string) => void;
 }
 
 /** Sign an EIP-712 payload with the wallet key and return a 0x… signature.
@@ -391,7 +417,13 @@ export class QuanttClient {
   createAgent(body: CreateAgentInput): Promise<unknown> {
     return this.authed('/v1/agents', { method: 'POST', body: JSON.stringify(body) });
   }
-  updateAgent(id: string, body: UpdateAgentInput): Promise<unknown> {
+  /** PATCH the agent's config. The body is checked against the documented
+   *  update schema first (see agent-config.ts) — an invalid or empty update
+   *  throws before anything is sent to production. */
+  async updateAgent(id: string, body: UpdateAgentInput): Promise<unknown> {
+    const problems = validateAgentUpdate(body);
+    if (problems.length) throw new QuanttError(400, problems.join(' '), 'agents/update');
+    if (Object.keys(body).length === 0) throw new QuanttError(400, 'nothing to update', 'agents/update');
     return this.authed(`/v1/agents/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
   }
   deleteAgent(id: string): Promise<unknown> {
@@ -447,6 +479,88 @@ export class QuanttClient {
     return `${this.base}/v1/agents/${encodeURIComponent(id)}/decisions/stream`;
   }
 
+  /** Live `decision` / `risk_rejected` events for one agent, read over the
+   *  bearer-authenticated SSE stream with a fetch() body reader (EventSource
+   *  can't send the header). Returns an unsubscribe function.
+   *
+   *  - Refreshes the session once on a 401; stops if that fails.
+   *  - Reconnects after a drop with exponential backoff (2 s → 60 s), and
+   *    recycles a connection that has been silent for 5 minutes — the stream
+   *    has no heartbeat, so a dead socket would otherwise look "live" forever.
+   *    Both keep well inside Quantt's 120 requests/minute per IP.
+   *  - Stops for good on 4xx other than 408/429 (e.g. the agent was deleted),
+   *    or when the runtime's Response has no readable body — on React Native
+   *    pass expo/fetch as `fetchImpl`.
+   */
+  subscribeAgentDecisions(id: string, handlers: QuanttStreamHandlers): () => void {
+    const stop = new AbortController();
+    const status = handlers.onStatus ?? (() => {});
+    const IDLE_MS = 5 * 60_000;
+    const run = async (): Promise<void> => {
+      let delay = 2_000;
+      let refreshed = false;
+      while (!stop.signal.aborted) {
+        status('connecting');
+        const conn = new AbortController();
+        const onStop = () => conn.abort();
+        stop.signal.addEventListener('abort', onStop, { once: true });
+        let idle: ReturnType<typeof setTimeout> | undefined;
+        const armIdle = () => { clearTimeout(idle); idle = setTimeout(() => conn.abort(), IDLE_MS); };
+        try {
+          const s = await this.session();
+          if (!s) { status('stopped', 'not signed in'); return; }
+          armIdle();
+          const res = await this.f(this.agentDecisionsStreamUrl(id), {
+            headers: { ...this.authHeaders(s), accept: 'text/event-stream' },
+            signal: conn.signal,
+          });
+          if (res.status === 401 && !refreshed) {
+            refreshed = true;
+            if (await this.refresh()) continue;
+            status('stopped', 'session expired — sign in again'); return;
+          }
+          if (!res.ok) {
+            if (res.status < 500 && res.status !== 408 && res.status !== 429) {
+              status('stopped', `HTTP ${res.status}`); return;
+            }
+            throw new QuanttError(res.status, await safeText(res), 'decisions/stream');
+          }
+          if (!res.body) { status('stopped', 'live updates are not supported here'); return; }
+          refreshed = false;
+          delay = 2_000;
+          status('live');
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          const parser = new SseParser();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            armIdle();
+            for (const ev of parser.push(decoder.decode(value, { stream: true }))) {
+              let data: unknown = ev.data;
+              try { data = JSON.parse(ev.data); } catch { /* not JSON — hand over the raw text */ }
+              handlers.onEvent({ type: ev.event, data });
+            }
+          }
+        } catch {
+          /* dropped / timed out / 5xx — reconnect below unless unsubscribed */
+        } finally {
+          clearTimeout(idle);
+          stop.signal.removeEventListener('abort', onStop);
+        }
+        if (stop.signal.aborted) break;
+        status('retrying');
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, delay);
+          stop.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+        });
+        delay = Math.min(delay * 2, 60_000);
+      }
+    };
+    void run();
+    return () => stop.abort();
+  }
+
   /* ── funding (Magma) ──────────────────────────────────────────────── */
 
   /** Execute the real on-chain deposit ("leg B") for a Magma-preference
@@ -492,8 +606,12 @@ export class QuanttClient {
 
   /* ── kill switch ───────────────────────────────────────────────────── */
 
-  /** Current global trading-halt state. */
-  getKillSwitch(): Promise<unknown> { return this.authed('/v1/kill-switch'); }
+  /** Current global trading-halt state, or null if the response doesn't
+   *  carry the documented `armed` flag (the UI then shows nothing rather than
+   *  a guessed state). */
+  async getKillSwitch(): Promise<QuanttKillSwitch | null> {
+    return normalizeKillSwitch(await this.authed('/v1/kill-switch'));
+  }
   /** Arm/disarm the GLOBAL halt — admin-scoped on Quantt's side (this
    *  client doesn't enforce that; the API will 403 a non-admin session). */
   setKillSwitch(body: KillSwitchInput): Promise<unknown> {
@@ -502,7 +620,10 @@ export class QuanttClient {
 
   /* ── telemetry ─────────────────────────────────────────────────────── */
 
-  getTelemetry(): Promise<unknown> { return this.authed('/v1/telemetry'); }
+  /** Recent platform activity, newest first (`limit` defaults to 25, max 100). */
+  getTelemetry(limit?: number): Promise<unknown> {
+    return this.authed(`/v1/telemetry${query({ limit })}`);
+  }
   /** SSE URL for the UNFILTERED platform activity bus — every event, not
    *  just this session's agents (spec: for one agent, use
    *  agentDecisionsStreamUrl instead). Sends `event: snapshot` (10 most
@@ -514,11 +635,23 @@ export class QuanttClient {
 
   /* ── market data ───────────────────────────────────────────────────── */
 
-  getMarketSnapshot(): Promise<unknown>   { return this.authed('/v1/market/snapshot'); }
-  getMarketOhlcv(): Promise<unknown>      { return this.authed('/v1/market/ohlcv'); }
-  getMarketIndicators(): Promise<unknown> { return this.authed('/v1/market/indicators'); }
-  getMarketNews(): Promise<unknown>       { return this.authed('/v1/market/news'); }
-  getMarketSentiment(): Promise<unknown>  { return this.authed('/v1/market/sentiment'); }
+  /* The per-symbol routes take `symbol` as a query parameter (spec); their
+     response bodies are undocumented ("Default Response"), hence `unknown`. */
+  getMarketSnapshot(symbol: string): Promise<unknown> {
+    return this.authed(`/v1/market/snapshot${query({ symbol })}`);
+  }
+  getMarketOhlcv(symbol: string, opts?: { interval?: string; limit?: number }): Promise<unknown> {
+    return this.authed(`/v1/market/ohlcv${query({ symbol, interval: opts?.interval, limit: opts?.limit })}`);
+  }
+  getMarketIndicators(symbol: string): Promise<unknown> {
+    return this.authed(`/v1/market/indicators${query({ symbol })}`);
+  }
+  getMarketNews(symbol: string, limit?: number): Promise<unknown> {
+    return this.authed(`/v1/market/news${query({ symbol, limit })}`);
+  }
+  getMarketSentiment(symbol: string): Promise<unknown> {
+    return this.authed(`/v1/market/sentiment${query({ symbol })}`);
+  }
   getMarketTop10(): Promise<unknown>      { return this.authed('/v1/market/top10'); }
   getMarketWatchlist(): Promise<unknown>  { return this.authed('/v1/market/watchlist'); }
   /** Register a DEX symbol with the market backend — body shape is an open
@@ -576,6 +709,23 @@ export function typesForEthers(typed: Eip712TypedData): Record<string, Array<{ n
 }
 
 /* ── helpers ────────────────────────────────────────────────────────── */
+
+/** `?a=1&b=x` from the defined entries, or '' when there are none. */
+function query(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v));
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+/** GET /v1/kill-switch → QuanttKillSwitch, or null without a boolean `armed`. */
+function normalizeKillSwitch(raw: unknown): QuanttKillSwitch | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.armed !== 'boolean') return null;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+  return { armed: o.armed, reason: str(o.reason), armedBy: str(o.armedBy), armedAt: str(o.armedAt) };
+}
 
 async function safeText(res: Response): Promise<string> {
   try { return (await res.text()).slice(0, 300); } catch { return ''; }
