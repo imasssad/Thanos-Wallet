@@ -11,6 +11,7 @@
  * PUSH_INTERNAL_SECRET header so only the indexer/worker on the Docker
  * network can trigger sends (never exposed via nginx).
  */
+import crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { isExpoToken, registerToken, removeToken, notifyAddress } from '../lib/push.js';
@@ -50,7 +51,12 @@ pushRouter.post('/notify', async (req: Request, res: Response) => {
   const secret = process.env.PUSH_INTERNAL_SECRET;
   // Disabled unless a secret is configured — never an open push relay.
   if (!secret) { res.status(503).json({ error: 'push notify disabled (no PUSH_INTERNAL_SECRET)' }); return; }
-  if (req.header('x-internal-secret') !== secret) { res.status(403).json({ error: 'forbidden' }); return; }
+  const supplied = Buffer.from(req.header('x-internal-secret') ?? '');
+  const expected = Buffer.from(secret);
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+    res.status(403).json({ error: 'forbidden' });
+    return;
+  }
   const parse = NotifySchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: 'Validation failed', issues: parse.error.issues }); return; }
   const { address, title, body, data } = parse.data;

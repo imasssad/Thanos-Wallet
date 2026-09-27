@@ -127,7 +127,23 @@ describe('POST /auth/login', () => {
       .send({ email: 'ghost@example.com', password: 'whatever' });
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/invalid credentials/i);
-  });
+  }, 15_000);
+
+  it('still runs an Argon2 verify for an unknown email (no timing oracle)', async () => {
+    const argon2 = (await import('argon2')).default;
+    const verify = vi.spyOn(argon2, 'verify');
+    try {
+      dbQueryOne.mockResolvedValueOnce(null);
+      const res = await request(app)
+        .post('/auth/login')
+        .send({ email: 'nobody@example.com', password: 'guess' });
+      expect(res.status).toBe(401);
+      expect(verify).toHaveBeenCalledTimes(1);
+      expect(verify.mock.calls[0][1]).toBe('guess');
+    } finally {
+      verify.mockRestore();
+    }
+  }, 15_000);
 
   it('returns 401 for a wrong password (no leak about which is wrong)', async () => {
     // Pre-compute a hash for a known password so argon2.verify can run.
@@ -261,7 +277,7 @@ describe('POST /auth/refresh', () => {
       expires_at: new Date(Date.now() + 60_000),
       revoked:    false,
     });
-    dbQuery.mockResolvedValueOnce([]); // UPDATE sessions SET refresh_token = ...
+    dbQuery.mockResolvedValueOnce([{ id: 'sess-y' }]); // UPDATE sessions SET refresh_token = ... RETURNING id
 
     const res = await request(app)
       .post('/auth/refresh')
@@ -271,5 +287,32 @@ describe('POST /auth/refresh', () => {
     expect(res.body.accessToken).toMatch(/^eyJ/);
     // New refresh token is fresh, not equal to the one sent.
     expect(res.body.refreshToken).not.toBe('oldRefresh');
+
+    // The rotation is a compare-and-swap on the PRESENTED token's hash.
+    const { hashRefreshToken } = await import('../lib/jwt.js');
+    const [sql, values] = dbQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/WHERE id = \$3 AND refresh_token = \$4 AND revoked = false/);
+    expect(values[2]).toBe('sess-y');
+    expect(values[3]).toBe(hashRefreshToken('oldRefresh'));
+  });
+
+  it('refuses a refresh that lost a concurrent rotation with 401', async () => {
+    // Both requests read the session before either rotated it; the second
+    // one's compare-and-swap matches no row because the hash already moved.
+    dbQueryOne.mockResolvedValueOnce({
+      id:         'sess-z',
+      user_id:    'user-z',
+      device_id:  'dev-z',
+      expires_at: new Date(Date.now() + 60_000),
+      revoked:    false,
+    });
+    dbQuery.mockResolvedValueOnce([]); // CAS UPDATE matched nothing
+
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: 'alreadyRotated' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.accessToken).toBeUndefined();
   });
 });

@@ -33,6 +33,23 @@ const RefreshSchema = z.object({
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** Argon2id cost for account passwords. */
+const ARGON2_OPTS = {
+  type:        argon2.argon2id,
+  memoryCost:  65536,  // 64 MB
+  timeCost:    3,
+  parallelism: 4,
+} as const;
+
+/* Unknown / inactive emails still pay one Argon2id verify, so "no such user"
+   and "wrong password" take the same time — otherwise response latency tells
+   an attacker which emails have accounts. The hash is computed once, lazily. */
+let timingDummyHash: Promise<string> | null = null;
+async function burnVerifyTime(password: string): Promise<void> {
+  timingDummyHash ??= argon2.hash('thanos-login-timing-equaliser', ARGON2_OPTS);
+  await argon2.verify(await timingDummyHash, password).catch(() => false);
+}
+
 function getClientMeta(req: Request) {
   return {
     ip:        req.ip ?? req.socket.remoteAddress ?? 'unknown',
@@ -77,12 +94,7 @@ authRouter.post('/register', authLimiter, async (req: Request, res: Response) =>
   }
 
   // Hash password with Argon2id
-  const passwordHash = await argon2.hash(password, {
-    type:        argon2.argon2id,
-    memoryCost:  65536,  // 64 MB
-    timeCost:    3,
-    parallelism: 4,
-  });
+  const passwordHash = await argon2.hash(password, ARGON2_OPTS);
 
   // Create user
   const [user] = await query<{ id: string }>(
@@ -144,6 +156,7 @@ authRouter.post('/login', authLimiter, async (req: Request, res: Response) => {
   );
 
   if (!user || !user.is_active) {
+    await burnVerifyTime(password);
     await logAuthEvent(null, 'failed_login', { ...meta, email, reason: 'user_not_found' });
     res.status(401).json({ error: 'Invalid credentials' });
     return;
@@ -219,12 +232,20 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
     return;
   }
 
-  // Rotate refresh token
+  // Rotate refresh token — compare-and-swap on the presented hash, so two
+  // concurrent refreshes with the same token can't both succeed (each would
+  // mint a live access token and fork the session). Only the first wins.
   const { raw: newRaw, hash: newHash } = generateRefreshToken();
-  await query(
-    `UPDATE sessions SET refresh_token = $1, expires_at = $2 WHERE id = $3`,
-    [newHash, refreshTokenExpiresAt(), session.id]
+  const rotated = await query<{ id: string }>(
+    `UPDATE sessions SET refresh_token = $1, expires_at = $2
+      WHERE id = $3 AND refresh_token = $4 AND revoked = false
+      RETURNING id`,
+    [newHash, refreshTokenExpiresAt(), session.id, hash]
   );
+  if (rotated.length === 0) {
+    res.status(401).json({ error: 'Invalid or expired refresh token' });
+    return;
+  }
 
   const accessToken = await signAccessToken({
     sub:       session.user_id,
