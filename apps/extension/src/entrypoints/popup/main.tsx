@@ -33,7 +33,7 @@ import {
   usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, type DisplayTx,
 } from './portfolio';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { quantt, quanttSignIn, quanttBindWithdrawalAddress } from './quantt';
+import { quantt, quanttSignIn, quanttBindWithdrawalAddress, forgetQuanttSession } from './quantt';
 import {
   loadCustomAssets, customChains, customTokens, allEvmChains,
   addCustomChain, addCustomToken, removeCustomChain, removeCustomToken,
@@ -45,7 +45,9 @@ import {
 import type {
   QuanttSession, QuanttOverview, QuanttRuntimeState,
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
+  QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
 } from '@thanos/sdk-core';
+import { toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES } from '@thanos/sdk-core';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
@@ -453,6 +455,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     }
     setConfirmReset(false);
     clearVault();
+    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
   };
   const copySeed = async () => {
@@ -1625,6 +1628,31 @@ function quanttPage(raw: unknown): { items: unknown[]; cursor?: string } {
  *  row from listAgents(). */
 interface QuanttAgentRef { id: string; name: string; status?: string; }
 
+/** Global trading halt (GET /v1/kill-switch) — null until known, or when the
+ *  response isn't the documented shape (nothing is shown then). */
+function useQuanttKillSwitch(enabled: boolean): QuanttKillSwitch | null {
+  const [ks, setKs] = useState<QuanttKillSwitch | null>(null);
+  useEffect(() => {
+    if (!enabled) { setKs(null); return; }
+    let live = true;
+    quantt.getKillSwitch().then(k => { if (live) setKs(k); }).catch(() => { if (live) setKs(null); });
+    return () => { live = false; };
+  }, [enabled]);
+  return ks;
+}
+
+function QuanttKillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
+  if (!ks?.armed) return null;
+  return (
+    <div role="alert" style={{
+      background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)',
+      borderRadius: 9, padding: '8px 10px', fontSize: 11, color: '#f59e0b', lineHeight: 1.4, marginBottom: 8,
+    }}>
+      Quantts has halted all agent trading{ks.reason ? `: ${ks.reason}` : '.'} Agents can&apos;t be started until the halt is lifted.
+    </div>
+  );
+}
+
 /* Live portfolio + agents summary once connected (shapes from /v1/mobile/overview). */
 function QuanttPanel({ overview, onSelectAgent, onCreateAgent, onViewAll }: {
   overview: QuanttOverview;
@@ -1908,8 +1936,8 @@ function quanttBtnGhost(color: string, disabled: boolean): React.CSSProperties {
   };
 }
 
-function QuanttOverviewTab({ status, rows, loadErr, toggling, analyzing, analyzeMsg, onSetState, onAnalyze }: {
-  status?: string; rows: Array<[string, string]>; loadErr: boolean;
+function QuanttOverviewTab({ status, halted, rows, loadErr, toggling, analyzing, analyzeMsg, onSetState, onAnalyze }: {
+  status?: string; halted: boolean; rows: Array<[string, string]>; loadErr: boolean;
   toggling: boolean; analyzing: boolean; analyzeMsg: string | null;
   onSetState: (s: QuanttRuntimeState) => void; onAnalyze: () => void;
 }) {
@@ -1934,7 +1962,9 @@ function QuanttOverviewTab({ status, rows, loadErr, toggling, analyzing, analyze
       )}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => onSetState('active')} disabled={toggling || status === 'active'} style={quanttBtnGhost('#22c55e', toggling || status === 'active')}>Start</button>
+        <button onClick={() => onSetState('active')} disabled={toggling || status === 'active' || halted}
+          title={halted ? 'Trading is halted by Quantts' : undefined}
+          style={quanttBtnGhost('#22c55e', toggling || status === 'active' || halted)}>Start</button>
         <button onClick={() => onSetState('paused')} disabled={toggling || status === 'paused'} style={quanttBtnGhost('#f59e0b', toggling || status === 'paused')}>Pause</button>
         <button onClick={() => onSetState('idle')} disabled={toggling || status === 'idle'} style={quanttBtnGhost('#ef4444', toggling || status === 'idle')}>Stop</button>
       </div>
@@ -2074,19 +2104,38 @@ function QuanttDepositTab({ agentId, myAddress }: { agentId: string; myAddress: 
   );
 }
 
+/** Append `incoming` to `base`, skipping ids `base` already has. */
+function quanttMergeById(base: unknown[], incoming: unknown[]): unknown[] {
+  const seen = new Set(base.map(quanttRowId).filter(Boolean));
+  return [...base, ...incoming.filter(x => { const id = quanttRowId(x); return !id || !seen.has(id); })];
+}
+
 function QuanttDecisionsTab({ agentId }: { agentId: string }) {
   const [items, setItems] = useState<unknown[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(false);
   const [done, setDone] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<QuanttStreamStatus | null>(null);
+
+  // New decisions (and risk-engine rejections) stream in while the tab is open.
+  useEffect(() => quantt.subscribeAgentDecisions(agentId, {
+    onEvent: ({ type, data }) => {
+      const o = quanttAsObj(data);
+      if (!o) return;
+      const row = type === 'risk_rejected' ? { action: 'Rejected by risk checks', ...o } : o;
+      setItems(prev => quanttMergeById([row], prev));
+    },
+    onStatus: status => setLiveStatus(status),
+  }), [agentId]);
 
   const load = (nextCursor?: string) => {
     setLoading(true); setErr(false);
     quantt.getAgentDecisions(agentId, { cursor: nextCursor, limit: 20 })
       .then((r) => {
         const page = quanttPage(r);
-        setItems(prev => nextCursor ? [...prev, ...page.items] : page.items);
+        // Keep anything the live stream delivered while this page loaded.
+        setItems(prev => quanttMergeById(prev, page.items));
         setCursor(page.cursor);
         if (!page.cursor || page.items.length === 0) setDone(true);
       })
@@ -2098,6 +2147,10 @@ function QuanttDecisionsTab({ agentId }: { agentId: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {liveStatus === 'live' && <div style={{ color: '#22c55e', fontSize: 10.5, fontWeight: 700 }}>● Live</div>}
+      {(liveStatus === 'connecting' || liveStatus === 'retrying') && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Connecting to live updates…</div>
+      )}
       {items.length === 0 && !loading && !err && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No decisions yet.</div>}
       {err && <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load decisions.</div>}
       {items.map((it, i) => {
@@ -2302,9 +2355,130 @@ function QuanttWithdrawTab({ agentId, seed, myAddress }: { agentId: string; seed
   );
 }
 
-type QuanttDetailTab = 'overview' | 'wallet' | 'deposit' | 'withdraw' | 'decisions' | 'trades' | 'positions';
+/* ── Agent settings (PATCH /v1/agents/{id}) ───────────────────────────
+   Strategy, chains, tokens, DEX and quote asset stay fixed: re-pointing a
+   funded agent at other markets could strand its capital — that means a new
+   agent. The body is schema-checked (sdk-core agent-config) and only the
+   changed fields are sent. */
+const QUANTT_EDITABLE_NUMBERS = [
+  ['maxPositionPct', 'Max position (%)'],
+  ['stopLoss', 'Stop loss (%)'],
+  ['takeProfit', 'Take profit (%)'],
+  ['maxDailyLoss', 'Max daily loss (%)'],
+] as const;
+type QuanttEditableNumber = typeof QUANTT_EDITABLE_NUMBERS[number][0];
+const QUANTT_SETTING_LABELS: Partial<Record<keyof UpdateAgentInput, string>> = {
+  name: 'Name', timeframe: 'Timeframe', autopilot: 'Autopilot', strategyPrompt: 'Strategy guidance',
+  maxPositionPct: 'Max position', stopLoss: 'Stop loss', takeProfit: 'Take profit', maxDailyLoss: 'Max daily loss',
+};
+function quanttDescribeSetting(key: keyof UpdateAgentInput, value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (key === 'maxPositionPct' || key === 'stopLoss' || key === 'takeProfit' || key === 'maxDailyLoss') return `${value}%`;
+  const text = String(value);
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
+}
+
+function QuanttSettingsTab({ agentId, raw, onSaved }: { agentId: string; raw: unknown; onSaved: () => void }) {
+  const config = useMemo(() => toAgentConfig(raw), [raw]);
+  const [name, setName] = useState('');
+  const [timeframe, setTimeframe] = useState<QuanttTimeframe>('1h');
+  const [autopilot, setAutopilot] = useState(true);
+  const [prompt, setPrompt] = useState('');
+  const [numbers, setNumbers] = useState<Record<QuanttEditableNumber, string>>({ maxPositionPct: '', stopLoss: '', takeProfit: '', maxDailyLoss: '' });
+  const [errors, setErrors] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const uid = React.useId();
+
+  const reset = (c: QuanttAgentConfig) => {
+    setName(c.name); setTimeframe(c.timeframe); setAutopilot(c.autopilot); setPrompt(c.strategyPrompt ?? '');
+    setNumbers({ maxPositionPct: String(c.maxPositionPct), stopLoss: String(c.stopLoss), takeProfit: String(c.takeProfit), maxDailyLoss: String(c.maxDailyLoss) });
+  };
+  useEffect(() => { if (config) reset(config); }, [config]);
+
+  if (!raw) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>;
+  if (!config) {
+    return <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Settings aren&apos;t available for this agent right now — Quantts didn&apos;t return its full configuration.</div>;
+  }
+
+  const save = async () => {
+    setSaved(false);
+    const edited: QuanttAgentConfig = {
+      ...config, name, timeframe, autopilot,
+      strategyPrompt: prompt.trim() ? prompt.trim() : null,
+      maxPositionPct: Number(numbers.maxPositionPct), stopLoss: Number(numbers.stopLoss),
+      takeProfit: Number(numbers.takeProfit), maxDailyLoss: Number(numbers.maxDailyLoss),
+    };
+    const blank = QUANTT_EDITABLE_NUMBERS.filter(([k]) => numbers[k].trim() === '').map(([, label]) => `${label} is required.`);
+    const changes = diffAgentConfig(config, edited);
+    const problems = [...blank, ...validateAgentUpdate(changes)];
+    if (!problems.length && Object.keys(changes).length === 0) problems.push('Nothing has changed.');
+    setErrors(problems);
+    if (problems.length) return;
+    const summary = Object.entries(changes).map(([k, v]) => {
+      const key = k as keyof UpdateAgentInput;
+      return `${QUANTT_SETTING_LABELS[key] ?? k}: ${quanttDescribeSetting(key, config[key as keyof QuanttAgentConfig])} → ${quanttDescribeSetting(key, v)}`;
+    }).join('\n');
+    if (!window.confirm(`Update this agent?\n\n${summary}\n\nThis changes the live agent on Quantts — no sandbox.`)) return;
+    setBusy(true);
+    try {
+      await quantt.updateAgent(agentId, changes);
+      setSaved(true);
+      onSaved();
+    } catch (e) {
+      setErrors([e instanceof Error ? e.message : 'Could not save the settings — try again.']);
+    } finally { setBusy(false); }
+  };
+
+  const labelStyle: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4 };
+  const inputStyle: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+    borderRadius: 8, padding: '7px 9px', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'inherit',
+  };
+  const showPrompt = config.strategy === 'custom' || config.strategyPrompt !== null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <label htmlFor={`${uid}-name`} style={labelStyle}>Name</label>
+      <input id={`${uid}-name`} style={inputStyle} value={name} maxLength={64} onChange={e => setName(e.target.value)}/>
+      <label htmlFor={`${uid}-tf`} style={labelStyle}>Decision timeframe</label>
+      <select id={`${uid}-tf`} style={inputStyle} value={timeframe} onChange={e => setTimeframe(e.target.value as QuanttTimeframe)}>
+        {QUANTT_TIMEFRAMES.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={autopilot} onChange={e => setAutopilot(e.target.checked)}/>
+        Autopilot — execute decisions without asking first
+      </label>
+      {showPrompt && (
+        <>
+          <label htmlFor={`${uid}-prompt`} style={labelStyle}>Strategy guidance</label>
+          <textarea id={`${uid}-prompt`} style={{ ...inputStyle, resize: 'vertical' }} rows={3} maxLength={2000} value={prompt} onChange={e => setPrompt(e.target.value)}/>
+        </>
+      )}
+      {QUANTT_EDITABLE_NUMBERS.map(([key, label]) => (
+        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <label htmlFor={`${uid}-${key}`} style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{label}</label>
+          <input id={`${uid}-${key}`} style={{ ...inputStyle, width: 80, textAlign: 'right' }} inputMode="decimal"
+            value={numbers[key]} onChange={e => setNumbers(n => ({ ...n, [key]: e.target.value }))}/>
+        </div>
+      ))}
+      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+        Strategy {config.strategy} · {config.chains.join(', ')} · {config.tokens.join(', ')} · {config.quoteAsset} — to trade other markets, create a new agent.
+      </div>
+      {errors.map(e => <div key={e} style={{ fontSize: 11, color: '#ef4444' }}>{e}</div>)}
+      {saved && <div style={{ fontSize: 11, color: '#22c55e' }}>Settings saved.</div>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn-outline" style={{ flex: 1 }} onClick={() => { reset(config); setErrors([]); setSaved(false); }}>Reset</button>
+        <button className="btn-primary" style={{ flex: 1 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button>
+      </div>
+    </div>
+  );
+}
+
+type QuanttDetailTab = 'overview' | 'settings' | 'wallet' | 'deposit' | 'withdraw' | 'decisions' | 'trades' | 'positions';
 const QUANTT_TABS: Array<{ key: QuanttDetailTab; label: string }> = [
   { key: 'overview',  label: 'Overview' },
+  { key: 'settings',  label: 'Settings' },
   { key: 'wallet',    label: 'Wallet' },
   { key: 'deposit',   label: 'Deposit' },
   { key: 'withdraw',  label: 'Withdraw' },
@@ -2332,12 +2506,14 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeMsg, setAnalyzeMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const killSwitch = useQuanttKillSwitch(true);
 
   useEffect(() => {
     let live = true;
     quantt.getAgent(agent.id).then((r) => { if (live) setRaw(r); }).catch(() => { if (live) setLoadErr(true); });
     return () => { live = false; };
   }, [agent.id]);
+  const reloadAgent = () => { quantt.getAgent(agent.id).then(setRaw).catch(() => setLoadErr(true)); };
 
   const setState = async (next: QuanttRuntimeState) => {
     const verb = next === 'active' ? 'resume' : next === 'paused' ? 'pause' : 'stop';
@@ -2381,7 +2557,10 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
   return (
     <Modal title={agent.name} onClose={onClose}>
       <div className="modal-body" style={{ padding: '10px 14px 14px' }}>
-        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 8, marginBottom: 10, borderBottom: '1px solid var(--border-default)' }}>
+        {/* flexShrink 0: .modal-body is a scrolling flex column, and a scroll
+            container's min-height is 0 — without it a tall tab body crushed
+            this row to a sliver and the tabs vanished. */}
+        <div style={{ display: 'flex', gap: 4, overflowX: 'auto', flexShrink: 0, paddingBottom: 8, marginBottom: 10, borderBottom: '1px solid var(--border-default)' }}>
           {QUANTT_TABS.map(t => (
             <button
               key={t.key}
@@ -2396,13 +2575,15 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
           ))}
         </div>
 
+        <QuanttKillSwitchBanner ks={killSwitch}/>
         {tab === 'overview' && (
           <QuanttOverviewTab
-            status={status} rows={rows} loadErr={loadErr}
+            status={status} halted={killSwitch?.armed === true} rows={rows} loadErr={loadErr}
             toggling={toggling} analyzing={analyzing} analyzeMsg={analyzeMsg}
             onSetState={setState} onAnalyze={analyze}
           />
         )}
+        {tab === 'settings'  && <QuanttSettingsTab agentId={agent.id} raw={raw} onSaved={() => { reloadAgent(); onChanged(); }}/>}
         {tab === 'wallet'    && <QuanttWalletTab agentId={agent.id}/>}
         {tab === 'deposit'   && <QuanttDepositTab agentId={agent.id} myAddress={myAddress}/>}
         {tab === 'withdraw'  && <QuanttWithdrawTab agentId={agent.id} seed={seed} myAddress={myAddress}/>}
@@ -2442,6 +2623,7 @@ function AIAssistant() {
   const [detailAgent, setDetailAgent] = useState<QuanttAgentRef | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const killSwitch = useQuanttKillSwitch(!!session);
 
   // If the overview fetch fails, it might be because the refresh token
   // itself expired (QuanttClient clears its internal session when that
@@ -2497,6 +2679,7 @@ function AIAssistant() {
               ? 'Signed in with your wallet — your AI trading agents.'
               : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
           </div>
+          {session && killSwitch?.armed && <div style={{ marginTop: 8 }}><QuanttKillSwitchBanner ks={killSwitch}/></div>}
           {session && overview && (
             <QuanttPanel
               overview={overview}
@@ -5268,6 +5451,7 @@ function App() {
     clearVault();
     clearSessionKey();
     void clearPersistedSessionKey();
+    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     setSeed([]);
     setUnlocked(false);
     setHasVault(false);
@@ -5380,6 +5564,7 @@ function App() {
       try { vault = loadVault(); } catch { vault = null; }
       setHasVault(!!vault);   // ALWAYS resolves the gate (onboarding or wallet)
 
+      let autoUnlocked = false;
       if (vault) {
         try {
           // sessionStorage first (same-popup refresh), then the persisted key
@@ -5393,6 +5578,7 @@ function App() {
             if (mnemonic) {
               const words = mnemonic.split(' ');
               setSeed(words); setUnlocked(true);
+              autoUnlocked = true;
               cacheSessionKey(key); // reseed the fast in-page cache
               // Re-announce the active address so dApps / eth_accounts work on an
               // auto-unlock (mirrors onComplete), and refresh the persisted key so
@@ -5407,6 +5593,9 @@ function App() {
           }
         } catch { /* session unlock is best-effort; the unlock screen still works */ }
       }
+      // Opening locked (the auto-lock window lapsed, or no wallet) — a Quantt
+      // login left over from the unlocked session goes with it.
+      if (!autoUnlocked) void forgetQuanttSession().catch(() => { /* nothing to forget */ });
 
       // Dark-first: only an explicit stored 'light' opts out (the module-
       // level snippet above already painted the right theme pre-mount —
@@ -5432,6 +5621,8 @@ function App() {
     setSeed([]);
     clearSessionKey();
     void clearPersistedSessionKey(); // drop the survives-popup-close key too
+    // A locked wallet keeps no live Quantt login either (quantt.ts).
+    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     // Tell the background SW the wallet is locked so dApps see accountsChanged([]).
     try { browser?.runtime?.sendMessage({ type: 'thanos-lock' }); } catch {}
   };

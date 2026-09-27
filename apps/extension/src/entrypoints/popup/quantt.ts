@@ -43,6 +43,13 @@ const store = {
 
 export const quantt = new QuanttClient({ store });
 
+/** Drop the Quantt session (the stored copy first, then a best-effort server
+ *  logout — see sdk-core signOut). Called when the wallet locks or is reset,
+ *  so a locked wallet keeps no live Quantt login. */
+export function forgetQuanttSession(): Promise<void> {
+  return quantt.signOut();
+}
+
 function hdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
