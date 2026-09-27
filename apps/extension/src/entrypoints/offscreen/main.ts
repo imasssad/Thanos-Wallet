@@ -56,6 +56,32 @@ let kit: IWalletKit | null = null;
 let kitPromise: Promise<IWalletKit> | null = null;
 let pendingProposal: PendingProposal | null = null;
 let pendingRequest:  PendingRequest  | null = null;
+/* Requests wait in line: the popup shows the head, and a new request never
+   replaces the one the user is looking at (a dApp could otherwise swap it
+   just before Approve). pendingRequest is always requestQueue[0]. */
+let requestQueue: PendingRequest[] = [];
+
+function setBadge(text: string): void {
+  try {
+    browser.action.setBadgeText({ text }).catch(() => {});
+    if (text) browser.action.setBadgeBackgroundColor({ color: '#3b7af7' }).catch(() => {});
+  } catch { /* MV2-style fallback */ }
+}
+
+/** Publish the head of the queue (or clear it) to storage, badge and popup. */
+function showQueueHead(): void {
+  const head = requestQueue[0] ?? null;
+  pendingRequest = head;
+  if (head) {
+    // Stash so a popup that opens AFTER the request arrives can sign.
+    browser.storage.session.set({ wc_pending_request: head }).catch(() => {});
+    setBadge(String(requestQueue.length));
+    broadcast({ type: 'wc.event.request', ...head });
+  } else {
+    browser.storage.session.remove('wc_pending_request').catch(() => {});
+    setBadge('');
+  }
+}
 
 function broadcast(msg: object): void {
   // Fire-and-forget; if no listener is alive (popup closed) chrome just
@@ -91,7 +117,11 @@ async function getKit(): Promise<IWalletKit> {
       browser.storage.session.set({ wc_pending_proposal: proposal }).catch(() => {});
       broadcast({ type: 'wc.event.proposal', ...proposal });
     });
-    k.on('session_delete', () => {
+    k.on('session_delete', (event: { topic?: string }) => {
+      // Requests from a session that's gone can't be answered any more.
+      const before = requestQueue.length;
+      requestQueue = requestQueue.filter((r) => r.topic !== event?.topic);
+      if (requestQueue.length !== before) showQueueHead();
       broadcast({ type: 'wc.event.session_delete' });
     });
     k.on('session_request', (event) => {
@@ -103,15 +133,11 @@ async function getKit(): Promise<IWalletKit> {
         params: (event.params.request.params as unknown[]) ?? [],
         name:   session?.peer?.metadata?.name ?? 'dApp',
       };
-      pendingRequest = req;
-      // Stash so a popup that opens AFTER the request arrives can sign.
-      browser.storage.session.set({ wc_pending_request: req }).catch(() => {});
-      // Badge the toolbar so the user notices when the popup is closed.
-      try {
-        browser.action.setBadgeText({ text: '1' }).catch(() => {});
-        browser.action.setBadgeBackgroundColor({ color: '#3b7af7' }).catch(() => {});
-      } catch { /* MV2-style fallback */ }
-      broadcast({ type: 'wc.event.request', ...req });
+      requestQueue.push(req);
+      // Badge the toolbar so the user notices when the popup is closed; only
+      // the head is shown — later requests wait their turn.
+      if (requestQueue.length === 1) showQueueHead();
+      else setBadge(String(requestQueue.length));
     });
     kit = k;
     return k;
@@ -119,11 +145,6 @@ async function getKit(): Promise<IWalletKit> {
   return kitPromise;
 }
 
-function clearPendingRequestBadge(): void {
-  pendingRequest = null;
-  browser.storage.session.remove('wc_pending_request').catch(() => {});
-  try { browser.action.setBadgeText({ text: '' }).catch(() => {}); } catch { /* ignore */ }
-}
 
 function projectSession(s: SessionTypes.Struct) {
   return {
@@ -321,7 +342,9 @@ browser.runtime.onMessage.addListener(((raw: unknown, sender: MessageSenderLike,
               ? { id, jsonrpc: '2.0', error }
               : { id, jsonrpc: '2.0', result },
           });
-          clearPendingRequestBadge();
+          // Answered: drop it and show the next one waiting, if any.
+          requestQueue = requestQueue.filter((r) => !(r.id === id && r.topic === topic));
+          showQueueHead();
           sendResponse({ ok: true });
           break;
         }

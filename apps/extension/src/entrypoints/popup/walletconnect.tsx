@@ -15,7 +15,9 @@
 import React, { useEffect, useState } from 'react';
 import { Globe, ChevronLeft } from 'lucide-react';
 import { useWalletSeed } from './send';
-import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
+import { executeWcRequest, WcSignerError, activeChain } from './wc-signer';
+import { reviewSigningRequest } from '@thanos/sdk-core';
+import { SignReviewPanel } from './SignReviewPanel';
 import { isExtensionSender, type MessageSenderLike } from '../../lib/message-sender';
 
 interface SessionRow { topic: string; name: string; url: string }
@@ -66,6 +68,19 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [proposal, setProposal] = useState<ProposalRow | null>(null);
   const [pending, setPending]   = useState<PendingRequest | null>(null);
+  // The chain executeWcRequest will sign / broadcast on — the review checks
+  // the request's chainId against it, so Approve waits until it's known.
+  const [chainId, setChainId]   = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    setChainId(undefined);
+    if (pending) activeChain().then((c) => { if (live) setChainId(c.chainId); }).catch(() => {});
+    return () => { live = false; };
+  }, [pending]);
+  const review = pending
+    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: chainId, account: evmAddress })
+    : null;
+  const blocked = review?.risk === 'block';
 
   const refresh = async () => {
     try {
@@ -114,20 +129,24 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     return () => browser.runtime.onMessage.removeListener(listener as Parameters<typeof browser.runtime.onMessage.removeListener>[0]);
   }, []);
 
+  // The sheet is cleared BEFORE answering: the offscreen host then
+  // broadcasts the next queued request, which must not be wiped by a late
+  // setPending(null).
   const approveRequest = async () => {
-    if (!pending) return;
+    const cur = pending;
+    if (!cur || blocked || chainId === undefined) return;
     setBusy(true); setErr(null);
     try {
-      const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params } });
-      await send({ type: 'wc.respond', topic: pending.topic, id: pending.id, result });
+      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params } });
       setPending(null);
+      await send({ type: 'wc.respond', topic: cur.topic, id: cur.id, result });
     } catch (e) {
       const code = e instanceof WcSignerError ? e.code : -32603;
       const message = (e as Error)?.message || 'Sign failed';
-      try {
-        await send({ type: 'wc.respond', topic: pending.topic, id: pending.id, error: { code, message } });
-      } catch { /* ignore */ }
       setPending(null);
+      try {
+        await send({ type: 'wc.respond', topic: cur.topic, id: cur.id, error: { code, message } });
+      } catch { /* ignore */ }
       setErr(message);
     } finally {
       setBusy(false);
@@ -135,10 +154,10 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   };
 
   const rejectRequest = async () => {
-    if (!pending) return;
-    try {
-      await send({ type: 'wc.respond', topic: pending.topic, id: pending.id, error: { code: 5000, message: 'User rejected' } });
-    } finally { setPending(null); }
+    const cur = pending;
+    if (!cur) return;
+    setPending(null);
+    await send({ type: 'wc.respond', topic: cur.topic, id: cur.id, error: { code: 5000, message: 'User rejected' } }).catch(() => {});
   };
 
   const pair = async () => {
@@ -195,18 +214,15 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
               {pending.method === 'eth_sendTransaction' ? 'Transaction request from' : 'Signature request from'}
             </div>
             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>{pending.name}</div>
-            <div style={{
-              fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-              borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto', marginBottom: 12,
-            }}>
-              {summariseRequest(pending.method, pending.params)}
-            </div>
+            {review && <div style={{ marginBottom: 12 }}><SignReviewPanel review={review}/></div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={rejectRequest}  disabled={busy} className="btn-secondary" style={{ flex: 1, opacity: busy ? 0.6 : 1 }}>Reject</button>
-              <button onClick={approveRequest} disabled={busy || !seed.length} className="btn-primary" style={{ flex: 1, opacity: (busy || !seed.length) ? 0.6 : 1 }}>
-                {busy ? 'Signing…' : pending.method === 'eth_sendTransaction' ? 'Approve & Send' : 'Approve & Sign'}
-              </button>
+              {!blocked && (
+                <button onClick={approveRequest} disabled={busy || !seed.length || chainId === undefined} className="btn-primary"
+                  style={{ flex: 1, opacity: (busy || !seed.length || chainId === undefined) ? 0.6 : 1, background: review?.risk === 'review' ? '#ef4444' : undefined }}>
+                  {busy ? 'Signing…' : review?.risk === 'review' ? 'I understand — sign' : pending.method === 'eth_sendTransaction' ? 'Approve & Send' : 'Approve & Sign'}
+                </button>
+              )}
             </div>
             {!seed.length && <div className="row-sub" style={{ marginTop: 8, fontSize: 10 }}>Unlock the wallet to sign.</div>}
           </>

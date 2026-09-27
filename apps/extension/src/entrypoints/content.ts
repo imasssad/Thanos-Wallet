@@ -78,7 +78,9 @@ export default defineContentScript({
         // push'; delivering undefined here would surface {} on the dApp
         // (the personal_sign / SIWE bug). No handler returns undefined
         // legitimately (null is used for switch/add-chain), so this is safe.
-        if (result !== undefined) deliver(pageId, { result });
+        const rpcErr = (result as { __thanosRpcError?: { code: number; message: string; data?: unknown } } | null | undefined)?.__thanosRpcError;
+        if (rpcErr) deliver(pageId, { error: rpcErr });
+        else if (result !== undefined) deliver(pageId, { result });
       } catch (err) {
         const e = err as { code?: number; message?: string; data?: unknown };
         // A closed port during an approval is expected on SW eviction — wait

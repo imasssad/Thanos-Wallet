@@ -60,6 +60,24 @@ interface PendingRpcRequest {
    as {}): the personal_sign / SIWE bug. */
 const pendingResolvers = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
 
+/* One signing request at a time. A second one gets -32002 instead of
+   replacing the first in the popup — otherwise a page could swap what the
+   user is looking at just before they tap Approve (and the first request
+   would never be answered). A request left unanswered for 10 minutes
+   expires, so an abandoned one can't wedge every later request. The slot is
+   claimed synchronously (inflightRpc) and also checked against
+   storage.session, which survives a service-worker restart. */
+const PENDING_RPC_TTL_MS = 10 * 60_000;
+const RPC_BUSY = 'Another request is already waiting in the Thanos popup — approve or reject it first.';
+let inflightRpc: { id: string; at: number } | null = null;
+const rpcIdTime = (id: string) => Number(String(id).split('.')[0]);
+function expireRpc(p: { id: string; tabId?: number; pageId?: string }): void {
+  const r = pendingResolvers.get(p.id);
+  pendingResolvers.delete(p.id);
+  r?.reject(rpcError(4001, 'Request expired'));
+  pushResultToTab(p.tabId, p.pageId, { error: { code: 4001, message: 'Request expired' } });
+}
+
 /** Durable delivery: push a finished RPC result/ error straight to the tab
  *  that made the request, so a freshly-restarted SW is never in the path.
  *  content.ts correlates by pageId and resolves the page's provider.request(). */
@@ -319,7 +337,17 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
         }
       }
 
+      if (inflightRpc && Date.now() - inflightRpc.at < PENDING_RPC_TTL_MS) throw rpcError(-32002, RPC_BUSY);
       const id = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+      const stale = inflightRpc;
+      inflightRpc = { id, at: Date.now() };
+      const { pending_rpc_request: stored } = (await browser.storage.session.get('pending_rpc_request')) as { pending_rpc_request?: PendingRpcRequest };
+      if (stored && stored.id !== stale?.id && Date.now() - rpcIdTime(stored.id) < PENDING_RPC_TTL_MS) {
+        if (inflightRpc?.id === id) inflightRpc = null;
+        throw rpcError(-32002, RPC_BUSY);
+      }
+      if (stored) expireRpc(stored);
+      else if (stale) expireRpc({ id: stale.id });
       await browser.storage.session.set({
         pending_rpc_request: { id, origin, method, params, address: conn.address, tabId, pageId } as PendingRpcRequest,
       });
@@ -391,9 +419,16 @@ export default defineBackground(() => {
     // propagates rejections as genuine errors (content.ts turns them into an
     // EIP-1193 error, injected.ts rejects the dApp's request()).
     if (m?.type === 'thanos-rpc') {
+      // Errors are handed back as data: runtime messaging passes a thrown
+      // error's message only, so its EIP-1193 `code` (4001 user rejected,
+      // 4100, -32002, …) used to reach every dApp as -32603.
+      const asData = (e: unknown) => {
+        const x = e as { code?: unknown; message?: string; data?: unknown };
+        return { __thanosRpcError: { code: typeof x?.code === 'number' ? x.code : -32603, message: x?.message ?? 'Internal error', data: x?.data } };
+      };
       const origin = contentScriptOrigin(sender);
-      if (!origin) return Promise.reject(rpcError(4100, 'Unauthorized sender'));
-      return handleRpc({ ...m, origin }, sender);
+      if (!origin) return Promise.resolve(asData(rpcError(4100, 'Unauthorized sender')));
+      return handleRpc({ ...m, origin }, sender).catch(asData);
     }
 
     // Everything below approves, signs, switches chains or drives
@@ -447,6 +482,7 @@ export default defineBackground(() => {
     //     pending EIP-1193 sign/tx request.
     const sigMsg = m as { type?: string; requestId?: string; result?: unknown; error?: { code: number; message: string } };
     if (sigMsg.type === 'thanos-rpc-result' && sigMsg.requestId) {
+      if (inflightRpc?.id === sigMsg.requestId) inflightRpc = null;
       // FAST path: resolve the still-open thanos-rpc channel if the SW that
       // parked it is still alive.
       const pending = pendingResolvers.get(sigMsg.requestId);

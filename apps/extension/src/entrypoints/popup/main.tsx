@@ -47,7 +47,8 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
 } from '@thanos/sdk-core';
-import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock } from '@thanos/sdk-core';
+import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest } from '@thanos/sdk-core';
+import { SignReviewPanel } from './SignReviewPanel';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
   groupBySection, looksLikeUrl, normalizeUrl,
@@ -5326,6 +5327,11 @@ interface PendingRpcRequest {
   address: string;
 }
 
+/** Requests that produce a signature or a transaction — reviewed before Approve. */
+const SIGNING_METHODS: ReadonlySet<string> = new Set([
+  'personal_sign', 'eth_sign', 'eth_signTypedData', 'eth_signTypedData_v3', 'eth_signTypedData_v4', 'eth_sendTransaction',
+]);
+
 function App() {
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
@@ -5358,15 +5364,19 @@ function App() {
   // a mainnet tx can't be mistaken for a Makalu one. Switch shows its TARGET
   // chain; sign/tx show the wallet's ACTIVE chain (the one the tx broadcasts on).
   const [rpcChainName, setRpcChainName] = useState<string>('');
+  // The chain the request will be signed for — the review checks a typed
+  // signature's / transaction's chainId against it.
+  const [rpcChainId, setRpcChainId] = useState<number | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
+    setRpcChainId(undefined);
     if (!pendingRpc) { setRpcChainName(''); return; }
     if (pendingRpc.method === 'wallet_switchEthereumChain') {
       const target = ((pendingRpc.params?.[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
       setRpcChainName(dappChainByHex(target)?.name ?? 'Unknown network');
       return;
     }
-    activeChain().then((c) => { if (!cancelled) setRpcChainName(c.name); }).catch(() => {});
+    activeChain().then((c) => { if (!cancelled) { setRpcChainName(c.name); setRpcChainId(c.chainId); } }).catch(() => {});
     return () => { cancelled = true; };
   }, [pendingRpc]);
   // Pre-sign simulation — populated when a pending eth_sendTransaction
@@ -5673,6 +5683,9 @@ function App() {
 
   const approveRpc = async () => {
     if (!pendingRpc) return;
+    // The sheet shows no Approve for a blocked request; refuse here too.
+    if (SIGNING_METHODS.has(pendingRpc.method) && (rpcChainId === undefined
+        || reviewSigningRequest({ method: pendingRpc.method, params: pendingRpc.params, activeChainId: rpcChainId, account: pendingRpc.address }).risk === 'block')) return;
     setRpcBusy(true); setRpcErr(null);
     try {
       const result = await executeWcRequest(seed, {
@@ -5734,6 +5747,15 @@ function App() {
   if (pendingRpc) {
     const host = (() => { try { return new URL(pendingRpc.origin).host; } catch { return pendingRpc.origin; } })();
     const isTx = pendingRpc.method === 'eth_sendTransaction';
+    // Decoded request + verdict (sdk-core). Approve waits for the active
+    // chain, so the chainId check can't be skipped by a fast click.
+    const signing = SIGNING_METHODS.has(pendingRpc.method);
+    const review = signing
+      ? reviewSigningRequest({ method: pendingRpc.method, params: pendingRpc.params, activeChainId: rpcChainId, account: pendingRpc.address })
+      : null;
+    const blocked = review?.risk === 'block';
+    const simBlocked = simReport?.issues.some(i => i.level === 'critical') ?? false;
+    const waitingForChain = signing && rpcChainId === undefined;
     return (
       <div className="screen" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
         <div style={{ textAlign: 'center', marginTop: 4 }}>
@@ -5767,16 +5789,20 @@ function App() {
           )}
         </div>
 
-        <div className="card" style={{ padding: 14, gap: 8, display: 'flex', flexDirection: 'column' }}>
+        {/* Scrolls inside the sheet (minHeight 0): the decoded rows plus the
+            warnings can be taller than the popup, and none may be cut off. */}
+        <div className="card" style={{ padding: 14, gap: 8, display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
             {pendingRpc.method}
           </div>
-          <div style={{
-            fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            background: 'var(--bg-elevated)', borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto',
-          }}>
-            {summariseRequest(pendingRpc.method, pendingRpc.params)}
-          </div>
+          {review ? <SignReviewPanel review={review}/> : (
+            <div style={{
+              fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              background: 'var(--bg-elevated)', borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto',
+            }}>
+              {summariseRequest(pendingRpc.method, pendingRpc.params)}
+            </div>
+          )}
           <div style={{
             fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all',
           }}>
@@ -5814,15 +5840,20 @@ function App() {
 
         <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
           <button onClick={rejectRpc}  disabled={rpcBusy} className="btn-secondary" style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}>Reject</button>
-          <button
-            onClick={approveRpc}
-            disabled={rpcBusy || (simReport?.issues.some(i => i.level === 'critical') ?? false)}
-            className="btn-primary"
-            style={{ flex: 1, opacity: (rpcBusy || (simReport?.issues.some(i => i.level === 'critical') ?? false)) ? 0.6 : 1 }}
-            title={(simReport?.issues.some(i => i.level === 'critical') ?? false) ? 'Simulator found a critical issue — approval blocked.' : undefined}
-          >
-            {rpcBusy ? 'Signing…' : isTx ? 'Approve & Send' : 'Approve & Sign'}
-          </button>
+          {!blocked && (
+            <button
+              onClick={approveRpc}
+              disabled={rpcBusy || simBlocked || waitingForChain}
+              className="btn-primary"
+              style={{
+                flex: 1, opacity: (rpcBusy || simBlocked || waitingForChain) ? 0.6 : 1,
+                background: review?.risk === 'review' ? '#ef4444' : undefined,
+              }}
+              title={simBlocked ? 'Simulator found a critical issue — approval blocked.' : undefined}
+            >
+              {rpcBusy ? 'Signing…' : review?.risk === 'review' ? 'I understand — sign' : isTx ? 'Approve & Send' : 'Approve & Sign'}
+            </button>
+          )}
         </div>
       </div>
     );
