@@ -28,6 +28,7 @@
 import { Core } from '@walletconnect/core';
 import { WalletKit, type IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
+import { isExtensionSender, type MessageSenderLike } from '../../lib/message-sender';
 
 const MAKALU = 700777;
 // 2026-07: the signing path now routes per-chain (sign.evm-tx honours the
@@ -248,8 +249,11 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
   }
 }
 
-browser.runtime.onMessage.addListener(((raw: unknown, _sender: unknown, sendResponse: (v: unknown) => void) => {
+browser.runtime.onMessage.addListener(((raw: unknown, sender: MessageSenderLike, sendResponse: (v: unknown) => void) => {
   const msg = raw as { type?: string; __target?: string; [k: string]: unknown };
+  // A content script's sendMessage reaches this listener directly and can set
+  // __target itself — only extension pages may sign or drive WalletConnect.
+  if (!isExtensionSender(sender)) return false;
   // Only the background forwards us tagged messages; ignore the popup's
   // original broadcast (background will proxy it tagged).
   if (msg?.__target !== 'offscreen') return false;

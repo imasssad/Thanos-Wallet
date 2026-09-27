@@ -13,6 +13,7 @@
  */
 import { dappChainByHex, toChainHex } from '../lib/dapp-chains';
 import { loadCustomAssets } from '../lib/custom-assets';
+import { contentScriptOrigin, isExtensionSender, type MessageSenderLike } from '../lib/message-sender';
 
 // Prime user-added custom networks so the dApp provider can switch to them
 // after a service-worker (re)start.
@@ -346,11 +347,20 @@ function rpcError(code: number, message: string): Error & { code: number } {
   return Object.assign(new Error(message), { code });
 }
 
-/* Broadcast an EIP-1193 event to every tab that has the content script. */
+/* Broadcast an EIP-1193 event to every tab that has the content script.
+   accountsChanged carries the wallet address, so it only goes to tabs whose
+   origin the user connected — any other site would otherwise learn the
+   address on every unlock / account switch without ever asking to connect. */
 async function broadcastEvent(event: string, ...args: unknown[]): Promise<void> {
   const tabs = await browser.tabs.query({});
+  const conns = event === 'accountsChanged' ? await getConnections() : null;
   for (const tab of tabs) {
     if (tab.id == null) continue;
+    if (conns) {
+      let origin = '';
+      try { origin = tab.url ? new URL(tab.url).origin : ''; } catch { /* unparseable — not connected */ }
+      if (!origin || !conns[origin]) continue;
+    }
     browser.tabs.sendMessage(tab.id, { type: 'thanos-event', event, args }).catch(() => {});
   }
 }
@@ -366,8 +376,29 @@ export default defineBackground(() => {
   // a session_proposal can land before the user opens the popup.
   void ensureOffscreen();
 
-  browser.runtime.onMessage.addListener(((msg: unknown, sender: { tab?: { id?: number } }, sendResponse: (resp: unknown) => void) => {
+  browser.runtime.onMessage.addListener(((msg: unknown, sender: MessageSenderLike, sendResponse: (resp: unknown) => void) => {
     const m = msg as RpcMessage & { type?: string; approvalId?: string; approved?: boolean; address?: string };
+
+    // 1) Direct RPC from a content script — the only message a web page can
+    //    cause. The origin every permission check keys on is the browser-
+    //    reported sender URL, not the (page-influenced) message body.
+    //
+    // RETURN the promise (the webextension-polyfill's async pattern) rather than
+    // sendResponse(). The old `sendResponse(Promise.reject(err))` structured-
+    // cloned a Promise → {} , so EVERY error (incl. a rejected personal_sign)
+    // reached the dApp as an empty object instead of a real error. Returning the
+    // promise sends the resolved value (the signature string) on success and
+    // propagates rejections as genuine errors (content.ts turns them into an
+    // EIP-1193 error, injected.ts rejects the dApp's request()).
+    if (m?.type === 'thanos-rpc') {
+      const origin = contentScriptOrigin(sender);
+      if (!origin) return Promise.reject(rpcError(4100, 'Unauthorized sender'));
+      return handleRpc({ ...m, origin }, sender);
+    }
+
+    // Everything below approves, signs, switches chains or drives
+    // WalletConnect — extension pages only (see lib/message-sender.ts).
+    if (!isExtensionSender(sender)) return false;
 
     // 0a) A signing request fired in the offscreen kit — try to bring
     //    up the popup so the user sees the approval sheet immediately.
@@ -410,19 +441,6 @@ export default defineBackground(() => {
         }
       })();
       return true;
-    }
-
-    // 1) Direct RPC from content script.
-    //
-    // RETURN the promise (the webextension-polyfill's async pattern) rather than
-    // sendResponse(). The old `sendResponse(Promise.reject(err))` structured-
-    // cloned a Promise → {} , so EVERY error (incl. a rejected personal_sign)
-    // reached the dApp as an empty object instead of a real error. Returning the
-    // promise sends the resolved value (the signature string) on success and
-    // propagates rejections as genuine errors (content.ts turns them into an
-    // EIP-1193 error, injected.ts rejects the dApp's request()).
-    if (m?.type === 'thanos-rpc') {
-      return handleRpc(m, sender);
     }
 
     // 2b) Popup posting back the signed result (or rejection) of a

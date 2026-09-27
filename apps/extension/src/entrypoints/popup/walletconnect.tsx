@@ -16,6 +16,7 @@ import React, { useEffect, useState } from 'react';
 import { Globe, ChevronLeft } from 'lucide-react';
 import { useWalletSeed } from './send';
 import { executeWcRequest, summariseRequest, WcSignerError } from './wc-signer';
+import { isExtensionSender, type MessageSenderLike } from '../../lib/message-sender';
 
 interface SessionRow { topic: string; name: string; url: string }
 interface ProposalRow { id: number; name: string; url?: string }
@@ -89,7 +90,11 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
       } catch { /* fine */ }
     })();
 
-    const listener = (raw: unknown) => {
+    const listener = (raw: unknown, sender: MessageSenderLike) => {
+      // wc.event.* must come from the offscreen WalletConnect host — a
+      // content script could otherwise put a forged request (e.g. an
+      // eth_sendTransaction to itself) on this approval sheet.
+      if (!isExtensionSender(sender)) return;
       const m = raw as { type?: string; id?: number; topic?: string; method?: string; params?: unknown[]; name?: string; url?: string };
       if (m?.type === 'wc.event.proposal') {
         setProposal({ id: m.id!, name: m.name ?? 'dApp', url: m.url });
