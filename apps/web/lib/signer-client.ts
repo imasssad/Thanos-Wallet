@@ -35,6 +35,11 @@ interface PendingCall {
 let worker: Worker | null = null;
 let nextId = 1;
 const pending = new Map<number, PendingCall>();
+/** Resolves once the current worker has registered its message listener
+ *  (it posts `{ ready: true }`). A message posted before that is silently
+ *  dropped by the worker, so call() waits on this first. */
+let workerReady: Promise<void> | null = null;
+const READY_TIMEOUT_MS = 20_000;
 
 function getWorker(): Worker {
   if (worker) return worker;
@@ -45,6 +50,18 @@ function getWorker(): Worker {
     new URL('../workers/signer-worker.ts', import.meta.url),
     { type: 'module' },
   );
+  const w = worker;
+  workerReady = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SignerError('worker_crashed', 'signing worker did not start')), READY_TIMEOUT_MS);
+    const onReady = (ev: MessageEvent<{ ready?: boolean }>) => {
+      if (ev.data?.ready !== true) return;
+      clearTimeout(timer);
+      w.removeEventListener('message', onReady);
+      resolve();
+    };
+    w.addEventListener('message', onReady);
+  });
+  workerReady.catch(() => { /* surfaced to each waiting call() */ });
   worker.addEventListener('message', (ev: MessageEvent<{ id: number; ok: boolean; result?: unknown; error?: string }>) => {
     const call = pending.get(ev.data.id);
     if (!call) return;
@@ -63,10 +80,14 @@ function getWorker(): Worker {
 
 function call<T>(op: string, payload?: unknown): Promise<T> {
   const w = getWorker();
+  const ready = workerReady!;
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
     pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
-    w.postMessage({ id, op, payload });
+    ready.then(
+      () => w.postMessage({ id, op, payload }),
+      (e) => { if (pending.delete(id)) reject(e); },
+    );
   });
 }
 

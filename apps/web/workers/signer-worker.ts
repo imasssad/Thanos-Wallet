@@ -24,7 +24,14 @@ import {
   parseUnits, formatEther,
   type Provider,
 } from 'ethers';
-import { BitcoinClient, lithoToEvm, isLithoAddress } from '@thanos/sdk-core';
+// Deep import, NOT the @thanos/sdk-core barrel: this worker's entry must stay
+// synchronous (see the ready handshake at the bottom). The Bitcoin client is
+// loaded on demand in handleSendBitcoin — it pulls tiny-secp256k1's async
+// WebAssembly init, which as a static import delayed the message listener
+// until after the wasm loaded, so the `init` sent right after `new Worker()`
+// was dropped and the worker never held the unlocked wallet.
+import { lithoToEvm, isLithoAddress } from '@thanos/sdk-core/src/utils/litho-address';
+import type { BitcoinClient } from '@thanos/sdk-core/src/clients/bitcoin-client';
 
 /* ─── In-worker secret state ─────────────────────────────────────────── */
 
@@ -257,9 +264,10 @@ function handleLock(): { ok: true } {
 /* ─── Bitcoin handler ────────────────────────────────────────────────── */
 
 let _btcClient: BitcoinClient | null = null;
-function getBtcClient(): BitcoinClient {
+async function getBtcClient(): Promise<BitcoinClient> {
   if (_btcClient) return _btcClient;
-  _btcClient = new BitcoinClient();
+  const { BitcoinClient: Client } = await import('@thanos/sdk-core/src/clients/bitcoin-client');
+  _btcClient = new Client();
   return _btcClient;
 }
 
@@ -270,7 +278,7 @@ async function handleSendBitcoin(p: SendBtcPayload): Promise<SendBtcReply> {
   if (!btc || btc <= 0) throw new Error('invalid_amount');
   const amountSats = Math.round(btc * 1e8);
 
-  const txid = await getBtcClient().send(source.mnemonic, {
+  const txid = await (await getBtcClient()).send(source.mnemonic, {
     networkId:       'bitcoin-mainnet',
     to:              p.recipient.trim(),
     amountSats,
@@ -309,3 +317,7 @@ self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
     (self as unknown as Worker).postMessage({ id, ok: false, error: message });
   }
 });
+
+// Tell the main thread the listener is live — lib/signer-client.ts holds every
+// request until this arrives, so none can be posted into the void.
+(self as unknown as Worker).postMessage({ ready: true });
