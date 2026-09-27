@@ -19,6 +19,7 @@
  */
 import * as SecureStore from 'expo-secure-store';
 import { HDNodeWallet } from 'ethers';
+import { assertQuanttChallenge } from './quantt-challenge';
 
 export interface Eip712TypedData {
   domain: Record<string, unknown>;
@@ -167,7 +168,9 @@ export class QuanttClient {
       body: JSON.stringify({ address }),
     });
     if (!res.ok) throw new QuanttError(res.status, await safeText(res), 'typed-challenge');
-    return safeJson<Eip712TypedData>(res, 'typed-challenge');
+    // Refuse anything that isn't a genuine SignIn challenge before it can
+    // reach the signer (see lib/quantt-challenge.ts).
+    return assertQuanttChallenge(await safeJson<unknown>(res, 'typed-challenge'), { kind: 'sign-in', address });
   }
 
   async signIn(address: string, sign: SignTypedDataFn): Promise<QuanttSession> {
@@ -358,10 +361,11 @@ export class QuanttClient {
   getWithdrawalAddress(): Promise<unknown> { return this.authed('/v1/user/withdrawal-address'); }
   /** Step 1 of binding a withdrawal address — same EIP-712-challenge shape
    *  as wallet sign-in, reuse SignTypedDataFn. */
-  withdrawalAddressChallenge(address: string): Promise<Eip712TypedData> {
-    return this.authed<Eip712TypedData>('/v1/user/withdrawal-address/challenge', {
+  async withdrawalAddressChallenge(address: string): Promise<Eip712TypedData> {
+    const typed = await this.authed<unknown>('/v1/user/withdrawal-address/challenge', {
       method: 'POST', body: JSON.stringify({ address }),
     });
+    return assertQuanttChallenge(typed, { kind: 'withdrawal-address', address });
   }
   /** Step 2 — bind the address once the challenge is signed. */
   bindWithdrawalAddress(body: BindWithdrawalAddressInput): Promise<unknown> {

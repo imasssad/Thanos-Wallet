@@ -42,7 +42,12 @@
  * decisions/positions/trades in a tight loop, or several browser tabs
  * behind the same IP (NAT, office network), can realistically hit this.
  * A 429 here isn't a bug to retry through blindly; back off.
+ *
+ * CHALLENGES ARE CHECKED BEFORE SIGNING: challenge() and
+ * withdrawalAddressChallenge() run assertQuanttChallenge (./challenge.ts), so
+ * a tampered response can never reach the caller's signer as, say, a Permit.
  */
+import { assertQuanttChallenge } from './challenge';
 
 export interface Eip712TypedData {
   domain: Record<string, unknown>;
@@ -234,7 +239,8 @@ export class QuanttClient {
 
   /* ── auth (wallet EIP-712) ────────────────────────────────────────── */
 
-  /** Step 1: fetch the EIP-712 challenge for `address` (unauthenticated). */
+  /** Step 1: fetch the EIP-712 challenge for `address` (unauthenticated).
+   *  Throws QuanttChallengeError if it isn't a genuine SignIn challenge. */
   async challenge(address: string): Promise<Eip712TypedData> {
     const res = await this.f(`${this.base}/v1/auth/wallet/typed-challenge`, {
       method: 'POST',
@@ -242,7 +248,7 @@ export class QuanttClient {
       body: JSON.stringify({ address }),
     });
     if (!res.ok) throw new QuanttError(res.status, await safeText(res), 'typed-challenge');
-    return safeJson<Eip712TypedData>(res, 'typed-challenge');
+    return assertQuanttChallenge(await safeJson<unknown>(res, 'typed-challenge'), { kind: 'sign-in', address });
   }
 
   /** Full sign-in: challenge → sign → verify → store + return the session. */
@@ -471,11 +477,13 @@ export class QuanttClient {
   /** The wallet address withdrawals currently pay out to (null if none bound). */
   getWithdrawalAddress(): Promise<unknown> { return this.authed('/v1/user/withdrawal-address'); }
   /** Step 1 of binding a withdrawal address — same EIP-712-challenge shape
-   *  as wallet sign-in, reuse SignTypedDataFn. */
-  withdrawalAddressChallenge(address: string): Promise<Eip712TypedData> {
-    return this.authed<Eip712TypedData>('/v1/user/withdrawal-address/challenge', {
+   *  as wallet sign-in, reuse SignTypedDataFn. Throws QuanttChallengeError if
+   *  the response isn't a plausible binding challenge for `address`. */
+  async withdrawalAddressChallenge(address: string): Promise<Eip712TypedData> {
+    const typed = await this.authed<unknown>('/v1/user/withdrawal-address/challenge', {
       method: 'POST', body: JSON.stringify({ address }),
     });
+    return assertQuanttChallenge(typed, { kind: 'withdrawal-address', address });
   }
   /** Step 2 — bind the address once the challenge is signed. */
   bindWithdrawalAddress(body: BindWithdrawalAddressInput): Promise<unknown> {
