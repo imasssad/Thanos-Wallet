@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Modal, Platform, Pressable, RefreshControl, SafeAreaView,
+  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Platform, Pressable, RefreshControl, SafeAreaView,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+// Modal whose touches count as activity for auto-lock (see lib/activity.ts).
+import { Modal } from './components/ActivityModal';
+import { markUserActivity, idleMs } from './lib/activity';
 
 /** Cross-platform monospace family. 'Menlo' exists only on iOS (Android
  *  silently falls back to proportional Roboto) and the generic
@@ -5896,10 +5899,10 @@ function SettingsScreen() {
   const [acctOpen, setAcctOpen] = useState(false);
   const [networksOpen, setNetworksOpen] = useState(false);
   const [customAssetsOpen, setCustomAssetsOpen] = useState(false);
-  const [autoLockMin, setAutoLockMin]   = useState(0);
+  const [autoLockMin, setAutoLockMin]   = useState(DEFAULT_AUTOLOCK_MIN);
   const [language, setLanguage]         = useState('English');
   useEffect(() => {
-    AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(parseInt(v ?? '0', 10) || 0));
+    AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(autoLockMinutes(v)));
     AsyncStorage.getItem(PREF_LANGUAGE).then(v => { if (v) setLanguage(v); });
   }, []);
 
@@ -6023,7 +6026,7 @@ function SettingsScreen() {
       ),
       onPress: onToggleBio,
     },
-    { label: 'Auto-lock',         desc: autoLockMin > 0 ? `After ${autoLockMin} min in background` : 'Never',
+    { label: 'Auto-lock',         desc: autoLockMin > 0 ? `After ${autoLockMin} min without use` : 'Never — not recommended',
       Icon: Clock, onPress: () => setAutoLockOpen(true) },
     { label: 'Change password',   desc: 'Update wallet password',          Icon: Key,
       onPress: () => setChangePwdOpen(true) },
@@ -6226,7 +6229,14 @@ function SettingsScreen() {
         visible={autoLockOpen}
         current={autoLockMin}
         onClose={() => setAutoLockOpen(false)}
-        onPick={(m) => { setAutoLockMin(m); AsyncStorage.setItem(PREF_AUTOLOCK, String(m)); setAutoLockOpen(false); }}
+        onPick={(m) => {
+          const apply = () => { setAutoLockMin(m); AsyncStorage.setItem(PREF_AUTOLOCK, String(m)); setAutoLockOpen(false); };
+          if (m !== 0) { apply(); return; }
+          Alert.alert('Turn off auto-lock?', AUTOLOCK_OFF_NOTE, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Turn off', style: 'destructive', onPress: apply },
+          ]);
+        }}
       />
       <CustomRpcModal visible={rpcOpen} onClose={() => setRpcOpen(false)}/>
       <AddressBookModal visible={addrBookOpen} onClose={() => setAddrBookOpen(false)}/>
@@ -7470,6 +7480,16 @@ function deriveEvmAddress(seed: string[], accountIdx = 0): string {
 
 /* User preferences (plaintext, non-sensitive). */
 const PREF_AUTOLOCK = 'thanos.autolock_minutes'; // '0' = never
+/** Unset → 15 min: the wallet used to default to never locking in the
+ *  foreground. An explicit '0' (Never) is kept. */
+const DEFAULT_AUTOLOCK_MIN = 15;
+function autoLockMinutes(stored: string | null | undefined): number {
+  if (stored == null) return DEFAULT_AUTOLOCK_MIN;
+  const n = parseInt(stored, 10);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_AUTOLOCK_MIN;
+}
+const AUTOLOCK_OFF_NOTE =
+  'The wallet will stay unlocked until you lock it yourself or the app is closed, so anyone who picks up this phone can see your balances and approve transactions.';
 const PREF_CUSTOM_RPC = 'thanos.custom_rpc';
 const PREF_CURRENCY = 'thanos.display_currency'; // display currency code
 const PREF_LANGUAGE = 'thanos.language';         // interface language
@@ -7484,7 +7504,7 @@ const AUTOLOCK_OPTIONS = [
   { label: '5 minutes',  minutes: 5 },
   { label: '15 minutes', minutes: 15 },
   { label: '1 hour',     minutes: 60 },
-  { label: 'Never',      minutes: 0 },
+  { label: 'Never (not recommended)', minutes: 0 },
 ];
 
 /* ══════════════════════ MINIMAL-LUXE ONBOARDING KIT ══════════════════════
@@ -9362,21 +9382,21 @@ function App() {
     if (!unlocked) void forgetQuanttSession().catch(() => { /* nothing to forget */ });
   }, [unlocked]);
 
-  // Auto-lock: when the app returns from the background, lock if it was
-  // away longer than the configured timeout (0 = never).
-  const bgSince = useRef<number | null>(null);
+  // Auto-lock: lock once the configured timeout (0 = never) passes without a
+  // touch — checked every 15 s in the foreground and on return from the
+  // background (idle time includes time spent away). Touches are recorded by
+  // the root view's onTouchStart and by every Modal (lib/activity.ts).
   useEffect(() => {
-    const sub = AppState.addEventListener('change', async (state) => {
-      if (state === 'background' || state === 'inactive') {
-        bgSince.current = Date.now();
-      } else if (state === 'active' && bgSince.current && unlocked) {
-        const away = Date.now() - bgSince.current;
-        bgSince.current = null;
-        const mins = parseInt((await AsyncStorage.getItem(PREF_AUTOLOCK)) ?? '0', 10) || 0;
-        if (mins > 0 && away > mins * 60_000) handleLock();
-      }
-    });
-    return () => sub.remove();
+    if (!unlocked) return;
+    markUserActivity();
+    let cancelled = false;
+    const check = async () => {
+      const mins = autoLockMinutes(await AsyncStorage.getItem(PREF_AUTOLOCK).catch(() => null));
+      if (!cancelled && mins > 0 && idleMs() > mins * 60_000) handleLock();
+    };
+    const timer = setInterval(() => { void check(); }, 15_000);
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') void check(); });
+    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
   }, [unlocked]);
 
   /* Delete wallet (Settings → Danger zone). Wipes the vault, the biometric
@@ -9509,7 +9529,7 @@ function App() {
         <BrowserCtx.Provider value={openBrowser}>
         <SendNavCtx.Provider value={openSendTo}>
         <OwnAccountsCtx.Provider value={ownAccounts}>
-          <SafeAreaView style={styles.root}>
+          <SafeAreaView style={styles.root} onTouchStart={markUserActivity}>
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
             <GlassAura dark={isDark}/>
 

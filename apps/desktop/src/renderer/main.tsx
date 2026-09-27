@@ -32,6 +32,7 @@ import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState, Qu
 import {
   toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
+  startIdleLock, idleExpired, readAutoLockMinutes, writeAutoLockMinutes, AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE,
 } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
@@ -4656,7 +4657,9 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
   // LIVE display currency — the pick reformats every price in the app via
   // the shared sdk-core fx engine (falls back to USD if a rate is missing).
   const [currency, setCurrency] = useState<DisplayCurrency>(getDisplayCurrency());
-  const [autoLock, setAutoLock] = useState('5');
+  // Read by the idle watcher in App at every check.
+  const [autoLock, setAutoLock] = useState(() => String(readAutoLockMinutes(localStorage)));
+  const changeAutoLock = (v: string) => { setAutoLock(v); writeAutoLockMinutes(localStorage, Number(v)); };
   const [rpc, setRpc]           = useState('https://rpc.litho.ai');
   const [hwOpen, setHwOpen]     = useState(false);
   const [wcOpen, setWcOpen]     = useState(false);
@@ -4734,9 +4737,10 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
         <PermissionsSection Section={Section}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
-          <Row label="Auto-lock" sub="Lock wallet after inactivity">
-            <select className="settings-select" value={autoLock} onChange={e => setAutoLock(e.target.value)}>
-              {[['1','1 minute'],['5','5 minutes'],['15','15 minutes'],['60','1 hour'],['0','Never']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+          {/* Turning it off stays possible, but the row says plainly what that means. */}
+          <Row label="Auto-lock" sub={autoLock === '0' ? `Off. ${AUTO_LOCK_OFF_NOTE}` : 'Lock wallet after inactivity'}>
+            <select className="settings-select" aria-label="Auto-lock timeout" value={autoLock} onChange={e => changeAutoLock(e.target.value)}>
+              {AUTO_LOCK_CHOICES.map(c => <option key={c.minutes} value={String(c.minutes)}>{c.label}</option>)}
             </select>
           </Row>
           <Row label="Change password" sub="Update your wallet password">
@@ -6221,6 +6225,9 @@ function App() {
       if (!vault) return;
       const key = getSessionKey();
       if (!key) return;
+      // ...unless the window sat idle past the auto-lock timeout before this
+      // load: the idle watcher couldn't lock a renderer that was reloading.
+      if (idleExpired(sessionStorage, readAutoLockMinutes(localStorage))) { clearSessionKey(); return; }
       const mnemonic = await openVaultWithKey(vault, key);
       if (mnemonic) {
         setWalletSeed(mnemonic.split(' '));
@@ -6255,6 +6262,30 @@ function App() {
   // Show onboarding/unlock until wallet is unlocked.
   // The session AES key is cached inside OnboardingFlow itself on success;
   // here we just flip the local React state.
+  const lock = () => {
+    setUnlocked(false);
+    setWalletSeed([]);
+    clearSessionKey();
+    void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
+    // A locked wallet keeps no live Quantt login either (quantt.ts).
+    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
+  };
+
+  // Auto-lock after the Settings timeout without input (sdk-core auto-lock).
+  // Declared above the locked-screen early return: hooks must run in the
+  // same order on every render.
+  useEffect(() => {
+    if (!unlocked) return;
+    return startIdleLock({
+      minutes: () => readAutoLockMinutes(localStorage),
+      onLock: lock,
+      target: window,
+      doc: document,
+      session: sessionStorage,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lock only calls stable setters
+  }, [unlocked]);
+
   if (!unlocked) {
     return (
       <OnboardingFlow
@@ -6270,14 +6301,6 @@ function App() {
     );
   }
 
-  const lock = () => {
-    setUnlocked(false);
-    setWalletSeed([]);
-    clearSessionKey();
-    void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
-    // A locked wallet keeps no live Quantt login either (quantt.ts).
-    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
-  };
 
   return (
     <WalletSeedContext.Provider value={walletSeed}>

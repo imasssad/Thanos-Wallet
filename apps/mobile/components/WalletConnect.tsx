@@ -17,9 +17,10 @@
  */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  Modal, View, Text, Pressable, TextInput, ScrollView,
+  View, Text, Pressable, TextInput, ScrollView,
   StyleSheet, ActivityIndicator,
 } from 'react-native';
+import { Modal } from './ActivityModal';
 import * as Clipboard from 'expo-clipboard';
 import { X, Globe, ScanLine, Power } from 'lucide-react-native';
 import type { WalletKitTypes } from '@reown/walletkit';

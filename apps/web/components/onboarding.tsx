@@ -15,6 +15,9 @@ import {
 } from '../lib/vault';
 import { serializeSource, deserializeSource, type WalletSource } from '../lib/wallet-source';
 import { initSigner, lockSigner } from '../lib/signer-client';
+import { startIdleLock, idleExpired, readAutoLockMinutes } from '@thanos/sdk-core';
+
+const storageOrNull = (pick: () => Storage): Storage | null => { try { return pick(); } catch { return null; } };
 
 /** Generate a fresh BIP39 phrase of the requested length.
  *  12 words = 128 bits of entropy (default, recommended).
@@ -663,6 +666,12 @@ export function useWalletGate() {
       //    sessionStorage) -> user must enter password.
       const key = getSessionKey();
       if (!key) return;
+      // ...unless the tab sat idle past the auto-lock timeout before this
+      // load: the idle watcher couldn't lock a page that was being reloaded.
+      if (idleExpired(storageOrNull(() => sessionStorage), readAutoLockMinutes(storageOrNull(() => localStorage)))) {
+        clearSessionKey();
+        return;
+      }
       const plaintext = await openVaultWithKey(vault, key);
       if (plaintext) {
         applySource(deserializeSource(plaintext));
@@ -686,6 +695,19 @@ export function useWalletGate() {
     // A locked wallet keeps no live Quantt login either (lib/quantt.ts).
     void import('../lib/quantt').then(q => q.forgetQuanttSession()).catch(() => { /* nothing to forget */ });
   };
+  // Auto-lock after the Settings timeout without input (sdk-core auto-lock).
+  useEffect(() => {
+    if (!unlocked) return;
+    return startIdleLock({
+      minutes: () => readAutoLockMinutes(storageOrNull(() => localStorage)),
+      onLock: lock,
+      target: window,
+      doc: document,
+      session: storageOrNull(() => sessionStorage),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lock only calls stable setters
+  }, [unlocked]);
+
   const onComplete = (source: WalletSource) => {
     applySource(source);
     setHasVault(true);

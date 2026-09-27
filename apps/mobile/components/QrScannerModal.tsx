@@ -12,8 +12,9 @@
  */
 import React, { useEffect, useState } from 'react';
 import {
-  Modal, View, Text, Pressable, StyleSheet, Linking, ActivityIndicator,
+  View, Text, Pressable, StyleSheet, Linking, ActivityIndicator,
 } from 'react-native';
+import { Modal } from './ActivityModal';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { X } from 'lucide-react-native';
 

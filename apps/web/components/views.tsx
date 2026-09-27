@@ -10,6 +10,7 @@ import { useWallet } from './shell/AppShell';
 import {
   applyDisplayCurrency, getDisplayCurrency, convertFromUsd, withCurrencyAffix,
   FX_CURRENCIES, type DisplayCurrency,
+  AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE, readAutoLockMinutes, writeAutoLockMinutes,
 } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
 import { loadVault, openVault, setSeedBackedUp, isSeedBackedUp, clearVault, getActiveAccountIndex } from '../lib/vault';
@@ -1455,7 +1456,12 @@ export function SettingsView() {
     window.location.href = '/app';
   };
   const [language, setLanguage] = useState('English');
-  const [autoLock, setAutoLock] = useState('5 minutes');
+  // Read by the idle watcher in useWalletGate (onboarding.tsx) at every check.
+  const [autoLock, setAutoLock] = useState(() => String(readAutoLockMinutes(typeof localStorage === 'undefined' ? null : localStorage)));
+  const changeAutoLock = (v: string) => {
+    setAutoLock(v);
+    writeAutoLockMinutes(localStorage, Number(v));
+  };
   const [hwModal,  setHwModal]  = useState<'ledger' | 'trezor' | null>(null);
 
   const Section = ({
@@ -1549,11 +1555,12 @@ export function SettingsView() {
               </button>
             </div>
           </Row>
-          <Row label="Auto-lock" sub="Lock wallet after inactivity">
+          {/* Turning it off stays possible, but the row says plainly what that means. */}
+          <Row label="Auto-lock" sub={autoLock === '0' ? `Off. ${AUTO_LOCK_OFF_NOTE}` : 'Lock wallet after inactivity'}>
             <Select
               value={autoLock}
-              onChange={setAutoLock}
-              options={['1 minute','5 minutes','15 minutes','1 hour','Never']}
+              onChange={changeAutoLock}
+              options={AUTO_LOCK_CHOICES.map(c => ({ value: String(c.minutes), label: c.label }))}
               ariaLabel="Auto-lock timeout"
             />
           </Row>

@@ -55,6 +55,7 @@ export * from './dnns/service';
 export * from './security/phishing';
 export * from './security/simulator';
 export * from './security/wc-risk';
+export * from './security/auto-lock';
 
 /* ── WalletConnect ───────────────────────────────────────────────────── */
 export * from './walletconnect/client';
