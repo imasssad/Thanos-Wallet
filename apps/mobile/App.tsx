@@ -258,7 +258,10 @@ type Colors = typeof DARK;
 
 const ThemeCtx   = createContext<Colors>(DARK);
 const ToggleCtx  = createContext<() => void>(() => {});
-const StylesCtx  = createContext(makeStyles(DARK));
+// StylesCtx is declared at the end of this file: its default value runs
+// makeStyles() at module load, which reads style constants declared further
+// down (MOBILE_TEXT_SCALE, GLASS, …) — touching a `const` before its
+// declaration is a ReferenceError (it crashed the web build at startup).
 /* Opens the rename-account dialog for an account index. Provided by the
    root shell so any screen (Settings card, account sheet) can trigger it. */
 const RenameAcctCtx = createContext<(idx: number) => void>(() => {});
@@ -10468,3 +10471,7 @@ function makeStyles(C: Colors) {
     },
   }), C));
 }
+
+// Last, so every constant makeStyles() reads is initialised (see the note by
+// ThemeCtx near the top).
+const StylesCtx = createContext(makeStyles(DARK));
