@@ -184,7 +184,6 @@ app.whenReady().then(() => {
   handleTrusted('signer:has-seed',    ()                            => signer.hasSeed());
   handleTrusted('signer:address',     (_e, hdPath: string)          => signer.deriveAddress(hdPath));
   handleTrusted('signer:send-tx',     (_e, hdPath: string, tx)      => signer.signAndBroadcast(hdPath, tx));
-  handleTrusted('signer:sign-tx',     (_e, hdPath: string, tx)      => signer.signTransaction(hdPath, tx));
   handleTrusted('signer:personal',    (_e, hdPath: string, msg)     => signer.signPersonalMessage(hdPath, msg));
   handleTrusted('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
   handleTrusted('signer:erc20-transfer', (_e, hdPath: string, args) => signer.transferErc20(hdPath, args));

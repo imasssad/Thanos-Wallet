@@ -147,7 +147,6 @@ function projectSession(s: SessionTypes.Struct) {
  *
  * Methods:
  *   sign.evm-tx              { seed, hdPath, tx }      → { hash } (broadcasts)
- *   sign.evm-sign-tx         { seed, hdPath, tx }      → { signed } (raw, no broadcast)
  *   sign.evm-personal        { seed, hdPath, message } → { signature }
  *   sign.evm-typed-data      { seed, hdPath, payload } → { signature }
  *   sign.evm-erc20-transfer  { seed, hdPath, tokenAddress, to, amount } → { hash }
@@ -192,11 +191,6 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
         const connected = wallet.connect(provider);
         const sent = await connected.sendTransaction(tx);
         return { ok: true, hash: sent.hash };
-      }
-      case 'sign.evm-sign-tx': {
-        const tx = msg.tx as TransactionRequest;
-        const signed = await wallet.signTransaction(tx);
-        return { ok: true, signed };
       }
       case 'sign.evm-personal': {
         // messageHex is a 0x hex string (survives sendMessage's JSON, unlike a

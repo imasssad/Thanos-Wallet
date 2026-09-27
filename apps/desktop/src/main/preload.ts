@@ -95,7 +95,6 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
     hasSeed:    ()                        => ipcRenderer.invoke('signer:has-seed')          as Promise<boolean>,
     address:    (hdPath: string)          => ipcRenderer.invoke('signer:address', hdPath)   as Promise<string>,
     sendTx:     (hdPath: string, tx: TxRequest) => ipcRenderer.invoke('signer:send-tx', hdPath, tx)     as Promise<string>,
-    signTx:     (hdPath: string, tx: TxRequest) => ipcRenderer.invoke('signer:sign-tx', hdPath, tx)     as Promise<string>,
     personal:   (hdPath: string, msg: string | Uint8Array) => ipcRenderer.invoke('signer:personal', hdPath, msg) as Promise<string>,
     typedData:  (hdPath: string, payload: TypedDataPayload) => ipcRenderer.invoke('signer:typed-data', hdPath, payload) as Promise<string>,
     erc20Transfer: (hdPath: string, args: { tokenAddress: string; to: string; amount: string }) =>

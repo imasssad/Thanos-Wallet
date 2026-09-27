@@ -10,7 +10,7 @@
  * Why this matters: Electron renderers are full-power browser contexts
  * with DevTools, an open IPC bridge, and any vulnerability in the
  * shipped JS becomes seed-exfiltration potential. Moving the actual
- * `wallet.signTransaction()` + `wallet.sendTransaction()` calls into
+ * `wallet.sendTransaction()` / signMessage / signTypedData calls into
  * the main process — which has no remote content loaded and no DevTools
  * surface in production builds — drops one rung of attack surface.
  *
@@ -97,11 +97,6 @@ export async function signAndBroadcast(hdPath: string, tx: TxRequest): Promise<s
   const w = unlockedWallet(hdPath).connect(provider());
   const sent = await w.sendTransaction(normaliseTx(tx));
   return sent.hash;
-}
-
-export async function signTransaction(hdPath: string, tx: TxRequest): Promise<string> {
-  const w = unlockedWallet(hdPath);
-  return w.signTransaction(normaliseTx(tx));
 }
 
 export async function signPersonalMessage(hdPath: string, message: string | Uint8Array): Promise<string> {

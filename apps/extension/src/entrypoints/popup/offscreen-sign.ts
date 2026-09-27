@@ -50,18 +50,6 @@ export async function signAndBroadcastTx(args: {
   return r.hash;
 }
 
-export async function signTx(args: {
-  seed: string[]; hdPath?: string; tx: TxParams;
-}): Promise<string> {
-  const r = await send<BridgeOk & { signed: string }>({
-    type:   'sign.evm-sign-tx',
-    seed:   args.seed.join(' '),
-    hdPath: args.hdPath ?? "m/44'/60'/0'/0/0",
-    tx:     args.tx,
-  });
-  return r.signed;
-}
-
 export async function signPersonalMessage(args: {
   seed: string[]; hdPath?: string; messageHex: string;
 }): Promise<string> {

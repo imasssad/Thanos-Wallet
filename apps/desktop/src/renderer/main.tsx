@@ -110,7 +110,6 @@ declare global {
         hasSeed():                                                   Promise<boolean>;
         address(hdPath: string):                                     Promise<string>;
         sendTx(hdPath: string, tx: IpcTxRequest):                    Promise<string>;
-        signTx(hdPath: string, tx: IpcTxRequest):                    Promise<string>;
         personal(hdPath: string, msg: string | Uint8Array):          Promise<string>;
         typedData(hdPath: string, payload: IpcTypedDataPayload):     Promise<string>;
         erc20Transfer(hdPath: string, args: { tokenAddress: string; to: string; amount: string }): Promise<string>;
