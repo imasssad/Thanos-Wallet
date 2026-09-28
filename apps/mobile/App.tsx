@@ -8,6 +8,7 @@ import {
 import { Modal } from './components/ActivityModal';
 import { markUserActivity, idleMs } from './lib/activity';
 import { copySecret } from './lib/secret-clipboard';
+import { passwordProblem } from './lib/password-strength';
 
 /** Cross-platform monospace family. 'Menlo' exists only on iOS (Android
  *  silently falls back to proportional Roboto) and the generic
@@ -6922,7 +6923,8 @@ function ChangePasswordModal({ visible, onClose, seed }: { visible: boolean; onC
 
   const submit = async () => {
     if (busy) return;
-    if (next.length < 8) { setErr('New password must be at least 8 characters'); return; }
+    const problem = passwordProblem(next);
+    if (problem) { setErr(problem); return; }
     if (next !== confirm) { setErr('New passwords don’t match'); return; }
     setBusy(true); setErr('');
     try {
@@ -6940,7 +6942,7 @@ function ChangePasswordModal({ visible, onClose, seed }: { visible: boolean; onC
   return (
     <SheetShell title="Change password" onClose={onClose}>
       <TextInput secureTextEntry placeholder="Current password" placeholderTextColor={C.textMuted} value={cur} onChangeText={setCur} style={inputStyle}/>
-      <TextInput secureTextEntry placeholder="New password (min 8)" placeholderTextColor={C.textMuted} value={next} onChangeText={setNext} style={inputStyle}/>
+      <TextInput secureTextEntry placeholder="New password" placeholderTextColor={C.textMuted} value={next} onChangeText={setNext} style={inputStyle}/>
       <TextInput secureTextEntry placeholder="Confirm new password" placeholderTextColor={C.textMuted} value={confirm} onChangeText={setConfirm} style={inputStyle}/>
       {!!err && <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text>}
       <Pressable onPress={submit} disabled={busy} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
@@ -7756,6 +7758,8 @@ function OnboardingScreen({
   const [verifyPool,  setVerifyPool]  = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  // Why the new password can't be used (too short, too common, …), or null.
+  const pwProblem = passwordProblem(password);
   const [unlockPwd, setUnlockPwd] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
   const [copiedSeed, setCopiedSeed] = useState(false);
@@ -7810,7 +7814,7 @@ function OnboardingScreen({
   const [busy, setBusy] = useState(false);
 
   const finishCreate = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
     setBusy(true);
     try {
       await createVault(seed.join(' '), password);
@@ -7822,7 +7826,7 @@ function OnboardingScreen({
   };
 
   const finishImport = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
 
     // ── Private-key import ── stored as a single-element seed ['0x…']; the
     // vault holds the raw key, and deriveEvmAddress / lib/signer detect the
@@ -8274,7 +8278,7 @@ function OnboardingScreen({
 
         {(step === 'create-pwd' || step === 'import-pwd') && <>
           <Text style={styles.onboardTitle}>Set a password</Text>
-          <Text style={styles.onboardSub}>Used to unlock your wallet on this device. Min 8 characters.</Text>
+          <Text style={styles.onboardSub}>Used to unlock your wallet on this device. At least 8 characters, and not a common password.</Text>
           <TextInput
             style={styles.input}
             secureTextEntry
@@ -8291,8 +8295,8 @@ function OnboardingScreen({
             value={password2}
             onChangeText={setPassword2}
           />
-          {password.length > 0 && password.length < 8 && (
-            <Text style={styles.onboardErr}>Min 8 characters</Text>
+          {password.length > 0 && !!pwProblem && (
+            <Text style={styles.onboardErr}>{pwProblem}</Text>
           )}
           {password && password2 && password !== password2 && (
             <Text style={styles.onboardErr}>Passwords don't match</Text>
@@ -8307,8 +8311,8 @@ function OnboardingScreen({
               <Text style={styles.btnOutlineText} numberOfLines={1}>Back</Text>
             </Btn>
             <Btn
-              style={[styles.btnPrimary, { flex: 1.2, marginTop: 0, opacity: (password.length >= 8 && password === password2 && !busy) ? 1 : 0.45 }]}
-              disabled={password.length < 8 || password !== password2 || busy}
+              style={[styles.btnPrimary, { flex: 1.2, marginTop: 0, opacity: (!pwProblem && password === password2 && !busy) ? 1 : 0.45 }]}
+              disabled={!!pwProblem || password !== password2 || busy}
               onPress={step === 'create-pwd' ? finishCreate : finishImport}
             >
               {busy

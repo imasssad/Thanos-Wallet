@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createWallet } from './helpers';
+import { createWallet, reachPasswordStep } from './helpers';
 
 /**
  * Key-flow E2E: create a wallet, then lock + unlock it.
@@ -21,6 +21,25 @@ test.describe('Onboarding', () => {
     await expect(page.getByRole('button', { name: 'Swap' }).first()).toBeVisible();
     // Total-balance area is present (empty state for a fresh wallet).
     await expect(page.getByText(/total balance/i).first()).toBeVisible();
+  });
+
+  test('a common or patterned password is refused before the vault is created', async ({ page }) => {
+    await reachPasswordStep(page);
+    const pwd = page.getByPlaceholder('Password', { exact: true });
+    const confirm = page.getByPlaceholder('Confirm password');
+    const create = page.getByRole('button', { name: 'Create wallet' });
+
+    for (const [weak, why] of [['Password123!', /too common/i], ['12345678', /runs/i], ['aaaaaaaa', /repetitive/i]] as const) {
+      await pwd.fill(weak);
+      await confirm.fill(weak);
+      await expect(page.getByText(why)).toBeVisible();
+      await expect(create).toBeDisabled();
+    }
+
+    await pwd.fill('violet-harbor-canoe-51');
+    await confirm.fill('violet-harbor-canoe-51');
+    await expect(page.locator('.onboard-err')).toHaveCount(0);
+    await expect(create).toBeEnabled();
   });
 
   test('fresh context shows the welcome screen, not unlock', async ({ page }) => {

@@ -47,7 +47,7 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
 } from '@thanos/sdk-core';
-import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard } from '@thanos/sdk-core';
+import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -332,6 +332,8 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const [verifyPool,   setVerifyPool]  = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  // Why the new password can't be used (too short, too common, …), or null.
+  const pwProblem = passwordProblem(password);
   const [unlockPwd, setUnlockPwd] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
   const [formErr, setFormErr]     = useState('');
@@ -395,7 +397,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const [busy, setBusy] = useState(false);
 
   const finishCreate = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
     setBusy(true);
     try {
       const vault = await createVault(seed.join(' '), password);
@@ -407,7 +409,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     } finally { setBusy(false); }
   };
   const finishImport = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
     const raw = importInput.trim();
     // A raw 64-hex key (with or without 0x) imports one EVM account.
     const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(raw);
@@ -607,15 +609,15 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
         {(step === 'create-pwd' || step === 'import-pwd') && <>
           <h1 className="onb-title">Set password</h1>
-          <p className="onb-sub">Min 8 characters. Used to unlock on this device.</p>
+          <p className="onb-sub">At least 8 characters, and not a common password. Used to unlock on this device.</p>
           <input className="field" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}/>
           <input className="field" type="password" placeholder="Confirm" value={password2} onChange={e => setPassword2(e.target.value)} style={{ marginTop: 8 }}/>
-          {password && password.length < 8 && <div className="onb-err">Min 8 characters</div>}
+          {password && pwProblem && <div className="onb-err">{pwProblem}</div>}
           {password && password2 && password !== password2 && <div className="onb-err">Passwords don't match</div>}
           {formErr && <div className="onb-err">{formErr}</div>}
           <div className="row-btns">
             <button className="btn-outline" onClick={() => { setFormErr(''); setStep(step === 'create-pwd' ? 'create-confirm' : 'import'); }}>Back</button>
-            <button className="btn-primary" disabled={password.length < 8 || password !== password2 || busy} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
+            <button className="btn-primary" disabled={!!pwProblem || password !== password2 || busy} onClick={step === 'create-pwd' ? finishCreate : finishImport}>
               {busy ? 'Encrypting…' : (step === 'create-pwd' ? 'Create' : 'Import')}
             </button>
           </div>
@@ -5211,8 +5213,9 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const submit = async () => {
-    if (nw.length < 8) { setErr('New password must be at least 8 characters.'); return; }
-    if (nw !== cf)     { setErr('New passwords don’t match.'); return; }
+    const problem = passwordProblem(nw);
+    if (problem)   { setErr(problem); return; }
+    if (nw !== cf) { setErr('New passwords don’t match.'); return; }
     setBusy(true); setErr('');
     try {
       const v = loadVault();
@@ -5238,7 +5241,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <input className="field" type="password" placeholder="Current password" autoFocus value={cur} onChange={(e) => setCur(e.target.value)} />
-            <input className="field" type="password" placeholder="New password (min 8)" value={nw} onChange={(e) => setNw(e.target.value)} style={{ marginTop: 8 }} />
+            <input className="field" type="password" placeholder="New password" value={nw} onChange={(e) => setNw(e.target.value)} style={{ marginTop: 8 }} />
             <input className="field" type="password" placeholder="Confirm new password" value={cf} onChange={(e) => setCf(e.target.value)} style={{ marginTop: 8 }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !busy) submit(); }} />
             {err && <div className="onb-err">{err}</div>}

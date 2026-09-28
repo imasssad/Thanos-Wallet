@@ -33,7 +33,7 @@ import {
   toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
   startIdleLock, idleExpired, readAutoLockMinutes, writeAutoLockMinutes, AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE,
-  checkRecipient, copySecretToClipboard,
+  checkRecipient, copySecretToClipboard, passwordProblem,
 } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
@@ -2879,8 +2879,9 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const submit = async () => {
-    if (nw.length < 8) { setErr('New password must be at least 8 characters.'); return; }
-    if (nw !== cf)     { setErr('New passwords don’t match.'); return; }
+    const problem = passwordProblem(nw);
+    if (problem)   { setErr(problem); return; }
+    if (nw !== cf) { setErr('New passwords don’t match.'); return; }
     setBusy(true); setErr('');
     try {
       const v = loadVault();
@@ -2906,7 +2907,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <input className="field-input" type="password" placeholder="Current password" autoFocus value={cur} onChange={e => setCur(e.target.value)} />
-            <input className="field-input" type="password" placeholder="New password (min 8)" value={nw} onChange={e => setNw(e.target.value)} />
+            <input className="field-input" type="password" placeholder="New password" value={nw} onChange={e => setNw(e.target.value)} />
             <input className="field-input" type="password" placeholder="Confirm new password" value={cf} onChange={e => setCf(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !busy) submit(); }} />
             {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 13 }}>{err}</div>}
@@ -5409,6 +5410,8 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   const [verifyPool,  setVerifyPool]  = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  // Why the new password can't be used (too short, too common, …), or null.
+  const pwProblem = passwordProblem(password);
   const [unlockPwd, setUnlockPwd] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
   /** Two-step destructive confirm for Reset wallet — replaces the bare
@@ -5467,7 +5470,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   const [vaultBusy, setVaultBusy] = useState(false);
 
   const finishCreate = async () => {
-    if (password !== password2 || password.length < 8 || vaultBusy) return;
+    if (password !== password2 || pwProblem || vaultBusy) return;
     setVaultBusy(true);
     try {
       const vault = await createVault(seed.join(' '), password);
@@ -5482,7 +5485,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
   };
 
   const finishImport = async () => {
-    if (password !== password2 || password.length < 8 || vaultBusy) return;
+    if (password !== password2 || pwProblem || vaultBusy) return;
     const raw = importInput.trim();
     // A raw 64-hex key (with or without 0x) imports one EVM account;
     // anything else is a mnemonic.
@@ -5692,14 +5695,14 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
         {step === 'create-password' && (
           <>
             <h1 className="onboard-title">Set a password</h1>
-            <p className="onboard-sub">Used to unlock your wallet on this device. Minimum 8 characters.</p>
+            <p className="onboard-sub">Used to unlock your wallet on this device. At least 8 characters, and not a common password.</p>
             <input className="field-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{ marginBottom: 10 }}/>
             <input className="field-input" type="password" placeholder="Confirm password" value={password2} onChange={e => setPassword2(e.target.value)}/>
             {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
-            {password && password.length < 8 && <div className="onboard-err">Min 8 characters</div>}
+            {password && pwProblem && <div className="onboard-err">{pwProblem}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('create-confirm')}>Back</button>
-              <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2 || vaultBusy} onClick={finishCreate}>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={!!pwProblem || password !== password2 || vaultBusy} onClick={finishCreate}>
                 {vaultBusy ? 'Encrypting…' : 'Create wallet'}
               </button>
             </div>
@@ -5740,13 +5743,14 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
         {step === 'import-password' && (
           <>
             <h1 className="onboard-title">Set a password</h1>
-            <p className="onboard-sub">Used to unlock the imported wallet on this device.</p>
+            <p className="onboard-sub">Used to unlock the imported wallet on this device. At least 8 characters, and not a common password.</p>
             <input className="field-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{ marginBottom: 10 }}/>
             <input className="field-input" type="password" placeholder="Confirm password" value={password2} onChange={e => setPassword2(e.target.value)}/>
+            {password && pwProblem && <div className="onboard-err">{pwProblem}</div>}
             {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button className="btn-outline" style={{ flex: 1, height: 42 }} onClick={() => setStep('import')}>Back</button>
-              <button className="btn-primary" style={{ flex: 1 }} disabled={password.length < 8 || password !== password2 || vaultBusy} onClick={finishImport}>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={!!pwProblem || password !== password2 || vaultBusy} onClick={finishImport}>
                 {vaultBusy ? 'Encrypting…' : 'Import wallet'}
               </button>
             </div>

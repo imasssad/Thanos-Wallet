@@ -15,6 +15,20 @@ import { type Page, expect } from '@playwright/test';
  * random mnemonic — no fixtures, no mocking.
  */
 export async function createWallet(page: Page, password = 'test-password-123'): Promise<void> {
+  await reachPasswordStep(page);
+
+  // create-pwd
+  await page.getByPlaceholder('Password', { exact: true }).fill(password);
+  await page.getByPlaceholder('Confirm password').fill(password);
+  await page.getByRole('button', { name: 'Create wallet' }).click();
+
+  // Dashboard — the 4 action buttons confirm we landed.
+  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 30_000 });
+  await dismissWelcome(page);
+}
+
+/** The create-wallet flow up to (not through) "Set a password". */
+export async function reachPasswordStep(page: Page): Promise<void> {
   await page.goto('/app');
 
   // welcome
@@ -55,15 +69,6 @@ export async function createWallet(page: Page, password = 'test-password-123'): 
       .click();
   }
   await page.getByRole('button', { name: 'Continue' }).click();
-
-  // create-pwd
-  await page.getByPlaceholder('Password', { exact: true }).fill(password);
-  await page.getByPlaceholder('Confirm password').fill(password);
-  await page.getByRole('button', { name: 'Create wallet' }).click();
-
-  // Dashboard — the 4 action buttons confirm we landed.
-  await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 30_000 });
-  await dismissWelcome(page);
 }
 
 /** First-run "Welcome to Thanos" dialog overlays the dashboard and swallows

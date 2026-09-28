@@ -15,7 +15,7 @@ import {
 } from '../lib/vault';
 import { serializeSource, deserializeSource, type WalletSource } from '../lib/wallet-source';
 import { initSigner, lockSigner } from '../lib/signer-client';
-import { startIdleLock, idleExpired, readAutoLockMinutes, copySecretToClipboard } from '@thanos/sdk-core';
+import { startIdleLock, idleExpired, readAutoLockMinutes, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
 
 const storageOrNull = (pick: () => Storage): Storage | null => { try { return pick(); } catch { return null; } };
 
@@ -73,6 +73,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [verifyPool,    setVerifyPool]   = useState<string[]>([]);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  // Why the new password can't be used (too short, too common, …), or null.
+  const pwProblem = passwordProblem(password);
   const [unlockPwd, setUnlockPwd] = useState('');
   const [unlockErr, setUnlockErr] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -140,7 +142,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   const [busy, setBusy] = useState(false);
 
   const finishCreate = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
     setBusy(true);
     try {
       const source: WalletSource = { kind: 'mnemonic', mnemonic: seed.join(' ') };
@@ -158,7 +160,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
   };
 
   const finishImport = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
     const words = importInput.trim().toLowerCase().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) { setFormErr('Phrase must be 12, 15, 18, 21 or 24 words'); return; }
     if (!isValidMnemonic(words.join(' '))) { setFormErr('Invalid recovery phrase — check for typos'); return; }
@@ -183,7 +185,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
   /** Import via raw 0x-prefixed private key — single-account wallet. */
   const finishImportPk = async () => {
-    if (password !== password2 || password.length < 8 || busy) return;
+    if (password !== password2 || pwProblem || busy) return;
     const pk = validatePrivateKey(pkInput);
     if (!pk) { setFormErr('Invalid private key — must be 0x-prefixed 32-byte hex'); return; }
     setFormErr('');
@@ -487,10 +489,10 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
 
         {(step === 'create-pwd' || step === 'import-pwd' || step === 'import-pk-pwd') && <>
           <h1 className="onboard-title">Set a password</h1>
-          <p className="onboard-sub">Used to unlock your wallet on this device. Min 8 characters.</p>
+          <p className="onboard-sub">Used to unlock your wallet on this device. At least 8 characters, and not a common password.</p>
           <input className="field-input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{ marginBottom: 10 }}/>
           <input className="field-input" type="password" placeholder="Confirm password" value={password2} onChange={e => setPassword2(e.target.value)}/>
-          {password && password.length < 8 && <div className="onboard-err">Min 8 characters</div>}
+          {password && pwProblem && <div className="onboard-err">{pwProblem}</div>}
           {password && password2 && password !== password2 && <div className="onboard-err">Passwords don't match</div>}
           {formErr && <div className="onboard-err">{formErr}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
@@ -511,7 +513,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             <button
               className="btn-primary"
               style={{ flex: 1 }}
-              disabled={password.length < 8 || password !== password2 || busy}
+              disabled={!!pwProblem || password !== password2 || busy}
               onClick={
                 step === 'create-pwd'      ? finishCreate
                 : step === 'import-pk-pwd' ? finishImportPk

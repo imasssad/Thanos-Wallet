@@ -59,6 +59,7 @@ export * from './security/auto-lock';
 export * from './security/sign-review';
 export * from './security/secret-clipboard';
 export * from './security/telemetry-scrub';
+export * from './security/password-strength';
 
 /* ── WalletConnect ───────────────────────────────────────────────────── */
 export * from './walletconnect/client';
