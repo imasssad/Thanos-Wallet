@@ -339,6 +339,8 @@ export function clearVault(): void {
   localStorage.removeItem(STORAGE_KEYS.legacyUnlocked);
   localStorage.removeItem(STORAGE_KEY_ACTIVE_IDX);
   localStorage.removeItem(STORAGE_KEY_ACCT_COUNT);
+  localStorage.removeItem(STORAGE_KEY_ACCT_NAMES);
+  localStorage.removeItem(STORAGE_KEY_ACCT_HIDDEN);
   // Wipe the durable keychain copies too, or a "Reset wallet" would leave the
   // old vault behind and it would resurrect on the next launch's hydration.
   for (const key of DURABLE_KEYS) removeFromKeychain(key);
@@ -417,6 +419,11 @@ const DURABLE_KEYS: readonly string[] = [
   STORAGE_KEYS.seedBackedUp,
   STORAGE_KEY_ACTIVE_IDX,
   STORAGE_KEY_ACCT_COUNT,
+  // Mirrored on every write, so they must be restored at boot and wiped with
+  // the vault too — otherwise renamed / hidden accounts reverted after a
+  // restart, and a deleted wallet's account names stayed in the keychain.
+  STORAGE_KEY_ACCT_NAMES,
+  STORAGE_KEY_ACCT_HIDDEN,
 ];
 
 interface VaultBridge {
