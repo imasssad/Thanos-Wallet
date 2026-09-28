@@ -8,8 +8,9 @@
  * `dapp:event` so the URL bar / title can update in sync.
  *
  * Why WebContentsView (not <webview>): WebContentsView lives in the main
- * process, so we can hard-restrict permissions (no HID / camera / mic),
- * intercept new-window requests, and isolate from the wallet renderer.
+ * process, so we can hard-restrict permissions (no HID / mic; camera only
+ * for LAX identity verification, with consent), intercept new-window
+ * requests, and isolate from the wallet renderer.
  * The renderer never gets a reference to the dApp's window object.
  *
  * Why not BrowserView: BrowserView is deprecated as of Electron 30.
@@ -18,12 +19,14 @@
  *   - contextIsolation:true, nodeIntegration:false, sandbox:true
  *   - No preload script means dApps see no `window.thanosDesktop` —
  *     wallet connection must go through WalletConnect.
- *   - Permission requests blanket-denied.
+ *   - Permission requests blanket-denied — except in a LAX identity
+ *     verification view, which may use the camera and location once the
+ *     user allows it (see "LAX identity verification" below).
  *   - new-window opens the user's default browser, not a child view.
  *   - HTTP-only URLs are upgraded to https on navigate to defeat
  *     transparent downgrades.
  */
-const { WebContentsView, shell, BrowserWindow, ipcMain, dialog } = require('electron') as typeof import('electron');
+const { WebContentsView, shell, BrowserWindow, ipcMain, dialog, session, systemPreferences } = require('electron') as typeof import('electron');
 const path = require('path') as typeof import('path');
 import { handleTrusted } from './ipc-guard';
 import { reviewSigningRequest, type SignReview } from './sign-review';
@@ -34,11 +37,16 @@ interface ViewBounds { x: number; y: number; width: number; height: number }
 interface DappOpenPayload {
   url: string;
   bounds: ViewBounds;
+  /** 'kyc' opens LAX identity verification instead of a dApp — see
+   *  "LAX identity verification" below. */
+  purpose?: 'kyc';
 }
 
 let view: import('electron').WebContentsView | null = null;
 let host: import('electron').BrowserWindow | null = null;
 let currentUrl = '';
+// True while the open view is a LAX identity-verification view.
+let kycMode = false;
 
 const MAKALU_CHAIN_ID = 700777;
 // Known EVM chains the in-app browser will switch to (chainId → read RPC).
@@ -161,8 +169,103 @@ function ensureHttps(rawUrl: string): string {
   }
 }
 
+/* ─── LAX identity verification ─────────────────────────────────────────
+   The one exception to the blanket permission deny. Verification needs the
+   camera (ID scan + selfie) and can ask for location, so a view opened with
+   purpose 'kyc' gets:
+     - its own IN-MEMORY session: nothing the page stores (photos, cookies)
+       is written to disk or shared with dApps, and it's wiped on close;
+     - no wallet provider preload: the page can't reach the wallet at all;
+     - the camera (video only: no microphone, no screen capture) and
+       location, each only after the user allows it in a native dialog that
+       names the site, remembered for that site until the view closes.
+   Every other permission stays denied. */
+const KYC_PARTITION = 'lax-kyc';
+type KycPermission = 'camera' | 'location';
+// `${origin}|${permission}` the user allowed / refused in the open view.
+const kycAllowed = new Set<string>();
+const kycRefused = new Set<string>();
+// One consent dialog at a time.
+let kycPrompt: Promise<void> = Promise.resolve();
+
+function httpsOrigin(url: string | undefined): string {
+  try { const u = new URL(url ?? ''); return u.protocol === 'https:' ? u.origin : ''; } catch { return ''; }
+}
+
+function kycPermissionOf(permission: string, mediaTypes?: ReadonlyArray<string>): KycPermission | null {
+  if (permission === 'geolocation') return 'location';
+  // A request that includes the microphone is refused as a whole.
+  if (permission === 'media') return mediaTypes?.length && mediaTypes.every((t) => t === 'video') ? 'camera' : null;
+  return null;
+}
+
+async function askKycPermission(kind: KycPermission, origin: string, pageUrl: string): Promise<boolean> {
+  if (!host) return false;
+  const site = new URL(origin).host;
+  const page = (() => { try { return new URL(pageUrl).host; } catch { return ''; } })();
+  const { response } = await dialog.showMessageBox(host, {
+    type: 'question',
+    buttons: ["Don't allow", 'Allow'],
+    // Default to refusing: a stray Enter must never turn the camera on.
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Thanos Wallet',
+    message: `Allow ${site} to use your ${kind}?`,
+    detail: [
+      kind === 'camera'
+        ? 'LAX identity verification uses the camera to scan your ID and take a selfie.'
+        : 'LAX identity verification can check your location as part of the review.',
+      page && page !== site ? `Asked from the verification page on ${page}.` : '',
+      'Only this verification window gets access, and only until you close it.',
+    ].filter(Boolean).join('\n\n'),
+  });
+  if (response !== 1) return false;
+  // macOS asks once more at the system level (System Settings → Privacy).
+  if (kind === 'camera' && process.platform === 'darwin') {
+    try { return await systemPreferences.askForMediaAccess('camera'); } catch { return false; }
+  }
+  return true;
+}
+
+function installKycPermissions(ses: import('electron').Session): void {
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+    let answered = false;
+    const reply = (ok: boolean) => { if (!answered) { answered = true; callback(ok); } };
+    const kind = kycPermissionOf(permission, 'mediaTypes' in details ? details.mediaTypes : undefined);
+    const origin = httpsOrigin(('securityOrigin' in details && details.securityOrigin) || details.requestingUrl);
+    const inView = () => !!view && kycMode && wc === view.webContents;
+    if (!inView() || !kind || !origin) { reply(false); return; }
+    const key = `${origin}|${kind}`;
+    if (kycAllowed.has(key)) { reply(true); return; }
+    if (kycRefused.has(key)) { reply(false); return; }
+    kycPrompt = kycPrompt.then(async () => {
+      // Settle again after waiting: the view may have closed, or an earlier
+      // prompt already answered for this site.
+      if (!inView()) return reply(false);
+      if (kycAllowed.has(key)) return reply(true);
+      if (kycRefused.has(key)) return reply(false);
+      const ok = await askKycPermission(kind, origin, wc.getURL());
+      if (!inView()) return reply(false);
+      (ok ? kycAllowed : kycRefused).add(key);
+      reply(ok);
+    }).catch(() => reply(false));
+  });
+  // Permission checks (navigator.permissions.query): camera / location read
+  // as available until refused, so verification SDKs go on to request them —
+  // the request handler above is the real gate. Everything else: denied.
+  ses.setPermissionCheckHandler((wc, permission, requestingOrigin, details) => {
+    if (!view || !kycMode || wc !== view.webContents) return false;
+    const kind = permission === 'geolocation' ? 'location'
+      : permission === 'media' && details.mediaType === 'video' ? 'camera' : null;
+    return !!kind && !kycRefused.has(`${httpsOrigin(requestingOrigin)}|${kind}`);
+  });
+  ses.setDevicePermissionHandler(() => false);
+}
+
 function destroy(): void {
   if (!view || !host) return;
+  const wasKyc = kycMode;
   try { host.contentView.removeChildView(view); } catch { /* already removed */ }
   // WebContentsView in Electron 33 doesn't have an explicit destroy() —
   // dropping the reference lets GC reap it once webContents is closed.
@@ -174,9 +277,18 @@ function destroy(): void {
   connectedOrigin = '';
   currentChainId = MAKALU_CHAIN_ID;
   rejectAllExec();
+  kycMode = false;
+  kycAllowed.clear();
+  kycRefused.clear();
+  // Verification data only ever lived in memory; drop it now, not at quit.
+  if (wasKyc) {
+    const ses = session.fromPartition(KYC_PARTITION);
+    void ses.clearStorageData().catch(() => {});
+    void ses.clearCache().catch(() => {});
+  }
 }
 
-function createView(): import('electron').WebContentsView {
+function createView(kyc: boolean): import('electron').WebContentsView {
   const v = new WebContentsView({
     webPreferences: {
       contextIsolation: true,
@@ -189,13 +301,16 @@ function createView(): import('electron').WebContentsView {
       // silently broke hardware wallets until restart. 'persist:' keeps
       // dApp logins across app restarts while staying fully separate
       // from the wallet's session (cookies, storage, permissions).
-      partition: 'persist:dapp-browser',
+      // Identity verification gets its own in-memory session instead.
+      partition: kyc ? KYC_PARTITION : 'persist:dapp-browser',
       // Provider bridge preload: injects window.ethereum / window.thanos and
       // forwards EIP-1193 requests to main (dapp:rpc), which handles approval
       // (native dialog) + signing (wallet renderer). The seed NEVER enters
       // this sandboxed view — the page can only ask; the user approves each
       // connect/sign explicitly. (WalletConnect QR still works too.)
-      preload: path.join(__dirname, 'dapp-provider-preload.js'),
+      // None for identity verification — that page has no business with
+      // the wallet.
+      preload: kyc ? undefined : path.join(__dirname, 'dapp-provider-preload.js'),
     },
   });
 
@@ -203,9 +318,14 @@ function createView(): import('electron').WebContentsView {
 
   // Blanket-deny camera / mic / hid / usb / geolocation / clipboard etc.
   // Scoped to the dApp partition only — the wallet window's session
-  // keeps its own hardware-wallet handlers untouched.
-  wc.session.setPermissionRequestHandler((_w, _perm, cb) => cb(false));
-  wc.session.setDevicePermissionHandler(() => false);
+  // keeps its own hardware-wallet handlers untouched. Identity
+  // verification's own session asks the user for camera / location.
+  if (kyc) {
+    installKycPermissions(wc.session);
+  } else {
+    wc.session.setPermissionRequestHandler((_w, _perm, cb) => cb(false));
+    wc.session.setDevicePermissionHandler(() => false);
+  }
 
   // Cross-window navigation (target=_blank, window.open) goes to the
   // user's default browser, not a child WebContentsView. Keeps the
@@ -241,8 +361,13 @@ function attachIpc(): void {
   handleTrusted('dapp:open', async (_e, payload: DappOpenPayload) => {
     if (!host) return { ok: false, error: 'no_host' };
     const url = ensureHttps(payload.url);
+    const kyc = payload.purpose === 'kyc';
+    // Verification and dApps never share a view: they run in different
+    // sessions under different permission rules.
+    if (view && kycMode !== kyc) destroy();
     if (!view) {
-      view = createView();
+      view = createView(kyc);
+      kycMode = kyc;
       host.contentView.addChildView(view);
     }
     view.setBounds({
@@ -293,7 +418,8 @@ function attachIpc(): void {
   });
 
   handleTrusted('dapp:navigate', async (_e, rawUrl: string) => {
-    if (!view) return { ok: false };
+    // The verification view stays on the verification flow.
+    if (!view || kycMode) return { ok: false };
     const url = ensureHttps(rawUrl);
     await view.webContents.loadURL(url);
     return { ok: true, url };
@@ -313,7 +439,7 @@ function attachIpc(): void {
   ipcMain.handle('dapp:rpc', async (e, req: { method: string; params?: unknown[] }) => {
     // Only the dApp view may drive this — never the wallet renderer or a
     // stray frame in some other webContents.
-    if (!view || e.sender !== view.webContents || !host) {
+    if (!view || kycMode || e.sender !== view.webContents || !host) {
       return { __thanosError: true, code: 4900, message: 'Wallet disconnected' };
     }
     // Only the TOP frame may drive the wallet. With nodeIntegrationInSubFrames

@@ -43,6 +43,15 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Purpose strings for LAX identity verification, which runs in the in-app
+  # browser and may use the camera (ID scan + selfie) and location — only
+  # after the user allows it (src/main/dapp-browser.ts). macOS terminates an
+  # app that touches the camera without NSCameraUsageDescription. The mas
+  # target inherits these.
+  extendInfo:
+    NSCameraUsageDescription: Thanos Wallet uses the camera only during LAX card identity verification, to scan your ID and take a selfie.
+    NSLocationUsageDescription: Thanos Wallet uses your location only during LAX card identity verification, when the verification asks for it.
+    NSLocationWhenInUseUsageDescription: Thanos Wallet uses your location only during LAX card identity verification, when the verification asks for it.
   # electron-builder auto-discovers the Developer ID cert from the keychain
   # (or from CSC_LINK / CSC_KEY_PASSWORD when running in CI).
   # Notarization disabled by default; CI sets it to true via env vars when

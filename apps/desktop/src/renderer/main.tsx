@@ -132,7 +132,7 @@ declare global {
        *  navigation events to keep the chrome (back/forward/URL) in
        *  sync. See src/main/dapp-browser.ts. */
       dapp?: {
-        open(url: string, bounds: { x: number; y: number; width: number; height: number }):
+        open(url: string, bounds: { x: number; y: number; width: number; height: number }, opts?: { purpose?: 'kyc' }):
                                                                      Promise<{ ok: boolean; url?: string; error?: string }>;
         close():                                                     Promise<{ ok: boolean }>;
         setBounds(bounds: { x: number; y: number; width: number; height: number }):
@@ -2048,6 +2048,11 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   const [issuing, setIssuing]       = useState(false);
   const [issueErr, setIssueErr]     = useState<string | null>(null);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  // Verification runs inside the app: its own window, camera / location only
+  // after the user allows them there (main/dapp-browser.ts). Without the
+  // desktop bridge this falls back to the browser.
+  const openDapp = useOpenDapp();
+  const openVerification = (u: string) => openDapp(u, 'LAX verification', 'kyc');
 
   useEffect(() => {
     (async () => {
@@ -2100,7 +2105,7 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
       const url = extractKycUrl(res);
       if (url) {
         setRedirectUrl(url);
-        void window.thanosDesktop?.openExternal?.(url);
+        openVerification(url);
         setStep('redirect');
       } else {
         onDone();
@@ -2213,12 +2218,15 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
           <div style={{ width: 48, height: 48, borderRadius: 24, background: 'rgba(59,122,247,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <KeyIcon size={20} color="var(--blue)"/>
           </div>
-          <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800 }}>Complete verification in your browser</div>
+          <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800 }}>Complete your verification</div>
           <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
-            We opened identity verification in your browser. Complete it there, then come back — your card will appear here once it&apos;s ready.
+            Identity verification opened in Thanos. When it asks, allow the camera and location — only that page gets them, and only until you close it. Your card will appear here once it&apos;s ready.
           </div>
           {redirectUrl && (
-            <button className="settings-btn-link" onClick={() => { void window.thanosDesktop?.openExternal?.(redirectUrl); }}>Reopen verification link</button>
+            <>
+              <button className="settings-btn-link" onClick={() => openVerification(redirectUrl)}>Reopen verification</button>
+              <button className="settings-btn-link" onClick={() => openExternal(redirectUrl)}>Use your browser instead</button>
+            </>
           )}
           <button className="btn-primary" onClick={onDone} style={{ marginTop: 2 }}>Done</button>
         </div>
@@ -5901,7 +5909,7 @@ async function copySecret(text: string): Promise<void> {
  *  browser. Set by App() and consumed by DiscoverAppRow / DiscoverView
  *  so we don't have to prop-drill the openDapp callback through every
  *  parent. Null fallback → just call openExternal as before. */
-const DappOpenerContext = React.createContext<((url: string, name: string) => void) | null>(null);
+const DappOpenerContext = React.createContext<((url: string, name: string, purpose?: 'kyc') => void) | null>(null);
 
 /** Handler-injection context for opening the Send modal pre-filled with a
  *  recipient address — used by the Quantt agent deposit flow ("leg A": an
@@ -5915,9 +5923,11 @@ const SendToContext = React.createContext<((address: string, sym?: string) => vo
  *  point (app rows, hub button, the search-bar Open Link affordance). */
 function useOpenDapp() {
   const openDapp = useContext(DappOpenerContext);
-  return (url: string, name?: string) => {
+  // purpose 'kyc': LAX identity verification — the in-app view may then use
+  // the camera / location once the user allows it (main/dapp-browser.ts).
+  return (url: string, name?: string, purpose?: 'kyc') => {
     if (openDapp && window.thanosDesktop?.dapp) {
-      openDapp(url, name || '');
+      openDapp(url, name || '', purpose);
     } else {
       openExternal(url);
     }
@@ -6159,7 +6169,7 @@ function App() {
   };
   // In-app dApp browser — null when closed. Set by useOpenDapp() via
   // the DappOpenerContext below; closing comes from the overlay itself.
-  const [dapp, setDapp]     = useState<{ url: string; name: string } | null>(null);
+  const [dapp, setDapp]     = useState<{ url: string; name: string; purpose?: 'kyc' } | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [walletSeed, setWalletSeed] = useState<string[]>([]);
   // Known before the first render: the keychain hydration finishes before
@@ -6373,7 +6383,7 @@ function App() {
     <WalletSeedContext.Provider value={walletSeed}>
     <PortfolioContext.Provider value={portfolio}>
     <OpenTokenDetail.Provider value={openToken}>
-    <DappOpenerContext.Provider value={(url, name) => setDapp({ url, name })}>
+    <DappOpenerContext.Provider value={(url, name, purpose) => setDapp({ url, name, purpose })}>
     <SendToContext.Provider value={openSendTo}>
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 
@@ -6397,6 +6407,7 @@ function App() {
         <DappBrowserOverlay
           initialUrl={dapp.url}
           initialTitle={dapp.name}
+          purpose={dapp.purpose}
           onClose={() => setDapp(null)}
         />
       )}

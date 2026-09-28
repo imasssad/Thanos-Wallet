@@ -59,8 +59,10 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
      and tells the main process where the BrowserView should sit via
      `setBounds`. Navigation events stream back via onDappEvent. */
   dapp: {
-    open:      (url: string, bounds: { x: number; y: number; width: number; height: number }) =>
-                 ipcRenderer.invoke('dapp:open', { url, bounds }) as Promise<{ ok: boolean; url?: string; error?: string }>,
+    // purpose 'kyc': LAX identity verification (own session, camera /
+    // location with consent) — see dapp-browser.ts.
+    open:      (url: string, bounds: { x: number; y: number; width: number; height: number }, opts?: { purpose?: 'kyc' }) =>
+                 ipcRenderer.invoke('dapp:open', { url, bounds, purpose: opts?.purpose }) as Promise<{ ok: boolean; url?: string; error?: string }>,
     close:     () => ipcRenderer.invoke('dapp:close')             as Promise<{ ok: boolean }>,
     setBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
                  ipcRenderer.invoke('dapp:set-bounds', bounds)    as Promise<{ ok: boolean }>,

@@ -35,6 +35,14 @@
        Ledger/Trezor stay in the direct-download .dmg build, which keeps its
        own non-sandboxed entitlements.) -->
 
+  <!-- LAX card identity verification (in-app): camera for the ID scan +
+       selfie, location when the check asks — each only after the user allows
+       it for that page (src/main/dapp-browser.ts). -->
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  <key>com.apple.security.personal-information.location</key>
+  <true/>
+
   <!-- Import/export a recovery phrase or keystore file via the OS file picker. -->
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>

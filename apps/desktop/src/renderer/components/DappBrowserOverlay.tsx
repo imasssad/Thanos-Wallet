@@ -36,10 +36,13 @@ function computeBounds(): { x: number; y: number; width: number; height: number 
   };
 }
 
-export function DappBrowserOverlay({ onClose, initialUrl, initialTitle }: {
+export function DappBrowserOverlay({ onClose, initialUrl, initialTitle, purpose }: {
   onClose: () => void;
   initialUrl:   string;
   initialTitle: string;
+  /** 'kyc': LAX identity verification — main gives it its own session and
+   *  camera / location with consent, and the URL can't be edited. */
+  purpose?: 'kyc';
 }) {
   const bridge = getBridge();
   const [url,   setUrl]   = useState(initialUrl);
@@ -56,7 +59,7 @@ export function DappBrowserOverlay({ onClose, initialUrl, initialTitle }: {
   useEffect(() => {
     if (!bridge) return;
     let cancelled = false;
-    void bridge.open(initialUrl, computeBounds()).then(r => {
+    void bridge.open(initialUrl, computeBounds(), purpose ? { purpose } : undefined).then(r => {
       if (cancelled) return;
       if (!r.ok) setError(r.error || 'Could not open this dApp.');
     });
@@ -99,7 +102,7 @@ export function DappBrowserOverlay({ onClose, initialUrl, initialTitle }: {
   }, [bridge]);
 
   const submitUrl = () => {
-    if (!bridge) return;
+    if (!bridge || purpose === 'kyc') return;
     const raw = urlInput.trim();
     if (!raw) return;
     const normalised = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -150,6 +153,7 @@ export function DappBrowserOverlay({ onClose, initialUrl, initialTitle }: {
           <input
             ref={urlInputRef}
             value={urlInput}
+            readOnly={purpose === 'kyc'}
             onChange={(e) => setUrlInput(e.target.value)}
             onFocus={(e) => e.currentTarget.select()}
             style={{

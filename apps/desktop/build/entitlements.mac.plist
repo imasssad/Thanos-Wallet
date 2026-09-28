@@ -20,6 +20,14 @@
   <key>com.apple.security.device.usb</key>
   <true/>
 
+  <!-- LAX card identity verification runs in the in-app browser: camera for
+       the ID scan + selfie, location when the check asks. Each is used only
+       after the user allows it for that page (src/main/dapp-browser.ts). -->
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  <key>com.apple.security.personal-information.location</key>
+  <true/>
+
   <!-- Electron / V8 use JIT and writable + executable memory pages.
        Without these, notarization passes but the app crashes on
        launch under the hardened runtime. -->
