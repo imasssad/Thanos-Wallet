@@ -112,7 +112,10 @@ export interface BindWithdrawalAddressInput {
 
 export type SignTypedDataFn = (typedData: Eip712TypedData) => Promise<string>;
 
-/** GET /v1/kill-switch — the documented global trading-halt state. */
+/** GET /v1/kill-switch — the global trading-halt state. Neither the route
+ *  nor its response is in the committed 0.4.0 spec snapshot: the shape is the
+ *  admin POST body ({armed, reason}) plus who / when, unconfirmed against
+ *  production. */
 export interface QuanttKillSwitch {
   armed: boolean;
   reason: string | null;
@@ -492,7 +495,7 @@ export class QuanttClient {
   }
 
   /** Current global trading-halt state, or null if the response doesn't
-   *  carry the documented boolean `armed` (the UI then shows nothing). */
+   *  carry a boolean `armed` (the UI then shows nothing). */
   async getKillSwitch(): Promise<QuanttKillSwitch | null> {
     return normalizeKillSwitch(await this.authed('/v1/kill-switch'));
   }

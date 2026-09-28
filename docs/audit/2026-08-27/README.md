@@ -189,6 +189,9 @@ cd apps/mobile && npm install && npm run typecheck
    `--frozen-lockfile` (the latter is more correct but touches every CI
    job, so I didn't do it unilaterally under time pressure — flagging for
    a decision).
+   *Update 2026-09-28:* every workflow now installs with
+   `--frozen-lockfile` (commit `32eef66`), and the extension builds from
+   the lockfile — see `docs/audit/2026-09-27/HARDENING-AUDIT.md`, H-6.
 2. **The Postgres integration test job fails** with `duplicate key value
    violates unique constraint "pg_extension_name_index"` in
    `contacts-integration.test.ts:56`. Looks like a non-idempotent

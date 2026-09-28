@@ -31,14 +31,22 @@ The API is visibly **built for this integration**:
 
 1. `GET /v1/auth/wallet/nonce?address=0x…`
 2. `POST /v1/auth/wallet/typed-challenge { address }` → EIP-712 typed data
-3. Sign with the wallet key — no new UI primitive needed:
+3. Validate, then sign with the wallet key — no new UI primitive needed:
+   - every client first checks the challenge (sdk-core
+     `quantt/challenge.ts`, mobile twin `lib/quantt-challenge.ts`): domain
+     name `Quantts.ai`, primary type `SignIn`, no approval / order /
+     meta-tx struct, every address the wallet's own — so a tampered
+     response can't get a Permit signed. The withdrawal-address binding
+     challenge gets the same check.
    - mobile/desktop/web: internal signer (`signTypedData`)
    - extension: existing `eth_signTypedData_v4` path
 4. `POST /v1/auth/wallet/typed-verify { address, signature }` → access +
    refresh tokens
 5. Store per client: mobile `expo-secure-store`, extension
-   `chrome.storage.session`, desktop keytar, web httpOnly-style storage.
-   Refresh via `POST /v1/auth/refresh`; sessions listable/revocable.
+   `chrome.storage.session`, desktop and web `sessionStorage`. The session is
+   dropped (plus a best-effort server logout) whenever the wallet locks, is
+   reset or deleted. Refresh via `POST /v1/auth/refresh`; sessions
+   listable/revocable.
 
 Keys never leave the wallet; Quantt only ever sees a signature. This is the
 same trust model as the already-live quantts.ai sign-in — inverted to run
@@ -91,11 +99,12 @@ features.
 6. `research.quantt.at` — is any of the research content meant to surface
    in-app, or is it reference material only?
 
-## Current state in the repo (updated 2026-09-16)
+## Current state in the repo (updated 2026-09-28)
 
-**Phases 1-3 are DONE and shipped on all four clients** (mobile, web,
-desktop, extension) — this section was last updated 2026-08-20 when only
-Phase 1 was live; Phases 2-3 landed since.
+**Phase 1, and the agent-control and deposit/withdraw parts of Phases 2-3,
+are shipped on all four clients** (mobile, web, desktop, extension). Not
+built: the alerts inbox and push bridge, copilot, `wallet/pay`,
+`execution/swap`, billing and Phase 4 — see *Not built / blocked* below.
 
 - **Phase 1 (auth + read-only panel):** wallet-signature login end-to-end,
   verified against the LIVE `api.quantts.ai` — challenge → sign (EIP-712,
@@ -126,3 +135,51 @@ Phase 1 was live; Phases 2-3 landed since.
   (chat surface — no documented request/response shape, same "Default
   Response" gap as everything else in this spec; nothing to build against
   yet), Phase 4's market-data enrichment of Thanos's own Market tab.
+
+### Added 2026-09-27/28 (QUANTTS API 0.4.0)
+
+- **Challenge validation** before the wallet signs a sign-in or
+  withdrawal-binding challenge (see *Auth design*).
+- **Agent settings** — a Settings tab on every client: name, decision
+  timeframe, autopilot, strategy guidance and the four risk limits, sent as
+  `PATCH /v1/agents/{id}`. The body is checked against the documented schema
+  (sdk-core `validateAgentUpdate`; mobile twin `lib/quantt-agent-config.ts`),
+  only changed fields go out, and a before → after summary is confirmed.
+  Strategy, chains, tokens, DEX and quote asset stay fixed — re-pointing a
+  funded agent could strand its capital; create a new agent instead.
+- **Kill switch** — `GET /v1/kill-switch`: while Quantts has halted
+  trading, a banner shows on the card and the agent screen, and Start is
+  disabled. The route (called by the client before this work) is not in the
+  committed 0.4.0 snapshot, and its response is assumed to be `{armed,
+  reason, armedBy, armedAt}` — the admin POST body plus who / when. Anything
+  without a boolean `armed` shows no banner, so confirm the real shape.
+- **Live decisions** — the Decisions tab subscribes to the agent's
+  `decision` / `risk_rejected` SSE stream (bearer-authenticated fetch;
+  refresh once on 401, 2 s → 60 s backoff, a silent stream recycled after
+  5 min; mobile reads it through `expo/fetch`) and merges it with the paged
+  history.
+- **Session hygiene** — sessions live in session-scoped storage and are
+  dropped on lock (including auto-lock), reset and delete.
+- **Market methods** send the `symbol` / `interval` / `limit` parameters
+  the spec requires (no UI uses them yet).
+- **Web sign-in** works through the signing worker again (its `init`
+  message used to be dropped during startup).
+
+### Not built / blocked
+
+- **Logged-out teaser** (`/v1/partner/*`): the client methods exist; needs a
+  `partnerKey` from Quantt (open question 1).
+- **Copilot** (`POST /v1/mobile/copilot`): the spec documents no request or
+  response shape.
+- **Alerts inbox + push bridge**, **`wallet/pay`**, **`execution/swap`**,
+  **billing**: not started.
+- **Market enrichment (Phase 4)**: the market routes' responses are
+  undocumented in 0.4.0 ("Default Response"), so there is nothing reliable
+  to build a UI against yet.
+- **No sandbox** (open question 4): everything above was tested against a
+  mocked Quantts API — web e2e `apps/web/e2e/quantt.spec.ts`, and the built
+  extension, desktop renderer and a react-native-web build of the mobile
+  app. None of it has run against `api.quantts.ai`. Before release, someone
+  with a Quantt test account should smoke-test sign-in, a settings change,
+  the live decision stream and the kill-switch response shape against
+  production.

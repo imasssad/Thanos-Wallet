@@ -164,7 +164,10 @@ export interface BindWithdrawalAddressInput {
   signature: string; // 0x… over the EIP-712 challenge from the /challenge endpoint
 }
 
-/** GET /v1/kill-switch — the documented global trading-halt state. */
+/** GET /v1/kill-switch — the global trading-halt state. Neither the route
+ *  nor its response is in the committed 0.4.0 spec snapshot: the shape is the
+ *  admin POST body ({armed, reason}) plus who / when, unconfirmed against
+ *  production. */
 export interface QuanttKillSwitch {
   armed: boolean;
   reason: string | null;
@@ -615,8 +618,8 @@ export class QuanttClient {
   /* ── kill switch ───────────────────────────────────────────────────── */
 
   /** Current global trading-halt state, or null if the response doesn't
-   *  carry the documented `armed` flag (the UI then shows nothing rather than
-   *  a guessed state). */
+   *  carry a boolean `armed` (the UI then shows nothing rather than a
+   *  guessed state). */
   async getKillSwitch(): Promise<QuanttKillSwitch | null> {
     return normalizeKillSwitch(await this.authed('/v1/kill-switch'));
   }

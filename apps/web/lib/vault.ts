@@ -5,13 +5,17 @@
  *   thanos.vault    — JSON: { v, kdf params, salt, iv, ciphertext }
  *   thanos.has_vault — quick existence flag (mirrors the legacy key)
  *
- * In memory only (sessionStorage):
- *   thanos.session_key — 32-byte AES key (hex). Cleared on tab close.
- *   Lets a page refresh decrypt without prompting for the password again,
- *   but a cold-open browser/tab REQUIRES the password.
+ * Per tab (sessionStorage):
+ *   thanos.session_key — 32-byte AES key (hex). Lets a page refresh decrypt
+ *   without prompting for the password again; a new tab or browser needs
+ *   it. Cleared on lock (auto-lock included) and when the tab closes — but
+ *   browsers may write session storage to disk for session restore
+ *   (SECURITY.md, "Known limits").
  *
  * Crypto:
- *   - Key derivation:   Argon2id (t=3, m=64MB, p=4)        — matches services/api
+ *   - Key derivation:   PBKDF2-SHA256, 600,000 iterations for new vaults;
+ *                       older vaults keep the Argon2id parameters stored
+ *                       with them (t=3, m=64MB, p=4)
  *   - Encryption:       AES-256-GCM (12-byte random IV)    — authenticated
  *   - Wrong password:   GCM tag mismatch -> decrypt throws -> we return null
  *

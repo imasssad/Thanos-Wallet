@@ -62,7 +62,7 @@ verdicts into a PR description by quoting the section.
 |---|---|---|---|
 | 18.1 | Unit tests for SDK core | ✅ | `packages/sdk-core/src/__tests__/` |
 | 18.2 | Integration tests for backend | ✅ | `services/api/src/__tests__/` w/ vitest + supertest |
-| 18.3 | E2E suite (Playwright) | ✅ | 10 specs covering onboarding, send/receive, swap, WC, lock/unlock, DNNS, permissions |
+| 18.3 | E2E suite (Playwright) | ⚠️ | 14 specs (onboarding, lock/unlock, auto-lock, CSP, WalletConnect, Quantt, clipboard, …); not run in CI, and 10 tests in the DNNS, import-wallet, permissions, send/receive and settings specs are stale against the current UI |
 
 ---
 
@@ -81,16 +81,20 @@ hidden so dust addresses don't clutter the list.
 
 ## Signing isolation — per-client status
 
-| Client | Mechanism | File |
-|---|---|---|
-| Web | Web Worker (postMessage) | `apps/web/workers/signer-worker.ts` |
-| Extension | Offscreen document (chrome.offscreen) — popup posts `sign.*` over the message bridge, derived keys live only in the offscreen JS heap | `apps/extension/src/entrypoints/offscreen/main.ts` (`handleSignMessage`) + `apps/extension/src/entrypoints/popup/offscreen-sign.ts` |
-| Desktop | Electron main-process IPC — seed cached in main, renderer calls `window.thanosDesktop.signer.sendTx(...)` | `apps/desktop/src/main/signer.ts` + IPC handlers in `index.ts` |
-| Mobile | Module-private closure (React DevTools / Flipper can't inspect module scope) — seed lives in `lib/signer.ts`, never in component state | `apps/mobile/lib/signer.ts` |
+⚠️ **Partial on every client** (audit H-1, open). Each client has a signing
+component, but the UI also decrypts the vault and holds the seed while
+unlocked, and hands it to that component — so it is a copy, not a boundary.
+Details and the path to a real boundary: `docs/SIGNING-ISOLATION.md`.
 
-All four clients now route every EVM sign + broadcast through their
-isolation boundary. Hardware-wallet flows (Ledger / Trezor) are
-already isolated by definition (signature happens on the device).
+| Client | Signing component | Seed also held by the UI in |
+|---|---|---|
+| Web | Web Worker — `apps/web/workers/signer-worker.ts` | `useWalletGate` React state (`components/onboarding.tsx`) |
+| Extension | Offscreen document — `apps/extension/src/entrypoints/offscreen/main.ts`; derived keys stay there | popup `WalletSeedContext`; the seed is posted with every signing call |
+| Desktop | Electron main process — `apps/desktop/src/main/signer.ts` (EVM only) | renderer `WalletSeedContext`; BTC / SOL / Cosmos, WalletConnect and dApp-browser signing run in the renderer |
+| Mobile | Module-scope signer — `apps/mobile/lib/signer.ts` | App state `walletSeed`; WalletConnect signs with it |
+
+Hardware-wallet flows (Ledger / Trezor) are isolated by definition (the
+signature happens on the device).
 
 ## Open gaps — all reduced to single paste-able operator steps
 
@@ -112,6 +116,7 @@ is gated on; no editing, no manual cron lines, no plist surgery.
 | Screenshots (web) | `pnpm --filter @thanos/web exec tsx scripts/capture-screenshots.ts` | running web wallet at localhost:3000 |
 | Privacy policy | publish `docs/privacy-policy.md` at `https://thanos.fi/privacy` | nothing (already in the repo) |
 
-Everything else from path A + path B is already on `main`. The wallet
-is code-complete; the remaining work is exclusively credential
-acquisition + the one-paste installs above.
+Everything else from path A + path B is already on `main`. Beyond the
+credential acquisition + one-paste installs above, the open security items
+(key isolation first) are tracked in
+`docs/audit/2026-09-27/HARDENING-AUDIT.md`.

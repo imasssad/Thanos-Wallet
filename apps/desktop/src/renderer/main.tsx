@@ -5829,7 +5829,9 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
 /* ──────────────────────── Discover / NFTs ──────────────────────── */
 
 /** Open an http(s) URL in the user's default browser via the preload
- *  bridge (Electron blocks renderer window.open by default). */
+ *  bridge. (Electron would open a renderer window.open in a bare in-app
+ *  window; main/ipc-guard.ts denies those and hands http(s) links to the
+ *  browser instead.) */
 function openExternal(url: string) {
   window.thanosDesktop?.openExternal?.(url);
 }

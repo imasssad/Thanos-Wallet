@@ -1,14 +1,15 @@
 /**
  * Encrypted mnemonic vault.
  *
- * On disk (localStorage):
+ * On disk (localStorage, mirrored to the OS keychain — see DURABLE_KEYS):
  *   thanos.vault    — JSON: { v, kdf params, salt, iv, ciphertext }
  *   thanos.has_vault — quick existence flag (mirrors the legacy key)
  *
- * In memory only (sessionStorage):
- *   thanos.session_key — 32-byte AES key (hex). Cleared on tab close.
- *   Lets a page refresh decrypt without prompting for the password again,
- *   but a cold-open browser/tab REQUIRES the password.
+ * In memory (sessionStorage):
+ *   thanos.session_key — 32-byte AES key (hex). Lets a renderer reload
+ *   decrypt without prompting for the password again; cleared on lock
+ *   (auto-lock included), and Electron keeps no session storage across
+ *   restarts, so launching the app REQUIRES the password.
  *
  * Crypto:
  *   - Key derivation:   Argon2id (t=3, m=64MB, p=4)        — matches services/api

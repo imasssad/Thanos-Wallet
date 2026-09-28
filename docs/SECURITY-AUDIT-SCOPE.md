@@ -41,10 +41,10 @@ Bid on these as a single bundle or separately — please quote both.
 
 | ID | Surface | Lines of code | What it does |
 |----|---------|--------------:|--------------|
-| **S1** | **sdk-core** | ~14K | Vault crypto (Argon2id + AES-256-GCM), seed derivation, address conversion (litho1 ↔ 0x, bech32), all chain clients, WalletConnect bridge, phishing classifier, transaction simulator |
+| **S1** | **sdk-core** | ~14K | Vault crypto (PBKDF2-SHA256 + AES-256-GCM), signing-request decoding, seed derivation, address conversion (litho1 ↔ 0x, bech32), all chain clients, WalletConnect bridge, phishing classifier, transaction simulator |
 | **S2** | **Web app** (`apps/web`) | ~32K | Next.js 15, signer Worker, Receive/Send/Swap/DNNS UIs, SIWE flow |
 | **S3** | **Browser extension** (`apps/extension`) | ~9K | MV3 service worker + offscreen document + popup + content script + injected provider (EIP-1193 + EIP-6963) |
-| **S4** | **Desktop** (`apps/desktop`) | ~17K | Electron 33 — main-process keytar vault, hardware-wallet IPC bridge, WebHID/native-HID Ledger transport, auto-update |
+| **S4** | **Desktop** (`apps/desktop`) | ~17K | Electron 33 — keytar-backed vault storage, main-process EVM signer, hardware-wallet IPC bridge, WebHID/native-HID Ledger transport, auto-update |
 | **S5** | **Mobile** (`apps/mobile`) | ~21K | Expo / React Native — biometric unlock, secure storage (iOS Keychain + Android KeyStore), in-app dApp browser, WalletConnect pairing |
 | **S6** | **Backend** (`services/*`) | ~13K | Express API (auth, contacts, DNNS, portfolio), BullMQ worker (queues, indexer, bridge-poll), Postgres schema, Sentry pipeline |
 
@@ -80,7 +80,11 @@ We care most about these classes of finding, listed by severity tolerance:
 A full mapping of each Tier-1 + Tier-2 item to file:line is at
 [docs/SIGNING-ISOLATION.md](SIGNING-ISOLATION.md) for the signing
 boundary and [docs/architecture.md](architecture.md) for everything
-else. We'll grant repo read access at engagement start.
+else. The state going into the engagement — what an internal review
+found, fixed and left open — is in
+[docs/audit/2026-09-27/HARDENING-AUDIT.md](audit/2026-09-27/HARDENING-AUDIT.md);
+the main open item is H-1: every client holds the seed in UI memory
+while unlocked. We'll grant repo read access at engagement start.
 
 ---
 
