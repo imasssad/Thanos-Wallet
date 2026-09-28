@@ -3,9 +3,33 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 services:
-  # postgres + redis intentionally have no override here — they run as
-  # Docker-network-only containers (no host port), defined fully in the
-  # base docker-compose.yml.
+  # postgres + redis run as Docker-network-only containers (no host port),
+  # defined in the base docker-compose.yml. The overrides below only take
+  # away its dev-password fallbacks: in production a missing
+  # POSTGRES_PASSWORD / REDIS_PASSWORD stops `docker compose up` with an
+  # error instead of silently running on thanos_dev_secret /
+  # redis_dev_secret. (The api / indexer / worker URLs are built from the
+  # same variables, so they can't fall back either once these are set.)
+  #
+  # A box whose .env never set POSTGRES_PASSWORD: its database was
+  # initialised with thanos_dev_secret, and Postgres reads
+  # POSTGRES_PASSWORD only on first init. Put POSTGRES_PASSWORD=
+  # thanos_dev_secret in .env so the services can still log in, then rotate:
+  #   docker exec -it thanos-postgres psql -U thanos -c "ALTER USER thanos PASSWORD '<new>'"
+  # and set the new value in .env. Redis takes its password from the
+  # command line, so a new REDIS_PASSWORD applies on the next `up`.
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the VPS .env (see docker-compose.prod.yml)}
+
+  redis:
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in the VPS .env (see docker-compose.prod.yml)}
+      --appendonly yes
+      --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set REDIS_PASSWORD in the VPS .env}", "ping"]
 
   api:
     environment:
