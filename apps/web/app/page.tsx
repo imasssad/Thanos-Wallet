@@ -90,7 +90,7 @@ function Nav() {
           <a href="#dashboard" className="lp-nav-link">Product</a>
           <a href="#ecosystem" className="lp-nav-link">Ecosystem</a>
           <a href="#security"  className="lp-nav-link">Security</a>
-          <Link href="/app" className="lp-nav-cta">Open wallet <ArrowRight size={14}/></Link>
+          <a href="/app" className="lp-nav-cta">Open wallet <ArrowRight size={14}/></a>
         </div>
       </div>
     </nav>
@@ -121,9 +121,9 @@ function Hero() {
           </p>
 
           <div className="lp-hero-cta">
-            <Link href="/app" className="lp-btn-primary">
+            <a href="/app" className="lp-btn-primary">
               Launch wallet <ArrowRight size={16}/>
-            </Link>
+            </a>
             <WatchVideo />
             <a href="#dashboard" className="lp-btn-ghost">See it in motion</a>
           </div>
@@ -578,8 +578,10 @@ function PlatformSection() {
         <div className="lp-dl-list">
           {tiles.map(({ n, name, sub, cta, href, ready, dl, ext, apk, Icon }, idx) => {
             // External links (Chrome store) + real downloads (APK) use a plain
-            // <a>; live in-app routes use Next <Link> for client-side nav.
-            const Tag = ready && !dl && !ext ? Link : 'a';
+            // <a>; live in-app routes use Next <Link> for client-side nav —
+            // except the wallet, which loads as a full page so it runs under
+            // its own nonce CSP (middleware.ts), not this page's.
+            const Tag = ready && !dl && !ext && !href.startsWith('/app') ? Link : 'a';
             // Web/Desktop = Thanos blue. iOS muted, Android green, Extension cyan.
             const tints = ['#3b7af7', '#06b6d4', '#9ca3af', '#10b981', '#22d3ee'];
 
@@ -658,9 +660,9 @@ function FinalCta() {
       <div className="lp-container lp-final-stage">
         <div className="lp-final-text">
           <h2 className="lp-final-h">GET<br/>STARTED.</h2>
-          <Link href="/app" className="lp-btn-primary lp-btn-xl">
+          <a href="/app" className="lp-btn-primary lp-btn-xl">
             Launch wallet <ArrowRight size={20}/>
-          </Link>
+          </a>
           <p className="lp-final-sub">12 words. 90 seconds. No email. No KYC.</p>
         </div>
 

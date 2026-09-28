@@ -31,12 +31,10 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     trace:   'on-first-retry',
-    /* The wallet ships a strict CSP that omits 'unsafe-eval'. A bundled
-       dependency (protobufjs, pulled in by @cosmjs) uses Function()-eval
-       at init; in production nginx serves the relaxed CSP, but a bare
-       `next start` serves Next's own strict header and the eval throws,
-       blanking the app. E2E exercises wallet behaviour, not the CSP
-       header — so the test browser ignores page CSP. */
+    /* These specs exercise wallet behaviour, not the Content-Security-
+       Policy, so the test browser ignores page CSP. e2e/csp.spec.ts turns
+       it back on and checks the policy itself (the wallet's nonce CSP from
+       middleware.ts). */
     bypassCSP: true,
   },
 
