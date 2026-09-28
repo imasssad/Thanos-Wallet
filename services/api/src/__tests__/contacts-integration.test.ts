@@ -8,6 +8,8 @@
  *   - SQL syntax errors the mock would never surface
  *   - dedup (lower(address)) actually enforced by the unique index
  *   - JWT-gated routes really reject anonymous requests
+ *   - a logged-out / revoked session's access token is refused at once
+ *     (requireAuth's session lookup, lib/sessions.ts)
  *
  * Skipped when DATABASE_URL is unset, so `pnpm test` locally still
  * runs the rest of the suite green without needing a DB.
@@ -33,7 +35,7 @@ let app: any;
 let accessToken = '';
 let userId = '';
 
-async function createUserAndToken(): Promise<{ userId: string; access: string }> {
+async function createUserAndToken(): Promise<{ userId: string; access: string; email: string; password: string }> {
   // Register a real user via the real route — that exercises Argon2 +
   // session creation + JWT issuance, so the access token we get back
   // is a real production-shape token.
@@ -43,7 +45,7 @@ async function createUserAndToken(): Promise<{ userId: string; access: string }>
     .post('/auth/register')
     .send({ email, password })
     .expect(201);
-  return { userId: res.body.user.id, access: res.body.accessToken };
+  return { userId: res.body.user.id, access: res.body.accessToken, email, password };
 }
 
 beforeAll(async () => {
@@ -208,3 +210,39 @@ describeIfDb('contacts route — real Postgres round-trip', () => {
 // vitest — services/api uses it in routes/auth.ts; this import asserts
 // the native binary resolved correctly in the CI container.
 void argon2;
+
+/** The session id a real access token was minted for (its JWT payload). */
+function sessionIdOf(access: string): string {
+  return JSON.parse(Buffer.from(access.split('.')[1], 'base64url').toString()).sessionId;
+}
+
+// /contacts stands in for any requireAuth route.
+describeIfDb('access tokens die with their session — real Postgres', () => {
+  it('refuses a logged-out token at once, not when it expires', async () => {
+    await request(app).get('/contacts').set('Authorization', `Bearer ${accessToken}`).expect(200);
+    await request(app).post('/auth/logout').set('Authorization', `Bearer ${accessToken}`).expect(200);
+
+    const after = await request(app)
+      .get('/contacts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(401);
+    expect(after.body.error).toBe('Session revoked');
+  });
+
+  it('revoking a session from another device cuts off only that session', async () => {
+    const u = await createUserAndToken();
+    const login = await request(app)
+      .post('/auth/login')
+      .send({ email: u.email, password: u.password })
+      .expect(200);
+    const other = login.body.accessToken as string;
+
+    await request(app)
+      .delete(`/auth/sessions/${sessionIdOf(u.access)}`)
+      .set('Authorization', `Bearer ${other}`)
+      .expect(200);
+
+    await request(app).get('/contacts').set('Authorization', `Bearer ${u.access}`).expect(401);
+    await request(app).get('/contacts').set('Authorization', `Bearer ${other}`).expect(200);
+  });
+});

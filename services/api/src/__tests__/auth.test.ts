@@ -24,9 +24,10 @@ vi.hoisted(() => {
 // ─── Mock pg + ioredis BEFORE importing the app ───────────────────────────
 // Each test sets up the query responses it needs via dbQuery.mockResolvedValueOnce.
 // Use vi.hoisted so the mocks are initialised before vi.mock() runs them.
-const { dbQuery, dbQueryOne } = vi.hoisted(() => ({
-  dbQuery:    vi.fn() as ReturnType<typeof vi.fn>,
-  dbQueryOne: vi.fn() as ReturnType<typeof vi.fn>,
+const { dbQuery, dbQueryOne, sessionLive } = vi.hoisted(() => ({
+  dbQuery:     vi.fn() as ReturnType<typeof vi.fn>,
+  dbQueryOne:  vi.fn() as ReturnType<typeof vi.fn>,
+  sessionLive: vi.fn() as ReturnType<typeof vi.fn>,
 }));
 
 vi.mock('../lib/db.js', () => ({
@@ -39,6 +40,11 @@ vi.mock('../lib/db.js', () => ({
 vi.mock('../lib/redis.js', () => ({
   checkRedisConnection: () => Promise.resolve(true),
   redis: { get: vi.fn(), set: vi.fn() },
+}));
+// requireAuth's session lookup (lib/sessions.ts). Live by default; the
+// revocation tests below flip it. The real query is tested at the bottom.
+vi.mock('../lib/sessions.js', () => ({
+  isSessionLive: (...args: unknown[]) => sessionLive(...args),
 }));
 
 import request from 'supertest';
@@ -53,6 +59,8 @@ beforeAll(() => {
 beforeEach(() => {
   dbQuery.mockReset();
   dbQueryOne.mockReset();
+  sessionLive.mockReset();
+  sessionLive.mockResolvedValue(true);
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -314,5 +322,64 @@ describe('POST /auth/refresh', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.accessToken).toBeUndefined();
+  });
+});
+
+describe('requireAuth — revoked sessions', () => {
+  async function tokenFor(sub: string, sessionId: string) {
+    const { signAccessToken } = await import('../lib/jwt.js');
+    return signAccessToken({ sub, sessionId, deviceId: 'dev-r' });
+  }
+
+  it('rejects a still-unexpired token whose session was logged out or revoked', async () => {
+    sessionLive.mockResolvedValueOnce(false);
+    const res = await request(app)
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${await tokenFor('user-r', 'sess-r')}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Session revoked' });
+    expect(sessionLive).toHaveBeenCalledWith('sess-r', 'user-r');
+    expect(dbQueryOne).not.toHaveBeenCalled(); // the route never ran
+  });
+
+  it('answers 500, not 401, when the session lookup itself fails', async () => {
+    // A 401 would sign the client out over a database blip.
+    sessionLive.mockRejectedValueOnce(new Error('connection terminated'));
+    const res = await request(app)
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${await tokenFor('user-r', 'sess-r')}`);
+
+    expect(res.status).toBe(500);
+    expect(dbQueryOne).not.toHaveBeenCalled();
+  });
+
+  it('does not look the session up for a token that fails verification', async () => {
+    const res = await request(app)
+      .get('/auth/me')
+      .set('Authorization', 'Bearer not.a.real.token');
+    expect(res.status).toBe(401);
+    expect(sessionLive).not.toHaveBeenCalled();
+  });
+});
+
+describe('isSessionLive', () => {
+  // The real module, over the mocked lib/db.js.
+  const load = () => vi.importActual<typeof import('../lib/sessions.js')>('../lib/sessions.js');
+
+  it('matches the session to the token user and requires it unrevoked and unexpired', async () => {
+    const { isSessionLive } = await load();
+    dbQueryOne.mockResolvedValueOnce({ id: 'sess-1' });
+    expect(await isSessionLive('sess-1', 'user-1')).toBe(true);
+
+    const [sql, values] = dbQueryOne.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/WHERE id = \$1 AND user_id = \$2 AND revoked = false AND expires_at > NOW\(\)/);
+    expect(values).toEqual(['sess-1', 'user-1']);
+  });
+
+  it('is false when no live session matches', async () => {
+    const { isSessionLive } = await load();
+    dbQueryOne.mockResolvedValueOnce(null);
+    expect(await isSessionLive('sess-1', 'user-1')).toBe(false);
   });
 });

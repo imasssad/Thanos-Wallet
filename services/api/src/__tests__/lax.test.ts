@@ -38,6 +38,9 @@ vi.mock('../lib/redis.js', () => ({
   checkRedisConnection: () => Promise.resolve(true),
   redis: { get: vi.fn(), set: vi.fn() },
 }));
+// requireAuth's session lookup: the minted token's session is live (the
+// revoked case is covered in auth.test.ts).
+vi.mock('../lib/sessions.js', () => ({ isSessionLive: () => Promise.resolve(true) }));
 
 import request from 'supertest';
 import { createApp } from '../app.js';
