@@ -4,6 +4,28 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
+/* Content-Security-Policy for the packaged renderer (audit M-8). Scripts
+   only from the app bundle — no inline or remote script, no eval — so an
+   injection in the UI can't run code; 'wasm-unsafe-eval' for the WebAssembly
+   crypto (tiny-secp256k1, argon2). Styles keep 'unsafe-inline' (React style
+   props, library-injected <style>). Network: any https/wss endpoint, since
+   users can add custom RPCs. Build only: Vite's dev server injects inline
+   scripts for HMR. */
+const RENDERER_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  // Google Fonts: styles.css @imports the Geist family.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "connect-src 'self' https: wss:",
+  "worker-src 'self' blob:",
+  "frame-src https:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 // Bitcoin's tiny-secp256k1 imports its .wasm via the ESM Wasm integration
 // proposal which Vite 5 doesn't handle by default — these two plugins make
 // the renderer build succeed. Same fix as apps/extension/wxt.config.ts.
@@ -22,6 +44,14 @@ export default defineConfig({
     __MAS_BUILD__: JSON.stringify(process.env.MAS_BUILD === '1'),
   },
   plugins: [
+    {
+      name: 'thanos-renderer-csp',
+      apply: 'build',
+      transformIndexHtml: (html: string) => html.replace(
+        '<meta charset="utf-8" />',
+        `<meta charset="utf-8" />\n    <meta http-equiv="Content-Security-Policy" content="${RENDERER_CSP}" />`,
+      ),
+    },
     react(),
     // Electron 33 SANDBOXES the renderer (no Node globals) and Vite externalizes
     // node builtins in dev — so bundled crypto libs throw "process is not
