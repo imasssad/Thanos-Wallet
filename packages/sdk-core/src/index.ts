@@ -57,6 +57,7 @@ export * from './security/simulator';
 export * from './security/wc-risk';
 export * from './security/auto-lock';
 export * from './security/sign-review';
+export * from './security/secret-clipboard';
 
 /* ── WalletConnect ───────────────────────────────────────────────────── */
 export * from './walletconnect/client';

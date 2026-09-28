@@ -26,7 +26,7 @@
  * The lib is intentionally lib-local — no network calls — so it works
  * offline and pre-signs. A remote refresh is a follow-up.
  */
-import { isKnownScamAddress } from '@thanos/sdk-core';
+import { checkRecipient } from '@thanos/sdk-core';
 
 export type Risk = 'safe' | 'unknown' | 'warning' | 'critical';
 
@@ -139,11 +139,7 @@ export function classifyOrigin(url: string): Verdict {
 export function classifyRecipient(address: string): Verdict {
   const trimmed = (address || '').trim().toLowerCase();
   if (!trimmed) return { risk: 'unknown', reasons: [] };
-  if (trimmed === '0x0000000000000000000000000000000000000000') {
-    return { risk: 'critical', reasons: ['Recipient is the zero address — funds sent here are permanently destroyed.'] };
-  }
-  if (trimmed.startsWith('0x') && isKnownScamAddress(trimmed)) {
-    return { risk: 'critical', reasons: ['Recipient appears on the wallet\'s scam-address list.'] };
-  }
-  return { risk: 'safe', reasons: [] };
+  // Same rule as the extension / desktop / mobile Send screens (sdk-core).
+  const problem = trimmed.startsWith('0x') ? checkRecipient(trimmed) : null;
+  return problem ? { risk: 'critical', reasons: [problem] } : { risk: 'safe', reasons: [] };
 }

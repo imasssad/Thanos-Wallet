@@ -50,6 +50,17 @@ export function isKnownScamAddress(address: string): boolean {
   return SCAM_ADDRESSES.has(String(address).trim().toLowerCase());
 }
 
+/** Send-screen check for a resolved EVM recipient: the zero address (burns
+ *  the funds) or a known scam address. A reason string means: don't send. */
+export function checkRecipient(address: string): string | null {
+  const a = String(address ?? '').trim().toLowerCase();
+  if (a === '0x0000000000000000000000000000000000000000') {
+    return 'That is the zero address — anything sent there is destroyed for good.';
+  }
+  if (isKnownScamAddress(a)) return 'That address is on the wallet\'s scam-address list.';
+  return null;
+}
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const RANK: Record<SignRisk, number> = { safe: 0, caution: 1, review: 2, block: 3 };
 

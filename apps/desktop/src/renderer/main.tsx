@@ -33,6 +33,7 @@ import {
   toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
   startIdleLock, idleExpired, readAutoLockMinutes, writeAutoLockMinutes, AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE,
+  checkRecipient, copySecretToClipboard,
 } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
@@ -98,6 +99,7 @@ declare global {
       vaultRemove(key: string): Promise<void>;
       openExternal?:      (url: string) => Promise<unknown>;
       clipboardWrite?:    (text: string) => Promise<{ ok: boolean }>;
+      clipboardWriteSecret?: (text: string) => Promise<{ ok: boolean }>;
       notify?:            (title: string, body: string) => Promise<{ ok: boolean }>;
       onUpdateEvent?:     (cb: (ev: UpdaterEvent) => void) => () => void;
       checkForUpdate?:    () => Promise<unknown>;
@@ -2955,7 +2957,7 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
   const copyOut = async () => {
     const text = tab === 'phrase' ? (words ?? []).join(' ') : (pk ?? '');
     if (!text) return;
-    await copyText(text);
+    await copySecret(text);
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
   return (
@@ -3014,7 +3016,7 @@ function ExportSeedModal({ onClose }: { onClose: () => void }) {
                 ? `EVM private key for account ${acctIdx} (m/44'/60'/0'/0/${acctIdx}) — imports that one account into MetaMask etc.`
                 : 'These words restore the whole wallet and every account.'}
             </p>
-            <button className="settings-btn" disabled={hidden || (tab === 'pk' && !pk)} onClick={copyOut}>{copied ? 'Copied ✓' : (tab === 'phrase' ? 'Copy phrase' : 'Copy private key')}</button>
+            <button className="settings-btn" disabled={hidden || (tab === 'pk' && !pk)} onClick={copyOut}>{copied ? 'Copied — clears in 60 s' : (tab === 'phrase' ? 'Copy phrase' : 'Copy private key')}</button>
           </>
         )}
       </div>
@@ -3586,6 +3588,10 @@ function SendModal({ onClose, initialChain, initialCoin, address, initialTo }: {
     try {
       const meta = DESKTOP_CHAIN_META[chain];
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
+      // Checked after resolving, so a name.litho / litho1 input can't hide a
+      // zero or known-scam address (sdk-core checkRecipient).
+      const bad = chain === 'evm' ? checkRecipient(recipient) : null;
+      if (bad) { setSending(false); setError(bad); return; }
 
       // External EVM (Ethereum / BNB / Polygon / Base / Arbitrum / Optimism /
       // Linea / Avalanche): the selected coin carries its chainId. Makalu is
@@ -3697,6 +3703,9 @@ function SendModal({ onClose, initialChain, initialCoin, address, initialTo }: {
 
         <label className="field-label" style={{ marginTop: 14 }}>Recipient address</label>
         <input className="field-input" placeholder={DESKTOP_CHAIN_META[chain].placeholder} value={to} onChange={e => setTo(e.target.value)}/>
+        {chain === 'evm' && /^0x[0-9a-fA-F]{40}$/.test(to.trim()) && checkRecipient(to.trim()) && (
+          <div role="alert" style={{ fontSize: 11, color: 'var(--red, #ef4444)', marginTop: 4, fontWeight: 600 }}>{checkRecipient(to.trim())}</div>
+        )}
         {chain === 'evm' && <OwnAccountPicker seed={seed} current={address ?? ''} to={to} onPick={setTo}/>}
         {!!initialTo && to === initialTo && (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
@@ -5624,7 +5633,7 @@ function OnboardingFlow({ onComplete, hasVault }: { onComplete: (seed: string[],
             <button
               className="btn-link"
               disabled={seedHidden}
-              onClick={() => navigator.clipboard?.writeText(seed.join(' '))}
+              onClick={() => { void copySecret(seed.join(' ')); }}
             >
               Copy to clipboard
             </button>
@@ -5828,6 +5837,14 @@ function openExternal(url: string) {
 async function copyText(text: string): Promise<void> {
   try { if (window.thanosDesktop?.clipboardWrite) { await window.thanosDesktop.clipboardWrite(text); return; } } catch { /* fall through */ }
   try { await navigator.clipboard.writeText(text); } catch { /* both unavailable */ }
+}
+
+/** Copy a recovery phrase / private key: wiped from the clipboard again after
+ *  60 s — by the main process when the bridge is there (it can check the
+ *  clipboard still holds the secret), else by sdk-core's browser helper. */
+async function copySecret(text: string): Promise<void> {
+  try { if (window.thanosDesktop?.clipboardWriteSecret) { await window.thanosDesktop.clipboardWriteSecret(text); return; } } catch { /* fall through */ }
+  await copySecretToClipboard(text);
 }
 
 /** Handler-injection context for opening a dApp inside the in-app

@@ -15,7 +15,7 @@ import {
 } from '../lib/vault';
 import { serializeSource, deserializeSource, type WalletSource } from '../lib/wallet-source';
 import { initSigner, lockSigner } from '../lib/signer-client';
-import { startIdleLock, idleExpired, readAutoLockMinutes } from '@thanos/sdk-core';
+import { startIdleLock, idleExpired, readAutoLockMinutes, copySecretToClipboard } from '@thanos/sdk-core';
 
 const storageOrNull = (pick: () => Storage): Storage | null => { try { return pick(); } catch { return null; } };
 
@@ -247,27 +247,8 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
     setUnlockErr('');
   };
   const copySeed = async () => {
-    const text = seed.join(' ');
-    let ok = false;
-    // Try modern clipboard API (HTTPS only)
-    if (navigator.clipboard && window.isSecureContext) {
-      try { await navigator.clipboard.writeText(text); ok = true; } catch {}
-    }
-    // Fallback: legacy execCommand (works on HTTP)
-    if (!ok) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        ta.setAttribute('readonly', '');
-        document.body.appendChild(ta);
-        ta.select();
-        ta.setSelectionRange(0, text.length);
-        ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch {}
-    }
+    // Wiped from the clipboard again after 60 s (sdk-core secret-clipboard).
+    const ok = await copySecretToClipboard(seed.join(' '));
     if (ok) {
       setCopiedSeed(true);
       setTimeout(() => setCopiedSeed(false), 2200);
@@ -446,7 +427,7 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
             )}
           </div>
           <button className="btn-link" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={copySeed} disabled={seedHidden}>
-            {copiedSeed ? <><Check size={14}/> Copied to clipboard</>
+            {copiedSeed ? <><Check size={14}/> Copied — clears in 60 s</>
               : copyErr ? <>Copy unavailable — select the words manually</>
               : <><Copy size={14}/> Copy phrase</>}
           </button>

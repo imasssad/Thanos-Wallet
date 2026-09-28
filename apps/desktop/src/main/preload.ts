@@ -45,6 +45,10 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
    *  (non-secure context), so every Copy button silently failed. */
   clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text) as Promise<{ ok: boolean }>,
 
+  /** Same, for a recovery phrase / private key: the main process wipes it
+   *  again after 60 s if it's still on the clipboard, and on quit. */
+  clipboardWriteSecret: (text: string) => ipcRenderer.invoke('clipboard:write-secret', text) as Promise<{ ok: boolean }>,
+
   /** Show an OS notification for wallet activity (WC requests, tx confirm/fail,
    *  bridge/swap). Notification lives in the main process. */
   notify: (title: string, body: string) => ipcRenderer.invoke('notify:show', title, body) as Promise<{ ok: boolean }>,

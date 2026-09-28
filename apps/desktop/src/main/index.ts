@@ -2,6 +2,12 @@
 // and TS's __importDefault interop wrapper sometimes breaks this with pnpm symlinks
 const { app, BrowserWindow, nativeTheme, session, clipboard, Notification } = require('electron') as typeof import('electron');
 
+/** The secret last copied through clipboard:write-secret, until it's wiped. */
+let secretClipboard: { value: string; timer: ReturnType<typeof setTimeout> } | null = null;
+app.on('will-quit', () => {
+  if (secretClipboard && clipboard.readText() === secretClipboard.value) clipboard.clear();
+});
+
 /* USB / HID vendor IDs we let the renderer enumerate. Hardware-wallet
    manufacturers only — never a blanket "allow all devices" handler. */
 const LEDGER_VENDOR_ID  = 0x2c97;
@@ -164,6 +170,23 @@ app.whenReady().then(() => {
   // packaged file:// renderer, so every Copy button needs this bridge.
   handleTrusted('clipboard:write', (_e, text: string) => {
     clipboard.writeText(String(text ?? ''));
+    return { ok: true };
+  });
+
+  // A recovery phrase / private key (audit M-10): wiped again after 60 s —
+  // only if the clipboard still holds it, so something the user copied since
+  // is left alone — and on quit.
+  handleTrusted('clipboard:write-secret', (_e, text: string) => {
+    const secret = String(text ?? '');
+    clipboard.writeText(secret);
+    if (secretClipboard) clearTimeout(secretClipboard.timer);
+    secretClipboard = {
+      value: secret,
+      timer: setTimeout(() => {
+        if (clipboard.readText() === secret) clipboard.clear();
+        secretClipboard = null;
+      }, 60_000),
+    };
     return { ok: true };
   });
 

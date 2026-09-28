@@ -47,7 +47,7 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
 } from '@thanos/sdk-core';
-import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest } from '@thanos/sdk-core';
+import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -460,18 +460,8 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     setStep('welcome'); setUnlockPwd(''); setUnlockErr('');
   };
   const copySeed = async () => {
-    const text = seed.join(' ');
-    let ok = false;
-    if (navigator.clipboard && window.isSecureContext) {
-      try { await navigator.clipboard.writeText(text); ok = true; } catch {}
-    }
-    if (!ok) {
-      const ta = document.createElement('textarea');
-      ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
-      document.body.appendChild(ta); ta.select();
-      try { ok = document.execCommand('copy'); } catch {}
-      document.body.removeChild(ta);
-    }
+    // Wiped from the clipboard again after 60 s (sdk-core secret-clipboard).
+    const ok = await copySecretToClipboard(seed.join(' '));
     if (ok) { setCopiedSeed(true); setTimeout(() => setCopiedSeed(false), 2000); }
   };
 
@@ -566,7 +556,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
             )}
           </div>
           <button className="btn-link" onClick={copySeed} disabled={seedHidden}>
-            {copiedSeed ? <><Check size={13}/> Copied</> : <><Copy size={13}/> Copy phrase</>}
+            {copiedSeed ? <><Check size={13}/> Copied — clears in 60 s</> : <><Copy size={13}/> Copy phrase</>}
           </button>
           <div className="row-btns">
             <button className="btn-outline" onClick={() => setStep('create-warn')}>Back</button>
@@ -3980,6 +3970,8 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
       // directly from the popup (host_permissions cover the RPCs), NOT the
       // Makalu-only offscreen path. Litho assets fall through to sendAsset.
       if (chain === 'evm' && coin?.chainId && EXT_EVM_CHAIN_IDS.includes(coin.chainId)) {
+        const bad = checkRecipient(to.trim());
+        if (bad) { setSending(false); setError(bad); return; }
         const m = await import('../../lib/evm-external');
         const hash = await m.sendExtEvm({
           seed,
@@ -3998,6 +3990,10 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
       }
 
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
+      // Checked after resolving, so a name.litho / litho1 input can't hide a
+      // zero or known-scam address (sdk-core checkRecipient).
+      const bad = chain === 'evm' ? checkRecipient(recipient) : null;
+      if (bad) { setSending(false); setError(bad); return; }
       const hash = await sendAsset({
         seed,
         chain,
@@ -4073,6 +4069,9 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
 
         <label className="field-label" style={{ marginTop: 14 }}>RECIPIENT</label>
         <input className="field" placeholder={EXT_CHAIN_META[chain].placeholder} value={to} onChange={e => setTo(e.target.value)}/>
+        {chain === 'evm' && /^0x[0-9a-fA-F]{40}$/.test(to.trim()) && checkRecipient(to.trim()) && (
+          <div role="alert" style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>{checkRecipient(to.trim())}</div>
+        )}
         {chain === 'evm' && <OwnAccountPicker seed={seed} current={address ?? ''} to={to} onPick={setTo}/>}
         {!!to.trim() && !recipientOk && chain !== 'evm' && (
           <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>Not a valid {EXT_CHAIN_META[chain].label} address</div>
@@ -5132,7 +5131,8 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
   const copyOut = async () => {
     const text = tab === 'phrase' ? (words ?? []).join(' ') : (pk ?? '');
     if (!text) return;
-    try { await navigator.clipboard.writeText(text); } catch { /* blocked */ }
+    // Wiped from the clipboard again after 60 s (sdk-core secret-clipboard).
+    await copySecretToClipboard(text);
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
   return (
@@ -5191,7 +5191,7 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
               {tab === 'pk' ? `EVM key for account ${acctIdx} — imports that one account elsewhere.` : 'Restores the whole wallet and every account.'}
             </p>
             <button className="btn-link" disabled={hidden || (tab === 'pk' && !pk)} onClick={copyOut}>
-              {copied ? <><Check size={13}/> Copied</> : <><Copy size={13}/> {tab === 'phrase' ? 'Copy phrase' : 'Copy private key'}</>}
+              {copied ? <><Check size={13}/> Copied — clears in 60 s</> : <><Copy size={13}/> {tab === 'phrase' ? 'Copy phrase' : 'Copy private key'}</>}
             </button>
           </>
         )}

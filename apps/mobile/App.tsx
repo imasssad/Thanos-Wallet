@@ -7,6 +7,7 @@ import {
 // Modal whose touches count as activity for auto-lock (see lib/activity.ts).
 import { Modal } from './components/ActivityModal';
 import { markUserActivity, idleMs } from './lib/activity';
+import { copySecret } from './lib/secret-clipboard';
 
 /** Cross-platform monospace family. 'Menlo' exists only on iOS (Android
  *  silently falls back to proportional Roboto) and the generic
@@ -151,7 +152,7 @@ import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availa
 import { apiClient, type AuthUser } from './lib/auth-client';
 import { sendAsset, executeWcRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
 import { injectedProviderJs, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
-import { reviewSigningRequest } from './lib/sign-review';
+import { reviewSigningRequest, checkRecipient } from './lib/sign-review';
 import { SignReviewPanel } from './components/SignReviewPanel';
 import { loadDappConnections, getGrant, grantConnection } from './lib/dapp-connections';
 import {
@@ -4027,6 +4028,8 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         const extm = await import('./lib/evm-external');
         const extChain = extm.getExtEvmChain(coin.chainId);
         if (extChain) {
+          const bad = checkRecipient(to.trim());
+          if (bad) { setSending(false); Alert.alert('Not sent', bad); return; }
           const hash = await extm.sendExtEvm({
             seed,
             accountIdx:   getActiveAccountIndex(),
@@ -4051,6 +4054,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
       }
 
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
+      // Checked after resolving, so a name.litho / litho1 input can't hide a
+      // zero or known-scam address (lib/sign-review checkRecipient).
+      const bad = chain === 'evm' ? checkRecipient(recipient) : null;
+      if (bad) { setSending(false); Alert.alert('Not sent', bad); return; }
       const hash = await sendAsset({
         seed,
         chain,
@@ -4251,6 +4258,11 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         {!!to && !recipientOk && (
           <Text style={[styles.rowSub, { marginTop: 8, color: C.red }]}>
             Not a valid {CHAIN_META[chain].label} address
+          </Text>
+        )}
+        {chain === 'evm' && /^0x[0-9a-fA-F]{40}$/.test(to.trim()) && !!checkRecipient(to.trim()) && (
+          <Text accessibilityRole="alert" style={[styles.rowSub, { marginTop: 8, color: C.red, fontWeight: '700' }]}>
+            {checkRecipient(to.trim())}
           </Text>
         )}
 
@@ -6884,10 +6896,10 @@ function RevealPhraseModal({ visible, onClose, seed, initialTab }: { visible: bo
             </View>
           )}
           <Pressable
-            onPress={() => { Clipboard.setStringAsync(onPkTab ? (shownKey ?? '') : seed.join(' ')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1600); }}
+            onPress={() => { copySecret(onPkTab ? (shownKey ?? '') : seed.join(' ')).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1600); }}
             style={{ paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, alignItems: 'center' }}
           >
-            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied' : (onPkTab ? 'Copy private key' : 'Copy phrase')}</Text>
+            <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{copied ? '✓ Copied — clears in 60 s' : (onPkTab ? 'Copy private key' : 'Copy phrase')}</Text>
           </Pressable>
           {onPkTab && !isPk && (
             <Text style={{ color: C.textMuted, fontSize: 11, textAlign: 'center' }}>EVM key for account {acctIdx} — imports that one account elsewhere.</Text>
@@ -8173,8 +8185,7 @@ function OnboardingScreen({
             style={styles.copyPhraseBtn}
             onPress={async () => {
               try {
-                const Clipboard = require('expo-clipboard');
-                await Clipboard.setStringAsync(seed.join(' '));
+                await copySecret(seed.join(' '));
                 setCopiedSeed(true);
                 setTimeout(() => setCopiedSeed(false), 2200);
               } catch {
@@ -8183,7 +8194,7 @@ function OnboardingScreen({
             }}
           >
             <Copy size={14} color={C.blue} strokeWidth={2.4}/>
-            <Text style={styles.copyPhraseBtnText}>{copiedSeed ? '✓ Copied to clipboard' : 'Copy phrase'}</Text>
+            <Text style={styles.copyPhraseBtnText}>{copiedSeed ? '✓ Copied — clears in 60 s' : 'Copy phrase'}</Text>
           </Pressable>
 
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>

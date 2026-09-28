@@ -123,6 +123,14 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
     });
   });
 
+  describe(`checkRecipient (${impl})`, () => {
+    it('refuses the zero address and scam addresses, allows others', () => {
+      expect(m.checkRecipient('0x0000000000000000000000000000000000000000')).toMatch(/zero address/);
+      expect(m.checkRecipient(SCAM.toUpperCase().replace('0X', '0x'))).toMatch(/scam-address list/);
+      expect(m.checkRecipient(SPENDER)).toBeNull();
+    });
+  });
+
   describe(`reviewSigningRequest — transactions and messages (${impl})`, () => {
     const erc20 = new Interface(['function approve(address,uint256)', 'function transfer(address,uint256)', 'function setApprovalForAll(address,bool)']);
     const permit2 = new Interface(['function approve(address,address,uint160,uint48)']);

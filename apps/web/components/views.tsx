@@ -11,6 +11,7 @@ import {
   applyDisplayCurrency, getDisplayCurrency, convertFromUsd, withCurrencyAffix,
   FX_CURRENCIES, type DisplayCurrency,
   AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE, readAutoLockMinutes, writeAutoLockMinutes,
+  copySecretToClipboard,
 } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
 import { loadVault, openVault, setSeedBackedUp, isSeedBackedUp, clearVault, getActiveAccountIndex } from '../lib/vault';
@@ -1196,7 +1197,8 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
 
   const copy = () => {
     const text = (isPk || tab === 'pk') ? (shownPk ?? '') : seed.join(' ');
-    navigator.clipboard?.writeText(text);
+    // Wiped from the clipboard again after 60 s (sdk-core secret-clipboard).
+    void copySecretToClipboard(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -1275,7 +1277,7 @@ function SeedRevealModal({ seed, privateKey, onClose }: { seed: string[]; privat
             )}
             <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button className="btn-outline" style={{ flex: 1 }} onClick={copy}>
-                {copied ? <Check size={15}/> : <Copy size={15}/>} {copied ? 'Copied' : 'Copy'}
+                {copied ? <Check size={15}/> : <Copy size={15}/>} {copied ? 'Copied — clears in 60 s' : 'Copy'}
               </button>
               <button className="btn-primary" style={{ flex: 1 }} onClick={onClose}>Done</button>
             </div>
