@@ -197,6 +197,9 @@ function reviewMessage(raw: unknown, forAccount: unknown, input: SignReviewInput
     else {
       try {
         const decoded = toUtf8String(text);
+        // Control characters (or U+FFFD from bytes that aren't UTF-8) mean the
+        // hex was binary, not text — the match is the point of this regex.
+        // eslint-disable-next-line no-control-regex
         if (!/[\u0000-\u0008\u000e-\u001f�]/.test(decoded)) text = decoded; else opaque = true;
       } catch { opaque = true; }
     }
