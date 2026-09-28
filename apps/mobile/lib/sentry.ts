@@ -3,31 +3,21 @@
  *
  * Mirrors the web/desktop/extension hookup — only initialises when a DSN
  * is present (via EXPO_PUBLIC_SENTRY_DSN), so local dev + EAS preview
- * builds without the env var stay silent. The `beforeSend` hook applies
- * the same recursive scrub for `mnemonic|password|seed|private_key|
- * vault|session_key|token|authorization` that the other clients use.
+ * builds without the env var stay silent. Every event goes through the
+ * same scrub as the web app (lib/telemetry-scrub.ts): secret-named fields
+ * (`mnemonic`, `privateKey`, `token`, …), and a recovery phrase or private
+ * key quoted inside any string — an error message, a breadcrumb, a URL.
  *
  * Wrap the root component with `Sentry.wrap()` (see App.tsx) to enable
  * automatic crash + JS-error capture. Manual reporting via
  * `captureException(e)` is available for caught-and-handled errors.
  */
 import * as Sentry from '@sentry/react-native';
+import { scrubOrDropEvent } from './telemetry-scrub';
 
 const DSN     = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
 const ENV     = process.env.EXPO_PUBLIC_ENV       ?? 'production';
 const RELEASE = process.env.EXPO_PUBLIC_RELEASE   ?? undefined;
-
-const SCRUB_RE = /(mnemonic|password|seed|private[_-]?key|vault|session[_-]?key|token|authorization)/i;
-
-function scrub(value: unknown): unknown {
-  if (value == null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(scrub);
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = SCRUB_RE.test(k) ? '[redacted]' : scrub(v);
-  }
-  return out;
-}
 
 let initialised = false;
 
@@ -43,18 +33,10 @@ export function initSentry(): void {
     // Strip request-body breadcrumbs that fetch() generates — they
     // can contain auth tokens. We keep the URL + method.
     sendDefaultPii:       false,
-    beforeSend(event) {
-      try {
-        if (event.request)     event.request    = scrub(event.request)    as typeof event.request;
-        if (event.extra)       event.extra      = scrub(event.extra)      as typeof event.extra;
-        if (event.contexts)    event.contexts   = scrub(event.contexts)   as typeof event.contexts;
-        if (event.breadcrumbs) event.breadcrumbs = event.breadcrumbs.map(b => ({
-          ...b,
-          data: b.data ? (scrub(b.data) as Record<string, unknown>) : b.data,
-        }));
-      } catch { /* never let scrubbing crash the report */ }
-      return event;
-    },
+    // The whole event, messages and breadcrumbs included; one that can't be
+    // scrubbed is dropped, never sent as is.
+    beforeSend: scrubOrDropEvent,
+    beforeSendTransaction: scrubOrDropEvent,
   });
   initialised = true;
 }

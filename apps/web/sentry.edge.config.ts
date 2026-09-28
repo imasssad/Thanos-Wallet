@@ -6,6 +6,7 @@
  * automatically and warns if it's missing.
  */
 import * as Sentry from '@sentry/nextjs';
+import { scrubOrDropEvent } from '@thanos/sdk-core/src/security/telemetry-scrub';
 
 const DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
@@ -14,5 +15,8 @@ if (DSN) {
     dsn: DSN,
     environment: process.env.NODE_ENV ?? 'production',
     tracesSampleRate: process.env.NODE_ENV === 'development' ? 1.0 : 0.1,
+    // Same scrub as the client and server configs.
+    beforeSend: scrubOrDropEvent,
+    beforeSendTransaction: scrubOrDropEvent,
   });
 }
