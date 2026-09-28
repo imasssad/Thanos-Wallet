@@ -58,7 +58,9 @@ function buildCsp(nonce) {
       // api-3). rpc-3 sends no CORS headers, so browser Kamet traffic goes
       // through the same-origin proxy (/rpc/kamet, 'self') — rpc-3 is listed
       // only for the server-side proxy target + any direct server callers.
+      // Mainnet (9005): rpc-mainnet, its only RPC.
       + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://api-3.litho.ai"
+      + " https://rpc-mainnet.litho.ai"
       + " https://bridge.litho.ai"
       + " https://ignite.trade"
       // Quantt AI agents — native wallet sign-in + /v1/mobile BFF. api.quantts.ai
@@ -71,12 +73,15 @@ function buildCsp(nonce) {
       // Currency picker silently appears to do nothing. The native apps have no
       // CSP, which is why this only ever broke on web.
       + " https://api.coinbase.com"
-      // Multi-chain balance/send upstreams the lib/ clients actually call.
+      // Multi-chain balance/send upstreams the lib/ clients actually call —
+      // every rpcUrl in sdk-core chains/networks.ts and lib/evm-chains.ts.
+      // (Solana's and BSC's PRIMARY RPCs were missing, so the browser fell
+      // back to the rate-limited mainnet-beta / the secondary BSC node.)
       + " https://mempool.space"
-      + " https://api.mainnet-beta.solana.com"
+      + " https://solana-rpc.publicnode.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com"
       + " https://cosmos-rpc.publicnode.com https://cosmos-rest.publicnode.com"
       + " https://ethereum.publicnode.com https://eth.merkle.io"
-      + " https://bsc-dataseed.binance.org"
+      + " https://bsc-dataseed.bnbchain.org https://bsc-dataseed.binance.org"
       + " https://polygon-bor-rpc.publicnode.com https://api.avax.network"
       + " https://arb1.arbitrum.io https://mainnet.optimism.io https://mainnet.base.org https://rpc.linea.build"
       + " https://relay.walletconnect.com wss://relay.walletconnect.com wss://relay.walletconnect.org"
