@@ -3,6 +3,9 @@
 Whole-codebase review of the wallet design and implementation, looking for
 missing or ineffective hardening. Base commit `ed79232`. Branch
 `claude/determined-faraday-u2xsch` carries the fixes listed below.
+**Status updated 2026-09-28**, after remediation on the same branch — see
+[Remediation status](#remediation-status-2026-09-28). The findings further
+down are kept as reported.
 
 **Scope:** vaults and key handling on all four clients (web, extension,
 desktop, mobile), signing isolation, dApp/WalletConnect request handling,
@@ -14,28 +17,97 @@ and then re-tested against the fix.
 **Not covered in depth:** `contracts/` (compiled artifacts only),
 `today-compliant/` (unrelated app), hardware-wallet transports, and the
 per-chain clients in `packages/sdk-core/src/clients`. The mobile app was
-reviewed statically only; it was not built or run.
+reviewed statically; remediation testing later ran it as a
+react-native-web build, but no native build was run.
 
 ## Summary
 
-| | High | Medium | Low |
-|---|---:|---:|---:|
-| Fixed on this branch | 2 | 3 | — |
-| Open | 6 | 10 | 11 |
+| As of 2026-09-28 | Critical | High | Medium | Low |
+|---|---:|---:|---:|---:|
+| Audit findings fixed | — | 6 | 9 | 7 |
+| Partly fixed | — | 1 | — | 1 |
+| Still open | — | 1 | 4 | 3 |
+| Found and fixed during remediation | 1 | 2 | 2 | 3 |
 
-The biggest structural gap is key isolation. Every client decrypts the vault
-in its UI thread or renderer and keeps the mnemonic in UI state while it is
-unlocked (H-1). Web and desktop also cache the raw vault AES key in
-`sessionStorage` (H-2). So any script that runs in the wallet UI can read
-the seed. This includes an XSS, a compromised dependency, or a remote page
-loaded into the desktop window (the latter is fixed as F-1). The isolation
-that `docs/SIGNING-ISOLATION.md` and `SECURITY.md` describe, and that the
-external-audit RFQ points auditors to, does not match the code. See
-[Documentation that contradicts the code](#documentation-that-contradicts-the-code).
+(The audit reported 8 High, 13 Medium and 11 Low, counting F-1 – F-5.)
+
+The biggest structural gap is still key isolation (H-1, open): every client
+decrypts the vault in its UI thread or renderer and keeps the mnemonic in UI
+state while it is unlocked, so script that runs in the wallet UI can read
+the seed. What changed is how much stands between injected script and that
+UI — a per-request nonce CSP on the web wallet, a CSP on the desktop
+renderer, sender checks in the extension and the desktop window — and what
+a dApp can get signed: every request is now decoded, checked against the
+wallet's chain and account, shown one at a time, and never signed without
+the user's approval. The worst issue of the whole exercise was found during
+remediation: the web WalletConnect host signed, and broadcast, without
+asking (N-1). The security documents now describe the code as it is.
 
 ---
 
-## Fixed on this branch
+## Remediation status (2026-09-28)
+
+### Audit findings
+
+| ID | Sev | Status | Commits | Notes |
+|---|---|---|---|---|
+| F-1 – F-5 | High / Med | Fixed | see [below](#fixed-with-the-audit-f-1--f-5) | |
+| H-1 | High | **Open** | — | Architectural: decrypt behind each client's isolation boundary (`docs/SIGNING-ISOLATION.md`). The web worker now actually receives the wallet (N-2), but the seed is still also in UI state on every client. |
+| H-2 | High | **Partly fixed** | `134b99d`, `418e5d5` | The web wallet (`/app`) gets a per-request nonce CSP with no `'unsafe-inline'`: injected event handlers and parser-inserted scripts are refused (`e2e/csp.spec.ts`), and the e2e suite gives the same results with CSP enforced as with it bypassed. Public pages keep a static policy (pre-rendered, shared-cached, no keys); links into the wallet are full page loads. The raw key in `sessionStorage` stays — a decision, see [What's left](#whats-left). |
+| H-3 | High | Fixed | `cfba326`, `e4998b4` | Idle auto-lock on web, desktop and mobile (default 15 min; timestamps + `visibilitychange`; a reload after the timeout asks for the password). The extension also locks a popup left open. |
+| H-4 | High | Fixed | `9b4ec89`, `4916998`, `7d3f24d`, `32ddff4`, `58df3f9`, `2eb5937` | sdk-core `reviewSigningRequest` on every approval sheet: EIP-2612 / DAI permits, Permit2, Seaport, approve / `setApprovalForAll` / transfers decoded; chain and account checked; a block verdict offers Reject only. `scoreWcRequest` now scores the decoded review. |
+| H-5 | High | Fixed in the repo — **rotate the key** | `0af31be` | Removed from the guide; the gitleaks allowlist keeps the literal only because it is in git history. |
+| H-6 | High | Fixed | `32eef66` | `--frozen-lockfile` in every workflow; the dependency audit is blocking. SHA pinning is L-5. |
+| M-1 | Med | Open — decision | — | Needs a native KDF and a vault migration; `*_THIS_DEVICE_ONLY` drops the vault from encrypted-backup restores (users restore from the phrase). |
+| M-2 | Med | Fixed | `d7a85e4` | "Never" removed; a leftover disk copy is deleted on sight. |
+| M-3 | Med | Open — decision | — | `requireAuthentication` on the biometric slot changes the unlock UX (an OS prompt; re-enrol after biometric changes). |
+| M-4 | Med | Fixed | `58df3f9` | Per-browser nonce injected in the main frame only; requests attributed to the URL that sent them; one sheet at a time (`-32002`). |
+| M-5 | Med | Fixed | `88dc456` | sdk-core `checkRecipient` on every Send screen — warns while typing, refuses at submit, after name resolution. |
+| M-6 | Med | Open | — | Needs a signed-nonce registration: an API change plus a mobile release. |
+| M-7 | Med | Open — partner | — | Signed webhooks need Zypto. Storing only the needed fields, step-up auth for PIN / details, and moving card identifiers out of paths are API work not yet done. |
+| M-8 | Med | Fixed | `6e25292` | Production renderer meta CSP: `script-src 'self' 'wasm-unsafe-eval'`. |
+| M-9 | Med | Fixed | `f49dc25` | A floor, not a meter: common, l33t, padded or doubled passwords, runs, repeats and short numbers-only are refused wherever a password is set, on all four clients. |
+| M-10 | Med | Fixed | `88dc456` | Wiped after 60 s (desktop: only if unchanged, and on quit). Android 13's sensitive-clip flag isn't exposed by `expo-clipboard`, so it isn't set. |
+| L-1 | Low | Fixed | `57aef76` | `requireAuth` checks the token's session (owner, revoked, expiry) on every request; a failed lookup is a 500, not a 401. |
+| L-2 | Low | Open | — | A uniform answer needs email verification first. |
+| L-3 | Low | Fixed | `89dc679` | Both raw sign-tx paths removed. |
+| L-4 | Low | Fixed | `32ddff4` | Decoded review in the dialog; origin from `e.senderFrame`. |
+| L-5 | Low | Partly fixed | `32eef66` | The audit job blocks. Actions are still pinned to tags; pinning needs the upstream SHAs. |
+| L-6 | Low | Fixed | `f93b75c` | The prod overlay requires both passwords (`${VAR:?}`) — read the deploy note under [What's left](#whats-left). |
+| L-7 | Low | Fixed | `5dcda8e` | sdk-core telemetry scrub on web (client, server, edge) and mobile: strings are scanned for phrases, 32-byte hex and xprv / WIF / Solana keys; an event that can't be scrubbed is dropped. |
+| L-8 | Low | Fixed (backup) | `df36572` | `android:allowBackup="false"`. Custom schemes can always be claimed; the verified https App Links on thanos.fi are the safe path. |
+| L-9 | Low | Fixed | `4e3fc6f` | Both keys hydrated at boot and wiped with the vault. |
+| L-10 | Low | Open — by design | — | The injected provider needs every site; the LAX widgets need `frame-src`. |
+| L-11 | Low | Open | — | CI's typecheck remains the only gate for the web build. |
+
+### Found during remediation (all fixed)
+
+| ID | Sev | Commit | Finding |
+|---|---|---|---|
+| N-1 | **Critical** | `4916998` | **Web WalletConnect signed without asking.** `personal_sign` was auto-approved, and typed data and transactions that the local classifier called "safe" were signed — transactions broadcast — silently. Any connected dApp could send itself the whole native balance, or take tokens and NFTs through Permit2 or Seaport, with no prompt. Every request now waits in the confirm sheet. |
+| N-2 | High | `f0a6bc2` | The web signing worker never received the unlocked wallet: its `init` message arrived before the listener existed (behind an async WebAssembly import) and was dropped. Send and WalletConnect silently fell back to the main thread, so the worker isolation was never in use, and Quantt sign-in failed. A ready handshake fixes the race. |
+| N-3 | High | `6315529` | Desktop cold start showed "Create a new wallet" to users who had a vault, and create / import then overwrote it without asking. |
+| N-4 | Medium | `4916998`, `7d3f24d`, `32ddff4` | The M-4 approval race also existed on web WalletConnect, the extension and desktop WalletConnect: a new request replaced the sheet on screen (the replaced one was never answered), so a page could swap what the user was about to approve. |
+| N-5 | Medium | `ace8da7` | Quantt sign-in and withdrawal-binding challenges were signed without validation. A tampered API response (compromised API, DNS, CDN) could put a Permit / Permit2 payload in their place. |
+| N-6 | Low | `7d3f24d` | Extension: every rejection reached dApps as `-32603` (runtime messaging drops `.code`), so "user rejected" and "request pending" looked like internal errors. |
+| N-7 | Low | `5ebd71c` | Mobile: the default style sheet read `const`s before their declaration — react-native-web crashed at startup; Hermes built it from undefined values. |
+| N-8 | Low | `418e5d5` | Web `connect-src` lacked four configured RPCs — Lithosphere mainnet's only RPC, the Solana and BSC primaries, Solana devnet — so the browser blocked them in production. A unit test now checks every configured RPC. |
+
+### Testing
+
+- Unit: sdk-core 279 (twins tested together), API 80 plus 13 against real
+  Postgres, web 27.
+- Web e2e against a production build (`next build && next start`), with page
+  CSP enforced: 27 pass. The same 10 tests fail with CSP bypassed too —
+  stale selectors in the DNNS, import-wallet, permissions, send-receive and
+  settings specs. The suite is not run in CI.
+- Extension, desktop renderer, Electron and a react-native-web build of the
+  mobile app were driven with Playwright for each client-side change.
+- No Quantt sandbox exists: the Quantt work ran against a mocked API only.
+
+---
+
+## Fixed with the audit (F-1 – F-5)
 
 | ID | Sev | Finding | Commit |
 |---|---|---|---|
@@ -125,7 +197,11 @@ external-audit RFQ points auditors to, does not match the code. See
 
 ---
 
-## Open findings
+## Findings as reported (2026-09-27)
+
+These were open when the audit was written. Their current status is in
+[Remediation status](#remediation-status-2026-09-28); the text below is
+unchanged, so file and line references point at the base commit.
 
 ### High
 
@@ -338,6 +414,13 @@ never cleared.**
 The external-audit RFQ (`docs/SECURITY-AUDIT-SCOPE.md`) sends auditors to
 these documents, so fix them before an engagement starts.
 
+**Status (2026-09-28): corrected** — commit "docs: make the security docs
+describe the code as it is" rewrites `SECURITY.md` and
+`docs/SIGNING-ISOLATION.md` to match the code (H-1 stated as open), fixes
+the signing table in `docs/production-readiness-audit.md`, the vault
+headers and the desktop `window.open` comment, notes the lockfile fix in the
+2026-08-27 package, and points the RFQ at this report.
+
 - **`SECURITY.md`**
   - It says every vault uses Argon2id (t=3, m=64MB, p=4). New web and
     extension vaults actually use PBKDF2-SHA256 (600k). New mobile vaults use
@@ -397,12 +480,54 @@ These were checked and hold up, so a later review does not need to redo them:
   `X-Frame-Options DENY`, `nosniff`, a Permissions-Policy, and Sentry replay
   turned off.
 
-## Suggested order
+## What's left
 
-1. H-5: rotate the committed key (minutes).
-2. H-6: frozen lockfile and SHA-pinned actions (no longer blocked).
-3. H-3: a real auto-lock on all clients.
-4. H-2: drop the `sessionStorage` key cache and move to a nonce CSP.
-5. H-4: typed-data decoding plus `scoreWcRequest` on every approval sheet.
-6. H-1: move decryption behind each client's isolation boundary.
-7. The Medium items, then correct the documentation.
+The suggested order from 2026-09-27 (H-5, H-6, H-3, H-2, H-4, H-1, the
+Medium items, the documentation) has been worked through except where noted
+below.
+
+### Actions for the owner
+
+1. **Rotate the burned reviewer key** (H-5): generate a new one, give it to
+   Google only through Play Console's App access fields, and never fund the
+   old address.
+2. **Before the next production deploy** (L-6): make sure the VPS `.env`
+   sets `POSTGRES_PASSWORD` and `REDIS_PASSWORD` — the prod overlay now
+   refuses to start without them. A database first initialised on the old
+   fallback still has `thanos_dev_secret`: set that value first so the
+   services can log in, then rotate with the `ALTER USER` command in
+   `docker-compose.prod.yml`.
+3. **Deploy the nginx configs** (F-5): copy them to the VPS, then
+   `nginx -t && systemctl reload nginx`.
+4. **Pin GitHub Actions to commit SHAs** (L-5).
+5. **Ask Zypto for signed webhooks** (M-7).
+6. **Smoke-test the Quantt changes against production** with a test
+   account: sign-in, a settings change, the live decision stream, and the
+   kill-switch response shape (the route isn't in the committed 0.4.0
+   spec).
+
+### Decisions
+
+- **H-1 — key isolation**, the largest remaining item; the path per client
+  is in `docs/SIGNING-ISOLATION.md`.
+- **H-2 (remainder) — the web session key.** Keeping the raw key in
+  `sessionStorage` lets a reload skip the password, but browsers write
+  session storage to disk for session restore. A non-extractable key in
+  IndexedDB is on disk too and still usable by any script on the origin;
+  the only real fix is asking for the password on every reload.
+- **M-1 / M-3 — mobile KDF, keychain class and biometric binding**: UX and
+  migration trade-offs.
+- **M-6 — signed push registration** (API + mobile release).
+- **L-2, L-10, L-11** as noted in the status table.
+
+### Observations (not scored)
+
+- Next 15 loads Sentry's server and edge configs only from an
+  `instrumentation.ts`, and `apps/web` has none, so server-side Sentry
+  never initialises there. The browser config is unaffected.
+- The extension advertises `eth_signTransaction` to WalletConnect dApps,
+  but no handler implements it.
+- Web WalletConnect broadcasts on Makalu only (the chain its signer
+  uses); a transaction for a session on another chain is blocked.
+- The web e2e suite is not run in CI, and 10 of its tests are stale (see
+  *Testing* above).
