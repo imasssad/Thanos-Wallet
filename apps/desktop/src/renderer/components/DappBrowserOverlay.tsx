@@ -128,7 +128,9 @@ export function DappBrowserOverlay({ onClose, initialUrl, initialTitle }: {
           position: 'absolute', top: 0, left: 0, right: 0, height: CHROME_HEIGHT,
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '0 12px',
-          background: 'var(--bg-card, #14141a)',
+          // --surface-float, not --bg-card: on macOS the card colour is
+          // translucent glass and the app's top bar would read through.
+          background: 'var(--surface-float, #14141a)',
           borderBottom: '1px solid var(--border-default, #1f1f27)',
           color: 'var(--text-primary, #e5e7eb)',
           fontSize: 12,

@@ -17,6 +17,7 @@ import {
 } from './vault';
 import { UpdateBanner } from './components/UpdateBanner';
 import { DappBrowserOverlay } from './components/DappBrowserOverlay';
+import { ModalPortal } from './components/ModalPortal';
 import { DappRequestHost } from './DappRequestHost';
 import { usePortfolio, PortfolioContext, usePortfolioCtx, formatUsd, coinColor, type DisplayCoin, type DisplayTx } from './portfolio';
 import {
@@ -1755,13 +1756,16 @@ const AlertTriangleIc = Ic(<><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94
 /* CSS recreation of the LAX Visa card art (self-contained — no image asset).
    `last4`/`active` mirror mobile's dashboard variant (•••• 1234 + "Virtual"
    instead of the intro's plain "Algorithmic" tag). */
-function LaxCardArt({ last4, active }: { last4?: string; active?: boolean }) {
+function LaxCardArt({ last4, active, compact }: { last4?: string; active?: boolean; compact?: boolean }) {
+  // compact: the ~100px sidebar thumbnail — type scaled down, no tagline.
+  const k = compact ? 0.42 : 1;
   return (
     <div style={{
       position: 'relative', width: '100%', aspectRatio: '1.586 / 1',
-      borderRadius: 14, overflow: 'hidden',
+      borderRadius: compact ? 8 : 14, overflow: 'hidden',
       background: 'radial-gradient(130% 130% at 50% -10%, #141a2e 0%, #0a0d18 55%, #05070f 100%)',
-      border: '1px solid rgba(59,122,247,0.28)', boxShadow: '0 14px 34px rgba(0,0,0,0.5)',
+      border: '1px solid rgba(59,122,247,0.28)',
+      boxShadow: compact ? '0 4px 12px rgba(0,0,0,0.35)' : '0 14px 34px rgba(0,0,0,0.5)',
     }}>
       {/* faded emblem — same centre art as web's LaxCardArt */}
       <img src="./images/tokens/lax.png" alt="" aria-hidden style={{
@@ -1769,51 +1773,84 @@ function LaxCardArt({ last4, active }: { last4?: string; active?: boolean }) {
         width: '42%', opacity: 0.45, filter: 'drop-shadow(0 0 26px rgba(59,122,247,0.45))',
       }}/>
       <div style={{
-        position: 'absolute', top: '9%', left: '7%', fontSize: 22, fontWeight: 800, letterSpacing: '0.32em',
+        position: 'absolute', top: '9%', left: '7%', fontSize: 22 * k, fontWeight: 800, letterSpacing: '0.32em',
         background: 'linear-gradient(90deg,#5b8cff,#9bb0ff)', WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent', backgroundClip: 'text',
       }}>LAX</div>
       {last4 && (
-        <div style={{ position: 'absolute', bottom: '11%', left: '7%', fontSize: 13, fontWeight: 600, letterSpacing: '0.1em', color: '#9db8ff' }}>
+        <div style={{ position: 'absolute', bottom: '11%', left: '7%', fontSize: compact ? 7 : 13, fontWeight: 600, letterSpacing: '0.1em', color: '#9db8ff' }}>
           •••• {last4}
         </div>
       )}
       <div style={{ position: 'absolute', bottom: '10%', right: '7%', textAlign: 'right', lineHeight: 1 }}>
         <div style={{
-          fontSize: 26, fontWeight: 800, fontStyle: 'italic',
+          fontSize: 26 * k, fontWeight: 800, fontStyle: 'italic',
           background: 'linear-gradient(90deg,#1a3fd6,#3b7af7)', WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent', backgroundClip: 'text',
         }}>VISA</div>
-        <div style={{ fontSize: 10, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>{active ? 'Virtual' : 'Algorithmic'}</div>
+        {!compact && <div style={{ fontSize: 10, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>{active ? 'Virtual' : 'Algorithmic'}</div>}
       </div>
     </div>
   );
 }
 
-/** Sidebar promo entry point — unchanged call-site (`<LaxCard/>` in the
- *  right-panel aside). "Get Started" now opens the native flow modal
- *  instead of handing off to lax.money. */
+/** Right-panel LAX entry — sized like the other sidebar cards. Once the user
+ *  has a card it shows that card (•••• 1234 and its state) and opens straight
+ *  to its dashboard; otherwise the offer. "Learn more" opens LAX's own widget
+ *  in the in-app browser, like the Quantts card does for Quantts. */
 function LaxCard() {
+  const openDapp = useOpenDapp();
   const [flowOpen, setFlowOpen] = useState(false);
+  const [mine, setMine] = useState<{ last4: string; frozen: boolean } | null>(null);
+
+  // Only asked with a Thanos session — /lax/cards needs one, and a signed-out
+  // wallet simply sees the offer.
+  const loadMine = async () => {
+    try {
+      if (!(await hasThanosAccount())) { setMine(null); return; }
+      const c = (await laxCards())[0];
+      if (!c) { setMine(null); return; }
+      const n = cardNumberOf(c);
+      setMine({
+        last4: n ? n.slice(-4) : (typeof c.last4 === 'string' ? c.last4 : '••••'),
+        frozen: String(c.status || '').toLowerCase() === 'frozen',
+      });
+    } catch { setMine(null); }
+  };
+  useEffect(() => { void loadMine(); }, []);
+
   return (
     <div className="card">
-      <div className="card-title" style={{ marginBottom: 12 }}>Virtual Card</div>
-      <LaxCardArt/>
-      <div style={{ fontSize: 15, fontWeight: 800, margin: '14px 0 10px', color: 'var(--text-primary)' }}>
-        Own Your Crypto Virtual Card
+      <div className="card-header">
+        <span className="card-title">Virtual Card</span>
+        <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}
+          onClick={() => openDapp(LAX_LEARN_URL, 'LAX Card')}>Learn more</button>
       </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {LAX_BENEFITS.map(b => (
-          <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4 }}>
-            <span style={{ color: 'var(--blue)', fontWeight: 800, flexShrink: 0 }}>✓</span>
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ flex: '0 0 96px' }}><LaxCardArt compact active={!!mine} last4={mine?.last4}/></div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+            {mine ? 'Your LAX Visa' : 'Own Your Crypto Virtual Card'}
+          </div>
+          <div style={{ fontSize: 12, color: mine?.frozen ? 'var(--yellow)' : 'var(--text-secondary)', lineHeight: 1.4, marginTop: 3 }}>
+            {mine ? `•••• ${mine.last4} · ${mine.frozen ? 'Frozen' : 'Active'}` : 'Spend crypto anywhere Visa is accepted.'}
+          </div>
+        </div>
+      </div>
+      {!mine && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {LAX_BENEFITS.map(b => (
+            <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.4 }}>
+              <span style={{ color: 'var(--blue)', fontWeight: 800, flexShrink: 0 }}>✓</span>
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <button className="btn-exchange" onClick={() => setFlowOpen(true)}>
-        Get Started
+        {mine ? 'Manage card' : 'Get Started'}
       </button>
-      {flowOpen && <LaxCardFlow onClose={() => setFlowOpen(false)}/>}
+      {flowOpen && <LaxCardFlow onClose={() => { setFlowOpen(false); void loadMine(); }}/>}
     </div>
   );
 }
@@ -1864,7 +1901,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   }, [booting, cards.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const notLive = !status?.configured;
-  const openLearn = () => window.open(LAX_LEARN_URL, '_blank', 'noopener,noreferrer');
+  const openDapp = useOpenDapp();
+  const openLearn = () => openDapp(LAX_LEARN_URL, 'LAX Card');
 
   const toggleFreeze = async () => {
     if (!cardNo) return;
@@ -1889,7 +1927,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const showBack = view !== 'intro' && view !== 'dashboard' && view !== 'success';
 
   return (
-    <>
+    <ModalPortal>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440, width: '100%', maxHeight: '86vh', overflowY: 'auto' }}>
         <div className="modal-header">
@@ -1930,7 +1968,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
     </div>
     {detailsOpen && cardNo && <LaxCardDetailsModal cardNumber={cardNo} onClose={() => setDetailsOpen(false)}/>}
     {moreOpen && cardNo && <LaxMoreModal cardNumber={cardNo} last4={last4} onClose={() => setMoreOpen(false)}/>}
-    </>
+    </ModalPortal>
   );
 }
 
@@ -2756,6 +2794,7 @@ function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 's
 /* ──────────────────────── Modal overlay ──────────────────────── */
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -2765,6 +2804,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         {children}
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
@@ -3041,6 +3081,7 @@ function MakaluWelcomeModal() {
   }, []);
   if (!visible) return null;
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onClick={() => setVisible(false)}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 28 }}>
         <img src="./images/Thanos_Logo.png" alt="Thanos" width={64} height={64} style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
@@ -3054,6 +3095,7 @@ function MakaluWelcomeModal() {
         <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={() => setVisible(false)}>Got it</button>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 
@@ -3187,9 +3229,10 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive, onSwap }: 
   );
 
   return (
+    <ModalPortal>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 560, width: '100%', maxHeight: 'calc(92vh / 1.5)', overflowY: 'auto' }}>
-        <div className="modal-header" style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 2 }}>
+        <div className="modal-header" style={{ position: 'sticky', top: 0, background: 'var(--surface-float)', zIndex: 2 }}>
           <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <TokenAvatar sym={sym} color={coin?.color ?? '#52525b'} className="tx-avatar" label={sym.slice(0, 2)}/>
             {coin?.name ?? sym} ({sym})
@@ -3286,6 +3329,7 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive, onSwap }: 
       </div>
       {txDetail && <TxDetailModal tx={txDetail} onClose={() => setTxDetail(null)} />}
     </div>
+    </ModalPortal>
   );
 }
 

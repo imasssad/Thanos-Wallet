@@ -127,7 +127,9 @@ const overlay: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
 };
 const sheet: React.CSSProperties = {
-  background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border-default)',
+  // --surface-float, not --bg-card: on macOS the card colour is translucent
+  // glass, and this sheet sits over the settings page with no blur behind it.
+  background: 'var(--surface-float)', borderRadius: 16, border: '1px solid var(--border-default)',
   padding: 22, width: 'min(460px, 92%)', boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
 };
 const closeBtn: React.CSSProperties = {
