@@ -3855,10 +3855,10 @@ const EXT_CHAIN_META: Record<ExtSendChain, { label: string; sym: string; decimal
   cosmos:  { label: 'Cosmos Hub',  sym: 'ATOM',  decimals: 6,  placeholder: 'cosmos1…' },
 };
 
-/** chainIds + names of the external EVM chains (mirror lib/evm-external). */
-const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
+/** Names of the built-in EVM chains (mirror lib/evm-external). Display only —
+ *  send routing goes by the holding's chainId, never by this table. */
 const EXT_EVM_CHAIN_NAME: Record<number, string> = {
-  1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon', 8453: 'Base',
+  9005: 'Lithosphere Mainnet', 1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon', 8453: 'Base',
   42161: 'Arbitrum', 59144: 'Linea', 10: 'Optimism', 43114: 'Avalanche',
 };
 /** Unique key per holding — a bare symbol is ambiguous (ETH on 5 chains, etc.). */
@@ -3968,10 +3968,13 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
     try {
       const meta = EXT_CHAIN_META[chain];
 
-      // External EVM (Ethereum/BNB/Polygon/…): route through that chain's RPC
-      // directly from the popup (host_permissions cover the RPCs), NOT the
-      // Makalu-only offscreen path. Litho assets fall through to sendAsset.
-      if (chain === 'evm' && coin?.chainId && EXT_EVM_CHAIN_IDS.includes(coin.chainId)) {
+      // Any holding that carries a chainId (Lithosphere Mainnet 9005, Ethereum,
+      // BNB, …, and user-added networks) is sent on THAT chain's RPC, pinned to
+      // its chainId. Only Makalu holdings (no chainId) take the offscreen path,
+      // which broadcasts on Makalu. Routing by a hard-coded id list used to miss
+      // 9005, so mainnet LITHO sends — checked against the mainnet balance —
+      // were broadcast on Makalu instead.
+      if (chain === 'evm' && coin?.chainId !== undefined) {
         const bad = checkRecipient(to.trim());
         if (bad) { setSending(false); setError(bad); return; }
         const m = await import('../../lib/evm-external');
@@ -4021,7 +4024,7 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
         <div style={{ fontSize: 28 }}>✓</div>
         <div style={{ fontWeight: 700 }}>Transaction sent</div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-          {amt} {chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? (coin?.chainId && EXT_EVM_CHAIN_NAME[coin.chainId] ? EXT_EVM_CHAIN_NAME[coin.chainId] : 'Makalu') : EXT_CHAIN_META[chain].label}
+          {amt} {chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? (coin?.chainId === undefined ? 'Makalu' : EXT_EVM_CHAIN_NAME[coin.chainId] ?? coin.name) : EXT_CHAIN_META[chain].label}
         </div>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', margin: '8px 0' }}>{txHash}</div>
         <button className="btn-primary" onClick={onClose}>Done</button>

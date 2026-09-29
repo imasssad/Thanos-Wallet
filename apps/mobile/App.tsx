@@ -3752,7 +3752,6 @@ function useHiddenAssets() {
 
 /** chainIds of the external EVM chains (mirror lib/evm-external EXT_EVM_CHAINS).
  *  Used to route sends + skip the Makalu-only pre-send simulation. */
-const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
 
 /** Display name per chainId, for the Send screen's pre-send "Network" row —
  *  mirrors lib/evm-external-meta EXT_EVM_CHAINS' `name` field. A plain data
@@ -3979,9 +3978,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   /* Debounced pre-send simulation. Only EVM/Lithic chains for now —
      Bitcoin + Solana have their own checks elsewhere. */
   useEffect(() => {
-    // Skip for external EVM — the simulator is hardcoded to Makalu (700777),
-    // so it'd mis-check a chain it isn't on and could throw a false 'critical'.
-    if (chain !== 'evm' || !coin || EXT_EVM_CHAIN_IDS.includes(coin.chainId)
+    // Skip for every non-Makalu chain (Lithosphere Mainnet 9005 included): the
+    // simulator is hardcoded to Makalu (700777), so it'd mis-check a chain it
+    // isn't on and could throw a false 'critical'.
+    if (chain !== 'evm' || !coin || coin.chainId !== 700777
         || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
     const toAddr = to;
     const fromAddr = addr;
