@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react';
 import { Globe, ChevronLeft } from 'lucide-react';
 import { useWalletSeed } from './send';
-import { executeWcRequest, WcSignerError, activeChain } from './wc-signer';
+import { executeWcRequest, WcSignerError, activeChain, chainIdFromCaip } from './wc-signer';
 import { reviewSigningRequest } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import { isExtensionSender, type MessageSenderLike } from '../../lib/message-sender';
@@ -28,6 +28,8 @@ interface PendingRequest {
   method: string;
   params: unknown[];
   name:   string;
+  /** CAIP-2 chain the dApp sent the request on ("eip155:9005"). */
+  chainId?: string;
 }
 
 function send<T = unknown>(message: object): Promise<T> {
@@ -68,13 +70,16 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [proposal, setProposal] = useState<ProposalRow | null>(null);
   const [pending, setPending]   = useState<PendingRequest | null>(null);
-  // The chain executeWcRequest will sign / broadcast on — the review checks
-  // the request's chainId against it, so Approve waits until it's known.
+  // The chain executeWcRequest will sign / broadcast on — the one the request
+  // names (else the active chain). The review checks the request's chainId
+  // against it, so Approve waits until it's known.
   const [chainId, setChainId]   = useState<number | undefined>(undefined);
   useEffect(() => {
     let live = true;
     setChainId(undefined);
-    if (pending) activeChain().then((c) => { if (live) setChainId(c.chainId); }).catch(() => {});
+    const named = chainIdFromCaip(pending?.chainId);
+    if (pending && named != null) setChainId(named);
+    else if (pending) activeChain().then((c) => { if (live) setChainId(c.chainId); }).catch(() => {});
     return () => { live = false; };
   }, [pending]);
   const review = pending
@@ -110,7 +115,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
       // content script could otherwise put a forged request (e.g. an
       // eth_sendTransaction to itself) on this approval sheet.
       if (!isExtensionSender(sender)) return;
-      const m = raw as { type?: string; id?: number; topic?: string; method?: string; params?: unknown[]; name?: string; url?: string };
+      const m = raw as { type?: string; id?: number; topic?: string; method?: string; params?: unknown[]; name?: string; url?: string; chainId?: string };
       if (m?.type === 'wc.event.proposal') {
         setProposal({ id: m.id!, name: m.name ?? 'dApp', url: m.url });
       } else if (m?.type === 'wc.event.request' && m.topic && m.method) {
@@ -120,6 +125,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           method: m.method,
           params: (m.params ?? []) as unknown[],
           name:   m.name ?? 'dApp',
+          chainId: typeof m.chainId === 'string' ? m.chainId : undefined,
         });
       } else if (m?.type === 'wc.event.session_delete') {
         void refresh();
@@ -137,7 +143,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     if (!cur || blocked || chainId === undefined) return;
     setBusy(true); setErr(null);
     try {
-      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params } });
+      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params }, chainId: cur.chainId });
       setPending(null);
       await send({ type: 'wc.respond', topic: cur.topic, id: cur.id, result });
     } catch (e) {

@@ -5573,6 +5573,8 @@ function App() {
     try {
       const result = await executeWcRequest(seed, {
         request: { method: pendingRpc.method, params: pendingRpc.params },
+        // Sign on the chain this sheet reviewed, not whatever is active by now.
+        chainId: rpcChainId !== undefined ? `eip155:${rpcChainId}` : undefined,
       });
       // Contract guard: signing/tx methods MUST resolve to a 0x-prefixed
       // string (personal_sign/eth_sign/eth_signTypedData_v4 → 65-byte

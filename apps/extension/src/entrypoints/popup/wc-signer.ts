@@ -22,7 +22,7 @@ function hdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
 
-/** The wallet's currently-selected dApp chain (default Makalu). */
+/** The wallet's currently-selected dApp chain (default Lithosphere Mainnet). */
 export async function activeChain(): Promise<DappChain> {
   try {
     const { chain_id_hex } = await browser.storage.local.get('chain_id_hex');
@@ -80,7 +80,27 @@ export function summariseRequest(method: string, params: unknown): string {
 
 export interface WcRequestParams {
   request: { method: string; params: unknown };
+  /** CAIP-2 chain a WalletConnect request names ("eip155:9005"). When set,
+   *  the request is signed on exactly that chain, never the active one. */
   chainId?: string;
+}
+
+/** "eip155:9005" → 9005; anything else → null. */
+export function chainIdFromCaip(caip: string | undefined): number | null {
+  const m = /^eip155:(\d+)$/.exec(caip ?? '');
+  const id = m ? Number(m[1]) : NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/** The chain a request is for: the one it names (WalletConnect), else the
+ *  wallet's active dApp chain. A named chain the wallet doesn't know is
+ *  refused — never swapped for another. */
+async function requestChain(reqParams: WcRequestParams): Promise<DappChain> {
+  if (reqParams.chainId === undefined) return activeChain();
+  const id = chainIdFromCaip(reqParams.chainId);
+  const chain = id == null ? undefined : dappChainById(id);
+  if (!chain) throw new WcSignerError(4901, 'This network is not available in the wallet.');
+  return chain;
 }
 
 export async function executeWcRequest(seed: string[], reqParams: WcRequestParams): Promise<unknown> {
@@ -95,10 +115,11 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       return [deriveAddress(seed)];
 
     case 'eth_chainId':
-      // The ACTIVE chain, not a hardcoded Makalu — otherwise a switch to
-      // Ethereum "succeeds" but every subsequent chain read still reports
-      // 700777, so the dApp bounces back to "wrong network".
-      return toChainHex((await activeChain()).chainId);
+      // The request's chain (else the ACTIVE one), not a hardcoded default —
+      // otherwise a switch to Ethereum "succeeds" but every subsequent chain
+      // read still reports the old chain, so the dApp bounces back to
+      // "wrong network".
+      return toChainHex((await requestChain(reqParams)).chainId);
 
     case 'personal_sign': {
       const raw = params[0];
@@ -135,10 +156,11 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         gas?: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       };
-      // Broadcast on the wallet's ACTIVE chain — the same chain the approval
-      // sheet shows — through its own RPC with a pinned chainId, so a tx can
+      // Broadcast on the request's chain (WalletConnect names it; in-page
+      // requests use the ACTIVE chain) — the same chain the approval sheet
+      // reviews — through its own RPC with a pinned chainId, so a tx can
       // never land on a different network.
-      const chain = await activeChain();
+      const chain = await requestChain(reqParams);
       try {
         return await signAndBroadcastTx({
           seed, hdPath: path,
@@ -170,7 +192,7 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       if (!chain) {
         throw new WcSignerError(
           method === 'wallet_switchEthereumChain' ? 4902 : 4001,
-          'Unsupported network. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.',
+          'Unsupported network. Thanos supports Lithosphere plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche, Linea and networks added in Settings.',
         );
       }
       await browser.storage.local.set({ chain_id_hex: toChainHex(chain.chainId) });

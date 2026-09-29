@@ -52,6 +52,9 @@ interface PendingRequest {
   method: string;
   params: unknown[];
   name:   string;
+  /** CAIP-2 chain the dApp sent the request on ("eip155:9005") — the popup
+   *  reviews and signs it on exactly this chain. */
+  chainId?: string;
 }
 let kit: IWalletKit | null = null;
 let kitPromise: Promise<IWalletKit> | null = null;
@@ -133,6 +136,7 @@ async function getKit(): Promise<IWalletKit> {
         method: event.params.request.method,
         params: (event.params.request.params as unknown[]) ?? [],
         name:   session?.peer?.metadata?.name ?? 'dApp',
+        chainId: typeof event.params.chainId === 'string' ? event.params.chainId : undefined,
       };
       requestQueue.push(req);
       // Badge the toolbar so the user notices when the popup is closed; only
