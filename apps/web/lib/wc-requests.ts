@@ -7,8 +7,12 @@
  * eth_sendTransaction goes to `confirm` with sdk-core's reviewSigningRequest
  * of it (permits, Permit2, Seaport, approve, … decoded). A `block` verdict —
  * another chain or account, a scam address, a Seaport order that pays
- * nothing, a known phishing origin, or a transaction for a session that
- * isn't on the chain the wallet broadcasts to — can only be rejected.
+ * nothing, a known phishing origin, or a transaction for a chain the wallet
+ * can't send on — can only be rejected.
+ *
+ * Every request is handled on the chain it names (WalletConnect's CAIP-2
+ * `params.chainId`, e.g. "eip155:9005"; else the session's chain): reviewed
+ * against it, and a transaction is signed for and broadcast on exactly it.
  *
  * Read-only methods (accounts, chainId) and chain switches answer directly.
  */
@@ -50,14 +54,13 @@ export interface WcRequestDeps<R extends WcSessionRequest> {
   sessionChainId(topic: string): number;
   setSessionChainId(topic: string, chainId: number): void;
   supportedChainIds: ReadonlySet<number>;
-  /** The chain eth_sendTransaction is broadcast on. */
-  broadcastChainId: number;
   respond(topic: string, id: number, result: unknown): Promise<void>;
   respondError(topic: string, id: number, code: number, message: string): Promise<void>;
   emitChainChanged(topic: string, chainId: number): Promise<void>;
   signMessage(messageHex: string): Promise<string>;
   signTypedData(typed: TypedDataToSign): Promise<string>;
-  sendTransaction(tx: TxToSend): Promise<string>;
+  /** Sign + broadcast on exactly `chainId`. */
+  sendTransaction(tx: TxToSend, chainId: number): Promise<string>;
   /** Show the confirm sheet (queued — never replacing the one on screen). */
   confirm(entry: ConfirmEntry<R>): void;
   /** A reason string when the dApp origin must not get a signature. */
@@ -72,6 +75,13 @@ export function withBlock(review: SignReview, reason: string): SignReview {
 }
 
 const DEDUP_WINDOW_MS = 3000;
+
+/** "eip155:9005" → 9005; anything else → null. */
+export function chainIdFromCaip(caip: string | undefined): number | null {
+  const m = /^eip155:(\d+)$/.exec(caip ?? '');
+  const id = m ? Number(m[1]) : NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 export function createSessionRequestHandler<R extends WcSessionRequest>(deps: WcRequestDeps<R>): (request: R) => Promise<void> {
   const now = deps.now ?? Date.now;
@@ -125,12 +135,14 @@ export function createSessionRequestHandler<R extends WcSessionRequest>(deps: Wc
     };
     const review = (chainId: number) =>
       reviewSigningRequest({ method, params, account: deps.account(), activeChainId: chainId });
+    // The chain this request is for: the one it names, else the session's.
+    const chainId = chainIdFromCaip(request.params.chainId) ?? deps.sessionChainId(topic);
 
     try {
       switch (method) {
         case 'personal_sign': {
           const messageHex = String(params[0] ?? '');
-          confirm(review(deps.sessionChainId(topic)), () => deps.signMessage(messageHex), 'signature');
+          confirm(review(chainId), () => deps.signMessage(messageHex), 'signature');
           return;
         }
         case 'eth_signTypedData_v4': {
@@ -147,7 +159,7 @@ export function createSessionRequestHandler<R extends WcSessionRequest>(deps: Wc
           const { EIP712Domain: _omit, ...types } = typed.types as Record<string, Array<{ name: string; type: string }>>;
           void _omit;
           confirm(
-            review(deps.sessionChainId(topic)),
+            review(chainId),
             () => deps.signTypedData({ domain: typed.domain, types, message: typed.message }),
             'signature',
           );
@@ -158,18 +170,18 @@ export function createSessionRequestHandler<R extends WcSessionRequest>(deps: Wc
             to: string; value?: string; data?: string; gas?: string; gasLimit?: string;
             maxFeePerGas?: string; maxPriorityFeePerGas?: string;
           };
-          // Reviewed against the chain it will really be broadcast on; a
-          // session the dApp switched elsewhere is refused, not re-routed.
-          let r = review(deps.broadcastChainId);
-          const sessionChain = deps.sessionChainId(topic);
-          if (sessionChain !== deps.broadcastChainId) {
-            r = withBlock(r, `This wallet sends dApp transactions on chain ${deps.broadcastChainId} only, but this session is on chain ${sessionChain}.`);
+          // Reviewed against, signed for and broadcast on the chain the
+          // request names — never another. A chain the wallet can't send on
+          // is refused, not re-routed.
+          let r = review(chainId);
+          if (!deps.supportedChainIds.has(chainId)) {
+            r = withBlock(r, `This wallet can't send on chain ${chainId}.`);
           }
           confirm(r, () => deps.sendTransaction({
             to: tx.to, value: tx.value, data: tx.data,
             gasLimit: tx.gas ?? tx.gasLimit,
             maxFeePerGas: tx.maxFeePerGas, maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
-          }), 'transaction');
+          }, chainId), 'transaction');
           return;
         }
         case 'eth_accounts':
@@ -177,7 +189,7 @@ export function createSessionRequestHandler<R extends WcSessionRequest>(deps: Wc
           await ok([deps.account()]);
           return;
         case 'eth_chainId':
-          await ok(`0x${deps.sessionChainId(topic).toString(16)}`);
+          await ok(`0x${chainId.toString(16)}`);
           return;
         case 'wallet_switchEthereumChain':
         case 'wallet_addEthereumChain': {

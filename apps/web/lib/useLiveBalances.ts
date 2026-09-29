@@ -8,8 +8,10 @@
  * does the user actually have right now" should go through this hook.
  *
  * Sources:
- *   - EVM (Lithosphere Makalu + LEP100 tokens) via the indexer's
- *     /portfolio/:wallet endpoint
+ *   - EVM native coins per chain (Lithosphere Mainnet, the external chains,
+ *     custom networks) straight from each chain's RPC. (The Thanos indexer
+ *     covers the Makalu testnet only — no longer part of the wallet,
+ *     2026-09-29 — so it isn't read.)
  *   - Bitcoin via mempool.space (BIP84 / single-keypair P2WPKH)
  *   - Solana via Solana mainnet-beta RPC
  *
@@ -21,8 +23,6 @@
  * once) only triggers one set of fetches.
  */
 import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
-import { getPortfolio, IndexerOffline, type IndexerAsset } from './indexer';
 import { getSolanaAddress,    getSolanaBalance    } from './solana';
 import { getBitcoinAddressFromSource, getBitcoinBalance } from './bitcoin';
 import { getCosmosAddress,    getCosmosBalance    } from './cosmos';
@@ -48,8 +48,6 @@ export interface LiveBalances {
   evm:          EvmChainBalance[];
   /** True until the first set of fetches resolves. */
   loading:      boolean;
-  /** Set to true when the indexer call fails with IndexerOffline. */
-  indexerOk:    boolean;
 }
 
 interface CachedEntry {
@@ -69,7 +67,6 @@ function emptyBalances(): LiveBalances {
     bySymNumber: new Map(),
     evm:         [],
     loading:     false,
-    indexerOk:   true,
   };
 }
 
@@ -86,28 +83,6 @@ async function loadOnce(
   const p = (async () => {
     const bySym       = new Map<string, string>();
     const bySymNumber = new Map<string, number>();
-    let   indexerOk   = true;
-
-    /* ── EVM via indexer ───────────────────────────────────────── */
-    if (evmAddress) {
-      try {
-        const portfolio = await getPortfolio(evmAddress);
-        for (const a of (portfolio.assets ?? []) as IndexerAsset[]) {
-          let decimal = '0';
-          try { decimal = ethers.formatUnits(a.balance || '0', a.decimals ?? 18); }
-          catch { /* malformed — leave 0 */ }
-          const num = parseFloat(decimal) || 0;
-          if (num > 0) {
-            const sym = a.symbol.toLowerCase();
-            bySym.set(sym, num.toLocaleString('en-US', { maximumFractionDigits: 8 }));
-            bySymNumber.set(sym, num);
-          }
-        }
-      } catch (e) {
-        if (e instanceof IndexerOffline) indexerOk = false;
-        // Otherwise swallow — keep what we have, don't surface to UI as error.
-      }
-    }
 
     /* ── Solana (mnemonic only — no SLIP-0010 from raw secp key) ── */
     if (source?.kind === 'mnemonic') {
@@ -171,7 +146,7 @@ async function loadOnce(
       } catch { /* network-wide blip — leave evm empty */ }
     }
 
-    const result: LiveBalances = { bySym, bySymNumber, evm, loading: false, indexerOk };
+    const result: LiveBalances = { bySym, bySymNumber, evm, loading: false };
     cache.set(key, { at: Date.now(), result });
     return result;
   })().finally(() => { inFlight.delete(key); });

@@ -20,16 +20,19 @@ import {
   onSessionRequest, respondRequest, respondError,
   emitChainChanged,
 } from '../lib/walletconnect';
-import { Wallet as EthersWallet } from 'ethers';
-import { walletFromSeed, makeProvider } from '../lib/signer';
+import { Wallet as EthersWallet, JsonRpcProvider } from 'ethers';
+import { walletFromSeed } from '../lib/signer';
 import {
   signerSignMessage, signerSignTypedData, signerSignTransaction, SignerError,
 } from '../lib/signer-client';
 import { classifyOrigin } from '../lib/phishing';
 import { createSessionRequestHandler, type ConfirmEntry } from '../lib/wc-requests';
 import { SignReviewPanel } from './SignReviewPanel';
-import { EVM_CHAINS } from '../lib/evm-chains';
-import { MAKALU_CHAIN_ID } from '../lib/rpc';
+import { browserRpcUrl } from '../lib/evm-chains';
+import { allEvmChains, getEvmChainMerged } from '../lib/custom-assets';
+
+/** Lithosphere Mainnet — a session's chain until the dApp switches. */
+const DEFAULT_WC_CHAIN_ID = 9005;
 
 type PendingRequest = ConfirmEntry<WalletKitTypes.SessionRequest>;
 
@@ -78,10 +81,7 @@ export function WalletConnectHost() {
      emitting a `chainChanged` event so the dApp re-reads. The
      in-memory map is intentionally per-mount: WC sessions don't span
      refreshes anyway, and on cold start dApps will re-negotiate. */
-  const SUPPORTED_CHAIN_IDS = new Set<number>([
-    MAKALU_CHAIN_ID,
-    ...EVM_CHAINS.map(c => c.chainId),
-  ]);
+  const SUPPORTED_CHAIN_IDS = new Set<number>(allEvmChains().map(c => c.chainId));
   const sessionChainsRef = useRef<Map<string, number>>(new Map());
 
   const [pending, setPending] = useState<PendingRequest | null>(null);
@@ -108,11 +108,9 @@ export function WalletConnectHost() {
     let unsub: (() => void) | undefined;
     const handler = createSessionRequestHandler<WalletKitTypes.SessionRequest>({
       account: () => evmRef.current,
-      sessionChainId: (topic) => sessionChainsRef.current.get(topic) ?? MAKALU_CHAIN_ID,
+      sessionChainId: (topic) => sessionChainsRef.current.get(topic) ?? DEFAULT_WC_CHAIN_ID,
       setSessionChainId: (topic, chainId) => { sessionChainsRef.current.set(topic, chainId); },
       supportedChainIds: SUPPORTED_CHAIN_IDS,
-      // The signing worker (and its fallback) broadcast on Makalu.
-      broadcastChainId: MAKALU_CHAIN_ID,
       respond: (topic, id, result) => respondRequest({ topic, id, result }),
       respondError: (topic, id, code, message) => respondError({ topic, id, code, message }),
       emitChainChanged,
@@ -126,17 +124,23 @@ export function WalletConnectHost() {
         async () => (await signerSignTypedData(typed)).signature,
         () => currentWallet().signTypedData(typed.domain, typed.types, typed.message),
       ),
-      sendTransaction: (tx) => withWorker(
-        async () => (await signerSignTransaction(tx)).hash,
-        async () => (await currentWallet(makeProvider()).sendTransaction({
-          to: tx.to,
-          value: tx.value ? BigInt(tx.value) : undefined,
-          data: tx.data,
-          gasLimit: tx.gasLimit,
-          maxFeePerGas: tx.maxFeePerGas,
-          maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
-        })).hash,
-      ),
+      // Signed for and broadcast on exactly the chain the request named.
+      sendTransaction: (tx, chainId) => {
+        const chain = getEvmChainMerged(chainId);
+        if (!chain) throw new Error(`This wallet can't send on chain ${chainId}.`);
+        return withWorker(
+          async () => (await signerSignTransaction({ ...tx, chainId, rpcUrl: chain.rpcUrl })).hash,
+          async () => (await currentWallet(new JsonRpcProvider(browserRpcUrl(chain.rpcUrl), chainId)).sendTransaction({
+            to: tx.to,
+            value: tx.value ? BigInt(tx.value) : undefined,
+            data: tx.data,
+            gasLimit: tx.gasLimit,
+            maxFeePerGas: tx.maxFeePerGas,
+            maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+            chainId: BigInt(chainId),
+          })).hash,
+        );
+      },
       confirm: queueForConfirm,
       blockedOrigin: (origin) => {
         const v = classifyOrigin(origin);
@@ -183,8 +187,8 @@ export function WalletConnectHost() {
     if (typeof raw !== 'string' || !raw.startsWith('eip155:')) return null;
     const id = parseInt(raw.slice('eip155:'.length), 10);
     if (!Number.isFinite(id)) return null;
-    const known = EVM_CHAINS.find(c => c.chainId === id);
-    const label = known?.name ?? (id === MAKALU_CHAIN_ID ? 'Lithosphere Makalu' : `Chain ${id}`);
+    const known = getEvmChainMerged(id);
+    const label = known?.name ?? `Chain ${id}`;
     return { id, label };
   })();
 

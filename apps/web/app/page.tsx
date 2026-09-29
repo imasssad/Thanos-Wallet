@@ -311,12 +311,12 @@ function ChainsSection() {
         </h2>
         <p className="lp-lede">
           BIP39 mnemonic, BIP44 derivation, native bridges. The same 12 words
-          unlock Lithosphere's Makalu chain, Bitcoin native SegWit, and every EVM you'd care to touch.
+          unlock Lithosphere Mainnet, Bitcoin native SegWit, and every EVM you'd care to touch.
         </p>
 
         <div className="lp-chain-grid">
           {[
-            { name: 'LITHOSPHERE', desc: 'Makalu — LITHO native, the full LEP100 token suite, dual litho1/0x addressing. The chain Thanos is built around.', stat: '10 LEP100 tokens', c: '#3b7af7' },
+            { name: 'LITHOSPHERE', desc: 'Mainnet — LITHO native, dual litho1/0x addressing. The chain Thanos is built around.', stat: 'Chain 9005', c: '#3b7af7' },
             { name: 'EVM',         desc: 'Ethereum, Polygon, Arbitrum and every wrapped token (wLITHO, USDC, ETH).',                    stat: '40+ networks', c: '#627eea' },
             { name: 'BITCOIN',     desc: 'Native SegWit (bc1q…) addresses derived from your phrase. No custodian.',                    stat: 'Self-custody', c: '#f7931a' },
           ].map(ch => (

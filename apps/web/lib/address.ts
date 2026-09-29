@@ -24,8 +24,6 @@ export {
   DUAL_ADDRESS_CHAIN_IDS, LITHO_BECH32_PREFIX,
 };
 
-/** The Makalu mainnet chain ID — used for "is this a Lithosphere address" decisions. */
-export const MAKALU_CHAIN_ID = 700777;
 
 export interface DualAddress {
   /** EIP-55 checksummed `0x…`. Always present once a wallet is unlocked. */

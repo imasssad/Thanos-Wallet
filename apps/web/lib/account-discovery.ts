@@ -14,7 +14,8 @@
  * user already has.
  */
 import { Mnemonic, HDNodeWallet } from 'ethers';
-import { getMakaluProvider, getKametProvider } from './rpc';
+import { getKametProvider } from './rpc';
+import { getEvmProvider } from './evm-chains';
 import { MAX_ACCOUNTS } from './vault';
 
 /** EVM (0x, EIP-55 checksummed) address for a given HD account index. */
@@ -35,7 +36,8 @@ export function deriveAccountAddresses(seed: string[], count: number): string[] 
 
 /**
  * Scan HD indices 0..MAX_ACCOUNTS-1 for any account holding a native balance on
- * Makalu OR Kamet, so funded accounts become reachable in the switcher.
+ * Lithosphere Mainnet OR Kamet, so funded accounts become reachable in the
+ * switcher.
  * Returns the account count to persist: (highest funded index) + 1, clamped to
  * [1, MAX_ACCOUNTS]. Best-effort: an RPC failure for an index counts as "not
  * funded" (so discovery can only ever grow the count, never shrink it).
@@ -45,12 +47,12 @@ export async function discoverFundedAccountCount(seed: string[]): Promise<number
   const results = await Promise.allSettled(
     Array.from({ length: MAX_ACCOUNTS }, (_, i) => i).map(async (i) => {
       const addr = deriveEvmAddressAt(seed, i);
-      const [mak, kam] = await Promise.allSettled([
-        getMakaluProvider().getBalance(addr),
+      const [main, kam] = await Promise.allSettled([
+        getEvmProvider(9005).getBalance(addr),
         getKametProvider().getBalance(addr),
       ]);
       const val = (r: PromiseSettledResult<bigint>) => (r.status === 'fulfilled' ? r.value : 0n);
-      return { i, funded: val(mak) > 0n || val(kam) > 0n };
+      return { i, funded: val(main) > 0n || val(kam) > 0n };
     }),
   );
   let highest = 0;

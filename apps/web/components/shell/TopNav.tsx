@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { getAccountName, getVisibleAccountIndices } from '../../lib/vault';
 import { TOKENS } from '../../lib/tokens';
-import { getActivity, type IndexerActivityItem } from '../../lib/indexer';
+import { type IndexerActivityItem } from '../../lib/indexer';
+import { pendingActivityRows } from '../../lib/tx-store';
 
 const ACCOUNT_NAME = 'RobbyWallet';
 
@@ -103,15 +104,14 @@ export function TopNav({
     return () => document.removeEventListener('keydown', onKey);
   }, [searchOpen]);
 
-  /* ── Notifications: recent on-chain activity from the indexer ── */
+  /* ── Notifications: the wallet's recent sends (the indexer feed covered
+     the Makalu testnet only — no longer part of the wallet, 2026-09-29) ── */
   const [notifOpen, setNotifOpen]   = useState(false);
   const [notifSeen, setNotifSeen]   = useState(false);
   const [notifItems, setNotifItems] = useState<IndexerActivityItem[] | null>(null);
   useEffect(() => {
     if (!notifOpen || !evm) return;
-    let cancel = false;
-    getActivity(evm).then(a => { if (!cancel) setNotifItems(a.slice(0, 6)); }).catch(() => { if (!cancel) setNotifItems([]); });
-    return () => { cancel = true; };
+    setNotifItems(pendingActivityRows([]).slice(0, 6));
   }, [notifOpen, evm]);
 
   return (

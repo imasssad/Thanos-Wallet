@@ -1,19 +1,22 @@
 'use client';
 /**
- * First-run Lithosphere Makalu prompts (web).
+ * First-run Lithosphere Mainnet prompts (web).
  *
  * Two surfaces, per client request (Esha, 2026-06-15) — "prompt first-time
  * users to add the Lithosphere network":
  *
  *   1. <AddNetworkNudge>  — if the visitor has an EXTERNAL injected wallet
  *      (MetaMask etc.), a one-time bottom banner offers a one-click
- *      "Add Lithosphere Makalu" via EIP-3085 wallet_addEthereumChain. This
- *      is the proactive version of @thanos/connect's ensureMakaluNetwork(),
- *      which only fires at dApp sign-in.
+ *      "Add Lithosphere" (Mainnet, chain 9005) via EIP-3085
+ *      wallet_addEthereumChain.
  *
- *   2. <MakaluWelcomeCard> — the first time a user lands in the unlocked
- *      Thanos wallet, a one-time card introduces the Lithosphere Makalu
- *      home network (chain 700777). Informational; no external wallet.
+ *   2. <MainnetWelcomeCard> — a one-time card introducing Lithosphere
+ *      Mainnet, the wallet's home network. Informational; no external wallet.
+ *
+ * Both used to point at the Makalu testnet, which the wallet no longer
+ * includes (2026-09-29); their "shown" flags were renamed so existing users
+ * see the Mainnet versions once — the welcome is where they learn a Makalu
+ * balance now needs Makalu added back as a custom network.
  *
  * Both self-gate: they read a localStorage flag on mount and render null
  * once it's set, so mounting them unconditionally in the shell is safe.
@@ -22,19 +25,19 @@
  */
 import React, { useEffect, useState } from 'react';
 
-/* Canonical Makalu params — identical to @thanos/connect ensureMakaluNetwork
-   and the WalletConnect signer, so every surface adds the same chain. */
-const MAKALU_CHAIN_ID = 700777;
-const MAKALU_PARAMS = {
-  chainId: `0x${MAKALU_CHAIN_ID.toString(16)}`, // 0xab169
-  chainName: 'Lithosphere Makalu',
-  rpcUrls: ['https://rpc.litho.ai'],
-  blockExplorerUrls: ['https://makalu.litho.ai/'],
+/* Lithosphere Mainnet params — the same chain the wallet's registry uses
+   (lib/evm-chains.ts, chain 9005). */
+const MAINNET_CHAIN_ID = 9005;
+const MAINNET_PARAMS = {
+  chainId: `0x${MAINNET_CHAIN_ID.toString(16)}`, // 0x232d
+  chainName: 'Lithosphere',
+  rpcUrls: ['https://rpc-mainnet.litho.ai'],
+  blockExplorerUrls: ['https://lithoscan.ai/'],
   nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
 } as const;
 
-const NUDGE_FLAG   = 'thanos.makalu_addnet_nudge.v1';
-const WELCOME_FLAG = 'thanos.makalu_welcome.v1';
+const NUDGE_FLAG   = 'thanos.mainnet_addnet_nudge.v1';
+const WELCOME_FLAG = 'thanos.mainnet_welcome.v1';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface InjectedProvider {
@@ -84,7 +87,7 @@ export function AddNetworkNudge() {
     if (!eth) { setVisible(false); return; }
     setStatus('adding');
     try {
-      await eth.request({ method: 'wallet_addEthereumChain', params: [MAKALU_PARAMS] });
+      await eth.request({ method: 'wallet_addEthereumChain', params: [MAINNET_PARAMS] });
       setStatus('added');
       setTimeout(() => setVisible(false), 1400);
     } catch {
@@ -106,7 +109,7 @@ export function AddNetworkNudge() {
       <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={36} height={36}
            style={{ flexShrink: 0, objectFit: 'contain' }}/>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 13 }}>Add Lithosphere Makalu</div>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>Add Lithosphere</div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
           {status === 'added'
             ? 'Network added to your wallet ✓'
@@ -139,7 +142,7 @@ export function AddNetworkNudge() {
 
 /* ─── 2. In-wallet welcome card ────────────────────────────────────────── */
 
-export function MakaluWelcomeCard() {
+export function MainnetWelcomeCard() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -158,13 +161,12 @@ export function MakaluWelcomeCard() {
              style={{ display: 'block', margin: '0 auto 16px', objectFit: 'contain' }}/>
         <h2 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos</h2>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 6px' }}>
-          Your wallet is on the <strong>Lithosphere Makalu</strong> network
-          (chain&nbsp;{MAKALU_CHAIN_ID}) — the Web4 home chain. The native coin
-          is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM networks
-          are built in too.
+          Your wallet is on <strong>Lithosphere Mainnet</strong>
+          (chain&nbsp;{MAINNET_CHAIN_ID}). The native coin is <strong>LITHO</strong>;
+          Bitcoin, Solana, Cosmos and EVM networks are built in too.
         </p>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 18px' }}>
-          Explorer: makalu.litho.ai · RPC: rpc.litho.ai
+          Testnets such as Makalu aren&apos;t included — add one in Settings → Custom networks &amp; tokens.
         </p>
         <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={() => setVisible(false)}>
           Got it

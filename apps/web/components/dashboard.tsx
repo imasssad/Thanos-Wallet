@@ -22,8 +22,7 @@ import { FitText } from './FitText';
 import { SecurityPanel } from './SecurityPanel';
 import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
-import { getPortfolio, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
-import { loadPortfolioSnapshot, savePortfolioSnapshot } from '../lib/cache-store';
+import { type IndexerActivityItem } from '../lib/indexer';
 import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
 import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
@@ -37,41 +36,6 @@ import { TransactionDetailModal } from './TransactionDetailModal';
 
 import { TOKENS } from '../lib/tokens';
 import { isCoinVisible } from '../lib/asset-visibility';
-
-/* Project an indexer asset onto a dashboard coin row, using canonical TOKENS
-   for icon/color/price (the indexer doesn't ship that metadata).
-   `prices` is the live CoinGecko snapshot; we prefer that over canonical. */
-function projectAsset(a: IndexerAsset, prices: Record<string, number> | null) {
-  const canon = TOKENS.find(t =>
-    t.sym.toLowerCase() === a.symbol.toLowerCase()
-    || (a.tokenAddress && t.address?.toLowerCase() === a.tokenAddress.toLowerCase())
-  );
-  let balNum = 0;
-  let balStr = '0';
-  try {
-    const formatted = ethers.formatUnits(a.balance || '0', a.decimals ?? 18);
-    balNum = parseFloat(formatted) || 0;
-    balStr = balNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
-  } catch { /* malformed */ }
-  // Known only from a real source (LITHO/LAX static or live CoinGecko) —
-  // no fabricated canon.priceUsd fallback, so a no-feed asset reads "—"
-  // and contributes $0 to the total (client directive 2026-06-15).
-  const priceUsd = prices?.[a.symbol] ?? null;
-  return {
-    sym:    a.symbol,
-    name:   a.name || canon?.name || a.symbol,
-    bal:    balStr,
-    balNum,
-    usdNum: balNum * (priceUsd ?? 0),
-    priceKnown: priceUsd != null,
-    chg:    canon?.change24h ?? 0,
-    color:  canon?.color ?? '#52525b',
-    /** Chain the asset lives on — drives the TokenIcon chain-badge. */
-    chainId: a.chainId,
-    /** True for the chain's native coin (LITHO/ETH/BNB/…). */
-    native:  !!a.native,
-  };
-}
 
 function projectActivity(item: IndexerActivityItem & { local?: boolean }) {
   const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
@@ -325,128 +289,6 @@ function PriceSparkline() {
   );
 }
 
-function ExchangeWidget({ liveBalances }: { liveBalances: Map<string, number> }) {
-  const [fromSym, setFromSym] = useState('LITHO');
-  const [toSym,   setToSym]   = useState(TOKENS.find(t => t.sym !== 'LITHO')?.sym ?? 'LitBTC');
-  const [fromAmt, setFromAmt] = useState('1000');
-  const [pickerOpen, setPickerOpen] = useState<'from' | 'to' | null>(null);
-
-  const fromTok = TOKENS.find(t => t.sym === fromSym) ?? TOKENS[0];
-  const toTok   = TOKENS.find(t => t.sym === toSym)   ?? TOKENS[1];
-  const fromPrice = fromTok.priceUsd || 1;
-  const toPrice   = toTok.priceUsd   || 1;
-  const out = (parseFloat(fromAmt || '0') * (fromPrice / toPrice)).toFixed(4);
-
-  // Live balance only — zero if nothing reported. No canonical fallback.
-  const fromBalNum = liveBalances.get(fromSym.toLowerCase()) ?? 0;
-  const fromBalDisplay = fromBalNum.toLocaleString('en-US', { maximumFractionDigits: 4 });
-
-  const flip = () => {
-    setFromSym(toSym);
-    setToSym(fromSym);
-  };
-
-  const pick = (side: 'from' | 'to', sym: string) => {
-    if (side === 'from') setFromSym(sym);
-    else                 setToSym(sym);
-    setPickerOpen(null);
-  };
-
-  return (
-    <div className="card">
-      <div className="exchange-header">
-        <span className="card-title">Exchange</span>
-        <span style={{ color: 'var(--text-muted)', fontSize: 18 }}>›</span>
-      </div>
-
-      {/* From row */}
-      <div className="coin-row" style={{ position: 'relative' }}>
-        <TokenIcon sym={fromTok.sym} icon={fromTok.icon} color={fromTok.color} size={32}/>
-        <button
-          className="coin-pick"
-          type="button"
-          onClick={() => setPickerOpen(p => p === 'from' ? null : 'from')}
-          style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit' }}
-        >
-          {fromTok.sym} ▾
-        </button>
-        <input className="coin-amount" value={fromAmt} onChange={e => setFromAmt(e.target.value)} type="number"/>
-        {pickerOpen === 'from' && <TokenPicker exclude={toSym} onPick={s => pick('from', s)}/>}
-      </div>
-      <div className="coin-balance">Balance: {fromBalDisplay} {fromTok.sym}</div>
-
-      <div className="swap-divider">
-        <button className="swap-btn" onClick={flip} type="button" aria-label="flip">⇅</button>
-      </div>
-
-      {/* To row */}
-      <div className="coin-row" style={{ position: 'relative' }}>
-        <TokenIcon sym={toTok.sym} icon={toTok.icon} color={toTok.color} size={32}/>
-        <button
-          className="coin-pick"
-          type="button"
-          onClick={() => setPickerOpen(p => p === 'to' ? null : 'to')}
-          style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', font: 'inherit' }}
-        >
-          {toTok.sym} ▾
-        </button>
-        <span className="coin-amount" style={{ display: 'block', userSelect: 'none' }}>{out}</span>
-        {pickerOpen === 'to' && <TokenPicker exclude={fromSym} onPick={s => pick('to', s)}/>}
-      </div>
-
-      <button className="btn-exchange">Exchange</button>
-    </div>
-  );
-}
-
-function TokenPicker({ exclude, onPick }: { exclude: string; onPick: (sym: string) => void }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 'calc(100% + 6px)',
-        left: 0,
-        right: 0,
-        zIndex: 30,
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border-default)',
-        borderRadius: 10,
-        padding: 4,
-        boxShadow: '0 6px 24px rgba(0,0,0,0.18)',
-        maxHeight: 240,
-        overflowY: 'auto',
-      }}
-      onClick={e => e.stopPropagation()}
-    >
-      {TOKENS.filter(t => t.sym !== exclude).map(t => (
-        <button
-          key={t.sym}
-          onClick={() => onPick(t.sym)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            width: '100%',
-            padding: '8px 8px',
-            borderRadius: 8,
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'inherit',
-            textAlign: 'left',
-          }}
-          onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-          onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
-        >
-          <TokenIcon sym={t.sym} icon={t.icon} color={t.color} size={24}/>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>{t.sym}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function StakingCard() {
   return (
     <div style={{
@@ -547,67 +389,20 @@ export function Dashboard() {
   // quick-action it stays a pop-up. Tracks which entry point opened it.
   const [swapFull, setSwapFull] = useState(false);
   /** Token-detail screen — opened by tapping any token row. chainId rides
-   *  along for EVM-native rows (ETH/BNB/…) so the screen labels the right
-   *  network instead of assuming Makalu. */
+   *  along for EVM rows (LITHO/ETH/BNB/…, tokens) so the screen labels and
+   *  reads the right network. */
   const [detail, setDetail] = useState<{ sym: string; chainId?: number } | null>(null);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices    = usePrices();
   const quotes    = useQuotes();
 
-  /* CACHED-FIRST: seed live state synchronously from THIS address's
-     last-known-good snapshot so the dashboard paints real numbers on
-     mount instead of blank/skeleton. A background refresh still runs
-     (loading stays "live" until getPortfolio resolves). Purely additive —
-     the fetch/offline logic below is unchanged. */
-  const initialSnap = useMemo(() => loadPortfolioSnapshot(evmAddress), [evmAddress]);
-  const [liveAssets,   setLiveAssets]   = useState<IndexerAsset[] | null>(initialSnap?.assets ?? null);
-  const [liveActivity, setLiveActivity] = useState<IndexerActivityItem[] | null>(initialSnap?.activity ?? null);
-  const [indexerOk,    setIndexerOk]    = useState<boolean>(true);
-
-  /* When the address changes, swap to THAT address's snapshot (or null if
-     none) before the background refresh lands. Skipped on the very first
-     render — the useState initializers already applied the snapshot, and
-     re-applying would clobber a fresh fetch that resolved first. */
-  const firstAddrRef = React.useRef(true);
-  useEffect(() => {
-    if (firstAddrRef.current) { firstAddrRef.current = false; return; }
-    const snap = loadPortfolioSnapshot(evmAddress);
-    setLiveAssets(snap?.assets ?? null);
-    setLiveActivity(snap?.activity ?? null);
-  }, [evmAddress]);
-
-  useEffect(() => {
-    if (!evmAddress) return;
-    let cancel = false;
-    (async () => {
-      try {
-        const p = await getPortfolio(evmAddress);
-        if (cancel) return;
-        const assets   = p.assets ?? [];
-        const activity = p.activity ?? [];
-        setLiveAssets(assets);
-        setLiveActivity(activity);
-        setIndexerOk(true);
-        // Only persist a real, successful result — never an offline/empty
-        // fallback — so a good snapshot is never poisoned.
-        savePortfolioSnapshot(evmAddress, { assets, activity });
-      } catch (e) {
-        if (cancel) return;
-        if (e instanceof IndexerOffline) {
-          setIndexerOk(false);
-          setLiveAssets([]);
-          setLiveActivity([]);
-        } else {
-          throw e;
-        }
-      }
-    })();
-    return () => { cancel = true; };
-  }, [evmAddress]);
+  /* Balances come straight from each chain's RPC below. The Thanos
+     indexer only covers the Makalu testnet, which the wallet no longer
+     includes (2026-09-29), so its holdings and activity aren't shown. */
 
   /* Solana + Bitcoin balances — fetched direct from their respective
-     RPCs (the LITHO indexer doesn't track non-EVM chains).
+     RPCs.
      Solana: mnemonic-only (no SLIP-0010 derivation from raw secp256k1 PK).
      Bitcoin: works for both mnemonic (BIP84) and private-key imports
      (single P2WPKH keypair derived from the raw 32-byte key). */
@@ -617,6 +412,9 @@ export function Dashboard() {
      Each chain is one parallel RPC call; one slow / dead endpoint doesn't
      block the rest. */
   const [evmChainBalances, setEvmChainBalances] = useState<Array<{ chain: EvmChain; balance: number }>>([]);
+  /** False until the first per-chain EVM read lands — drives the cold-load
+   *  skeleton (Lithosphere Mainnet is one of these chains). */
+  const [evmLoaded, setEvmLoaded] = useState(false);
   const [evmTokenBalances, setEvmTokenBalances] = useState<Array<{ token: EvmTokenLike; balance: number }>>([]);
   const walletSeed = wallet?.seed;
   const walletPk   = wallet?.privateKey;
@@ -657,8 +455,9 @@ export function Dashboard() {
      dashboard can show "ETH on Arbitrum" separately from "ETH on
      mainnet". */
   useEffect(() => {
-    if (!evmAddress) { setEvmChainBalances([]); setEvmTokenBalances([]); return; }
+    if (!evmAddress) { setEvmChainBalances([]); setEvmTokenBalances([]); setEvmLoaded(false); return; }
     let cancel = false;
+    setEvmLoaded(false);
     (async () => {
       try {
         const rows = await getAllEvmNativeBalancesMerged(evmAddress);
@@ -666,6 +465,7 @@ export function Dashboard() {
       } catch {
         if (!cancel) setEvmChainBalances([]);
       }
+      if (!cancel) setEvmLoaded(true);
     })();
     // Stablecoins (USDT/USDC) across the same chains — separate so a slow
     // token read doesn't hold up the native-balance render.
@@ -681,9 +481,8 @@ export function Dashboard() {
   }, [evmAddress]);
 
   /* Build the coin rows STRICTLY from real chain state. No canonical
-     fallback: if the indexer says zero and the non-EVM RPCs say zero,
-     we show an empty list. This avoids the "wallet looks mocked" feel
-     when the user is on a fresh testnet account. */
+     fallback: if every chain says zero we show an empty list. Every EVM row
+     carries its chainId. */
   const COINS = useMemo(() => {
     const buildNonEvmRow = (sym: 'SOL' | 'BTC', balance: number | null) => {
       const tok = TOKENS.find(t => t.sym === sym);
@@ -744,9 +543,7 @@ export function Dashboard() {
       };
     });
 
-    const fromLive = (liveAssets ?? []).map(a => projectAsset(a, prices)).filter(c => c.balNum > 0);
-
-    const combined = [...fromLive, ...evmRows, ...evmTokenRows, ...extraRows];
+    const combined = [...evmRows, ...evmTokenRows, ...extraRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
@@ -756,7 +553,7 @@ export function Dashboard() {
       chainId: c.chainId, native: c.native,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [liveAssets, solBalance, btcBalance, evmChainBalances, evmTokenBalances, prices]);
+  }, [solBalance, btcBalance, evmChainBalances, evmTokenBalances, prices]);
 
   /* Bumped to force a recompute of the optimistic pending rows (localStorage
      mutations don't trigger React). Ticked when the Send modal closes and on
@@ -769,20 +566,12 @@ export function Dashboard() {
   }, []);
 
   const TXS = useMemo(() => {
-    // Confirmed/indexed activity rows.
-    const indexed = (liveActivity ?? []).map(projectActivity);
-    // Optimistic local sends not yet in the indexer result — deduped by hash
-    // against the indexed rows, so a tx drops its Pending copy the moment the
-    // indexer reports it (the real confirmed row wins).
-    const indexedHashes = (liveActivity ?? [])
-      .map(a => a.txHash ?? a.id)
-      .filter((h): h is string => !!h);
-    const pending = pendingActivityRows(indexedHashes).map(projectActivity);
-    // Pending rows first (top of the list), then indexed. Cap at 6 like before.
-    return [...pending, ...indexed].slice(0, 6);
+    // The sends this wallet recorded (the Makalu-only indexer feed is gone).
+    // Cap at 6 like before.
+    return pendingActivityRows([]).map(projectActivity).slice(0, 6);
     // pendingTick forces re-eval after a send / on the interval.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveActivity, pendingTick]);
+  }, [pendingTick]);
 
   // Hidden networks/assets drop out of the total too — consistent with the
   // list filtering above and the other clients (a hidden holding shouldn't
@@ -820,13 +609,6 @@ export function Dashboard() {
     };
   })();
 
-  // For the Exchange widget — map of lowercase symbol → live balance number.
-  const liveBalances = useMemo(() => {
-    const m = new Map<string, number>();
-    (liveAssets ?? []).map(a => projectAsset(a, prices)).forEach(a => m.set(a.sym.toLowerCase(), a.balNum));
-    return m;
-  }, [liveAssets, prices]);
-
   /* MM-style home: centered vertical column. Hero balance → 4 big
      action buttons → tabs (Tokens / DeFi / NFTs / Activity) → tab body.
      The dense charts + Exchange widget + Staking from the prior layout
@@ -835,10 +617,9 @@ export function Dashboard() {
   const [tab, setTab] = useState<'tokens' | 'defi' | 'nfts' | 'activity' | 'cards' | 'quantt'>('tokens');
   const [txDetail, setTxDetail] = useState<IndexerActivityItem | null>(null);
 
-  /* Network filter for the Tokens tab. The wallet today has assets on
-     four "kinds" of chain: Lithosphere Makalu, EVM-imported tokens,
-     Bitcoin, and Solana. 'all' keeps the current behaviour (everything). */
-  type NetFilter = 'all' | 'Makalu' | 'Kamet' | 'EVM' | 'Bitcoin' | 'Solana';
+  /* Network filter for the Tokens tab: Lithosphere Mainnet, the other EVM
+     chains, Bitcoin, Solana. 'all' keeps everything. */
+  type NetFilter = 'all' | 'Lithosphere' | 'EVM' | 'Bitcoin' | 'Solana';
   const [netFilter, setNetFilter] = useState<NetFilter>('all');
   // Token-list controls behind the sliders (sort/hide) and ⋮ (quick actions).
   type SortMode = 'value-desc' | 'value-asc' | 'name';
@@ -872,19 +653,18 @@ export function Dashboard() {
     // stay unaffected; this is a portfolio-VIEW preference only).
     let list = COINS.filter(isCoinVisible);
     if (netFilter !== 'all') {
-      list = list.filter(c => {
-        const t = TOKENS.find(x => x.sym === c.sym);
-        return t?.chain === netFilter;
-      });
+      list = list.filter(c =>
+        netFilter === 'Lithosphere' ? c.chainId === 9005
+        : netFilter === 'EVM'       ? c.chainId != null && c.chainId !== 9005
+        : netFilter === 'Bitcoin'   ? c.sym === 'BTC' && c.chainId == null
+        :                             c.sym === 'SOL' && c.chainId == null);
     }
     if (hideSmall) list = list.filter(c => c.usdNum >= 1);
     list = [...list].sort((a, b) => {
       // Lithosphere MAINNET (chainId 9005) always leads regardless of
       // amount or the chosen sort mode — the Web4 home chain, client
       // requirement 2026-08-27. Rank by chainId specifically (not just
-      // "any LITHO"), which previously let Makalu's LITHO (700777) sort
-      // ahead of Mainnet's — same bug found + fixed on extension/desktop,
-      // 2026-09-18.
+      // "any LITHO") — a custom network's LITHO mustn't sort ahead of it.
       const al = a.chainId === 9005 ? -1 : a.sym === 'LITHO' ? 0 : 1;
       const bl = b.chainId === 9005 ? -1 : b.sym === 'LITHO' ? 0 : 1;
       if (al !== bl) return al - bl;
@@ -895,12 +675,11 @@ export function Dashboard() {
     return list;
   }, [COINS, netFilter, hideSmall, sortMode]);
 
-  /* COLD LOAD = the portfolio fetch hasn't resolved AND no snapshot
-     hydrated the view (liveAssets/liveActivity are still their initial
-     null). In that state show skeletons; once a snapshot or the fresh
-     fetch supplied data, render the real content (never a skeleton). */
-  const assetsCold   = liveAssets   === null;
-  const activityCold = liveActivity === null;
+  /* COLD LOAD = the first per-chain balance read hasn't landed yet. In
+     that state show skeletons; afterwards the real content (never a
+     skeleton). Activity is local, so it's never cold. */
+  const assetsCold   = !!evmAddress && !evmLoaded;
+  const activityCold = false;
 
   return (
     <div style={{
@@ -958,13 +737,6 @@ export function Dashboard() {
             >
               {balanceHidden ? <EyeOff size={14}/> : <Eye size={14}/>}
             </button>
-            {!indexerOk && (
-              <span style={{
-                fontSize: 9, letterSpacing: 1.2, padding: '2px 6px',
-                background: 'var(--bg-elevated)', borderRadius: 4,
-                color: 'var(--text-secondary)', fontWeight: 600,
-              }}>OFFLINE · SAMPLE</span>
-            )}
           </div>
           <div style={{ marginTop: 10, width: '100%', textAlign: 'center' }}>
             {assetsCold ? (
@@ -1090,10 +862,9 @@ export function Dashboard() {
                   value={netFilter}
                   onChange={v => setNetFilter(v as NetFilter)}
                   options={[
-                    { value: 'all',     label: 'All networks' },
-                    { value: 'Makalu',  label: 'Lithosphere Makalu · Testnet' },
-                    { value: 'Kamet',   label: 'Lithosphere Kamet · Testnet' },
-                    { value: 'EVM',     label: 'Ethereum & EVM' },
+                    { value: 'all',         label: 'All networks' },
+                    { value: 'Lithosphere', label: 'Lithosphere' },
+                    { value: 'EVM',         label: 'Ethereum & EVM' },
                     { value: 'Bitcoin', label: 'Bitcoin' },
                     { value: 'Solana',  label: 'Solana' },
                   ]}
@@ -1155,7 +926,7 @@ export function Dashboard() {
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 360, lineHeight: 1.5 }}>
                     {netFilter === 'all'
-                      ? <>Receive LITHO, BTC, SOL or any LEP100 token to this wallet to see it here. Balances refresh automatically.</>
+                      ? <>Receive LITHO, BTC, SOL or any token to this wallet to see it here. Balances refresh automatically.</>
                       : <>Switch the filter back to <b>All networks</b> to see what you do have.</>}
                   </div>
                   {netFilter === 'all' && evmAddress && (
@@ -1163,14 +934,6 @@ export function Dashboard() {
                       <button className="settings-btn" onClick={() => setModal('receive')}>
                         Receive
                       </button>
-                      <a
-                        href="https://makalu.litho.ai/faucet"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="settings-btn"
-                      >
-                        Get testnet LITHO
-                      </a>
                     </div>
                   )}
                 </div>
@@ -1255,8 +1018,14 @@ export function Dashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {/* Swap — primary DeFi action, top of the tab */}
             <div>
-              <SectionHead title="Swap" sub="Bridge LITHO ecosystem tokens via MultX"/>
-              <ExchangeWidget liveBalances={liveBalances}/>
+              <SectionHead title="Swap" sub="Coming soon on Lithosphere Mainnet"/>
+              <div style={{
+                padding: '16px', textAlign: 'center',
+                background: 'var(--bg-elevated)', border: '1px dashed var(--border-default)',
+                borderRadius: 12, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
+              }}>
+                Swaps will open on Lithosphere Mainnet. Until then, send and receive work as usual.
+              </div>
             </div>
 
             {/* Stake — Solstice (live position) + a "More pools coming" hint */}
@@ -1306,16 +1075,16 @@ export function Dashboard() {
             <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 380, lineHeight: 1.5 }}>
               NFTs you receive on Lithosphere (LEP-721 / LEP-1155) will appear here.
               Indexing pipeline ships with the next backend slice — until then,
-              browse and mint on the Lithosphere marketplace.
+              look them up on Lithoscan, the Lithosphere Mainnet explorer.
             </div>
             <a
-              href="https://makalu.litho.ai/nfts"
+              href="https://lithoscan.ai"
               target="_blank"
               rel="noopener noreferrer"
               className="settings-btn"
               style={{ marginTop: 4 }}
             >
-              <BadgeCheck size={14}/> Browse marketplace
+              <BadgeCheck size={14}/> Open Lithoscan
             </a>
           </div>
         )}
@@ -1337,21 +1106,12 @@ export function Dashboard() {
               No activity yet
             </div>
             <div style={{ fontSize: 12, maxWidth: 360 }}>
-              Every Send / Receive on Lithosphere will land here. The indexer
-              picks transactions up roughly every 15s.
+              Every Send you make from this wallet lands here.
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               <button className="settings-btn" onClick={() => setModal('receive')}>
                 <ArrowDownLeft size={14}/> Receive funds
               </button>
-              <a
-                href="https://makalu.litho.ai/faucet"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="settings-btn"
-              >
-                Get testnet LITHO
-              </a>
             </div>
           </div>
         )}

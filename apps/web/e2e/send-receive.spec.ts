@@ -19,9 +19,12 @@ test.describe('Send / Receive', () => {
     await page.getByRole('button', { name: 'Receive' }).first().click();
 
     // The receive screen lists the networks the wallet has addresses on.
-    await expect(page.getByText(/receiving address/i)).toBeVisible();
-    await expect(page.getByText('Lithosphere Makalu').first()).toBeVisible();
-    await expect(page.getByText('Bitcoin').first()).toBeVisible();
+    await expect(page.getByPlaceholder('Search networks')).toBeVisible();
+    const sheet = page.locator('.modal-box').first();
+    await expect(sheet.getByText('Lithosphere', { exact: true }).first()).toBeVisible();
+    await expect(sheet.getByText('Bitcoin', { exact: true }).first()).toBeVisible();
+    // Makalu isn't built in any more (2026-09-29).
+    await expect(sheet.getByText(/Makalu/)).toHaveCount(0);
   });
 
   test('Send modal validates the recipient address', async ({ page }) => {
@@ -29,7 +32,7 @@ test.describe('Send / Receive', () => {
     await page.getByRole('button', { name: 'Send' }).first().click();
 
     // Modal mounts with the recipient field.
-    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address/i).first();
+    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address|address \(0x/i).first();
     await expect(recipient).toBeVisible();
 
     // Garbage input → the Send button stays disabled (validation gates
@@ -49,8 +52,9 @@ test.describe('Send / Receive', () => {
     await createWallet(page);
     await page.getByRole('button', { name: 'Send' }).first().click();
 
-    // The network trigger defaults to Lithosphere Makalu.
-    await expect(page.getByText('Lithosphere Makalu').first()).toBeVisible();
+    // The network trigger defaults to Lithosphere Mainnet.
+    await expect(page.getByRole('combobox', { name: 'Send network' })).toHaveText(/Lithosphere/);
+    await expect(page.getByText(/Makalu/)).toHaveCount(0);
     // Send button reflects the active asset.
     await expect(page.getByRole('button', { name: /send (litho|btc|sol|atom|eth)/i }).first()).toBeVisible();
   });

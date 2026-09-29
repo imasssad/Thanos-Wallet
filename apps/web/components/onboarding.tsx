@@ -1,7 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { HDNodeWallet, Mnemonic, Wallet, getAddress, isHexString } from 'ethers';
-import { discoverTokens } from '../lib/token-discovery';
 import {
   Wallet as WalletIcon, ChevronLeft, Eye, EyeOff, Copy, Check,
   AlertTriangle, Lock,
@@ -175,9 +174,6 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(source);
-      // Fire-and-forget: scan the indexer for any LEP100 balances on this
-      // address and persist them so the wallet renders them on first paint.
-      discoverTokens(deriveEvmAddress(words)).catch(() => {});
     } finally {
       setBusy(false);
     }
@@ -199,7 +195,6 @@ export function OnboardingFlow({ hasVault, onComplete }: { hasVault: boolean; on
       const opened = await openVault(vault, password);
       if (opened) cacheSessionKey(opened.key);
       onComplete(source);
-      discoverTokens(pk.address).catch(() => {});
     } finally {
       setBusy(false);
     }

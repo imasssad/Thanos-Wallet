@@ -16,7 +16,9 @@ import {
 import { useDisplayCurrency } from '../lib/use-fx';
 import { loadVault, openVault, setSeedBackedUp, isSeedBackedUp, clearVault, getActiveAccountIndex } from '../lib/vault';
 import { walletFromSeed } from '../lib/signer';
-import { getPortfolio, getActivity, IndexerOffline, type IndexerAsset, type IndexerActivityItem } from '../lib/indexer';
+import { type IndexerActivityItem } from '../lib/indexer';
+import { useLiveBalances } from '../lib/useLiveBalances';
+import { KAMET_CHAIN_ID } from '../lib/rpc';
 import { apiClient, type AuthUser } from '../lib/auth-client';
 import { TokenIcon } from './TokenIcon';
 import { Select } from './ui/Select';
@@ -263,76 +265,69 @@ export function PortfolioView() {
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices = usePrices();
-  /** Token-detail screen — opened by tapping any asset row. */
-  const [detailSym, setDetailSym] = useState<string | null>(null);
+  /** Token-detail screen — opened by tapping any asset row (with its chain). */
+  const [detail, setDetail] = useState<{ sym: string; chainId?: number } | null>(null);
 
-  // Indexer-backed live balances. Null = haven't tried yet; [] = tried,
-  // got nothing; non-empty = real data. We never throw out the canonical
-  // TOKENS list — it provides icons/colors/prices the indexer doesn't have.
-  const [liveAssets, setLiveAssets] = useState<IndexerAsset[] | null>(null);
-  const [indexerOk,  setIndexerOk]  = useState<boolean>(true);
-  const [updatedAt,  setUpdatedAt]  = useState<string | null>(null);
-
+  // Balances straight from each chain's RPC — every EVM chain (Lithosphere
+  // Mainnet first) with its tokens, plus BTC / SOL / ATOM. (This page used to
+  // show only the Thanos indexer's holdings, which cover the Makalu testnet
+  // alone — no longer part of the wallet, 2026-09-29.)
+  const walletSource = wallet?.privateKey
+    ? { kind: 'privateKey' as const, privateKey: wallet.privateKey }
+    : wallet?.seed?.length
+      ? { kind: 'mnemonic' as const, mnemonic: wallet.seed.join(' ') }
+      : null;
+  const live = useLiveBalances(evmAddress, walletSource);
+  const [tokenBals, setTokenBals] = useState<Array<{ token: customAssets.EvmTokenLike; balance: number }>>([]);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   useEffect(() => {
     if (!evmAddress) return;
     let cancel = false;
-    (async () => {
-      try {
-        const portfolio = await getPortfolio(evmAddress);
-        if (cancel) return;
-        setLiveAssets(portfolio.assets ?? []);
-        setUpdatedAt(portfolio.updatedAt);
-        setIndexerOk(true);
-      } catch (e) {
-        if (cancel) return;
-        if (e instanceof IndexerOffline) {
-          setIndexerOk(false);
-          setLiveAssets([]); // fall back to canonical TOKENS rendering below
-        } else {
-          throw e;
-        }
-      }
-    })();
+    customAssets.getAllEvmTokenBalancesMerged(evmAddress)
+      .then(r => { if (!cancel) setTokenBals(r); })
+      .catch(() => { /* a token read failing leaves that row out */ });
     return () => { cancel = true; };
   }, [evmAddress]);
+  useEffect(() => { if (!live.loading) setUpdatedAt(Date.now()); }, [live.loading]);
 
-  // Map a live indexer asset onto a UI row, using canonical TOKENS for
-  // icon/color/price (the indexer doesn't know about those).
-  function mergeRow(a: IndexerAsset) {
-    const canon = TOKENS.find(t =>
-      t.sym.toLowerCase() === a.symbol.toLowerCase() ||
-      (a.tokenAddress && t.address?.toLowerCase() === a.tokenAddress.toLowerCase())
-    );
-    let displayBal = '0';
-    try {
-      displayBal = ethers.formatUnits(a.balance || '0', a.decimals ?? 18);
-    } catch { /* malformed — leave 0 */ }
-    const balNum  = parseFloat(displayBal) || 0;
-    // Price is known ONLY when there's a real source (LITHO/LAX static or a
-    // live CoinGecko quote). No fabricated TOKENS[].priceUsd fallback — an
-    // unknown price renders "—", and the asset contributes $0 to totals.
-    const priceUsd = prices?.[a.symbol] ?? null;
-    return {
-      sym:   a.symbol,
-      name:  a.name || canon?.name || a.symbol,
-      bal:   balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }),
-      balNum,
-      usd:   Math.round(balNum * (priceUsd ?? 0)),
-      chg:   canon?.change24h ?? 0,
-      color: canon?.color ?? '#52525b',
-      priceUsd,
-    };
+  // Price is known ONLY when there's a real source (a live quote; USDT/USDC
+  // ≈ $1). No fabricated price — an unknown one renders "—" and the asset
+  // contributes $0 to totals.
+  const rowsRaw = [
+    ...live.evm.filter(e => e.balance > 0).map(e => ({
+      key: `${e.chain.nativeSymbol}@${e.chain.chainId}`, sym: e.chain.nativeSymbol, name: e.chain.name,
+      chainId: e.chain.chainId as number | undefined, balNum: e.balance,
+      priceUsd: prices?.[e.chain.nativeSymbol] ?? null, color: e.chain.color,
+    })),
+    ...tokenBals.map(({ token, balance }) => ({
+      key: `${token.symbol}@${token.chainId}:${token.address}`, sym: token.symbol,
+      name: `${token.name} · ${customAssets.getEvmChainMerged(token.chainId)?.name ?? `Chain ${token.chainId}`}`,
+      chainId: token.chainId as number | undefined, balNum: balance,
+      priceUsd: prices?.[token.symbol] ?? (token.symbol === 'USDT' || token.symbol === 'USDC' ? 1 : null),
+      color: TOKENS.find(t => t.sym === token.symbol)?.color ?? '#52525b',
+    })),
+    ...(['BTC', 'SOL', 'ATOM'] as const).map(sym => ({
+      key: sym, sym, name: TOKENS.find(t => t.sym === sym)?.name ?? sym,
+      chainId: undefined as number | undefined, balNum: live.bySymNumber.get(sym.toLowerCase()) ?? 0,
+      priceUsd: prices?.[sym] ?? null, color: TOKENS.find(t => t.sym === sym)?.color ?? '#52525b',
+    })).filter(r => r.balNum > 0),
+  ].sort((a, b) => (a.chainId === 9005 ? -1 : 0) - (b.chainId === 9005 ? -1 : 0));
+  const _raw = rowsRaw.map(r => ({
+    ...r,
+    bal: r.balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }),
+    usd: Math.round(r.balNum * (r.priceUsd ?? 0)),
+    chg: quoteChange(r.sym),
+  }));
+  function quoteChange(sym: string): number {
+    return TOKENS.find(t => t.sym === sym)?.change24h ?? 0;
   }
-
-  // Pick which dataset to render:
-  //  - STRICTLY real indexer data. No canonical fallback — if the indexer
-  //    has no rows we render an empty state below.
-  const _raw = (liveAssets ?? []).map(mergeRow).filter(r => r.balNum > 0);
   const _total = _raw.reduce((s, r) => s + r.usd, 0) || 1;
 
   const coins = _raw.map(r => ({
+    key:   r.key,
     sym:   r.sym,
     name:  r.name,
+    chainId: r.chainId,
     bal:   r.bal,
     usd:   r.usd,
     chg:   r.chg,
@@ -351,18 +346,11 @@ export function PortfolioView() {
   });
   return (
     <div className="main-area" style={{ width: '100%' }}>
-      {detailSym && <TokenDetailModal sym={detailSym} onClose={() => setDetailSym(null)}/>}
+      {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Assets</h1>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            {!indexerOk && (
-              <span style={{
-                fontSize: 10, letterSpacing: 1, padding: '2px 6px',
-                background: 'var(--bg-elevated)', borderRadius: 4,
-                color: 'var(--text-secondary)',
-              }}>OFFLINE — indexer unreachable</span>
-            )}
             <span>
               Updated {updatedAt ? new Date(updatedAt).toLocaleTimeString() : 'just now'}
             </span>
@@ -385,7 +373,7 @@ export function PortfolioView() {
               </div>
             </div>
             {coins.map(c => (
-              <div key={c.sym} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+              <div key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }}/>
                 <span style={{ fontSize: 12, flex: 1, color: 'var(--text-secondary)' }}>{c.name}</span>
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{c.pct}%</span>
@@ -406,10 +394,10 @@ export function PortfolioView() {
               <tbody>
                 {coins.map(c => (
                   <tr
-                    key={c.sym}
-                    onClick={() => setDetailSym(c.sym)}
+                    key={c.key}
+                    onClick={() => setDetail({ sym: c.sym, chainId: c.chainId })}
                     tabIndex={0}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailSym(c.sym); } }}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail({ sym: c.sym, chainId: c.chainId }); } }}
                     style={{ cursor: 'pointer' }}
                   >
                     <td>
@@ -441,9 +429,9 @@ export function PortfolioView() {
 }
 
 function activityToRow(item: IndexerActivityItem) {
-  // The indexer's activity rows are normalised but light on display metadata;
-  // we look up icon/color from canonical TOKENS by symbol and format the
-  // amount with the right decimals. Unknown tokens fall back to neutral grey.
+  // Activity rows are normalised but light on display metadata; we look up
+  // icon/color from canonical TOKENS by symbol. Unknown tokens fall back to
+  // neutral grey.
   const canon = TOKENS.find(t => t.sym.toLowerCase() === item.symbol.toLowerCase());
   // Indexer + local activity amounts are ALREADY human-readable (indexer runs
   // formatTokenAmount by decimals). Re-applying formatUnits collapsed a
@@ -476,8 +464,11 @@ export function TransactionsView() {
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const [filter, setFilter] = useState<'All'|'Send'|'Receive'|'Swap'>('All');
-  const [live,   setLive]   = useState<IndexerActivityItem[] | null>(null);
-  const [indexerOk, setIndexerOk] = useState<boolean>(true);
+  // Settled history came from the Thanos indexer, which covers the Makalu
+  // testnet only — no longer part of the wallet (2026-09-29). The wallet's
+  // own sends show in the Pending section below until they settle.
+  const live: IndexerActivityItem[] = [];
+  void evmAddress;
 
   /* Pending (broadcast-but-unconfirmed) txs from local store. Currently
      only BTC is persisted here — EVM / Solana pending state lands when
@@ -491,29 +482,9 @@ export function TransactionsView() {
     return () => window.removeEventListener('storage', refresh);
   }, []);
 
-  useEffect(() => {
-    if (!evmAddress) return;
-    let cancel = false;
-    (async () => {
-      try {
-        const items = await getActivity(evmAddress);
-        if (!cancel) { setLive(items); setIndexerOk(true); }
-      } catch (e) {
-        if (cancel) return;
-        if (e instanceof IndexerOffline) {
-          setIndexerOk(false);
-          setLive([]);
-        } else {
-          throw e;
-        }
-      }
-    })();
-    return () => { cancel = true; };
-  }, [evmAddress]);
-
-  // Keep the raw indexer item beside its display row so a click can open the
-  // detail modal (which needs hash/counterparty/ts, not the formatted row).
-  const rows = live && live.length > 0 ? live.map(item => ({ ...activityToRow(item), item })) : [];
+  // Keep the raw item beside its display row so a click can open the detail
+  // modal (which needs hash/counterparty/ts, not the formatted row).
+  const rows = live.map(item => ({ ...activityToRow(item), item }));
   const filtered = filter === 'All' ? rows : rows.filter(t => t.type === filter);
   const [detail, setDetail] = useState<IndexerActivityItem | null>(null);
   return (
@@ -522,13 +493,6 @@ export function TransactionsView() {
         <div className="page-header">
           <h1 className="page-title">Transactions</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {!indexerOk && (
-              <span style={{
-                fontSize: 10, letterSpacing: 1, padding: '2px 6px',
-                background: 'var(--bg-elevated)', borderRadius: 4,
-                color: 'var(--text-secondary)',
-              }}>OFFLINE — indexer unreachable</span>
-            )}
             <div style={{ display: 'flex', gap: 6 }}>
               {(['All','Send','Receive','Swap'] as const).map(f => (
                 <button key={f} className={`filter-pill ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f}</button>
@@ -664,7 +628,7 @@ export function TransactionsView() {
 }
 
 /* Staking is a route stub today — the Lithosphere validator + LP pools
- *  aren't deployed on Makalu testnet yet. Once a real staking contract +
+ *  aren't deployed on Lithosphere Mainnet yet. Once a real staking contract +
  *  position-query endpoint land, this view becomes a real list. Until
  *  then it's an honest "Coming soon" instead of a Solstice mock. */
 export function StakingView() {
@@ -687,7 +651,7 @@ export function StakingView() {
           <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 380 }}>
             Lithosphere validator staking, LITHO/LitBTC LP, and the LAX
             stable-yield vault will appear here as soon as the staking
-            contract is deployed on Makalu. Your active positions will
+            contract is deployed on Lithosphere Mainnet. Your active positions will
             show up automatically.
           </div>
         </div>
@@ -807,9 +771,7 @@ function AccountSection({ Section, Row }: {
 
 /* ─── Networks section — show/hide which chains appear in the portfolio ──
    Purely a display preference (asset-visibility.ts's header note): Send/
-   Receive/detail navigation are unaffected. Lithosphere Mainnet (9005) and
-   Makalu are independent, separately-hideable rows since native LITHO
-   exists on both. ─────────────────────────────────────────────────────── */
+   Receive/detail navigation are unaffected. ──────────────────────────── */
 function NetworksSection({ Section, Row }: {
   Section: React.FC<{ icon: React.ElementType; title: string; sub: string; children: React.ReactNode }>;
   Row:     React.FC<{ label: string; sub?: string; children: React.ReactNode }>;
@@ -1355,10 +1317,10 @@ function DnnsSection({ Section }: {
     }
     setBusy(true);
     try {
-      const { DnnsService, MAKALU_TESTNET } = await import('@thanos/sdk-core');
+      const { DnnsService } = await import('@thanos/sdk-core');
       const svc = new DnnsService();
       const result = await svc.register({
-        chainId: MAKALU_TESTNET.chainId,
+        chainId: KAMET_CHAIN_ID,   // the DNNS registry lives on Kamet
         name:    v,
         owner:   wallet.evmAddress,
         years:   yrs,
@@ -1542,7 +1504,7 @@ export function SettingsView() {
         <DnnsSection Section={Section}/>
 
         <Section icon={Shield} title="Security" sub="Protect access to your wallet">
-          <Row label="Permissions" sub="Token allowances + connected dApps">
+          <Row label="Permissions" sub="Connected dApps">
             <Link href="/app/permissions" className="settings-btn settings-btn-link">
               <KeyRound size={14}/> Manage <ChevronRight size={14}/>
             </Link>

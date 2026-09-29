@@ -15,7 +15,7 @@
  * components, but Next can still evaluate it during a server render pass).
  */
 import { Contract, JsonRpcProvider } from 'ethers';
-import { EVM_CHAINS, getEvmProvider, type EvmChain } from './evm-chains';
+import { EVM_CHAINS, getEvmProvider, registerChainLookup, browserRpcUrl, type EvmChain } from './evm-chains';
 import { EVM_TOKENS, type EvmToken } from './evm-tokens';
 
 const CHAINS_KEY = 'thanos.custom_evm_chains.v1';
@@ -92,6 +92,8 @@ export function allEvmTokens(): EvmTokenLike[] {
 export function getEvmChainMerged(chainId: number): EvmChain | undefined {
   return allEvmChains().find((c) => c.chainId === chainId);
 }
+// getEvmProvider() resolves custom networks through this.
+registerChainLookup(getEvmChainMerged);
 
 /* ── balance readers (merged; mirror evm-chains.ts / evm-tokens.ts) ──── */
 
@@ -138,7 +140,7 @@ const ERC20_ABI = [
 
 /** Read a network's real chainId from its RPC (validates the URL + id match). */
 export async function probeChainId(rpcUrl: string): Promise<number> {
-  const provider = new JsonRpcProvider(rpcUrl);
+  const provider = new JsonRpcProvider(browserRpcUrl(rpcUrl));
   const net = await provider.getNetwork();
   return Number(net.chainId);
 }
@@ -147,7 +149,7 @@ export interface TokenMeta { symbol: string; name: string; decimals: number }
 
 /** Read ERC-20 symbol/name/decimals on-chain. Throws if not a valid ERC-20. */
 export async function probeErc20(rpcUrl: string, address: string): Promise<TokenMeta> {
-  const provider = new JsonRpcProvider(rpcUrl);
+  const provider = new JsonRpcProvider(browserRpcUrl(rpcUrl));
   const c = new Contract(address, ERC20_ABI, provider);
   const [symbol, decimals, name] = await Promise.all([
     c.symbol() as Promise<string>,
@@ -168,11 +170,13 @@ function persist(): void {
   } catch { /* ignore */ }
 }
 
-/** Add a custom EVM network. Rejects if the chainId collides with a built-in. */
+/** Add a custom EVM network. Rejects if the chainId collides with a built-in.
+ *  (Makalu, 700777, isn't built in any more — it's added here like any other
+ *  network.) */
 export async function addCustomChain(input: {
   chainId: number; name: string; rpcUrl: string; nativeSymbol: string; explorerUrl: string;
 }): Promise<void> {
-  if (EVM_CHAINS.some((c) => c.chainId === input.chainId) || input.chainId === 700777) {
+  if (EVM_CHAINS.some((c) => c.chainId === input.chainId)) {
     throw new Error('That network is already built in');
   }
   chainCache = [

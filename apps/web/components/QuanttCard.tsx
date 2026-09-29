@@ -201,7 +201,7 @@ const CHAIN_TO_SEND_NETWORK: Partial<Record<string, SendNetId>> = {
   arbitrum:    'evm:42161',
   base:        'evm:8453',
   bnb:         'evm:56',
-  lithosphere: 'makalu',
+  lithosphere: 'evm:9005',   // Lithosphere Mainnet (Makalu isn't built in any more)
 };
 
 /* ── tiny shared bits ──────────────────────────────────────────────────── */

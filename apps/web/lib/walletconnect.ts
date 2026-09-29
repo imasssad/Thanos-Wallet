@@ -17,22 +17,15 @@
 import type { WalletKitTypes } from '@reown/walletkit';
 import type { SessionTypes, ProposalTypes } from '@walletconnect/types';
 
-const MAKALU_CHAIN_ID = 700777;
-const MAKALU_EIP155 = `eip155:${MAKALU_CHAIN_ID}`;
+import { EVM_CHAINS } from './evm-chains';
 
-/* Every EVM chain the wallet can sign on. Kept in sync with
-   apps/web/lib/evm-chains.ts; we keep the IDs inline here so this
-   module has no React/Next dependency. */
-// SAFETY: advertise ONLY the chains the signing path actually honours.
-// Every request handler in this client broadcasts via the MAKALU
-// provider regardless of the namespace the dApp asked on - advertising
-// mainnet/Polygon/etc. let a dApp think it was getting an eip155:1 tx
-// while the wallet broadcast on 700777 (chain-mismatch hazard, flagged
-// by the 2026-06 security audit). Re-add ids here ONLY together with
-// per-chain provider routing in the request handler.
-const SUPPORTED_EVM_CHAIN_IDS: number[] = [
-  MAKALU_CHAIN_ID,
-];
+/* Every EVM chain the wallet can sign on — Lithosphere Mainnet first.
+   SAFETY: advertise ONLY the chains the signing path actually honours.
+   The request handler (wc-requests.ts) signs each request on the chain it
+   names — that chain's own RPC, its chainId pinned — so every built-in chain
+   is safe to advertise. (It used to be Makalu only, when every request was
+   broadcast on Makalu.) */
+const SUPPORTED_EVM_CHAIN_IDS: number[] = EVM_CHAINS.map(c => c.chainId);
 const SUPPORTED_EVM_NAMESPACE_CHAINS = SUPPORTED_EVM_CHAIN_IDS.map(id => `eip155:${id}`);
 
 const SUPPORTED_METHODS = [
@@ -98,8 +91,8 @@ export interface SessionProposalSummary {
   required: ProposalTypes.RequiredNamespace;
 }
 
-/** Build the namespaces object for an approval. Covers Makalu plus
- *  every public EVM chain the wallet's signer knows how to sign on. */
+/** Build the namespaces object for an approval — every built-in EVM chain
+ *  the wallet's signer knows how to sign on, Lithosphere Mainnet first. */
 export function buildApprovalNamespaces(evmAddress: string): SessionTypes.Namespaces {
   return {
     eip155: {

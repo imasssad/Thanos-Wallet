@@ -7,7 +7,7 @@ import { BottomNav } from './BottomNav';
 import { OnboardingFlow, useWalletGate } from '../onboarding';
 import { dualFromEvm, type DualAddress } from '../../lib/address';
 import { WalletConnectHost } from '../WalletConnectHost';
-import { AddNetworkNudge, MakaluWelcomeCard } from '../MakaluNetworkPrompt';
+import { AddNetworkNudge, MainnetWelcomeCard } from '../LithosphereNetworkPrompt';
 import { preloadTokenLogos } from '../../lib/token-logos';
 import { setContactEncryptionKey } from '../../lib/contact-crypto';
 import {
@@ -218,11 +218,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <WalletContext.Provider value={{ evmAddress: derivedEvm, addresses, seed: walletSeed, privateKey: walletPrivateKey, ownAccounts }}>
       <WalletConnectHost/>
-      {/* First-run Lithosphere Makalu prompts — both self-gate via
+      {/* First-run Lithosphere Mainnet prompts — both self-gate via
           localStorage, so they appear at most once per browser. The welcome
-          card introduces the home network; the nudge offers to add Makalu to
-          an external injected wallet (MetaMask etc.) if one is present. */}
-      <MakaluWelcomeCard/>
+          card introduces the home network; the nudge offers to add it to an
+          external injected wallet (MetaMask etc.) if one is present. */}
+      <MainnetWelcomeCard/>
       <AddNetworkNudge/>
       {/* Height lives in globals.css (.app-shell): 100dvh — not 100vh —
           so iOS Safari's collapsing URL bar can't strand content below

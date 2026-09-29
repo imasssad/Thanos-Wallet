@@ -22,8 +22,8 @@ import {
 import {
   Connection, PublicKey, SystemProgram, Transaction as SolTx, LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
-import { getMakaluProvider } from './rpc';
-import { getEvmProvider, getEvmChain } from './evm-chains';
+import { getKametProvider, KAMET_CHAIN_ID } from './rpc';
+import { getEvmProvider } from './evm-chains';
 
 /* ─── Types ────────────────────────────────────────────────────────── */
 
@@ -100,8 +100,9 @@ export async function discoverEvmAccounts(count = 5): Promise<TrezorAccount[]> {
   return out;
 }
 
-/** Sign + broadcast a native-coin EVM transfer via Trezor. Works for
- *  Makalu and every external EVM chain. */
+/** Sign + broadcast a native-coin EVM transfer via Trezor on exactly
+ *  `chainId` — Kamet or any EVM chain the wallet knows (built-in or custom).
+ *  An unknown chain throws; there is no fallback network. */
 export async function sendEvmWithTrezor(args: {
   account:   TrezorAccount;
   chainId:   number;
@@ -116,14 +117,19 @@ export async function sendEvmWithTrezor(args: {
   catch { throw new TrezorError('invalid_amount', 'Enter a valid amount'); }
   if (value <= 0n) throw new TrezorError('invalid_amount', 'Amount must be greater than zero');
 
+  // The chain the send was asked for. (It used to fall back to Makalu for
+  // any chain outside the EVM list — which put Kamet sends on Makalu.)
   const provider: Provider =
-    getEvmChain(args.chainId) ? getEvmProvider(args.chainId) : getMakaluProvider();
+    args.chainId === KAMET_CHAIN_ID ? getKametProvider() : getEvmProvider(args.chainId);
 
   const [nonce, feeData, net] = await Promise.all([
     provider.getTransactionCount(args.account.address),
     provider.getFeeData(),
     provider.getNetwork(),
   ]);
+  if (Number(net.chainId) !== args.chainId) {
+    throw new TrezorError('wrong_network', `The RPC answered for chain ${net.chainId}, not ${args.chainId}. Nothing was signed.`);
+  }
   const maxFeePerGas         = feeData.maxFeePerGas         ?? feeData.gasPrice ?? 0n;
   const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ?? 1_500_000_000n;
   const gasLimit = await provider.estimateGas({ from: args.account.address, to: args.recipient, value });

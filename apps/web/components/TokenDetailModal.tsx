@@ -21,7 +21,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { formatUnits } from 'ethers';
+import { Contract, formatUnits } from 'ethers';
 import { Copy, Check, ExternalLink, ArrowUpRight, ArrowDownLeft, Repeat, ArrowLeft } from 'lucide-react';
 import {
   fetchTokenHistory, fetchTokenMarketDetails,
@@ -30,17 +30,19 @@ import {
 import { TOKENS, explorerUrl, type Token } from '../lib/tokens';
 import { convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core';
 import { useDisplayCurrency } from '../lib/use-fx';
-import { getEvmChainMerged } from '../lib/custom-assets';
+import { getEvmChainMerged, allTokensForChain } from '../lib/custom-assets';
+import { getEvmProvider } from '../lib/evm-chains';
 import { useQuotes } from '../lib/usePrices';
-import { getPortfolio, getActivity, type IndexerActivityItem } from '../lib/indexer';
+import { useLiveBalances } from '../lib/useLiveBalances';
+import { pendingActivityRows } from '../lib/tx-store';
 import { TokenIcon } from './TokenIcon';
 import { useWallet } from './shell/AppShell';
-import { SendModal, SwapModal, ReceiveModal } from './modals';
+import { SendModal, ReceiveModal } from './modals';
 
 /* Symbols whose CoinGecko feed is a PROXY for another asset — the data is
  * real but belongs to the underlying coin, and the UI must say so. */
 const PROXY_FEEDS: Record<string, string> = {
-  LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form on Makalu',
+  LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form',
 };
 
 /* ─── Local formatting (mirrors views.tsx fmt helpers) ─────────────────── */
@@ -68,9 +70,8 @@ function fmtCompactQty(n: number | null): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
 
-/** Indexer + local activity amounts are ALREADY human-readable (the indexer
- *  runs formatTokenAmount by decimals). Parse directly — re-applying formatUnits
- *  turned a whole-number "30" into 30 wei → "0". */
+/** Local activity amounts are ALREADY human-readable (stored as typed).
+ *  Parse directly — re-applying formatUnits turned "30" into 30 wei → "0". */
 function fmtActivityAmount(raw: string): string {
   const n = parseFloat(String(raw).replace(/^[+-]/, ''));
   return isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 6 }) : raw;
@@ -126,7 +127,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 /* ─── Component ────────────────────────────────────────────────────────── */
 
-type SubModal = 'send' | 'swap' | 'receive' | null;
+type SubModal = 'send' | 'receive' | null;
 type BalState = { state: 'loading' } | { state: 'offline' } | { state: 'ok'; qty: string; qtyNum: number };
 
 /* Re-renders on display-currency change — see lib/use-fx.ts. */
@@ -147,18 +148,34 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   const evmChain = useMemo(() =>
     chainId != null ? getEvmChainMerged(chainId) ?? null : null, [chainId]);
 
-  // Canonical row, or a minimal stand-in for indexer/EVM-discovered symbols.
-  // The stand-in claims NOTHING it doesn't know: network comes from the
-  // passed chainId (or '—'), and Swap only exists for canonical Makalu tokens.
-  const token: Token = useMemo(() => canon ?? {
-    sym, name: evmChain ? `${sym} · ${evmChain.name}` : sym,
-    chain: 'EVM', address: null, decimals: 18,
-    color: '#52525b', icon: '', priceUsd: 0, balance: '0', change24h: 0,
-  }, [canon, evmChain, sym]);
+  // The chain this row lives on. LITHO without a chain is Lithosphere
+  // Mainnet's native coin. A canonical token whose only known deployment is
+  // Makalu (the LEP100 catalog) has no network in the wallet any more —
+  // Makalu isn't built in (2026-09-29) — so it claims no network, contract
+  // or balance here.
+  const makaluOnly = !evmChain && !!canon && canon.chain === 'Makalu' && canon.address !== null;
+  const chainRow = useMemo(() =>
+    evmChain ?? (sym.toUpperCase() === 'LITHO' ? getEvmChainMerged(9005) ?? null : null), [evmChain, sym]);
+
+  // Canonical row, or a minimal stand-in for EVM-discovered symbols. The
+  // stand-in claims NOTHING it doesn't know: network comes from the passed
+  // chainId (or '—').
+  const token: Token = useMemo(() => {
+    const base: Token = canon ?? {
+      sym, name: evmChain ? `${sym} · ${evmChain.name}` : sym,
+      chain: 'EVM', address: null, decimals: 18,
+      color: '#52525b', icon: '', priceUsd: 0, balance: '0', change24h: 0,
+    };
+    // A token on an EVM chain: its contract THERE, not the catalog's Makalu one.
+    const onChain = chainRow ? allTokensForChain(chainRow.chainId).find(t => t.symbol === sym) : undefined;
+    if (onChain) return { ...base, address: onChain.address, decimals: onChain.decimals };
+    if (chainRow || makaluOnly) return { ...base, address: null };
+    return base;
+  }, [canon, evmChain, chainRow, makaluOnly, sym]);
 
   const networkLabel =
-    evmChain ? evmChain.name
-    : canon ? (canon.chain === 'Makalu' ? 'Lithosphere Makalu' : canon.chain)
+    chainRow ? chainRow.name
+    : canon && !makaluOnly && canon.chain !== 'Makalu' ? canon.chain
     : '—';
 
   const quote = quotes?.[token.sym];
@@ -201,53 +218,58 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
     return () => { cancel = true; };
   }, [token.sym]);
 
-  /* Balance for THIS token. Quantity is fetched once per token (NOT per
-     price tick — USD value derives from qty × live price at render).
-     bigint-safe via formatUnits; the indexer's `balance` is raw base units. */
+  /* Balance for THIS token on THIS chain — read straight from the chain
+     (it used to come from the Thanos indexer, which only covers Makalu).
+     Quantity is fetched once per token (NOT per price tick — USD value
+     derives from qty × live price at render). */
+  const walletSource = wallet?.privateKey
+    ? { kind: 'privateKey' as const, privateKey: wallet.privateKey }
+    : wallet?.seed?.length
+      ? { kind: 'mnemonic' as const, mnemonic: wallet.seed.join(' ') }
+      : null;
+  const live = useLiveBalances(evmAddress, walletSource);
+  const nonEvm = !chainRow && !makaluOnly && (token.chain === 'Bitcoin' || token.chain === 'Solana' || token.chain === 'Cosmos');
   const [bal, setBal] = useState<BalState>({ state: 'loading' });
   useEffect(() => {
-    if (!evmAddress) { setBal({ state: 'offline' }); return; }
+    if (!evmAddress || (!chainRow && !nonEvm)) { setBal({ state: 'offline' }); return; }
+    if (nonEvm) {
+      if (live.loading) { setBal({ state: 'loading' }); return; }
+      const qtyNum = live.bySymNumber.get(token.sym.toLowerCase()) ?? 0;
+      setBal({ state: 'ok', qty: qtyNum.toLocaleString('en-US', { maximumFractionDigits: 8 }), qtyNum });
+      return;
+    }
     let cancel = false;
     setBal({ state: 'loading' });
-    getPortfolio(evmAddress).then(p => {
-      if (cancel) return;
-      const a = p.assets.find(x =>
-        x.symbol.toLowerCase() === token.sym.toLowerCase() ||
-        (x.tokenAddress && token.address && x.tokenAddress.toLowerCase() === token.address.toLowerCase()));
-      if (!a) { setBal({ state: 'ok', qty: '0', qtyNum: 0 }); return; }
-      const formatted = formatUnits(a.balance, a.decimals ?? token.decimals);
-      const qtyNum = parseFloat(formatted);
-      setBal({ state: 'ok', qty: qtyNum.toLocaleString('en-US', { maximumFractionDigits: 6 }), qtyNum });
-    }).catch(() => { if (!cancel) setBal({ state: 'offline' }); });
+    (async () => {
+      const provider = getEvmProvider(chainRow!.chainId);
+      const raw: bigint = token.address
+        ? await new Contract(token.address, ['function balanceOf(address) view returns (uint256)'], provider).balanceOf(evmAddress)
+        : token.sym === chainRow!.nativeSymbol ? await provider.getBalance(evmAddress) : 0n;
+      const qtyNum = parseFloat(formatUnits(raw, token.address ? token.decimals : 18));
+      if (!cancel) setBal({ state: 'ok', qty: qtyNum.toLocaleString('en-US', { maximumFractionDigits: 6 }), qtyNum });
+    })().catch(() => { if (!cancel) setBal({ state: 'offline' }); });
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evmAddress, token.sym, token.address]);
+  }, [evmAddress, chainRow?.chainId, token.sym, token.address, nonEvm, live.loading]);
   const balUsd = bal.state === 'ok' && price != null ? bal.qtyNum * price : null;
 
-  /* Activity filtered to this token. Offline is distinguishable from
-     genuinely-empty so an indexer outage never reads as "no activity". */
-  const [activity, setActivity] = useState<IndexerActivityItem[] | null>(null);
-  const [actOffline, setActOffline] = useState(false);
+  /* Activity for this token — the sends this wallet recorded (no chain feed
+     covers every network; the Makalu-only indexer is gone). */
+  const [activity, setActivity] = useState<Array<{ id: string; type: string; amount: string; ts?: string; status?: string }> | null>(null);
+  const actOffline = false;
   useEffect(() => {
-    if (!evmAddress) { setActOffline(true); return; }
-    let cancel = false;
-    getActivity(evmAddress).then(items => {
-      if (cancel) return;
-      setActOffline(false);
-      setActivity(items.filter(i => i.symbol.toLowerCase() === token.sym.toLowerCase()).slice(0, 10));
-    }).catch(() => { if (!cancel) { setActOffline(true); setActivity([]); } });
-    return () => { cancel = true; };
-  }, [evmAddress, token.sym]);
+    setActivity(pendingActivityRows([]).filter(i => i.symbol.toLowerCase() === token.sym.toLowerCase()).slice(0, 10));
+  }, [token.sym]);
 
-  /* Sub-modals (Send / Swap pre-seeded with this token) */
+  /* Sub-modals (Send / Receive pre-seeded with this token) */
   const [sub, setSub] = useState<SubModal>(null);
   const sendNetwork =
-    evmChain            ? (`evm:${evmChain.chainId}` as const) :
+    chainRow                  ? (`evm:${chainRow.chainId}` as const) :
+    makaluOnly                ? undefined :
     token.chain === 'Bitcoin' ? 'bitcoin' :
     token.chain === 'Solana'  ? 'solana'  :
-    token.chain === 'Cosmos'  ? 'cosmos'  : 'makalu';
-  const canSend = !!canon || !!evmChain;          // only when we know the network
-  const canSwap = !!canon && canon.chain === 'Makalu';
+    token.chain === 'Cosmos'  ? 'cosmos'  : undefined;
+  const canSend = !!sendNetwork;                  // only when we know the network
 
   /* Buy — same Transak hand-off the dashboard uses. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -278,7 +300,6 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
   const proxyNote = PROXY_FEEDS[token.sym];
 
   if (sub === 'send')    return <SendModal onClose={() => setSub(null)} initialNetwork={sendNetwork} initialCoin={token.sym}/>;
-  if (sub === 'swap')    return <SwapModal onClose={() => setSub(null)} initialFrom={token.sym}/>;
   if (sub === 'receive') return <ReceiveModal onClose={() => setSub(null)} initialAsset={token.sym}/>;
 
   const body = (
@@ -389,11 +410,6 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
             <button type="button" className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setSub('receive')}>
               <ArrowDownLeft size={15}/> Receive
             </button>
-            {canSwap && (
-              <button type="button" className="btn-outline" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setSub('swap')}>
-                <Repeat size={15}/> Swap
-              </button>
-            )}
           </div>
 
           {/* Your balance */}
@@ -418,7 +434,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>
                 {bal.state === 'loading' ? 'loading…'
-                 : bal.state === 'offline' ? 'balance unavailable — indexer offline'
+                 : bal.state === 'offline' ? 'balance unavailable'
                  : `${bal.qty} ${token.sym}`}
               </div>
             </div>
@@ -442,7 +458,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
                 {token.address.slice(0, 8)}…{token.address.slice(-6)}
                 {copied ? <Check size={12}/> : <Copy size={12}/>}
               </button>
-              <a href={explorerUrl(token)} target="_blank" rel="noreferrer" aria-label="View on explorer" style={{ color: 'var(--text-muted)', display: 'inline-flex' }}>
+              <a href={chainRow ? `${chainRow.explorerUrl}/token/${token.address}` : explorerUrl(token)} target="_blank" rel="noreferrer" aria-label="View on explorer" style={{ color: 'var(--text-muted)', display: 'inline-flex' }}>
                 <ExternalLink size={13}/>
               </a>
             </DetailRow>
@@ -469,7 +485,7 @@ export function TokenDetailModal({ sym, chainId, onClose }: {
           {activity === null && !actOffline && <div className="skeleton" style={{ height: 44, borderRadius: 10 }}/>}
           {actOffline && (
             <div style={{ padding: '18px 0 6px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
-              Activity unavailable — indexer offline.
+              Activity unavailable.
             </div>
           )}
           {!actOffline && activity?.length === 0 && (

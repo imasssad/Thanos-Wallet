@@ -5,13 +5,11 @@ import { usePrices } from '../lib/usePrices';
 import { useWallet } from './shell/AppShell';
 import {
   validateAddressForChain, resolveToEvm, truncateLithoAddress,
-  MAKALU_CHAIN_ID,
 } from '../lib/address';
 import {
-  sendTokens, estimateSendFee, SendError, makeProvider,
-  sendNativeEvm, estimateNativeEvmFee, sendEvmToken, sendLithoNative,
+  SendError,
+  sendNativeEvm, estimateNativeEvmFee, sendEvmToken, sendLithoNative, estimateLithoNativeFee,
 } from '../lib/signer';
-import { signerSend, SignerError } from '../lib/signer-client';
 import {
   getQuote   as multxGetQuote,
   execute    as multxExecute,
@@ -50,7 +48,7 @@ import {
 import {
   getActiveTrezorEvmAccount, getActiveTrezorBtcAccount, getActiveTrezorSolAccount,
 } from '../lib/trezor-accounts';
-import { getMakaluProvider, getKametProvider, KAMET_CHAIN_ID } from '../lib/rpc';
+import { getKametProvider, KAMET_CHAIN_ID } from '../lib/rpc';
 import { getEvmProvider } from '../lib/evm-chains';
 import { parseUnits as ethersParseUnits, Contract as EthersContract, formatUnits as ethersFormatUnits } from 'ethers';
 import { LedgerError } from '../lib/ledger-transport';
@@ -58,7 +56,7 @@ import { getActiveAccountIndex } from '../lib/vault';
 import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from '../lib/multx-bridge';
 import { recordPendingTx } from '../lib/tx-store';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
-import { allEvmChains, allTokensForChain, allEvmTokens } from '../lib/custom-assets';
+import { allEvmChains, allTokensForChain, allEvmTokens, getEvmChainMerged } from '../lib/custom-assets';
 import { classifyRecipient } from '../lib/phishing';
 import { PhishingBanner } from './PhishingBanner';
 import { simulateEvmSend, type SimulationReport } from '../lib/simulation';
@@ -70,8 +68,6 @@ import { QrCode, Check, ChevronDown, Wallet } from 'lucide-react';
 const TOKEN_SYMBOLS = TOKENS.map(t => t.sym);
 /** Swap pickers also offer the stablecoin counter-assets (USDC/USDT/DAI). */
 const SWAP_SYMBOLS = [...TOKEN_SYMBOLS, ...SWAP_STABLES.map(s => s.sym)];
-/** Tokens sendable on Lithosphere Makalu (native LITHO + LEP100). */
-const MAKALU_SYMBOLS = TOKENS.filter(t => t.chain === 'Makalu').map(t => t.sym);
 
 export type ModalKind = 'send' | 'receive' | 'swap' | 'laxcard' | null;
 
@@ -117,11 +113,12 @@ function Modal({ title, onClose, children, fullScreen }: { title: string; onClos
 
 type SendStage = 'compose' | 'broadcasting' | 'pending' | 'confirmed' | 'failed';
 
-/** Send-screen networks: Lithosphere first (the primary chain), then
- *  Bitcoin / Solana, then every EVM chain we support. Each carries an
- *  identifier the send branch uses to route. */
+/** Send-screen networks: Lithosphere Mainnet first (the primary chain), then
+ *  Kamet, Bitcoin / Solana / Cosmos, then every other EVM chain we support
+ *  (built-in + custom). Each carries an identifier the send branch uses to
+ *  route. Makalu isn't built in any more (2026-09-29) — added back as a
+ *  custom network it's an `evm:700777` entry like any other. */
 type SendNet =
-  | { id: 'makalu';  label: string }
   | { id: 'kamet';   label: string }
   | { id: 'bitcoin'; label: 'Bitcoin' }
   | { id: 'solana';  label: 'Solana' }
@@ -132,7 +129,6 @@ type SendNet =
 // shows up immediately — allEvmChains() re-reads the live custom-assets cache.
 /** Visibility key (Settings → Manage networks) for a send/receive network id. */
 function netVisKeyForId(id: string): string {
-  if (id === 'makalu' || id === 'lithosphere-makalu') return networkVisKey(700777, 'LITHO');
   if (id === 'kamet'  || id === 'lithosphere-kamet')  return networkVisKey(900523, 'LITHO');
   if (id === 'lithosphere-mainnet') return networkVisKey(9005, 'LITHO');
   if (id === 'bitcoin') return networkVisKey(undefined, 'BTC');
@@ -144,13 +140,14 @@ function netVisKeyForId(id: string): string {
 const isNetShown = (id: string): boolean => !getHiddenNetworks().has(netVisKeyForId(id));
 
 function getSendNetworks(): SendNet[] {
+  const evm = allEvmChains().map(c => ({ id: `evm:${c.chainId}` as const, label: c.name }));
   return [
-    { id: 'makalu',  label: 'Lithosphere Makalu · Testnet' },
+    ...evm.filter(n => n.id === 'evm:9005'),
     { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
     { id: 'bitcoin', label: 'Bitcoin' },
     { id: 'solana',  label: 'Solana' },
     { id: 'cosmos',  label: 'Cosmos Hub' },
-    ...allEvmChains().map(c => ({ id: `evm:${c.chainId}` as const, label: c.name })),
+    ...evm.filter(n => n.id !== 'evm:9005'),
   ];
 }
 
@@ -165,11 +162,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
   initialAddress?: string;
 }) {
   const wallet = useWallet();
-  // Default to Lithosphere Mainnet (chain 9005), not Makalu testnet — client
-  // requirement (2026-09-18, "ensure chain 9005 is live in all builds").
-  // Mainnet only exists as a generic `evm:${chainId}` entry here (from
-  // allEvmChains()), not a first-class network like Makalu/Kamet — that's
-  // fine for a plain native-LITHO send, which is all Mainnet carries today.
+  // Default to Lithosphere Mainnet (chain 9005) — client requirement
+  // (2026-09-18, "ensure chain 9005 is live in all builds"). Mainnet is a
+  // generic `evm:${chainId}` entry here (from allEvmChains()), so it signs on
+  // its own chain like every EVM network.
   const [network, setNetwork] = useState<SendNet['id']>(initialNetwork ?? 'evm:9005');
   const [coin, setCoin]       = useState(initialCoin ?? 'LITHO');
   const [to, setTo]           = useState(initialAddress ?? '');
@@ -191,8 +187,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
   useEffect(() => {
     if (prevNetwork.current === network) return;
     prevNetwork.current = network;
-    if (network === 'makalu')       setCoin('LITHO');
-    else if (network === 'kamet')   setCoin('LITHO');
+    if (network === 'kamet')        setCoin('LITHO');
     else if (network === 'bitcoin') setCoin('BTC');
     else if (network === 'solana')  setCoin('SOL');
     else if (network === 'cosmos')  setCoin('ATOM');
@@ -211,10 +206,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
   // chains have their native coin + the stablecoins we track (USDT/USDC); the
   // single-asset chains (BTC/SOL/ATOM) have just one.
   const sendableCoins = useMemo<string[]>(() => {
-    if (network === 'makalu') return [...MAKALU_SYMBOLS];
-    // Kamet: native LITHO only for now — the wallet has no Kamet LEP100 token
-    // catalog (bridged-token addresses differ from Makalu). Native LITHO send
-    // works via the chain-aware sendLithoNative path.
+    // Kamet: native LITHO only — the wallet has no Kamet LEP100 token
+    // catalog. Native LITHO send works via the chain-aware sendLithoNative
+    // path.
     if (network === 'kamet')  return ['LITHO'];
     if (network === 'bitcoin') return ['BTC'];
     if (network === 'solana')  return ['SOL'];
@@ -282,13 +276,40 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       ? { kind: 'mnemonic' as const, mnemonic: wallet.seed.join(' ') }
       : null;
   const live = useLiveBalances(wallet?.evmAddress, walletSource);
+  // Kamet's own LITHO balance — LITHO also lives on Lithosphere Mainnet, so
+  // a symbol lookup can't tell the two apart.
+  const [kametBal, setKametBal] = useState<string | null>(null);
+  useEffect(() => {
+    setKametBal(null);
+    const addr = wallet?.addresses?.evm;
+    if (network !== 'kamet' || !addr) return;
+    let cancel = false;
+    getKametProvider().getBalance(addr)
+      .then(wei => { if (!cancel) setKametBal(parseFloat(ethersFormatUnits(wei, 18)).toLocaleString('en-US', { maximumFractionDigits: 8 })); })
+      .catch(() => { /* leave null — balance line reads 0 */ });
+    return () => { cancel = true; };
+  }, [network, wallet?.addresses?.evm]);
+  /** The balance of exactly this asset on exactly the selected network —
+   *  never a sum across chains. (It used to read a per-symbol total, so the
+   *  LITHO balance shown on Mainnet included Makalu's LITHO, and MAX could
+   *  ask for more than Mainnet held.) */
   const balanceFor = (sym: string) => {
-    // Selected EVM stablecoin → its per-chain balance (not the cross-chain
-    // bySym aggregate, which useLiveBalances doesn't populate for tokens anyway).
-    const tok = evmChainId ? allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === sym) : null;
-    if (tok && stableBal !== null) return stableBal;
-    return live.bySym.get(sym.toLowerCase()) ?? '0';
+    if (evmChainId !== null) {
+      const tok = allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === sym);
+      if (tok) return stableBal ?? '0';
+      if (evmChain && sym === evmChain.nativeSymbol) {
+        const row = live.evm.find(e => e.chain.chainId === evmChainId);
+        return row ? row.balance.toLocaleString('en-US', { maximumFractionDigits: 8 }) : '0';
+      }
+      return '0';
+    }
+    if (network === 'kamet') return kametBal ?? '0';
+    return live.bySym.get(sym.toLowerCase()) ?? '0';   // BTC / SOL / ATOM: one chain each
   };
+  /** The picked asset really exists on the picked network. An asset asked
+   *  for by name (Quantt's "Send USDC") that isn't there must never be sent
+   *  as something else — the EVM branch used to fall back to the native coin. */
+  const coinOnNetwork = sendableCoins.includes(coin);
 
   /* Lookup the token row for the currently selected symbol — drives
      chain-aware branches for validation, fee estimation and broadcast.
@@ -305,22 +326,19 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
      signature through the device instead of the in-vault key. The
      wallet doesn't need to be unlocked at all in that case — `seed`
      and `privateKey` can both be empty.
-     EVM is unified: one ETH-path Ledger account signs across Makalu
+     EVM is unified: one ETH-path Ledger account signs across Lithosphere
      and every external EVM chain since the keypair is chain-agnostic. */
   const ledgerBtc = useMemo(() => isBitcoinSend ? getActiveLedgerBtcAccount() : null, [isBitcoinSend]);
   const ledgerSol = useMemo(() => isSolanaSend  ? getActiveLedgerSolAccount() : null, [isSolanaSend]);
-  /** Lithosphere chains share an EVM-style keypair, so the same Ledger
-   *  account works on both Makalu and Kamet. */
-  const isLithoSend = network === 'makalu' || network === 'kamet';
-  /** Live provider for the active Lithosphere chain, picked once per
-   *  render — used by every Lithosphere broadcast + confirmation poll. */
-  const lithoProvider = useMemo(
-    () => network === 'kamet' ? getKametProvider() : getMakaluProvider(),
-    [network],
-  );
-  /** Chain id to anchor a Lithosphere send to — passed to Trezor and
-   *  used in the confirmation-polling URL. */
-  const lithoChainId = network === 'kamet' ? KAMET_CHAIN_ID : MAKALU_CHAIN_ID;
+  /** Kamet — the Lithosphere network with its own send branch (Mainnet is
+   *  an `evm:9005` network). Same EVM-style keypair, so the same Ledger
+   *  account works there too. */
+  const isLithoSend = network === 'kamet';
+  /** Kamet's provider — used by every Kamet broadcast + confirmation poll. */
+  const lithoProvider = useMemo(() => getKametProvider(), []);
+  /** Chain id to anchor a Kamet send to — passed to Trezor and the
+   *  simulator. */
+  const lithoChainId = KAMET_CHAIN_ID;
   const ledgerEvm = useMemo(
     () => (isEvmSend || isLithoSend) ? getActiveLedgerAccount() : null,
     [isEvmSend, isLithoSend],
@@ -364,7 +382,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         ? { valid: true,  format: 'evm' as const, reason: '' }
         : { valid: false, format: 'evm' as const, reason: `${evmChain?.name ?? 'EVM'} requires a 0x address` };
     }
-    const v = validateAddressForChain(trimmed, MAKALU_CHAIN_ID);
+    const v = validateAddressForChain(trimmed, KAMET_CHAIN_ID);
     return { ...v, format: v.format as 'evm' | 'litho' | null };
   }, [to, isSolanaSend, isBitcoinSend, isCosmosSend, isEvmSend, evmChain]);
 
@@ -392,11 +410,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
      "Resolved to 0x…" hint. */
   useEffect(() => {
     const trimmed = to.trim();
-    // DNNS is a Lithosphere-only registry — suppress for non-Makalu sends.
+    // DNNS is a Lithosphere-only registry — suppress for other sends.
     if (!looksLikeName(trimmed) || !isLithoSend) {
-      // DNNS names are resolved for both Makalu and Kamet sends —
-      // both chains share the keypair, and the name registry lives on
-      // Kamet itself. Non-Lithosphere sends never trigger DNNS lookup.
+      // DNNS names are resolved for Kamet sends — the name registry lives
+      // on Kamet itself. Other sends never trigger a DNNS lookup.
       setDnnsResolved(null);
       setDnnsState('idle');
       return;
@@ -474,12 +491,13 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       setFeeStr(null);
       return;
     }
+    if (!isLithoSend) { setFeeStr(null); return; }
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const est = await estimateSendFee(
+        const est = await estimateLithoNativeFee(
           wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
-          { symbol: coin, recipient: to, amount },
+          { chainId: KAMET_CHAIN_ID, recipient: to, amount },
         );
         if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} LITHO` : null);
       } catch {
@@ -487,7 +505,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       }
     }, 350);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isCosmosSend, isEvmSend, evmChainId, evmChain]);
+  }, [coin, to, amount, recipientValidation.valid, wallet?.seed, wallet?.privateKey, isSolanaSend, isBitcoinSend, isCosmosSend, isEvmSend, isLithoSend, evmChainId, evmChain]);
 
   /* Pre-send simulation — runs alongside the fee estimate above. Only
      fires on EVM/Lithosphere sends (Bitcoin + Solana + Cosmos go through
@@ -760,18 +778,32 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       return;
     }
 
-    /* ─── External EVM branch ───────────────────────────────────────────
-       Native gas-coin send on Ethereum / BNB / Polygon / Base / Arbitrum /
-       Linea / Optimism / Avalanche. Same keypair as Makalu, just routed
-       through that chain's RPC via getEvmProvider. ERC-20 catalogs per
-       chain land in a follow-up commit. */
+    /* ─── EVM branch ────────────────────────────────────────────────────
+       Lithosphere Mainnet, Ethereum / BNB / Polygon / Base / Arbitrum /
+       Linea / Optimism / Avalanche and custom networks: the native coin or a
+       token, signed on and broadcast through that chain's own RPC. */
     if (isEvmSend && evmChainId !== null && evmChain) {
+      // The asset on screen must exist on this network — never send the
+      // native coin in place of a token that isn't here.
+      if (!coinOnNetwork) {
+        setError(`${coin} isn't available on ${evmChain.name}. Pick the network it's on.`);
+        setStage('failed');
+        return;
+      }
+      const tokenOnChain = allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === coin) ?? null;
+      // Ledger / Trezor sign native transfers only here — a token picked with
+      // a device connected would otherwise go out as the native coin.
+      if ((ledgerEvm || trezorEvm) && tokenOnChain) {
+        setError(`Token sends with a ${ledgerEvm ? 'Ledger' : 'Trezor'} aren't supported yet. Send ${evmChain.nativeSymbol}, or disconnect the device to send ${coin}.`);
+        setStage('failed');
+        return;
+      }
       setStage('broadcasting');
       setError(null);
 
-      /* Ledger EVM path — same keypair signs across all 8 chains. The
+      /* Ledger EVM path — same keypair signs across every EVM chain. The
          Ledger account holds a derivation path; ledger.ts handles
-         per-chain provider + EIP-1559 tx build. */
+         per-chain provider + EIP-1559 tx build. Native coin only (above). */
       if (ledgerEvm) {
         try {
           const provider = getEvmProvider(evmChainId);
@@ -835,13 +867,12 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       }
       try {
         const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
-        // Stablecoin (USDT/USDC) on this chain → ERC-20 transfer; else native.
-        const stable = allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === coin);
+        // A token on this chain → ERC-20 transfer; the native coin → native.
         const acctIdx = getActiveAccountIndex();
-        const result = stable
+        const result = tokenOnChain
           ? await sendEvmToken(walletInput, {
-              chainId: evmChainId, tokenAddress: stable.address, decimals: stable.decimals,
-              symbol: stable.symbol, recipient: to.trim(), amount, accountIdx: acctIdx,
+              chainId: evmChainId, tokenAddress: tokenOnChain.address, decimals: tokenOnChain.decimals,
+              symbol: tokenOnChain.symbol, recipient: to.trim(), amount, accountIdx: acctIdx,
             })
           : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: to.trim(), amount, accountIdx: acctIdx });
         recordPendingSend(result.hash);
@@ -861,11 +892,16 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       return;
     }
 
-    /* ─── Makalu EVM branch (LITHO + LEP100) ───────────────────────── */
+    /* ─── Kamet branch (native LITHO) ─────────────────────────────── */
+    if (!isLithoSend) {
+      setError('Pick the network to send on.');
+      setStage('failed');
+      return;
+    }
     setStage('broadcasting');
     setError(null);
 
-    /* Ledger Makalu path — only native LITHO sends are supported via
+    /* Ledger Kamet path — only native LITHO sends are supported via
        Ledger today. LEP100 transfer() calldata via Ledger is a follow-
        up that needs the ERC-20 ABI provided as a "clearsigning" plugin
        on the Ethereum app, otherwise the device shows raw hex. */
@@ -899,15 +935,15 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
           })
           .catch(() => setStage('failed'));
       } catch (e) {
-        const msg = (e as Error).message || `Ledger ${network === 'kamet' ? 'Kamet' : 'Makalu'} send failed`;
+        const msg = (e as Error).message || 'Ledger Kamet send failed';
         setError(msg);
         setStage('failed');
       }
       return;
     }
 
-    /* Trezor Lithosphere path (Makalu or Kamet) — native LITHO only,
-       same clearsigning caveat as Ledger for LEP100 tokens. */
+    /* Trezor Kamet path — native LITHO only, same clearsigning caveat as
+       Ledger for LEP100 tokens. */
     if (trezorEvm && selectedToken) {
       if (selectedToken.address !== null) {
         setError('LEP100 token sends via Trezor are not yet supported. Send native LITHO or disconnect Trezor.');
@@ -930,7 +966,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
           })
           .catch(() => setStage('failed'));
       } catch (e) {
-        const msg = e instanceof TrezorError ? e.message : (e as Error).message || `Trezor ${network === 'kamet' ? 'Kamet' : 'Makalu'} send failed`;
+        const msg = e instanceof TrezorError ? e.message : (e as Error).message || 'Trezor Kamet send failed';
         setError(msg);
         setStage('failed');
       }
@@ -938,100 +974,33 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
     }
 
     if (!wallet?.seed?.length && !wallet?.privateKey) {
-      setError(`Connect a hardware wallet or unlock your recovery-phrase wallet to send on ${network === 'kamet' ? 'Kamet' : 'Makalu'}.`);
+      setError('Connect a hardware wallet or unlock your recovery-phrase wallet to send on Kamet.');
       setStage('failed');
       return;
     }
-    /* Kamet keyring sends — the signer worker is wired to Makalu, so route
-       native LITHO on Kamet through the chain-aware main-thread sendLithoNative
-       (the seed is already in this context). Signs from the ACTIVE account. */
-    if (network === 'kamet') {
-      try {
-        const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
-        const result = await sendLithoNative(walletInput, {
-          chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount, accountIdx: getActiveAccountIndex(),
-        });
-        recordPendingSend(result.hash);
-        setTxHash(result.hash);
-        setStage('pending');
-        result.wait()
-          .then(r => {
-            setStage(r.status === 1 ? 'confirmed' : 'failed');
-            if (r.status !== 1) setError('Transaction reverted on-chain');
-          })
-          .catch(() => setStage('failed'));
-      } catch (e) {
-        const msg = e instanceof SendError ? e.message : (e as Error).message || 'Failed to send on Kamet';
-        setError(msg);
-        setStage('failed');
-      }
-      return;
-    }
+    /* Kamet keyring sends — native LITHO through the chain-aware main-thread
+       sendLithoNative (the seed is already in this context). Signs from the
+       ACTIVE account. */
     try {
-      // Prefer the worker-isolated signing path. The worker holds the
-      // secret in its own context; the main thread only sees the tx hash
-      // come back. If the worker is unavailable (race condition during
-      // init, or unsupported browser) we fall back to in-process signing.
-      // Convert litho1… recipients to 0x BEFORE handing off to the
-      // signer worker — the worker hard-rejects any address that
-      // doesn't start with 0x with "invalid_address", which surfaces
-      // in the Send modal as a misleading "Transaction failed" even
-      // though the litho1 address was valid. Same dual-address
-      // helper the Ledger/Trezor branches above already use.
-      const recipientForWorker = resolveToEvm(to.trim()) ?? to.trim();
-      let hash: string;
-      try {
-        const result = await signerSend({ symbol: coin, recipient: recipientForWorker, amount });
-        hash = result.hash;
-      } catch (workerErr) {
-        const code = workerErr instanceof SignerError ? workerErr.code : '';
-        if (code === 'worker_locked' || code === 'worker_crashed') {
-          // Same litho1 → 0x conversion on the main-thread fallback path —
-          // sendTokens delegates to ethers Wallet.sendTransaction which
-          // also rejects non-0x recipients.
-          const fallback = await sendTokens(
-            wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
-            { symbol: coin, recipient: recipientForWorker, amount, accountIdx: getActiveAccountIndex() },
-          );
-          hash = fallback.hash;
-          // Background: legacy path exposes a wait() for confirmation polling.
-          fallback.wait()
-            .then(r => {
-              setStage(r.status === 1 ? 'confirmed' : 'failed');
-              if (r.status !== 1) setError('Transaction reverted on-chain');
-            })
-            .catch(() => setStage('failed'));
-        } else {
-          // Bubble typed worker errors through the same SendError shape so
-          // the existing 'failed' UI surfaces a clean message.
-          throw workerErr;
-        }
-      }
-      recordPendingSend(hash);
-      setTxHash(hash);
+      const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
+      const result = await sendLithoNative(walletInput, {
+        chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount, accountIdx: getActiveAccountIndex(),
+      });
+      recordPendingSend(result.hash);
+      setTxHash(result.hash);
       setStage('pending');
-      // Worker path: poll the chain for confirmation via the main-thread
-      // provider. Doesn't block the UI; user can dismiss the modal.
-      if (!error && hash) {
-        // Lithosphere confirmation polls on the chain-specific provider so
-        // a Kamet send doesn't try to read Makalu RPC and time out.
-        const confirmProvider = isLithoSend ? lithoProvider : makeProvider();
-        confirmProvider.waitForTransaction(hash)
-          .then(r => {
-            if (!r) { setStage('failed'); return; }
-            setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
-            if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
-          })
-          .catch(() => setStage('failed'));
-      }
+      result.wait()
+        .then(r => {
+          setStage(r.status === 1 ? 'confirmed' : 'failed');
+          if (r.status !== 1) setError('Transaction reverted on-chain');
+        })
+        .catch(() => setStage('failed'));
     } catch (e) {
-      // SendError / SignerError carry pre-cleaned copy. Anything else is
-      // a raw chain/provider error — run it through the humanizer so dev
-      // shorthand ("no runners?!", ethers coalesce blobs) never reaches
-      // the failure screen verbatim.
-      const msg = e instanceof SendError ? e.message
-               : e instanceof SignerError ? e.message
-               : humanizeChainError((e as Error).message);
+      // SendError carries pre-cleaned copy. Anything else is a raw chain /
+      // provider error — run it through the humanizer so dev shorthand
+      // ("no runners?!", ethers coalesce blobs) never reaches the failure
+      // screen verbatim.
+      const msg = e instanceof SendError ? e.message : humanizeChainError((e as Error).message);
       setError(msg);
       setStage('failed');
     }
@@ -1045,10 +1014,8 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
        : isBitcoinSend ? bitcoinExplorerUrl(txHash)
        : isCosmosSend  ? cosmosExplorerUrl(txHash)
        : isEvmSend && evmChain ? `${evmChain.explorerUrl}/tx/${txHash}`
-       // Litho: route to the explorer for the chain we actually sent on —
-       // Kamet tx on the Makalu explorer (or vice-versa) just shows "not found",
-       // which is exactly what made deposits look like they never arrived.
-       : `${network === 'kamet' ? 'https://explorer-3.litho.ai' : 'https://makalu.litho.ai'}/tx/${txHash}`)
+       // Kamet: its own explorer — the explorer of the chain we actually sent on.
+       : `https://explorer-3.litho.ai/tx/${txHash}`)
       : null;
     return (
       <Modal title="Send" onClose={onClose}>
@@ -1166,7 +1133,6 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
                   const evmId = n.id.startsWith('evm:') ? parseInt(n.id.slice(4), 10) : null;
                   const chain = evmId !== null ? allEvmChains().find(c => c.chainId === evmId) ?? null : null;
                   const sym   =
-                    n.id === 'makalu'  ? 'LITHO' :
                     n.id === 'kamet'   ? 'LITHO' :
                     n.id === 'bitcoin' ? 'BTC' :
                     n.id === 'solana'  ? 'SOL' :
@@ -1222,10 +1188,8 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{usdEquivalent}</div>
         </div>
 
-        {/* Asset chip — Lithosphere (Makalu + Kamet) has multiple sendable
-            assets (LITHO + LEP100 tokens) so we keep the dropdown there.
-            Every other chain has exactly one native asset, so we show a
-            static chip. */}
+        {/* Asset chip — a network with tokens gets the dropdown; a network
+            with just its native coin gets a static chip. */}
         <div style={{ marginBottom: 12 }}>
           {sendableCoins.length > 1 ? (
             <TokenSelect value={coin} onChange={setCoin} options={sendableCoins} ariaLabel="Send asset"/>
@@ -1439,7 +1403,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
             fontSize: 15, fontWeight: 700,
             borderRadius: 12,
           }}
-          disabled={!recipientValidation.valid || !amount || recipientBlocked || !walletReady || hasCriticalIssue(simReport)}
+          disabled={!recipientValidation.valid || !amount || recipientBlocked || !walletReady || hasCriticalIssue(simReport) || !coinOnNetwork}
           onClick={onSubmit}
           title={
             recipientBlocked        ? 'Recipient flagged as high-risk — sending is blocked.'
@@ -1486,9 +1450,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
  *   - EVM-flavoured chains (Ethereum, BNB, Polygon, Linea, Base, Arbitrum,
  *     etc.) all share the wallet's single 0x… address since EVM keypairs
  *     are chain-agnostic — but each row gets its own entry so the user
- *     understands which chain they're receiving on. Lithosphere Makalu
- *     gets two rows: the litho1 bech32 form AND the 0x form, since both
- *     are valid recipients on the chain.
+ *     understands which chain they're receiving on. Lithosphere rows carry
+ *     both the litho1 bech32 form AND the 0x form, since both are valid
+ *     recipients on the chain.
  */
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -1540,7 +1504,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
     if (s === 'BTC')  return 'bitcoin';
     if (s === 'SOL')  return 'solana';
     if (s === 'ATOM') return 'cosmos';
-    return 'lithosphere-makalu'; // native LITHO + every LEP100 share the Makalu address
+    return 'lithosphere-mainnet'; // native LITHO + tokens share the one Lithosphere address
   }, [initialAsset]);
   const autoSelected = useRef(false);
 
@@ -1583,10 +1547,10 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
 
   /* The network list. Lithosphere has dual address formats (litho1… and
      0x) for the same keypair — each chain row carries both and the QR
-     view exposes a toggle. Esha asked us to surface Makalu and Kamet as
-     SEPARATE selectable rows (MetaMask / Trust Wallet pattern) so users
-     explicitly pick which Lithosphere chain they're receiving on —
-     even though the address is identical on both. Non-Lithosphere
+     view exposes a toggle. Each Lithosphere chain is a SEPARATE selectable
+     row (MetaMask / Trust Wallet pattern) so users explicitly pick which
+     one they're receiving on — even though the address is identical.
+     (Makalu isn't built in any more — 2026-09-29.) Non-Lithosphere
      networks (Bitcoin / Solana / Cosmos) each get one row. */
   const networks: ReceiveNetwork[] = useMemo(() => {
     const out: ReceiveNetwork[] = [];
@@ -1594,8 +1558,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
       // Lithosphere MAINNET (9005) leads the list — the flagship/Web4 home
       // chain, same "always first" convention used on Home/Send across
       // every client (client requirement 2026-08-27, applied here
-      // 2026-09-18 — this list previously put testnet Makalu on top).
-      // Same dual-address treatment as Makalu/Kamet below.
+      // 2026-09-18). Same dual-address treatment as Kamet below.
       out.push({
         id:           'lithosphere-mainnet',
         name:         'Lithosphere',
@@ -1607,21 +1570,8 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
         altLabel:     'EVM',
         badge:        'EVM',
       });
-      // Makalu — Lithosphere testnet chain (700777). Users selecting Makalu
-      // here see exactly the same address they'd see on Mainnet/Kamet, with
-      // the same litho1 / EVM toggle.
-      out.push({
-        id:           'lithosphere-makalu',
-        name:         'Lithosphere Makalu · Testnet',
-        symbol:       'LITHO',
-        color:        '#3b7af7',
-        address:      litho || evm,
-        altAddress:   litho && evm ? evm : undefined,
-        primaryLabel: 'Litho1',
-        altLabel:     'EVM',
-      });
       // Kamet — Lithosphere sister chain (900523), where DNNS lives.
-      // Same keypair → same address strings as Makalu. We surface a
+      // Same keypair → same address strings as Mainnet. We surface a
       // separate row anyway so users sending from a dApp on Kamet can
       // confirm explicitly which chain they expect funds on.
       out.push({
@@ -1675,7 +1625,11 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
       const stables = allTokensForChain(chainId).map(t => ({ sym: t.symbol, name: t.name }));
       return chain ? [{ sym: chain.nativeSymbol, name: chain.nativeName }, ...stables] : [];
     }
-    return TOKENS.filter(t => t.chain === 'Makalu').map(t => ({ sym: t.sym, name: t.name })); // Makalu / Kamet
+    if (net.id === 'lithosphere-mainnet') {
+      // Lithosphere Mainnet → LITHO + the tokens tracked there.
+      return [{ sym: 'LITHO', name: 'Lithosphere' }, ...allTokensForChain(9005).map(t => ({ sym: t.symbol, name: t.name }))];
+    }
+    return [{ sym: 'LITHO', name: 'Lithosphere' }]; // Kamet: native LITHO
   };
 
   // Asset-entry: once the target network's row is available (some addresses
@@ -2074,7 +2028,7 @@ const CROSS_CHAINS: Array<{ id: string; name: string; color: string; tokens: str
   { id: 'polygon',   name: 'Polygon',     color: '#8247e5', tokens: ['POL', 'USDC', 'USDT', 'DAI'] },
   { id: 'bsc',       name: 'BNB Chain',   color: '#f3ba2f', tokens: ['BNB', 'USDC', 'USDT'] },
   { id: 'avalanche', name: 'Avalanche',   color: '#e84142', tokens: ['AVAX', 'USDC', 'USDT'] },
-  { id: 'makalu',    name: 'Lithosphere', color: '#3b7af7', tokens: ['LITHO', 'LAX', 'LitBTC'] },
+  { id: 'lithosphere', name: 'Lithosphere', color: '#3b7af7', tokens: ['LITHO', 'LAX', 'LitBTC'] },
 ];
 
 /* Swap (same-chain) and Cross-chain ship; only Bridge (Makalu<->Kamet
@@ -2327,6 +2281,11 @@ function MakaluKametBridge() {
   );
 }
 
+/** Same-chain swaps quoted (MultX / Ignite) and ran on the Makalu testnet's
+ *  token set, which the wallet no longer includes (2026-09-29). Off until the
+ *  DEX quotes on Lithosphere Mainnet; the modal says so instead of quoting. */
+const SWAP_LIVE = false;
+
 export function SwapModal({ onClose, initialFrom, fullScreen }: {
   onClose: () => void;
   /** Pre-select the FROM asset (e.g. opened from a token detail screen). */
@@ -2391,7 +2350,7 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
      or both may quote, and we always show the user the better deal. */
   useEffect(() => {
     const trimmed = amt.trim();
-    if (!trimmed || parseFloat(trimmed) <= 0 || from === to) {
+    if (!SWAP_LIVE || !trimmed || parseFloat(trimmed) <= 0 || from === to) {
       setQuote(null); setProvider(null); setQuoteError(null);
       return;
     }
@@ -2543,13 +2502,16 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
       const unsignedTx = (quote as { unsignedTx?: {
         to: string; value?: string; data?: string;
         gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+        chainId?: number;
       } }).unsignedTx;
 
       if (unsignedTx && wallet?.seed?.length) {
         // Wallet-broadcast mode: sign locally via the signer worker
-        // (same code path eth_sendTransaction takes), then forward the
-        // resulting tx hash as the `signedTx` field so the bridge/DEX
-        // picks it up + starts tracking.
+        // (same code path eth_sendTransaction takes) on the chain the quote
+        // names — never a default network — then forward the resulting tx
+        // hash as the `signedTx` field so the bridge/DEX starts tracking.
+        const net = unsignedTx.chainId ? getEvmChainMerged(unsignedTx.chainId) : undefined;
+        if (!net) throw new Error('This swap quote has no network the wallet can sign on.');
         const { signerSignTransaction } = await import('../lib/signer-client');
         const r = await signerSignTransaction({
           to:                   unsignedTx.to,
@@ -2558,6 +2520,8 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
           gasLimit:             unsignedTx.gas,
           maxFeePerGas:         unsignedTx.maxFeePerGas,
           maxPriorityFeePerGas: unsignedTx.maxPriorityFeePerGas,
+          chainId:              net.chainId,
+          rpcUrl:               net.rpcUrl,
         });
         signedTxHash = r.hash;
         setSourceHash(signedTxHash);
@@ -2613,7 +2577,7 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
             </div>
             {sourceHash && (
               <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', maxWidth: 320 }}>
-                Source: <a href={`https://makalu.litho.ai/txs/${sourceHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue)' }}>{sourceHash}</a>
+                Source: <code>{sourceHash}</code>
               </div>
             )}
             {destHash && (
@@ -2638,7 +2602,12 @@ export function SwapModal({ onClose, initialFrom, fullScreen }: {
       <div className="modal-body">
         <SwapTabs mode={mode} setMode={setMode}/>
         {(process.env.NODE_ENV !== 'production' && mode === 'bridge') ? <MakaluKametBridge/>
-          : mode === 'cross' ? <CrossChainSwap bridge={false}/> : (<>
+          : mode === 'cross' ? <CrossChainSwap bridge={false}/> : !SWAP_LIVE ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, padding: '18px 4px' }}>
+            <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Swap is coming soon</div>
+            Swaps will open on Lithosphere Mainnet. Until then, send and receive work as usual.
+          </div>
+        ) : (<>
         <label className="field-label">From</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: '0 0 130px' }}>

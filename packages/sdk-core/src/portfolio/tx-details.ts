@@ -2,9 +2,9 @@
  * On-chain transaction detail lookup — powers the "tap a past activity row"
  * detail sheet across every client (web, mobile, desktop, extension).
  *
- * Activity rows from the indexer carry the hash / amount / counterparty / when,
- * but NOT the gas fee or nonce — those live only on chain. Given a tx hash we
- * probe the known chains' RPCs (Makalu first, then the 8 external EVM chains),
+ * Activity rows carry the hash / amount / counterparty / when, but NOT the gas
+ * fee or nonce — those live only on chain. Given a tx hash we probe the known
+ * chains' RPCs (Lithosphere Mainnet first, then the 8 external EVM chains),
  * read the transaction + its receipt, and return the network fee (native +
  * fiat), nonce, status, from/to and a block-explorer link.
  *
@@ -14,10 +14,10 @@
  * their existing explorer links, no fee/nonce panel.
  *
  * CORS: every rpcUrl below is already whitelisted in the web CSP connect-src
- * (apps/web/next.config.js); the extension reaches them via host_permissions;
- * mobile/desktop are native (no CORS). rpc.litho.ai (Makalu) serves CORS
- * headers for browser callers — only Kamet's rpc-3 does not, and Kamet isn't
- * probed here.
+ * (apps/web/lib/csp.js); the extension reaches them via host_permissions;
+ * mobile/desktop are native (no CORS). Kamet's rpc-3 sends no CORS headers,
+ * and Kamet isn't probed here. (Makalu isn't either — it isn't built into the
+ * wallet any more, 2026-09-29.)
  */
 import { fetchPriceQuotes } from '../tokens/pricing';
 
@@ -29,10 +29,9 @@ interface TxChain {
   explorer:     string;   // base host — tx link is `${explorer}/tx/${hash}`
 }
 
-/* Makalu is probed first because the overwhelming majority of Thanos activity
-   is on it; the external EVM chains mirror evm-external.ts / networks.ts. */
+/* Lithosphere Mainnet is probed first — the wallet's home network; the
+   external EVM chains mirror evm-external.ts / networks.ts. */
 const TX_CHAINS: readonly TxChain[] = [
-  { chainId: 700777, name: 'Lithosphere Makalu', rpcUrl: 'https://rpc.litho.ai',                    nativeSymbol: 'LITHO', explorer: 'https://makalu.litho.ai' },
   { chainId: 9005,   name: 'Lithosphere',        rpcUrl: 'https://rpc-mainnet.litho.ai',            nativeSymbol: 'LITHO', explorer: 'https://lithoscan.ai' },
   { chainId: 1,      name: 'Ethereum',           rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',   explorer: 'https://etherscan.io' },
   { chainId: 56,     name: 'BNB Chain',          rpcUrl: 'https://bsc-dataseed.binance.org',        nativeSymbol: 'BNB',   explorer: 'https://bscscan.com' },
@@ -46,21 +45,10 @@ const TX_CHAINS: readonly TxChain[] = [
 
 const chainById = (id: number): TxChain | undefined => TX_CHAINS.find((c) => c.chainId === id);
 
-/* Makalu's RPC (rpc.litho.ai) answers cross-origin POSTs with `ACAO: *` but its
-   OPTIONS preflight omits Access-Control-Allow-Headers, so a browser JSON-RPC
-   POST is blocked — fee/nonce came back "—" on the web app only (native clients
-   have no CORS). The web sets this to its same-origin proxy ('/rpc/makalu',
-   see apps/web/next.config.js) so Makalu lookups go through same-origin. Native
-   clients leave it null and hit rpc.litho.ai directly. */
-let makaluRpcOverride: string | null = null;
-export function setTxMakaluRpc(url: string | null): void { makaluRpcOverride = url; }
-const rpcUrlFor = (c: TxChain): string =>
-  (c.chainId === 700777 && makaluRpcOverride) ? makaluRpcOverride : c.rpcUrl;
+const rpcUrlFor = (c: TxChain): string => c.rpcUrl;
 
-/* Makalu's explorer uses /txs/<hash> (a bare /tx/ 308-redirects there); the
-   EVM explorers (Etherscan/BscScan/…) use /tx/<hash>. */
-const explorerTx = (c: TxChain, hash: string): string =>
-  `${c.explorer}/${c.chainId === 700777 ? 'txs' : 'tx'}/${hash}`;
+/* Explorers use /tx/<hash> (Lithoscan's /txs/ form redirects from it). */
+const explorerTx = (c: TxChain, hash: string): string => `${c.explorer}/tx/${hash}`;
 
 /** Explorer tx URL for a known chain id, or null when the chain is unknown. */
 export function evmExplorerTxUrl(chainId: number, hash: string): string | null {
@@ -106,7 +94,7 @@ interface RawReceipt { gasUsed?: string; effectiveGasPrice?: string; status?: st
 /**
  * Resolve fee / nonce / status / from-to / explorer for an EVM tx hash.
  * When `chainId` is known (caller has it), only that chain is queried; else we
- * probe all known chains in parallel and take the first (Makalu-priority) hit.
+ * probe all known chains in parallel and take the first (Mainnet-priority) hit.
  * Returns null for non-EVM hashes or when the tx isn't found on any chain.
  */
 export async function fetchOnchainTxDetails(
@@ -124,7 +112,7 @@ export async function fetchOnchainTxDetails(
   if (candidates.length === 0) return null;
 
   // Probe getTransactionByHash on each candidate concurrently; keep the first
-  // in TX_CHAINS order (Makalu first) that actually returns the tx.
+  // in TX_CHAINS order (Mainnet first) that actually returns the tx.
   const probes = await Promise.all(
     candidates.map(async (c) => {
       try {

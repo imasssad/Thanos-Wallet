@@ -19,6 +19,7 @@
  * surfaces here as a typed SignerError so the UI can branch on the code.
  */
 import type { WalletSource } from './wallet-source';
+import { browserRpcUrl } from './evm-chains';
 
 export class SignerError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -118,12 +119,6 @@ export function getSignerAddress(): Promise<{ address: string }> {
   return call('address');
 }
 
-/** Build, sign, and broadcast a token send via the worker. */
-export function signerSend(input: { symbol: string; recipient: string; amount: string }):
-  Promise<{ hash: string; symbol: string; to: string; value: string }> {
-  return call('send', input);
-}
-
 /** EIP-191 personal_sign via the worker. */
 export function signerSignMessage(message: string): Promise<{ signature: string }> {
   return call('sign-message', { message });
@@ -141,6 +136,11 @@ export function signerSignTypedData(input: {
 
 /** Build, sign, and broadcast a raw EVM transaction (eth_sendTransaction). */
 export function signerSignTransaction(input: {
+  /** The chain to sign for and broadcast on — required; the worker has no
+   *  default network. `rpcUrl` must be reachable from the browser (see
+   *  evm-chains.ts browserRpcUrl). */
+  chainId:               number;
+  rpcUrl:                string;
   to:                    string;
   value?:                string;       // bigint serialised as string
   data?:                 string;
@@ -148,7 +148,7 @@ export function signerSignTransaction(input: {
   maxFeePerGas?:         string;
   maxPriorityFeePerGas?: string;
 }): Promise<{ hash: string }> {
-  return call('sign-transaction', input);
+  return call('sign-transaction', { ...input, rpcUrl: browserRpcUrl(input.rpcUrl) });
 }
 
 /** Bitcoin send via the worker. Mnemonic-only — PK-imported wallets must

@@ -5,10 +5,8 @@
  * extension / desktop implementations.
  *
  *   - Network-level: hides every row on that chain. Rows without a chainId
- *     (native Makalu LITHO, BTC, SOL — see dashboard.tsx's COINS builder,
- *     which only sets chainId on EVM rows) are keyed by symbol instead, so
- *     Lithosphere Mainnet (chainId 9005) is a distinct, independently
- *     hideable network from Makalu-native LITHO.
+ *     (BTC, SOL, ATOM — see dashboard.tsx's COINS builder, which sets
+ *     chainId on every EVM row) are keyed by symbol instead.
  *   - Asset-level: hides one specific row, keyed the same way elsewhere in
  *     the app identifies a coin (sym + chainId + tokenAddress).
  *
@@ -21,24 +19,30 @@
 const HIDDEN_NETWORKS_KEY = 'thanos.hidden_networks.v1';
 const HIDDEN_ASSETS_KEY   = 'thanos.hidden_assets.v1';
 
-// Lithosphere Makalu (testnet) starts hidden for users who have never
-// touched Manage networks (client 2026-09-24). A stored list — even an
-// empty one — is the user's own choice and always wins.
-const DEFAULT_HIDDEN_NETWORKS = ['chain:700777'];
+// 'chain:700777' hid the built-in Makalu network (default-hidden from
+// 2026-09-24). Makalu isn't built in any more (2026-09-29); a user who adds
+// it back as a custom network means to see it — and custom networks have no
+// toggle in Manage networks to undo a stale hide — so the key is dropped.
+const RETIRED_NETWORK_KEYS = ['chain:700777'];
 
-function readSet(key: string, fallback: string[] = []): Set<string> {
-  if (typeof window === 'undefined') return new Set(fallback);
+function readSet(key: string, retired: string[] = []): Set<string> {
+  if (typeof window === 'undefined') return new Set();
   try {
     const raw = window.localStorage.getItem(key);
-    if (raw == null) return new Set(fallback);
+    if (raw == null) return new Set();
     const arr = JSON.parse(raw) as unknown;
-    return new Set(Array.isArray(arr) ? (arr as string[]) : []);
+    const set = new Set(Array.isArray(arr) ? (arr as string[]) : []);
+    if (retired.some((k) => set.has(k))) {
+      for (const k of retired) set.delete(k);
+      try { window.localStorage.setItem(key, JSON.stringify([...set])); } catch { /* ignore */ }
+    }
+    return set;
   } catch {
     return new Set();
   }
 }
 
-let hiddenNetworks = readSet(HIDDEN_NETWORKS_KEY, DEFAULT_HIDDEN_NETWORKS);
+let hiddenNetworks = readSet(HIDDEN_NETWORKS_KEY, RETIRED_NETWORK_KEYS);
 let hiddenAssets   = readSet(HIDDEN_ASSETS_KEY);
 
 export const networkVisKey = (chainId: number | undefined, sym: string): string =>
@@ -65,21 +69,10 @@ export function toggleAssetVisibility(key: string): void {
   try { window.localStorage.setItem(HIDDEN_ASSETS_KEY, JSON.stringify([...hiddenAssets])); } catch { /* ignore */ }
 }
 
-/** Static catalog of every network the wallet supports, for the "Manage
- *  networks" toggle list in Settings. LITHO is native on BOTH Lithosphere
- *  Mainnet (9005) and Lithosphere Makalu — listed as independent rows,
- *  matching how the portfolio itself treats them. */
+/** Static catalog of every built-in network, for the "Manage networks"
+ *  toggle list in Settings. (Makalu isn't built in any more — 2026-09-29.) */
 export const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
   { key: networkVisKey(9005, 'LITHO'),      name: 'Lithosphere',        sub: 'Mainnet · chain 9005' },
-  // chainId 700777, NOT undefined — the indexer always tags Makalu-native
-  // LITHO/LEP100 rows with the real MAKALU_CHAIN_ID (services/indexer/src/
-  // chain.ts, lep100-sync.ts), it never omits chainId. This key previously
-  // used networkVisKey(undefined, 'LITHO'), which could never match a real
-  // Makalu row's networkVisKey(700777, 'LITHO') — toggling "Lithosphere
-  // Makalu" off in Settings silently did nothing (client-reported
-  // 2026-09-18: "turned off Makalu but assets still show"). Matches
-  // mobile's already-correct ALL_NETWORKS entry.
-  { key: networkVisKey(700777, 'LITHO'),    name: 'Lithosphere Makalu', sub: 'Testnet' },
   { key: networkVisKey(undefined, 'BTC'),   name: 'Bitcoin',            sub: 'Native' },
   { key: networkVisKey(undefined, 'SOL'),   name: 'Solana',             sub: 'Native' },
   { key: networkVisKey(undefined, 'ATOM'),  name: 'Cosmos Hub',         sub: 'Native' },

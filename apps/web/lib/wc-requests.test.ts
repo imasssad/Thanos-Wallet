@@ -4,16 +4,15 @@ import { createSessionRequestHandler, type ConfirmEntry, type WcSessionRequest }
 
 const ME = '0x1111111111111111111111111111111111111111';
 const ATTACKER = '0x9999999999999999999999999999999999999999';
-const MAKALU = 700777;
+const MAINNET = 9005;
 
 function setup(opts: { sessionChain?: number; phishing?: boolean; signFails?: boolean } = {}) {
   const confirms: ConfirmEntry<WcSessionRequest>[] = [];
   const deps = {
     account: () => ME,
-    sessionChainId: () => opts.sessionChain ?? MAKALU,
+    sessionChainId: () => opts.sessionChain ?? MAINNET,
     setSessionChainId: vi.fn(),
-    supportedChainIds: new Set([MAKALU, 1, 137]),
-    broadcastChainId: MAKALU,
+    supportedChainIds: new Set([MAINNET, 1, 137]),
     respond: vi.fn(async () => {}),
     respondError: vi.fn(async () => {}),
     emitChainChanged: vi.fn(async () => {}),
@@ -25,8 +24,8 @@ function setup(opts: { sessionChain?: number; phishing?: boolean; signFails?: bo
   };
   let n = 0;
   const handle = createSessionRequestHandler(deps);
-  const send = (method: string, params: unknown[], origin = 'https://dapp.example') =>
-    handle({ topic: 't1', id: ++n, params: { request: { method, params } }, verifyContext: { verified: { origin } } });
+  const send = (method: string, params: unknown[], origin = 'https://dapp.example', chainId?: string) =>
+    handle({ topic: 't1', id: ++n, params: { request: { method, params }, chainId }, verifyContext: { verified: { origin } } });
   return { deps, confirms, send };
 }
 
@@ -56,7 +55,7 @@ describe('web WalletConnect requests', () => {
   it('shows typed data decoded and strips EIP712Domain before signing', async () => {
     const { deps, confirms, send } = setup();
     const typed = {
-      domain: { name: 'USD Coin', chainId: MAKALU, verifyingContract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+      domain: { name: 'USD Coin', chainId: MAINNET, verifyingContract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
       types: { EIP712Domain: [{ name: 'name', type: 'string' }], Permit: [{ name: 'owner', type: 'address' }] },
       primaryType: 'Permit',
       message: { owner: ME, spender: ATTACKER, value: MaxUint256.toString(), nonce: 0, deadline: 1_900_000_000 },
@@ -77,10 +76,24 @@ describe('web WalletConnect requests', () => {
     expect(deps.signTypedData).not.toHaveBeenCalled();
   });
 
-  it('blocks a transaction for a session switched off the broadcast chain, and phishing origins', async () => {
-    const offChain = setup({ sessionChain: 137 });
-    await offChain.send('eth_sendTransaction', [{ from: ME, to: ATTACKER, value: '0x1' }]);
-    expect(offChain.confirms[0].review.blockReason).toMatch(/chain 700777 only.*chain 137/);
+  it('sends a transaction on exactly the chain the request names', async () => {
+    const { deps, confirms, send } = setup();
+    await send('eth_sendTransaction', [{ from: ME, to: ATTACKER, value: '0x1' }], 'https://dapp.example', 'eip155:137');
+    expect(confirms[0].review.risk).not.toBe('block');
+    await confirms[0].approve();
+    expect(deps.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ to: ATTACKER, value: '0x1' }), 137);
+    // No chain named → the session's chain (Lithosphere Mainnet by default).
+    await send('eth_sendTransaction', [{ from: ME, to: ATTACKER, value: '0x2' }]);
+    await confirms[1].approve();
+    expect(deps.sendTransaction).toHaveBeenLastCalledWith(expect.objectContaining({ value: '0x2' }), MAINNET);
+  });
+
+  it('blocks a transaction on a chain the wallet cannot send on, and phishing origins', async () => {
+    const offChain = setup();
+    await offChain.send('eth_sendTransaction', [{ from: ME, to: ATTACKER, value: '0x1' }], 'https://dapp.example', 'eip155:700777');
+    expect(offChain.confirms[0].review.blockReason).toMatch(/can't send on chain 700777/);
+    await expect(offChain.confirms[0].approve()).rejects.toThrow();
+    expect(offChain.deps.sendTransaction).not.toHaveBeenCalled();
 
     const phish = setup({ phishing: true });
     await phish.send('personal_sign', ['0x68656c6c6f', ME], 'https://evil.example');

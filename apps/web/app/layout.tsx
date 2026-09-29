@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     'Thanos Wallet', 'Lithosphere wallet', 'Lithosphere', 'LITHO', 'wLITHO',
     'Web4 wallet', 'multi-chain wallet', 'self-custody wallet', 'non-custodial wallet',
     'crypto wallet', 'Bitcoin wallet', 'EVM wallet', 'Ethereum wallet', 'Solana wallet',
-    'Makalu', 'Kamet', 'LEP100', 'MultX bridge', 'Ignite DEX', 'cross-chain bridge',
+    'Lithosphere Mainnet', 'Kamet', 'LEP100', 'MultX bridge', 'Ignite DEX', 'cross-chain bridge',
     'DeFi wallet', 'EIP-6963', 'WalletConnect', 'Sign in with Thanos',
   ],
   authors: [{ name: 'Thanos Wallet', url: 'https://thanos.fi' }],

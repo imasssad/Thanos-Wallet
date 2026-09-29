@@ -1,10 +1,9 @@
 /**
  * EVM chain registry — every chain the wallet transacts on with the
- * same `0x` keypair. Lithosphere Makalu has its own helper
- * (`lib/rpc.ts`) because it gets a FallbackProvider over three private
- * endpoints. For the public EVM chains below we use a single public
- * RPC each — fine for read-side balance polls; for sends we'd want a
- * fallback list per chain (FUTURE).
+ * same `0x` keypair: Lithosphere Mainnet and the public EVM chains below
+ * (a single public RPC each — fine for read-side balance polls; for sends
+ * we'd want a fallback list per chain, FUTURE), plus user-added custom
+ * networks, which custom-assets.ts registers here.
  *
  * All chains share the wallet's single EVM address; switching chains
  * is purely a question of which RPC we hit + how we display the row.
@@ -48,9 +47,8 @@ export interface EvmChain {
  *  consumer chains, the L2s (Arbitrum / Linea / OP / Avalanche) follow.
  *
  *  Excluded:
- *   - Lithosphere Makalu — has its own first-class flow in lib/rpc.ts +
- *     services/indexer; not duplicated here.
- *   - Testnets — production list only.
+ *   - Testnets (Makalu, Kamet, …) — production list only. A user can add a
+ *     testnet as a custom network (custom-assets.ts).
  */
 export const EVM_CHAINS: readonly EvmChain[] = [
   {
@@ -173,15 +171,49 @@ export function getEvmChain(chainId: number): EvmChain | undefined {
 /* ─── Providers ──────────────────────────────────────────────────────── */
 /* Memoised so concurrent components don't each open their own pool. */
 
-const providers = new Map<number, Provider>();
+const providers = new Map<string, Provider>();
 
+/* User-added custom networks live in custom-assets.ts, which imports this
+   module — so it registers its merged lookup here rather than being
+   imported (no import cycle). Without it a custom network (e.g. Makalu
+   added back by hand) had no provider: no balance, no send. */
+let chainLookup: (chainId: number) => EvmChain | undefined = getEvmChain;
+export function registerChainLookup(fn: (chainId: number) => EvmChain | undefined): void {
+  chainLookup = fn;
+}
+
+/* Lithosphere's own RPC hosts send no CORS headers, so a browser reaches
+   them through this site's same-origin proxy (next.config.js rewrites).
+   This is what lets a user add Makalu back as a custom network with its
+   usual RPC URL. */
+const LITHO_RPC_PROXY: Record<string, string> = {
+  'rpc.litho.ai':   '/rpc/makalu',
+  'rpc-2.litho.ai': '/rpc/makalu-2',
+  'rpc-3.litho.ai': '/rpc/kamet',
+};
+export function browserRpcUrl(url: string): string {
+  if (typeof window === 'undefined') return url;
+  try {
+    const u = new URL(url);
+    const path = LITHO_RPC_PROXY[u.host];
+    return path && (u.pathname === '/' || u.pathname === '') ? `${window.location.origin}${path}` : url;
+  } catch {
+    return url;
+  }
+}
+
+/** Provider for exactly this chain (built-in or custom). The chainId is
+ *  passed in, so ethers checks the RPC really serves that chain before any
+ *  request — a wrong RPC can't quietly put a tx on another network. */
 export function getEvmProvider(chainId: number): Provider {
-  const hit = providers.get(chainId);
-  if (hit) return hit;
-  const chain = getEvmChain(chainId);
+  const chain = chainLookup(chainId);
   if (!chain) throw new Error(`evm: unsupported chainId ${chainId}`);
-  const p = new JsonRpcProvider(chain.rpcUrl, chainId);
-  providers.set(chainId, p);
+  const url = browserRpcUrl(chain.rpcUrl);
+  const key = `${chainId}|${url}`;
+  const hit = providers.get(key);
+  if (hit) return hit;
+  const p = new JsonRpcProvider(url, chainId);
+  providers.set(key, p);
   return p;
 }
 

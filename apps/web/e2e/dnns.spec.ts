@@ -14,8 +14,8 @@ import { createWallet } from './helpers';
  * "Could not resolve" hint appears) — proving the input is treated as a
  * name, not as a malformed address.
  *
- * Live happy-path resolution requires a known-good name on Makalu and is
- * left to manual smoke testing against the staging API.
+ * Live happy-path resolution requires a known-good name on Kamet (the DNNS
+ * registry) and is left to manual smoke testing against the staging API.
  */
 
 test.describe('DNNS', () => {
@@ -23,9 +23,11 @@ test.describe('DNNS', () => {
     await createWallet(page);
     await page.getByRole('button', { name: 'Send' }).first().click();
 
-    // The Send modal mounts on Makalu by default — the network DNNS
-    // resolves against.
-    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address/i).first();
+    // DNNS names resolve on Lithosphere Kamet sends — the network the
+    // registry lives on. (Send opens on Lithosphere Mainnet.)
+    await page.getByRole('combobox', { name: 'Send network' }).click();
+    await page.getByRole('option', { name: /Kamet/ }).click();
+    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address|address \(0x/i).first();
     await expect(recipient).toBeVisible();
 
     await recipient.fill('thanos-test.litho');
@@ -43,7 +45,7 @@ test.describe('DNNS', () => {
     await createWallet(page);
     await page.getByRole('button', { name: 'Send' }).first().click();
 
-    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address/i).first();
+    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address|address \(0x/i).first();
     await recipient.fill('0x1234567890123456789012345678901234567890');
 
     // The DNNS hint must NOT appear for a raw address.
@@ -57,8 +59,10 @@ test.describe('DNNS', () => {
   test('DNNS hint disappears when the user clears the field', async ({ page }) => {
     await createWallet(page);
     await page.getByRole('button', { name: 'Send' }).first().click();
+    await page.getByRole('combobox', { name: 'Send network' }).click();
+    await page.getByRole('option', { name: /Kamet/ }).click();
 
-    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address/i).first();
+    const recipient = page.getByPlaceholder(/litho1.*0x|0x.*address|address \(0x/i).first();
     await recipient.fill('some-name.litho');
 
     // Wait until the resolver UI has surfaced (in-flight or terminal).
