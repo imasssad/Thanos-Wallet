@@ -4,7 +4,7 @@
  * Primary transport: @ledgerhq/hw-transport-webhid (renderer-side
  * WebHID, unblocked by the Ledger vendor allowlist in
  * src/main/index.ts) + @ledgerhq/hw-app-eth to sign an EIP-1559
- * transaction, then broadcast through Makalu's FallbackProvider.
+ * transaction, then broadcast on the chain of the asset being sent.
  *
  * Fallback transport: if WebHID isn't available (typically Linux
  * configurations where the browser-side WebHID API is disabled), the
@@ -17,10 +17,9 @@
  * stays untouched and the broadcast is `from` the Ledger's own
  * derived address.
  */
-import { Transaction, getAddress, type Provider } from 'ethers';
+import { JsonRpcProvider, Transaction, getAddress, type Provider } from 'ethers';
 import TransportWebHID from '@ledgerhq/hw-transport-webhid';
 import Eth from '@ledgerhq/hw-app-eth';
-import { getMakaluProvider } from '@thanos/sdk-core';
 
 const HD_PATH = "44'/60'/0'/0/0"; // Ledger uses the path without leading m/
 
@@ -114,26 +113,27 @@ export interface LedgerSendParams {
 export async function sendViaLedger(
   connection: LedgerConnection,
   params: LedgerSendParams,
+  chain: { chainId: number; rpcUrl: string },
 ): Promise<string> {
-  const provider: Provider = getMakaluProvider();
+  // The asset's own chain — there is no default network.
+  const provider: Provider = new JsonRpcProvider(chain.rpcUrl, chain.chainId, { staticNetwork: true });
   const from = connection.address;
 
   // Populate the unsigned tx from chain state. estimateGas needs `from`
   // so contract reverts surface here instead of inside the device.
-  const [nonce, feeData, network, gasLimit] = await Promise.all([
+  const [nonce, feeData, gasLimit] = await Promise.all([
     provider.getTransactionCount(from),
     provider.getFeeData(),
-    provider.getNetwork(),
     provider.estimateGas({ from, to: params.to, value: params.value, data: params.data ?? '0x' }),
   ]);
 
   if (feeData.maxFeePerGas == null || feeData.maxPriorityFeePerGas == null) {
-    throw new Error('Makalu RPC did not return EIP-1559 fee data');
+    throw new Error('The network did not return EIP-1559 fee data');
   }
 
   const tx = Transaction.from({
     type:                 2,
-    chainId:              network.chainId,
+    chainId:              BigInt(chain.chainId),
     nonce,
     to:                   params.to,
     value:                params.value,

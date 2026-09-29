@@ -48,13 +48,14 @@ let currentUrl = '';
 // True while the open view is a LAX identity-verification view.
 let kycMode = false;
 
-const MAKALU_CHAIN_ID = 700777;
+// Lithosphere Mainnet — where a dApp starts (Makalu isn't built in any more,
+// 2026-09-29).
+const DEFAULT_CHAIN_ID = 9005;
 // Known EVM chains the in-app browser will switch to (chainId → read RPC).
 // Mirrors the renderer's EXT_EVM_CHAINS; duplicated here because the main
 // process can't import renderer code. NO arbitrary wallet_addEthereumChain —
 // known-good RPCs only, so a dApp can't point the wallet at a malicious node.
 const BROWSER_CHAINS: Record<number, string> = {
-  700777: 'https://rpc.litho.ai',
   9005:   'https://rpc-mainnet.litho.ai',   // Lithosphere Mainnet
   1:      'https://ethereum.publicnode.com',
   56:     'https://bsc-dataseed.binance.org',
@@ -66,9 +67,10 @@ const BROWSER_CHAINS: Record<number, string> = {
   43114:  'https://api.avax.network/ext/bc/C/rpc',
 };
 
-// The EVM chain the dApp is currently on — starts on Makalu; a dApp can
-// wallet_switchEthereumChain to any BROWSER_CHAINS member. Reset on destroy.
-let currentChainId = MAKALU_CHAIN_ID;
+// The EVM chain the dApp is currently on — starts on Lithosphere Mainnet; a
+// dApp can wallet_switchEthereumChain to any BROWSER_CHAINS member. Reset on
+// destroy. Transactions are signed for and broadcast on exactly this chain.
+let currentChainId = DEFAULT_CHAIN_ID;
 
 // Per-open connection state — reset when the browser view is destroyed.
 // connectedOrigin scopes the grant to the host that was approved: navigating
@@ -101,19 +103,19 @@ function execViaRenderer(method: string, params: unknown[], chainId: number): Pr
       if (pendingExec.delete(id)) resolve({ error: { code: -32603, message: 'Signing timed out' } });
     }, 120_000);
     pendingExec.set(id, { resolve: (v) => { clearTimeout(timer); resolve(v); } });
-    // chainId lets the renderer broadcast eth_sendTransaction on the chain the
-    // dApp switched to (not always Makalu).
+    // chainId is the chain the renderer signs + broadcasts eth_sendTransaction
+    // on — the dApp's current chain, never a default.
     host!.webContents.send('dapp:exec', { id, method, params, chainId });
   });
 }
 
 // Read-only JSON-RPC (eth_call, eth_getBalance, …) is answered straight from
-// Makalu — no seed, no approval needed.
+// the current chain's RPC — no seed, no approval needed.
 const readProviders = new Map<number, import('ethers').JsonRpcProvider>();
 function chainRead(chainId: number): import('ethers').JsonRpcProvider {
   let p = readProviders.get(chainId);
   if (!p) {
-    const rpc = BROWSER_CHAINS[chainId] ?? BROWSER_CHAINS[MAKALU_CHAIN_ID];
+    const rpc = BROWSER_CHAINS[chainId] ?? BROWSER_CHAINS[DEFAULT_CHAIN_ID];
     p = new JsonRpcProvider(rpc, chainId, { staticNetwork: true });
     readProviders.set(chainId, p);
   }
@@ -275,7 +277,7 @@ function destroy(): void {
   connected = false;
   connectedAddress = '';
   connectedOrigin = '';
-  currentChainId = MAKALU_CHAIN_ID;
+  currentChainId = DEFAULT_CHAIN_ID;
   rejectAllExec();
   kycMode = false;
   kycAllowed.clear();

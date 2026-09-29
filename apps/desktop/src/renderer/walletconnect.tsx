@@ -15,12 +15,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
 import { useWalletSeed } from './send';
-import { executeWcRequest, WcSignerError } from './wc-signer';
+import { executeWcRequest, WcSignerError, chainIdFromCaip } from './wc-signer';
 import { reviewSigningRequest } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
-
-/** The only chain the desktop WalletConnect signer uses (see wc-signer). */
-const WC_CHAIN_ID = 700777;
+import { EXT_EVM_CHAINS } from './evm-external-meta';
 
 interface PendingRequest {
   id:     number;
@@ -28,17 +26,17 @@ interface PendingRequest {
   method: string;
   params: unknown[];
   name:   string;
+  /** CAIP-2 chain the dApp sent the request on ("eip155:9005") — the chain
+   *  it's reviewed against and signed / broadcast on. */
+  chainId?: string;
 }
 
-const MAKALU = 700777;
-// SAFETY: advertise ONLY the chains the signing path actually honours.
-// Every request handler in this client broadcasts via the MAKALU
-// provider regardless of the namespace the dApp asked on - advertising
-// mainnet/Polygon/etc. let a dApp think it was getting an eip155:1 tx
-// while the wallet broadcast on 700777 (chain-mismatch hazard, flagged
-// by the 2026-06 security audit). Re-add ids here ONLY together with
-// per-chain provider routing in the request handler.
-const SUPPORTED_EVM = [MAKALU];
+// SAFETY: advertise ONLY the chains the signing path actually honours. The
+// request handler signs on the chain each request names (wc-signer routes it
+// to that chain's RPC and pins the chainId), so every built-in chain —
+// Lithosphere Mainnet first — is safe to advertise. (It used to be Makalu
+// only, when the signer broadcast everything on Makalu.)
+const SUPPORTED_EVM = EXT_EVM_CHAINS.map((c) => c.chainId);
 const NS_CHAINS  = SUPPORTED_EVM.map((id) => `eip155:${id}`);
 const METHODS    = [
   'eth_sendTransaction', 'eth_signTransaction', 'eth_sign',
@@ -105,7 +103,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const queueRef = useRef<PendingRequest[]>([]);
   const nextRequest = () => { queueRef.current.shift(); setPending(queueRef.current[0] ?? null); };
   const review = pending
-    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: WC_CHAIN_ID, account: evmAddress })
+    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: chainIdFromCaip(pending.chainId) ?? undefined, account: evmAddress })
     : null;
   const blocked = review?.risk === 'block';
 
@@ -138,6 +136,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           method,
           params: (event.params.request.params as unknown[]) ?? [],
           name,
+          chainId: event.params.chainId,
         });
         if (queueRef.current.length === 1) setPending(queueRef.current[0]);
         const title = method === 'eth_sendTransaction' || method === 'eth_signTransaction'
@@ -154,7 +153,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     setBusy(true); setErr(null);
     try {
       const kit = await getKit();
-      const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params } });
+      const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params }, chainId: pending.chainId });
       await kit.respondSessionRequest({
         topic:    pending.topic,
         response: { id: pending.id, jsonrpc: '2.0', result },
@@ -266,7 +265,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         ) : proposal ? (
           <>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>
-              <b>{proposal.name}</b> wants to connect to your wallet on Makalu + 8 EVM chains.
+              <b>{proposal.name}</b> wants to connect to your wallet on Lithosphere + 8 EVM chains.
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={reject}  style={{ ...btn, background: 'transparent', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>Reject</button>

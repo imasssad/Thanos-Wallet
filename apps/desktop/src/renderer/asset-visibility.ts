@@ -5,10 +5,8 @@
  * extension implementations.
  *
  *   - Network-level: hides every row on that chain. Rows without a chainId
- *     (native Makalu LITHO/wLITHO, BTC, SOL, ATOM — see portfolio.ts, which
- *     only sets chainId on external-EVM rows) are keyed by symbol instead,
- *     so Lithosphere Mainnet (chainId 9005) is a distinct, independently
- *     hideable network from Makalu-native LITHO.
+ *     (BTC, SOL, ATOM — see portfolio.ts, which sets chainId on every EVM
+ *     row) are keyed by symbol instead.
  *   - Asset-level: hides one specific row, keyed the same way elsewhere in
  *     the app identifies a coin (sym + chainId + tokenAddress).
  *
@@ -18,12 +16,6 @@
 
 const HIDDEN_NETWORKS_KEY = 'thanos.hidden_networks.v1';
 const HIDDEN_ASSETS_KEY   = 'thanos.hidden_assets.v1';
-
-// Lithosphere Makalu (testnet) starts hidden for users who have never
-// touched Manage networks (client 2026-09-24). A stored list — even an
-// empty one — is the user's own choice and always wins.
-// Desktop Makalu rows carry no chainId, so the Makalu key is sym:LITHO.
-const DEFAULT_HIDDEN_NETWORKS = ['sym:LITHO'];
 
 function readSet(key: string, fallback: string[] = []): Set<string> {
   try {
@@ -36,7 +28,7 @@ function readSet(key: string, fallback: string[] = []): Set<string> {
   }
 }
 
-let hiddenNetworks = readSet(HIDDEN_NETWORKS_KEY, DEFAULT_HIDDEN_NETWORKS);
+let hiddenNetworks = readSet(HIDDEN_NETWORKS_KEY);
 let hiddenAssets   = readSet(HIDDEN_ASSETS_KEY);
 
 export const networkVisKey = (chainId: number | undefined, sym: string): string =>
@@ -63,13 +55,10 @@ export function toggleAssetVisibility(key: string): void {
   try { localStorage.setItem(HIDDEN_ASSETS_KEY, JSON.stringify([...hiddenAssets])); } catch { /* ignore */ }
 }
 
-/** Static catalog of every network the wallet supports, for the "Manage
- *  networks" toggle list in Settings. LITHO is native on BOTH Lithosphere
- *  Mainnet (9005) and Lithosphere Makalu — listed as independent rows,
- *  matching how the portfolio itself treats them. */
+/** Static catalog of every built-in network, for the "Manage networks"
+ *  toggle list in Settings. (Makalu isn't built in any more — 2026-09-29.) */
 export const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
   { key: networkVisKey(9005, 'LITHO'),      name: 'Lithosphere',        sub: 'Mainnet · chain 9005' },
-  { key: networkVisKey(undefined, 'LITHO'), name: 'Lithosphere Makalu', sub: 'Testnet' },
   { key: networkVisKey(undefined, 'BTC'),   name: 'Bitcoin',            sub: 'Native' },
   { key: networkVisKey(undefined, 'SOL'),   name: 'Solana',             sub: 'Native' },
   { key: networkVisKey(undefined, 'ATOM'),  name: 'Cosmos Hub',         sub: 'Native' },

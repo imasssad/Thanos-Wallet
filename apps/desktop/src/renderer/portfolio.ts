@@ -1,54 +1,18 @@
 /**
  * Live portfolio + activity data for the desktop wallet.
  *
- * Fetches real balances and recent activity from the indexer
- * (services/indexer) and prices assets via @thanos/sdk-core's CoinGecko
- * pricing. Replaces the COINS / TXS / ALL_TXS mocks the renderer
- * shipped with.
- *
- * sdk-core's IndexerClient is intentionally not used for the typed
- * call — its PortfolioSnapshot type predates the indexer's current
- * response shape — so this module does a directly-typed fetch against
- * the real /portfolio response instead.
+ * Reads balances straight from each chain's RPC (Lithosphere Mainnet, the
+ * external EVM chains, custom networks, BTC/SOL/ATOM) and prices them via
+ * @thanos/sdk-core's CoinGecko pricing. Activity is Lithosphere Mainnet's
+ * explorer feed plus the user's own recorded sends. (The Thanos indexer only
+ * covers the Makalu testnet, which the wallet no longer includes —
+ * 2026-09-29.)
  */
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
-import { formatUnits } from 'ethers';
 import { getLocalActivity, resolvePendingActivity } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
-import { fetchMakaluNativeActivity, fetchKametNativeActivity, fetchMainnetNativeActivity, mergeNativeActivity } from './explorer-activity';
-
-const INDEXER_BASE = String(
-  (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
-    'https://thanos.fi/indexer',
-).replace(/\/$/, '');
-
-/* ─── Indexer response shape (services/indexer/src/server.ts) ────────── */
-
-interface IndexerAsset {
-  chainId:       number;
-  symbol:        string;
-  name:          string;
-  decimals:      number;
-  balance:       string;
-  native?:       boolean;
-  tokenAddress?: string;
-}
-interface IndexerActivityItem {
-  id:       string;
-  type:     string;
-  symbol:   string;
-  amount:   string;
-  txHash?:  string;
-  ts?:      string;
-  status?:  string;
-}
-interface IndexerPortfolio {
-  walletAddress: string;
-  updatedAt:     string;
-  assets:        IndexerAsset[];
-  activity?:     IndexerActivityItem[];
-}
+import { fetchMainnetNativeActivity } from './explorer-activity';
 
 /* ─── Display helpers ────────────────────────────────────────────────── */
 
@@ -82,13 +46,13 @@ function formatDate(iso?: string): string {
   return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/** Merge optimistic local sends (recorded at broadcast time) into the indexer
- *  feed. Native LITHO / external-chain sends are never indexed, so without this
- *  a user's own transaction never appears. Deduped by tx hash so once the
- *  indexer reports the tx the local copy drops out. Local entries (newest)
- *  sort above the indexed ones. A local row whose status has been resolved by
- *  resolvePendingActivity() (external-chain sends the indexer will never see)
- *  renders as Completed/Failed instead of staying stuck on Pending. */
+/** Merge optimistic local sends (recorded at broadcast time) into the
+ *  explorer feed. External-chain sends have no feed, so without this a user's
+ *  own transaction never appears. Deduped by tx hash so once the explorer
+ *  reports the tx the local copy drops out. Local entries (newest) sort above
+ *  the explorer ones. A local row whose status has been resolved by
+ *  resolvePendingActivity() renders as Completed/Failed instead of staying
+ *  stuck on Pending. */
 function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] {
   const local: DisplayTx[] = getLocalActivity(address).map((t) => {
     const resolved = t.status === 'confirmed' || t.status === 'failed';
@@ -105,7 +69,7 @@ function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] 
       txHash: t.hash,
       rawTs: new Date(t.ts).toISOString(),
       rawAmount: parseFloat(String(t.amount).replace(/^[+-]/, '')) || 0,
-      pending: !resolved, // drives the "Pending" badge until the indexer OR resolvePendingActivity resolves it
+      pending: !resolved, // drives the "Pending" badge until the explorer OR resolvePendingActivity resolves it
     };
   });
   const fresh = local.filter(
@@ -114,7 +78,7 @@ function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] 
   return [...fresh, ...indexed];
 }
 
-/** Map an indexer activity type to a display type + direction. */
+/** Map an explorer activity type to a display type + direction. */
 function txType(type: string): { type: 'Send' | 'Receive' | 'Swap' | 'Other'; pos: boolean } {
   switch (type) {
     case 'receive': case 'mint': return { type: 'Receive', pos: true  };
@@ -137,8 +101,8 @@ export interface DisplayCoin {
   balance: number; balanceText: string; decimals: number;
   priceUsd: number; usdValue: number; pct: number; color: string;
   tokenAddress?: string; native: boolean;
-  /** External-EVM chain id (1/56/137/…) for non-Makalu EVM positions, so Send
-   *  can route them to that chain's RPC. Undefined for Makalu / BTC / SOL / ATOM. */
+  /** EVM chain id (9005 Lithosphere Mainnet, 1, 56, … or a custom network) —
+   *  Send signs on exactly this chain. Undefined for BTC / SOL / ATOM. */
   chainId?: number;
 }
 
@@ -154,7 +118,7 @@ export interface DisplayTx {
    *  ≈fiat hero. */
   rawTs?: string;
   rawAmount?: number;
-  /** True while this row is a local-only optimistic send the indexer hasn't
+  /** True while this row is a local-only optimistic send the explorer hasn't
    *  reported yet. Drives the subtle "Pending" badge; cleared once reconciled. */
   pending?: boolean;
 }
@@ -169,20 +133,6 @@ export interface PortfolioState {
 }
 
 /* ─── Fetch ──────────────────────────────────────────────────────────── */
-
-export async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
-  const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8_000);
-  try {
-    const res = await fetch(`${INDEXER_BASE}/portfolio/${encodeURIComponent(address)}`, {
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`indexer ${res.status}`);
-    return (await res.json()) as IndexerPortfolio;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /** Fetch + price the wallet's portfolio and activity. Re-runs on
  *  address change. When `seed` is supplied, also derives BTC/SOL/ATOM
@@ -224,35 +174,21 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
     });
     (async () => {
       try {
-        const [pf, prices, nativeSettled] = await Promise.all([
-          fetchPortfolio(address).catch(() => ({ assets: [], activity: [], walletAddress: address, updatedAt: '' } as IndexerPortfolio)),
-          fetchEcosystemPrices(),
-          // Native LITHO transfers emit no logs, so the indexer never sees
-          // them on any chain — merge in the explorer-scraped feeds (Makalu
-          // + Kamet + Mainnet, the wallet's default) so they actually show
-          // up instead of only ever appearing as a local "Pending" row.
-          Promise.allSettled([
-            fetchMakaluNativeActivity(address),
-            fetchKametNativeActivity(address),
-            fetchMainnetNativeActivity(address),
-          ]),
-          // External-EVM local sends (BNB/Ethereum/Polygon/…) have no
-          // indexer/explorer at all — resolve them via direct chain-RPC
-          // receipt polling instead, so they don't stay "Pending" forever.
-          // Persists to storage itself; mergeLocalActivity below re-reads.
+        // Balances come straight from each chain's RPC below. The Thanos
+        // indexer only covers the Makalu testnet, which the wallet no longer
+        // includes (2026-09-29), so its holdings and activity aren't shown.
+        // A pricing outage mustn't hide balances — they just show unpriced.
+        const [prices, mainnetActivity] = await Promise.all([
+          fetchEcosystemPrices().catch(() => ({} as Record<string, number>)),
+          // Native LITHO transfers on Lithosphere Mainnet, from its explorer
+          // (native transfers emit no logs, so nothing else reports them).
+          fetchMainnetNativeActivity(address).catch(() => []),
+          // Every other local send is resolved via direct chain-RPC receipt
+          // polling, so it doesn't stay "Pending" forever. Persists to
+          // storage itself; mergeLocalActivity below re-reads.
           resolvePendingActivity(address).catch(() => {}),
         ]);
         if (cancelled) return;
-
-        const nativeActivity = nativeSettled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-        pf.activity = mergeNativeActivity(pf.activity ?? [], nativeActivity);
-
-        const priced = pf.assets.map((a) => {
-          let bal = 0;
-          try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
-          const priceUsd = prices[a.symbol] ?? 0;
-          return { a, bal, priceUsd, usdValue: bal * priceUsd };
-        });
 
         // Cross-chain native positions — only when the seed is unlocked.
         // Each chain runs best-effort; one RPC failure doesn't poison the
@@ -293,9 +229,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         }
 
-        // External EVM chains (Ethereum / BNB / Polygon / Base / Arbitrum /
-        // Optimism / Linea / Avalanche) — native coins + USDT/USDC at the SAME
-        // 0x address as Makalu. Best-effort; an RPC hiccup can't blank the rest.
+        // EVM chains (Lithosphere Mainnet, Ethereum / BNB / Polygon / Base /
+        // Arbitrum / Optimism / Linea / Avalanche, custom networks) — native
+        // coins + tokens at the one 0x address. Every row carries its chainId,
+        // which is the chain Send signs on. Best-effort; an RPC hiccup can't
+        // blank the rest.
         try {
           const m = await import('./evm-external');
           const [natives, tokens] = await Promise.all([
@@ -332,34 +270,16 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         } catch { /* best-effort — external chains stay hidden on failure */ }
 
-        const totalUsd = priced.reduce((s, x) => s + x.usdValue, 0)
-                       + xchain.reduce((s, x) => s + x.usdValue, 0);
-        const coins: DisplayCoin[] = [
-          ...priced.map(({ a, bal, priceUsd, usdValue }) => ({
-            sym: a.symbol, name: a.name,
-            balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
-            priceUsd, usdValue,
-            pct: totalUsd > 0 ? Math.round((usdValue / totalUsd) * 100) : 0,
-            color: coinColor(a.symbol),
-            tokenAddress: a.tokenAddress, native: !!a.native,
-          })),
-          ...xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 })),
-        ];
+        const totalUsd = xchain.reduce((s, x) => s + x.usdValue, 0);
+        const coins: DisplayCoin[] = xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 }));
         // Lithosphere MAINNET (chainId 9005) always leads regardless of
         // amount — the Web4 home chain, client requirement 2026-08-27.
-        // The previous check was "any LITHO first", which doesn't
-        // disambiguate Mainnet's LITHO from Makalu's — since coins[] is
-        // built Lithosphere/indexer rows first, then external-EVM rows
-        // (where Mainnet's row actually lives), the stable sort kept
-        // Makalu's LITHO on top instead, exactly backwards from intent
-        // (found + fixed alongside the identical bug on extension,
-        // 2026-09-18). Rank by chainId specifically.
         coins.sort((a, b) => {
           const rank = (c: typeof a) => c.chainId === 9005 ? -1 : c.sym === 'LITHO' ? 0 : 1;
           return rank(a) - rank(b);
         });
 
-        const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {
+        const activity: DisplayTx[] = mainnetActivity.map((t, i) => {
           const { type, pos } = txType(t.type);
           const amt = String(t.amount ?? '').replace(/^[+-]/, '');
           return {
@@ -373,7 +293,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
         });
 
         // Cache-write: only persist a snapshot when the fetch produced real
-        // data. An empty result (indexer 500 caught to []) must never overwrite
+        // data. An empty result (every chain read failed) must never overwrite
         // a good snapshot — that would poison the cached-first view.
         if (coins.length > 0) {
           writeSnapshot(address, { coins, totalUsd, activity });

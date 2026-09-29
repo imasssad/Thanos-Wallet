@@ -100,11 +100,13 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
     clearSeed:  ()                        => ipcRenderer.invoke('signer:clear-seed')        as Promise<void>,
     hasSeed:    ()                        => ipcRenderer.invoke('signer:has-seed')          as Promise<boolean>,
     address:    (hdPath: string)          => ipcRenderer.invoke('signer:address', hdPath)   as Promise<string>,
-    sendTx:     (hdPath: string, tx: TxRequest) => ipcRenderer.invoke('signer:send-tx', hdPath, tx)     as Promise<string>,
+    // chain: the network the transfer was approved on — required; the main
+    // process refuses a send without one (no default network).
+    sendTx:     (hdPath: string, tx: TxRequest, chain: { chainId: number; rpcUrl: string }) => ipcRenderer.invoke('signer:send-tx', hdPath, tx, chain) as Promise<string>,
     personal:   (hdPath: string, msg: string | Uint8Array) => ipcRenderer.invoke('signer:personal', hdPath, msg) as Promise<string>,
     typedData:  (hdPath: string, payload: TypedDataPayload) => ipcRenderer.invoke('signer:typed-data', hdPath, payload) as Promise<string>,
-    erc20Transfer: (hdPath: string, args: { tokenAddress: string; to: string; amount: string }) =>
-      ipcRenderer.invoke('signer:erc20-transfer', hdPath, args) as Promise<string>,
+    erc20Transfer: (hdPath: string, args: { tokenAddress: string; to: string; amount: string }, chain: { chainId: number; rpcUrl: string }) =>
+      ipcRenderer.invoke('signer:erc20-transfer', hdPath, args, chain) as Promise<string>,
   },
 
   /* ─── Native-HID Ledger fallback ────────────────────────────────────

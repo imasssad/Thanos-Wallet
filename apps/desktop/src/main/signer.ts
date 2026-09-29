@@ -18,30 +18,24 @@
  * process holds it in a closure-scoped variable that gets cleared on
  * lock, on window close, or on app quit.
  */
-import { HDNodeWallet, Mnemonic, Wallet, Contract, JsonRpcProvider, FallbackProvider } from 'ethers';
+import { HDNodeWallet, Mnemonic, Wallet, Contract, JsonRpcProvider } from 'ethers';
 
 let _seed: string | null = null;
-let _provider: JsonRpcProvider | FallbackProvider | null = null;
-
-const MAKALU_RPC_URLS = [
-  'https://rpc.litho.ai',
-  'https://rpc-2.litho.ai',
-];
 
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
-function provider(): JsonRpcProvider | FallbackProvider {
-  if (_provider) return _provider;
-  const providers = MAKALU_RPC_URLS.map((url, i) => ({
-    provider: new JsonRpcProvider(url, undefined, { staticNetwork: true }),
-    priority: i + 1,
-    stallTimeout: 2_000,
-    weight: 1,
-  }));
-  _provider = providers.length > 1
-    ? new FallbackProvider(providers, undefined, { quorum: 1 })
-    : providers[0].provider;
-  return _provider;
+/** The chain a transfer was approved on — every send names it. */
+export interface SignChain { chainId: number; rpcUrl: string }
+
+/** Provider for exactly that chain. There is no default network: a send
+ *  without a chain is refused, so a Mainnet balance can never be spent on
+ *  some other chain (the extension once sent Mainnet LITHO on Makalu that
+ *  way). http(s), like the custom-network form. */
+function chainProvider(chain: SignChain | undefined): JsonRpcProvider {
+  const chainId = chain && Number.isSafeInteger(chain.chainId) && chain.chainId > 0 ? chain.chainId : 0;
+  const rpcUrl  = chain && typeof chain.rpcUrl === 'string' && /^https?:\/\//i.test(chain.rpcUrl) ? chain.rpcUrl : '';
+  if (!chainId || !rpcUrl) throw new Error('No network selected for this transaction');
+  return new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
 }
 
 export function setSeed(seed: string): void {
@@ -93,9 +87,10 @@ function normaliseTx(tx: TxRequest): import('ethers').TransactionRequest {
   return out;
 }
 
-export async function signAndBroadcast(hdPath: string, tx: TxRequest): Promise<string> {
-  const w = unlockedWallet(hdPath).connect(provider());
-  const sent = await w.sendTransaction(normaliseTx(tx));
+export async function signAndBroadcast(hdPath: string, tx: TxRequest, chain: SignChain): Promise<string> {
+  const w = unlockedWallet(hdPath).connect(chainProvider(chain));
+  // Pin the chain into the signature itself, not just the RPC we send to.
+  const sent = await w.sendTransaction({ ...normaliseTx(tx), chainId: BigInt(chain.chainId) });
   return sent.hash;
 }
 
@@ -117,8 +112,8 @@ export async function signTypedData(hdPath: string, payload: {
 
 export async function transferErc20(hdPath: string, args: {
   tokenAddress: string; to: string; amount: string;
-}): Promise<string> {
-  const w = unlockedWallet(hdPath).connect(provider());
+}, chain: SignChain): Promise<string> {
+  const w = unlockedWallet(hdPath).connect(chainProvider(chain));
   const c = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, w);
   const sent = await c.transfer(args.to, BigInt(args.amount));
   return sent.hash as string;

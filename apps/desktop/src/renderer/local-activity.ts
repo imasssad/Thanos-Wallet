@@ -1,21 +1,18 @@
 /**
  * Optimistic local activity log (desktop).
  *
- * The indexer only sees LEP100 Transfer events on Makalu, so native LITHO and
- * external-chain sends never appear in the Activity feed. We record every
- * successful send locally (keyed by the wallet's EVM address) and the
- * portfolio hook merges it in, deduped against the indexer by tx hash so a
- * LEP100 send doesn't show twice once the indexer catches up.
+ * Only native LITHO on Lithosphere Mainnet has an explorer feed
+ * (explorer-activity.ts), so most sends would never appear in the Activity
+ * feed. We record every successful send locally (keyed by the wallet's EVM
+ * address) and the portfolio hook merges it in, deduped against the explorer
+ * feed by tx hash.
  *
  * RESOLUTION (added 2026-09-16, client-reported "need all activity to show" /
- * stuck-Pending rows): Makalu/Kamet/Mainnet native LITHO get promoted out of
- * "Pending" via explorer-activity.ts's explorer feeds. But every one of the 8
- * external EVM chains (Ethereum/BNB/Polygon/Base/Arbitrum/Linea/Optimism/
- * Avalanche — routed through evm-external's sendExtEvm) has NO indexer or
- * explorer coverage at all, for any asset — those rows stayed "Pending"
- * forever. resolvePendingActivity() polls the tx's OWN chain RPC directly for
- * a receipt (no indexer/explorer needed) and flips the stored status in
- * place, so the row stays (doesn't vanish) but shows as sent/failed correctly.
+ * stuck-Pending rows): a Mainnet native LITHO send is promoted out of
+ * "Pending" by the explorer feed. Everything else has no explorer coverage —
+ * resolvePendingActivity() polls the tx's OWN chain RPC directly for a
+ * receipt and flips the stored status in place, so the row stays (doesn't
+ * vanish) but shows as sent/failed correctly.
  */
 export interface LocalTx {
   hash:     string;
@@ -23,9 +20,8 @@ export interface LocalTx {
   sym:      string;
   amount:   string;
   ts:       number; // epoch ms
-  /** The chain this was actually broadcast on — pass the coin's chainId.
-   *  Native Makalu/Kamet/Mainnet sends don't need this to resolve (the
-   *  explorer feeds cover them), but it's harmless to include. */
+  /** The chain this was actually broadcast on — every EVM send passes the
+   *  coin's chainId, which is what resolvePendingActivity polls. */
   chainId?: number;
   /** Absent/'pending' = still unresolved. Rows recorded before this field
    *  existed are treated as pending (backward compatible). */
@@ -69,8 +65,8 @@ export function addLocalActivity(addr: string, tx: LocalTx): void {
 
 /** Poll each still-pending row's OWN chain for a receipt and flip its status
  *  in place — see the module doc for why this exists. Rows with no chainId
- *  (pre-existing rows, or genuine Makalu/Kamet/Mainnet native sends that
- *  resolve via the explorer feed instead) are left untouched. Best-effort —
+ *  (BTC/SOL/ATOM, or rows recorded before chainId existed) are left
+ *  untouched. Best-effort —
  *  an unreachable chain just stays pending and gets retried on the next call
  *  (portfolio load / reload). Returns the up-to-date list. */
 export async function resolvePendingActivity(addr: string): Promise<LocalTx[]> {

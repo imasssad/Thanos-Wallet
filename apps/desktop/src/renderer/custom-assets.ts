@@ -134,11 +134,13 @@ function persist(): void {
   } catch { /* ignore */ }
 }
 
-/** Add a custom EVM network. Rejects if the chainId collides with a built-in. */
+/** Add a custom EVM network. Rejects if the chainId collides with a built-in.
+ *  (Makalu, 700777, isn't built in any more — it's added here like any other
+ *  network.) */
 export async function addCustomChain(input: {
   chainId: number; name: string; rpcUrl: string; nativeSymbol: string; explorerUrl: string;
 }): Promise<void> {
-  if (EXT_EVM_CHAINS.some((c) => c.chainId === input.chainId) || input.chainId === 700777) {
+  if (EXT_EVM_CHAINS.some((c) => c.chainId === input.chainId)) {
     throw new Error('That network is already built in');
   }
   chainCache = [

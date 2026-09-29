@@ -2,15 +2,16 @@
  * Transaction send for the desktop wallet.
  *
  * Resolves a recipient (0x / litho1 / name.litho) to a 0x address, then
- * signs + broadcasts a native LITHO or LEP100 transfer on Makalu.
+ * signs + broadcasts a native or ERC-20/LEP100 transfer on the asset's own
+ * EVM chain (Lithosphere Mainnet, Ethereum, … or a custom network) — or a
+ * BTC / SOL / Cosmos transfer.
  *
  * Desktop can import @thanos/sdk-core directly, so the litho1 decoder
- * (lithoToEvm) and the failover RPC provider (getMakaluProvider) are
- * reused from there rather than re-implemented.
+ * (lithoToEvm) is reused from there rather than re-implemented.
  */
 import { createContext, useContext } from 'react';
-import { HDNodeWallet, Wallet, Interface, Mnemonic, Contract, parseUnits, getAddress } from 'ethers';
-import { getMakaluProvider, lithoToEvm } from '@thanos/sdk-core';
+import { HDNodeWallet, Wallet, Interface, Mnemonic, Contract, JsonRpcProvider, parseUnits, getAddress } from 'ethers';
+import { lithoToEvm } from '@thanos/sdk-core';
 import { sendViaLedger, type LedgerConnection } from './ledger-sign';
 import { sendViaTrezor, type TrezorConnection } from './trezor-sign';
 import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
@@ -90,11 +91,14 @@ export interface SendAssetArgs {
   /** Open Trezor connection (derived address). Required when
    *  `signWith === 'trezor'`. */
   trezor?: TrezorConnection;
+  /** EVM transfers: the chain of the asset being sent. Required — there is
+   *  no default network, so a Mainnet balance can't be spent on a testnet. */
+  evmChain?: { chainId: number; rpcUrl: string };
 }
 
 /**
- * Sign + broadcast a transfer on Makalu — a native LITHO send when
- * `tokenAddress` is absent, otherwise a LEP100 transfer(to, amount).
+ * Sign + broadcast a transfer. EVM: on `args.evmChain` — a native send when
+ * `tokenAddress` is absent, otherwise an ERC-20/LEP100 transfer(to, amount).
  * Returns the broadcast transaction hash.
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
@@ -128,6 +132,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     });
   }
 
+  const evmChain = args.evmChain;
+  if (!evmChain?.chainId || !evmChain.rpcUrl) throw new Error('Pick the network to send on');
+
   let value: bigint;
   try {
     value = parseUnits(args.amount, args.decimals);
@@ -142,9 +149,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     try {
       if (args.tokenAddress) {
         const data = new Interface(ERC20_TRANSFER_ABI).encodeFunctionData('transfer', [args.to, value]);
-        return await sendViaLedger(args.ledger, { to: args.tokenAddress, value: 0n, data });
+        return await sendViaLedger(args.ledger, { to: args.tokenAddress, value: 0n, data }, evmChain);
       }
-      return await sendViaLedger(args.ledger, { to: args.to, value });
+      return await sendViaLedger(args.ledger, { to: args.to, value }, evmChain);
     } catch (e) {
       const msg = (e as Error).message || 'Broadcast failed';
       if (/0x6985/.test(msg))              throw new Error('Rejected on Ledger device');
@@ -158,9 +165,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     try {
       if (args.tokenAddress) {
         const data = new Interface(ERC20_TRANSFER_ABI).encodeFunctionData('transfer', [args.to, value]);
-        return await sendViaTrezor(args.trezor, { to: args.tokenAddress, value: 0n, data });
+        return await sendViaTrezor(args.trezor, { to: args.tokenAddress, value: 0n, data }, evmChain);
       }
-      return await sendViaTrezor(args.trezor, { to: args.to, value });
+      return await sendViaTrezor(args.trezor, { to: args.to, value }, evmChain);
     } catch (e) {
       const msg = (e as Error).message || 'Broadcast failed';
       if (/cancelled|rejected|denied/i.test(msg)) throw new Error('Rejected on Trezor device');
@@ -182,22 +189,22 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
       if (args.tokenAddress) {
         return await bridge.erc20Transfer(path, {
           tokenAddress: args.tokenAddress, to: args.to, amount: value.toString(),
-        });
+        }, evmChain);
       }
-      return await bridge.sendTx(path, { to: args.to, value: '0x' + value.toString(16) });
+      return await bridge.sendTx(path, { to: args.to, value: '0x' + value.toString(16) }, evmChain);
     }
 
-    // Legacy in-renderer signing fallback.
+    // Legacy in-renderer signing fallback — same chain, pinned.
     const wallet = (isPrivateKeyWallet(args.seed)
       ? new Wallet(args.seed[0].trim())
       : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), path)
-    ).connect(getMakaluProvider());
+    ).connect(new JsonRpcProvider(evmChain.rpcUrl, evmChain.chainId, { staticNetwork: true }));
     if (args.tokenAddress) {
       const token = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
       const sent = await token.transfer(args.to, value);
       return sent.hash as string;
     }
-    const sent = await wallet.sendTransaction({ to: args.to, value });
+    const sent = await wallet.sendTransaction({ to: args.to, value, chainId: BigInt(evmChain.chainId) });
     return sent.hash;
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';

@@ -9,11 +9,10 @@
  *
  * The seed never participates in this path — Trezor signs on-device and
  * returns {v, r, s}; we attach the signature to an unsigned EIP-1559
- * transaction and broadcast through Makalu's FallbackProvider.
+ * transaction and broadcast on the chain of the asset being sent.
  */
-import { Transaction, getAddress, toBeHex, type Provider } from 'ethers';
+import { JsonRpcProvider, Transaction, getAddress, toBeHex, type Provider } from 'ethers';
 import TrezorConnect from '@trezor/connect-web';
-import { getMakaluProvider } from '@thanos/sdk-core';
 
 const HD_PATH_STR    = "m/44'/60'/0'/0/0";
 const HD_PATH_ARRAY  = [44 | 0x80000000, 60 | 0x80000000, 0 | 0x80000000, 0, 0];
@@ -67,22 +66,23 @@ export interface TrezorSendParams {
 export async function sendViaTrezor(
   connection: TrezorConnection,
   params: TrezorSendParams,
+  chain: { chainId: number; rpcUrl: string },
 ): Promise<string> {
   await ensureInit();
-  const provider: Provider = getMakaluProvider();
+  // The asset's own chain — there is no default network.
+  const provider: Provider = new JsonRpcProvider(chain.rpcUrl, chain.chainId, { staticNetwork: true });
   const from = connection.address;
 
-  const [nonce, feeData, network, gasLimit] = await Promise.all([
+  const [nonce, feeData, gasLimit] = await Promise.all([
     provider.getTransactionCount(from),
     provider.getFeeData(),
-    provider.getNetwork(),
     provider.estimateGas({ from, to: params.to, value: params.value, data: params.data ?? '0x' }),
   ]);
   if (feeData.maxFeePerGas == null || feeData.maxPriorityFeePerGas == null) {
-    throw new Error('Makalu RPC did not return EIP-1559 fee data');
+    throw new Error('The network did not return EIP-1559 fee data');
   }
 
-  const chainId = Number(network.chainId);
+  const chainId = chain.chainId;
 
   // TrezorConnect signs EIP-1559 transactions when the tx has
   // maxFeePerGas + maxPriorityFeePerGas (type 2). All numeric fields

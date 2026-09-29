@@ -46,20 +46,21 @@ const MAIN_WORLD_PROVIDER = `(function () {
   if (window.ethereum && window.ethereum.__thanos) return;
   var bridge = window.__thanosDappBridge;
   if (!bridge) return;
-  var CHAIN_HEX = '0xab169';
+  // Lithosphere Mainnet (9005) — the chain main's dapp-browser starts a page on.
+  var CHAIN_HEX = '0x232d';
   var listeners = {};
   function emit(event, data) {
     (listeners[event] || []).slice().forEach(function (fn) { try { fn(data); } catch (e) {} });
   }
   var provider = {
     __thanos: true, isThanos: true, isMetaMask: false,
-    chainId: CHAIN_HEX, networkVersion: '700777', selectedAddress: null,
+    chainId: CHAIN_HEX, networkVersion: '9005', selectedAddress: null,
     request: function (args) {
       if (!args || typeof args.method !== 'string') return Promise.reject(new Error('Invalid request: expected { method }'));
       return bridge.request(args.method, args.params || []).then(function (res) {
         if (res && res.__thanosError) { var err = new Error(res.message); err.code = res.code; throw err; }
         if ((args.method === 'eth_requestAccounts' || args.method === 'eth_accounts') && res && res.length) provider.selectedAddress = res[0];
-        if (args.method === 'eth_chainId' && typeof res === 'string') provider.chainId = res;
+        if (args.method === 'eth_chainId' && typeof res === 'string') { provider.chainId = res; provider.networkVersion = String(parseInt(res, 16)); }
         return res;
       });
     },
@@ -72,7 +73,7 @@ const MAIN_WORLD_PROVIDER = `(function () {
   bridge.onEmit(function (payload) {
     if (!payload || !payload.event) return;
     if (payload.event === 'accountsChanged') provider.selectedAddress = (payload.data && payload.data[0]) || null;
-    if (payload.event === 'chainChanged' && typeof payload.data === 'string') provider.chainId = payload.data;
+    if (payload.event === 'chainChanged' && typeof payload.data === 'string') { provider.chainId = payload.data; provider.networkVersion = String(parseInt(payload.data, 16)); }
     emit(payload.event, payload.data);
   });
   try { Object.defineProperty(window, 'ethereum', { value: provider, configurable: true, writable: false }); }
