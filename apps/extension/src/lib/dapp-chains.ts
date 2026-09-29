@@ -9,8 +9,10 @@
  * chain, and the approval sheet shows that chain — so the advertised chain,
  * the signed chainId, and the broadcast RPC can never diverge.
  *
- * Makalu keeps its existing FallbackProvider (via @thanos/sdk-core); the 8
- * external EVM chains reuse the verified RPC config in evm-external.ts.
+ * Every chain reuses the verified RPC config in evm-external.ts. Lithosphere
+ * Mainnet (9005) is the default. Makalu is no longer built in (2026-09-29,
+ * client request): a user who wants the testnet adds it as a custom network,
+ * and it then routes like any other chain.
  */
 import { EXT_EVM_CHAINS } from './evm-external';
 import { customChains } from './custom-assets';
@@ -18,18 +20,16 @@ import { customChains } from './custom-assets';
 export interface DappChain {
   chainId:      number;
   name:         string;
-  rpcUrl:       string;   // '' for Makalu → signer uses the sdk FallbackProvider
+  rpcUrl:       string;
   nativeSymbol: string;
 }
 
-export const MAKALU_CHAIN_ID = 700777;
+/** Lithosphere Mainnet — the chain a dApp sees until it switches. */
+export const DEFAULT_DAPP_CHAIN_ID = 9005;
 
-export const DAPP_CHAINS: readonly DappChain[] = [
-  { chainId: MAKALU_CHAIN_ID, name: 'Lithosphere Makalu', rpcUrl: '', nativeSymbol: 'LITHO' },
-  ...EXT_EVM_CHAINS.map((c) => ({
-    chainId: c.chainId, name: c.name, rpcUrl: c.rpcUrl, nativeSymbol: c.nativeSymbol,
-  })),
-];
+export const DAPP_CHAINS: readonly DappChain[] = EXT_EVM_CHAINS.map((c) => ({
+  chainId: c.chainId, name: c.name, rpcUrl: c.rpcUrl, nativeSymbol: c.nativeSymbol,
+}));
 
 export const toChainHex = (id: number): string => `0x${id.toString(16)}`;
 
@@ -52,4 +52,3 @@ export function dappChainById(id: number): DappChain | undefined {
   return allDappChains().find((c) => c.chainId === id);
 }
 
-export const isMakalu = (id: number): boolean => id === MAKALU_CHAIN_ID;

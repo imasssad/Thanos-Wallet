@@ -6,18 +6,18 @@
  * State lives in chrome.storage.local (persistent across browser restarts):
  *   thanos.connections     { [origin]: { address, connectedAt } }
  *   thanos.active_address  current unlocked EVM address (or null)
- *   thanos.chain_id        currently selected chain (default Makalu 700777)
+ *   thanos.chain_id        currently selected chain (default Lithosphere Mainnet 9005)
  *
  * Pending approval requests live in chrome.storage.session (cleared on
  * browser close) — the popup picks them up when it opens.
  */
-import { dappChainByHex, toChainHex } from '../lib/dapp-chains';
+import { dappChainByHex, toChainHex, DEFAULT_DAPP_CHAIN_ID } from '../lib/dapp-chains';
 import { loadCustomAssets } from '../lib/custom-assets';
 import { contentScriptOrigin, isExtensionSender, type MessageSenderLike } from '../lib/message-sender';
 
 // Prime user-added custom networks so the dApp provider can switch to them
 // after a service-worker (re)start.
-void loadCustomAssets();
+const customAssetsReady = loadCustomAssets().catch(() => {});
 
 interface Connection {
   address:     string;
@@ -92,16 +92,7 @@ function pushResultToTab(
   });
 }
 
-// 700777 decimal = 0xab169. The previous value here ('0xab09f9' =
-// 11,209,209) was a hex-conversion typo that made every dApp see a
-// chain that doesn't exist — eth_chainId, net_version and
-// wallet_switchEthereumChain were all answering for the wrong chain.
-const MAKALU_CHAIN_ID_HEX = '0xab169'; // 700777
-
-// Makalu's canonical RPC pair. dapp-chains.ts leaves Makalu's rpcUrl '' because
-// the in-wallet SIGNER uses the sdk FallbackProvider, but the dApp-facing read
-// passthrough below needs a concrete URL — mirror MAKALU_TESTNET.rpcUrls.
-const MAKALU_RPC_URLS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
+const DEFAULT_CHAIN_ID_HEX = toChainHex(DEFAULT_DAPP_CHAIN_ID); // Lithosphere Mainnet
 
 /* Read-only JSON-RPC methods the dApp provider proxies to the active chain's
    node. MetaMask forwards every method it doesn't handle internally to the
@@ -179,24 +170,26 @@ async function getActiveAddress(): Promise<string | null> {
 
 async function getChainIdHex(): Promise<string> {
   const { chain_id_hex } = await browser.storage.local.get('chain_id_hex');
-  const stored = chain_id_hex as string | undefined;
-  // Migration: installs prior to the 0xab169 fix persisted the typo'd
-  // chainId ('0xab09f9'). Treat it as unset so they pick up the correct
-  // constant instead of overriding it forever from storage.
-  if (!stored || stored.toLowerCase() === '0xab09f9') return MAKALU_CHAIN_ID_HEX;
-  return stored;
+  const stored = String(chain_id_hex ?? '').toLowerCase();
+  // A stored chain that's no longer switchable — Makalu (no longer built in,
+  // 2026-09-29) unless the user added it back, a removed custom network, or
+  // an old install's typo'd '0xab09f9' — falls back to Lithosphere Mainnet
+  // instead of answering for a chain the wallet can't sign on.
+  await customAssetsReady;
+  return dappChainByHex(stored) ? stored : DEFAULT_CHAIN_ID_HEX;
 }
 
 /* Proxy a read-only JSON-RPC call to the ACTIVE chain's node. The service
    worker's broad https host_permissions exempt these cross-origin fetches from
-   CORS. Makalu ships a primary+fallback pair; the 8 external EVM chains each
-   carry a single verified rpcUrl (evm-external.ts). A JSON-RPC error from the
+   CORS. Each chain carries its verified rpcUrl (evm-external.ts, or the
+   user's custom network). A JSON-RPC error from the
    node is authoritative (the request is bad) → surfaced immediately; only a
    transport failure rotates to the next endpoint. */
 async function rpcPassthrough(method: string, params: unknown[]): Promise<unknown> {
   const hex   = await getChainIdHex();
   const chain = dappChainByHex(hex);
-  const urls  = chain && chain.rpcUrl ? [chain.rpcUrl] : MAKALU_RPC_URLS;
+  if (!chain?.rpcUrl) throw rpcError(4901, 'The wallet is not connected to this chain');
+  const urls  = [chain.rpcUrl];
   let lastErr: unknown;
   for (const url of urls) {
     try {

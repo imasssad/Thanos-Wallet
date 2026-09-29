@@ -13,7 +13,7 @@
 import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic, Wallet } from 'ethers';
 import { bytesLikeToHex } from '../../lib/bytes-normalize';
 import { getActiveAccountIndex, isPrivateKeyWallet } from '../../lib/vault';
-import { dappChainByHex, dappChainById, toChainHex, MAKALU_CHAIN_ID, type DappChain } from '../../lib/dapp-chains';
+import { dappChainByHex, dappChainById, toChainHex, DEFAULT_DAPP_CHAIN_ID, type DappChain } from '../../lib/dapp-chains';
 import {
   signAndBroadcastTx, signPersonalMessage, signTypedData,
 } from './offscreen-sign';
@@ -28,8 +28,8 @@ export async function activeChain(): Promise<DappChain> {
     const { chain_id_hex } = await browser.storage.local.get('chain_id_hex');
     const c = dappChainByHex(String(chain_id_hex ?? ''));
     if (c) return c;
-  } catch { /* storage unavailable — fall back to Makalu */ }
-  return dappChainById(MAKALU_CHAIN_ID)!;
+  } catch { /* storage unavailable — fall back to the default chain */ }
+  return dappChainById(DEFAULT_DAPP_CHAIN_ID)!;
 }
 
 export class WcSignerError extends Error {
@@ -136,9 +136,8 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       };
       // Broadcast on the wallet's ACTIVE chain — the same chain the approval
-      // sheet shows. Makalu routes through the sdk provider (rpcUrl ''); the
-      // 8 external EVM chains route through their own RPC with a pinned
-      // chainId so a mainnet tx can never land on Makalu (or vice-versa).
+      // sheet shows — through its own RPC with a pinned chainId, so a tx can
+      // never land on a different network.
       const chain = await activeChain();
       try {
         return await signAndBroadcastTx({
@@ -151,7 +150,7 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
             gasPrice: undefined,
           },
           chainId: chain.chainId,
-          rpcUrl:  chain.rpcUrl || undefined,
+          rpcUrl:  chain.rpcUrl,
         });
       } catch (e) {
         const msg = (e as Error).message || 'Broadcast failed';

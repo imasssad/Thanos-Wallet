@@ -2,7 +2,8 @@
  * Transaction send for the extension popup.
  *
  * Resolves a recipient (0x / litho1 / name.litho) to a 0x address, then
- * signs + broadcasts a native LITHO or LEP100 transfer on Makalu.
+ * signs + broadcasts a native or ERC-20/LEP100 transfer on the asset's own
+ * EVM chain (Lithosphere Mainnet, Ethereum, … or a custom network).
  * Reuses sdk-core's litho1 decoder and failover RPC provider.
  */
 import { createContext, useContext } from 'react';
@@ -67,11 +68,14 @@ export interface SendAssetArgs {
   tokenAddress?: string;
   splMintAddress?: string;
   memo?:         string;
+  /** EVM transfers: the chain of the asset being sent. Required — there is
+   *  no default network, so a Mainnet balance can't be spent on a testnet. */
+  evmChain?:     { chainId: number; rpcUrl: string };
 }
 
 /**
  * Sign + broadcast a transfer on the chain identified by `args.chain`
- * (default 'evm' for Makalu LITHO/LEP100).
+ * ('evm' needs `args.evmChain`).
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new Error('Wallet is locked');
@@ -99,9 +103,11 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     });
   }
 
-  // ─── EVM / Makalu default ─────────────────────────────────────────────
+  // ─── EVM (the asset's own chain) ──────────────────────────────────────
   // Signing happens in the offscreen document — derived private keys
   // never live in this popup's JS heap. See offscreen-sign.ts.
+  const evmChain = args.evmChain;
+  if (!evmChain?.chainId || !evmChain.rpcUrl) throw new Error('Pick the network to send on');
   let value: bigint;
   try { value = parseUnits(args.amount, args.decimals); }
   catch { throw new Error('Invalid amount'); }
@@ -117,12 +123,16 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
         tokenAddress: args.tokenAddress,
         to:           args.to,
         amount:       value,
+        chainId:      evmChain.chainId,
+        rpcUrl:       evmChain.rpcUrl,
       });
     }
     return await signAndBroadcastTx({
-      seed:   args.seed,
-      hdPath: activeHdPath(),
-      tx:     { to: args.to, value: '0x' + value.toString(16) },
+      seed:    args.seed,
+      hdPath:  activeHdPath(),
+      tx:      { to: args.to, value: '0x' + value.toString(16) },
+      chainId: evmChain.chainId,
+      rpcUrl:  evmChain.rpcUrl,
     });
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';

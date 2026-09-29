@@ -232,7 +232,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
               <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}><Globe size={16}/></div>
               <div className="row-mid">
                 <div className="row-name">{proposal.name}</div>
-                <div className="row-sub">Wants to connect on Makalu + 8 EVM chains</div>
+                <div className="row-sub">Wants to connect on Lithosphere + 8 EVM chains</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>

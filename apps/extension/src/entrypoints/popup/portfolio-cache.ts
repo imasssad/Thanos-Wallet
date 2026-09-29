@@ -13,7 +13,9 @@
  */
 import type { DisplayCoin, DisplayTx } from './portfolio';
 
-const PREFIX = 'thanos-portfolio-cache:';
+// v2: snapshots from before Makalu was removed (2026-09-29) hold Makalu rows
+// with no chainId — never paint those, even for the second before a refresh.
+const PREFIX = 'thanos-portfolio-cache:v2:';
 
 export interface PortfolioSnapshot {
   coins: DisplayCoin[];

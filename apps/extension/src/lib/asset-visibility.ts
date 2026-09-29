@@ -5,10 +5,8 @@
  * the mobile implementation (apps/mobile/App.tsx's useHiddenAssets).
  *
  *   - Network-level: hides every row on that chain. Rows without a chainId
- *     (native Makalu LITHO/wLITHO/FGPT, BTC, SOL, ATOM — see portfolio.ts,
- *     which only sets chainId on external-EVM rows) are keyed by symbol
- *     instead, so Lithosphere Mainnet (chainId 9005) is a distinct,
- *     independently-hideable network from Makalu-native LITHO.
+ *     (BTC, SOL, ATOM — see portfolio.ts, which sets chainId on every EVM
+ *     row) are keyed by symbol instead.
  *   - Asset-level: hides one specific row, keyed the same way the Send
  *     picker already identifies coins (see coinKey in main.tsx) so identity
  *     stays consistent across the app.
@@ -30,9 +28,7 @@ let loaded = false;
 export async function loadHiddenAssets(): Promise<void> {
   try {
     const r = await browser.storage.local.get([HIDDEN_NETWORKS_KEY, HIDDEN_ASSETS_KEY]);
-    // Makalu (testnet; extension rows carry no chainId → sym:LITHO) starts
-    // hidden until the user has saved their own Manage-networks choice.
-    hiddenNetworks = new Set(Array.isArray(r[HIDDEN_NETWORKS_KEY]) ? (r[HIDDEN_NETWORKS_KEY] as string[]) : ['sym:LITHO']);
+    hiddenNetworks = new Set(Array.isArray(r[HIDDEN_NETWORKS_KEY]) ? (r[HIDDEN_NETWORKS_KEY] as string[]) : []);
     hiddenAssets   = new Set(Array.isArray(r[HIDDEN_ASSETS_KEY])   ? (r[HIDDEN_ASSETS_KEY]   as string[]) : []);
   } catch {
     hiddenNetworks = new Set();
@@ -74,13 +70,10 @@ export async function toggleAssetVisibility(key: string): Promise<void> {
   await persist();
 }
 
-/** Static catalog of every network the wallet supports, for the "Manage
- *  networks" toggle list in Settings. LITHO is native on BOTH Lithosphere
- *  Mainnet (9005) and Lithosphere Makalu — listed as independent rows,
- *  matching how the portfolio itself treats them. */
+/** Static catalog of every built-in network, for the "Manage networks"
+ *  toggle list in Settings. (Makalu isn't built in any more — 2026-09-29.) */
 export const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
   { key: networkVisKey(9005, 'LITHO'),      name: 'Lithosphere',        sub: 'Mainnet · chain 9005' },
-  { key: networkVisKey(undefined, 'LITHO'), name: 'Lithosphere Makalu', sub: 'Testnet' },
   { key: networkVisKey(undefined, 'BTC'),   name: 'Bitcoin',            sub: 'Native' },
   { key: networkVisKey(undefined, 'SOL'),   name: 'Solana',             sub: 'Native' },
   { key: networkVisKey(undefined, 'ATOM'),  name: 'Cosmos Hub',         sub: 'Native' },

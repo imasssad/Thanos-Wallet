@@ -1,35 +1,16 @@
 /**
  * Live portfolio + activity data for the extension popup.
  *
- * Fetches real balances and recent activity from the indexer
- * (services/indexer) and prices assets via @thanos/sdk-core's CoinGecko
- * pricing. Replaces the ASSETS / TXS mocks.
+ * Reads balances straight from each chain's RPC (Lithosphere Mainnet, the
+ * external EVM chains, custom networks, BTC/SOL/ATOM) and prices them via
+ * @thanos/sdk-core's CoinGecko pricing. Activity is the user's own recorded
+ * sends. (The Thanos indexer only covers the Makalu testnet, which the wallet
+ * no longer includes — 2026-09-29.)
  */
 import { createContext, useContext, useEffect, useState } from 'react';
 import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
-import { formatUnits } from 'ethers';
 import { getLocalActivity } from '../../lib/local-activity';
 import { loadSnapshot, saveSnapshot } from './portfolio-cache';
-
-const INDEXER_BASE = String(
-  (import.meta as unknown as { env?: { VITE_INDEXER_URL?: string } }).env?.VITE_INDEXER_URL ||
-    'https://thanos.fi/indexer',
-).replace(/\/$/, '');
-
-/* ─── Indexer response shape (services/indexer/src/server.ts) ────────── */
-
-interface IndexerAsset {
-  chainId: number; symbol: string; name: string; decimals: number;
-  balance: string; native?: boolean; tokenAddress?: string;
-}
-interface IndexerActivityItem {
-  id: string; type: string; symbol: string; amount: string;
-  txHash?: string; ts?: string; status?: string;
-}
-interface IndexerPortfolio {
-  walletAddress: string; updatedAt: string;
-  assets: IndexerAsset[]; activity?: IndexerActivityItem[];
-}
 
 /* ─── Display helpers ────────────────────────────────────────────────── */
 
@@ -92,15 +73,6 @@ function mergeLocalActivity(address: string, indexed: DisplayTx[]): DisplayTx[] 
   return [...fresh, ...indexed];
 }
 
-function txType(type: string): { label: 'Sent' | 'Received' | 'Swap' | 'Activity'; pos: boolean } {
-  switch (type) {
-    case 'receive': case 'mint': return { label: 'Received', pos: true  };
-    case 'send':    case 'burn': return { label: 'Sent',     pos: false };
-    case 'swap':                 return { label: 'Swap',     pos: true  };
-    default:                     return { label: 'Activity', pos: true  };
-  }
-}
-
 /* ─── Types ──────────────────────────────────────────────────────────── */
 
 export interface DisplayCoin {
@@ -139,20 +111,6 @@ export interface PortfolioState {
   reload:   () => void;
 }
 
-export async function fetchPortfolio(address: string): Promise<IndexerPortfolio> {
-  const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8_000);
-  try {
-    const res = await fetch(`${INDEXER_BASE}/portfolio/${encodeURIComponent(address)}`, {
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`indexer ${res.status}`);
-    return (await res.json()) as IndexerPortfolio;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** Fetch + price the wallet's portfolio and activity. When `seed` is
  *  provided, also derives BTC/SOL/ATOM addresses and adds their native
  *  balances to the displayed coin list — so the dashboard total
@@ -184,18 +142,12 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
     setState((s) => ({ ...s, loading: true, offline: false }));
     (async () => {
       try {
-        const [pf, prices] = await Promise.all([
-          fetchPortfolio(address).catch(() => ({ assets: [], activity: [], walletAddress: address, updatedAt: '' } as IndexerPortfolio)),
-          fetchEcosystemPrices(),
-        ]);
+        // Balances come straight from each chain's RPC below. The Thanos
+        // indexer only covers the Makalu testnet, which the wallet no longer
+        // includes (2026-09-29), so its holdings and activity aren't shown.
+        // A pricing outage mustn't hide balances — they just show unpriced.
+        const prices = await fetchEcosystemPrices().catch(() => ({} as Record<string, number>));
         if (cancelled) return;
-
-        const priced = pf.assets.map((a) => {
-          let bal = 0;
-          try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
-          const priceUsd = prices[a.symbol] ?? 0;
-          return { a, bal, priceUsd, usdValue: bal * priceUsd };
-        });
 
         // Cross-chain native positions — only when seed is unlocked.
         const xchain: DisplayCoin[] = [];
@@ -268,54 +220,22 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         } catch { /* best-effort */ }
 
-        const totalUsd = priced.reduce((s, x) => s + x.usdValue, 0)
-                       + xchain.reduce((s, x) => s + x.usdValue, 0)
+        const totalUsd = xchain.reduce((s, x) => s + x.usdValue, 0)
                        + evmExt.reduce((s, x) => s + x.usdValue, 0);
-        const coins: DisplayCoin[] = [
-          ...priced.map(({ a, bal, priceUsd, usdValue }) => ({
-            sym: a.symbol, name: a.name,
-            balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
-            priceUsd, usdValue,
-            color: coinColor(a.symbol),
-            tokenAddress: a.tokenAddress, native: !!a.native,
-          })),
-          ...xchain,
-          ...evmExt,
-        ];
+        const coins: DisplayCoin[] = [...xchain, ...evmExt];
         // Lithosphere MAINNET (chainId 9005) always leads regardless of
         // amount — the Web4 home chain, client requirement 2026-08-27.
-        // The previous check was "any LITHO first", which doesn't
-        // disambiguate Mainnet's LITHO from Makalu's — since coins[] is
-        // built Lithosphere/indexer rows first, then external-EVM rows
-        // (where Mainnet's row actually lives), the stable sort kept
-        // Makalu's LITHO on top instead, exactly backwards from intent
-        // (confirmed 2026-09-18: this is why Send's default coin/chain
-        // fallback — coins[0] — landed on Makalu, not Mainnet). Rank by
-        // chainId specifically, matching mobile's fix for the same bug.
         coins.sort((a, b) => {
           const rank = (c: typeof a) => c.chainId === 9005 ? -1 : c.sym === 'LITHO' ? 0 : 1;
           return rank(a) - rank(b);
         });
 
-        const activity: DisplayTx[] = (pf.activity ?? []).map((t, i) => {
-          const { label, pos } = txType(t.type);
-          const amt = String(t.amount ?? '').replace(/^[+-]/, '');
-          return {
-            id: t.id || `tx-${i}`,
-            sym: t.symbol, label,
-            amount: `${pos ? '+' : '-'}${amt}`,
-            time: relativeTime(t.ts) || (t.status ?? ''),
-            pos, color: coinColor(t.symbol),
-            txHash: t.txHash, ts: t.ts, rawAmount: parseFloat(amt) || 0, status: t.status,
-          };
-        });
-
-        const mergedActivity = mergeLocalActivity(address, activity);
+        const mergedActivity = mergeLocalActivity(address, []);
         setState({ coins, activity: mergedActivity, totalUsd, loading: false, offline: false });
         // Persist the fresh result so the next popup open paints instantly.
-        // Guard on coins.length: fetchPortfolio catches an indexer outage to []
-        // (see above), which reaches here with offline:false — without this
-        // guard that empty result would overwrite a good snapshot and defeat
+        // Guard on coins.length: the per-chain reads are best-effort, so an
+        // RPC outage can reach here as an empty list with offline:false —
+        // without this guard it would overwrite a good snapshot and defeat
         // cached-first on the next open. A genuinely-empty wallet simply isn't
         // cached (it just shows a brief skeleton next time), which is fine.
         if (coins.length > 0) {
@@ -323,7 +243,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
         }
       } catch {
         if (cancelled) return;
-        // Indexer unreachable — still surface the user's own recorded sends.
+        // Pricing unreachable — still surface the user's own recorded sends.
         setState({ coins: [], activity: mergeLocalActivity(address, []), totalUsd: 0, loading: false, offline: true });
       }
     })();
