@@ -38,8 +38,8 @@ export interface ThanosConnectConfig {
   /** Canonical app URL — used in the SIWE message URI. Defaults to
    *  `window.location.origin`. */
   appUrl?: string;
-  /** Default chain the dApp wants. Thanos defaults to Lithosphere Makalu
-   *  (700777); pass `1` for Ethereum mainnet, `8453` for Base, etc. */
+  /** Default chain the sign-in binds to. Defaults to Lithosphere Mainnet
+   *  (9005); pass `1` for Ethereum mainnet, `8453` for Base, etc. */
   chainId?: number;
   /** SIWE statement shown to the user when signing in. Defaults to
    *  `Sign in to ${appName} with your Thanos Wallet.` */
@@ -109,7 +109,29 @@ export class SignInRejected extends Error {
 
 const DEFAULT_WALLET_RDNS = 'fi.thanos.wallet';
 const DISCOVERY_TIMEOUT_MS = 200;
+const LITHOSPHERE_MAINNET_CHAIN_ID = 9005;
 const LITHOSPHERE_MAKALU_CHAIN_ID = 700777;
+
+/** EIP-3085 add-network metadata for the Lithosphere chains — third-party
+ *  wallets won't know them. Chains not listed here (Ethereum, Base, …) are
+ *  switch-only: wallets already carry their metadata. */
+const ADD_CHAIN_PARAMS: Record<number, {
+  chainName: string; rpcUrls: string[]; blockExplorerUrls: string[];
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+}> = {
+  [LITHOSPHERE_MAINNET_CHAIN_ID]: {
+    chainName: 'Lithosphere',
+    rpcUrls: ['https://rpc-mainnet.litho.ai'],
+    blockExplorerUrls: ['https://lithoscan.ai/'],
+    nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+  },
+  [LITHOSPHERE_MAKALU_CHAIN_ID]: {
+    chainName: 'Lithosphere Makalu',
+    rpcUrls: ['https://rpc.litho.ai'],
+    blockExplorerUrls: ['https://makalu.litho.ai/'],
+    nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
+  },
+};
 
 /**
  * Discover the Thanos provider via EIP-6963 with a window.thanos
@@ -271,7 +293,7 @@ export class ThanosConnect {
     this.cfg = {
       appName:        config.appName,
       appUrl,
-      chainId:        config.chainId ?? LITHOSPHERE_MAKALU_CHAIN_ID,
+      chainId:        config.chainId ?? LITHOSPHERE_MAINNET_CHAIN_ID,
       statement:      config.statement ?? `Sign in to ${config.appName} with your Thanos Wallet.`,
       nonceEndpoint:  config.nonceEndpoint === undefined ? '/api/auth/nonce' : config.nonceEndpoint,
       verifyEndpoint: config.verifyEndpoint === undefined ? '/api/auth/verify' : config.verifyEndpoint,
@@ -347,31 +369,29 @@ export class ThanosConnect {
   }
 
   /**
-   * Prompt the connected wallet to add + switch to Lithosphere Makalu
-   * (EIP-3085 wallet_addEthereumChain, then EIP-3326 switch). Called
-   * automatically by signIn().
+   * Prompt the connected wallet to switch to `chainId` (EIP-3326) —
+   * preceded by an EIP-3085 add for the Lithosphere chains, which
+   * third-party wallets don't know. Defaults to the configured chain.
+   * Called automatically by signIn().
    *
    * The prompt reaches whichever wallet matches `walletRdns` (default
-   * 'fi.thanos.wallet'). The Thanos wallet has Makalu built in and
-   * answers both calls as no-ops; to surface the add-network sheet on a
+   * 'fi.thanos.wallet'). The Thanos wallet has Lithosphere Mainnet built
+   * in and answers as a no-op; to surface the add-network sheet on a
    * third-party wallet (MetaMask etc.) the dApp must point `walletRdns`
    * at that wallet's announced rdns. Failures are non-fatal — a user
    * declining can still sign in.
    */
-  async ensureMakaluNetwork(): Promise<boolean> {
+  async ensureNetwork(chainId: number = this.cfg.chainId): Promise<boolean> {
     const provider = await this.getProvider();
-    const chainIdHex = `0x${LITHOSPHERE_MAKALU_CHAIN_ID.toString(16)}`;
+    const chainIdHex = `0x${chainId.toString(16)}`;
     try {
-      await provider.request({
-        method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: chainIdHex,
-          chainName: 'Lithosphere Makalu',
-          rpcUrls: ['https://rpc.litho.ai'],
-          blockExplorerUrls: ['https://makalu.litho.ai/'],
-          nativeCurrency: { name: 'Lithosphere', symbol: 'LITHO', decimals: 18 },
-        }],
-      });
+      const add = ADD_CHAIN_PARAMS[chainId];
+      if (add) {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [{ chainId: chainIdHex, ...add }],
+        });
+      }
       // Some wallets add without switching — make the switch explicit.
       await provider.request({
         method: 'wallet_switchEthereumChain',
@@ -379,9 +399,16 @@ export class ThanosConnect {
       });
       return true;
     } catch (err) {
-      this.log('ensureMakaluNetwork declined/unsupported', err);
+      this.log('ensureNetwork declined/unsupported', err);
       return false;
     }
+  }
+
+  /** @deprecated Makalu is a testnet the Thanos wallets no longer carry by
+   *  default (2026-09-29) — users add it manually, so this prompt is
+   *  usually declined. Use `ensureNetwork(9005)` / the config default. */
+  async ensureMakaluNetwork(): Promise<boolean> {
+    return this.ensureNetwork(LITHOSPHERE_MAKALU_CHAIN_ID);
   }
 
   /**
@@ -389,7 +416,7 @@ export class ThanosConnect {
    *
    *   1. Discover provider
    *   2. eth_requestAccounts (opens approval popup)
-   *   3. Prompt to add + switch to Lithosphere Makalu (non-fatal)
+   *   3. Prompt to add + switch to the configured chain (non-fatal)
    *   4. Fetch nonce from backend (or generate locally)
    *   5. Build SIWE message + sign via personal_sign
    *   6. POST {message, signature, address} to verify endpoint (if set)
@@ -412,12 +439,13 @@ export class ThanosConnect {
     const address = accounts?.[0];
     if (!address) throw new Error('eth_requestAccounts returned no accounts');
 
-    // Land the user on Makalu before signing (client requirement
-    // 2026-06-12: every auth surface prompts the network add). Declines
-    // are tolerated; we then read the wallet's ACTUAL chain so the SIWE
-    // message binds to where the signature was really produced (EIP-4361
-    // Chain ID), not a hopeful default.
-    await this.ensureMakaluNetwork();
+    // Land the user on the chain this sign-in is for (client requirement
+    // 2026-06-12: every auth surface prompts the network add; Lithosphere
+    // Mainnet since 2026-09-29 — Makalu isn't built into the wallets any
+    // more). Declines are tolerated; we then read the wallet's ACTUAL
+    // chain so the SIWE message binds to where the signature was really
+    // produced (EIP-4361 Chain ID), not a hopeful default.
+    await this.ensureNetwork(overrides.chainId ?? this.cfg.chainId);
     let walletChainId: number | undefined;
     try {
       const hex = (await provider.request({ method: 'eth_chainId' })) as string;

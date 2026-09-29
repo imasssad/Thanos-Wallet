@@ -33,7 +33,7 @@ import { ThanosConnect } from 'thanos-connect';
 
 const thanos = new ThanosConnect({
   appName: 'Ignite DEX',
-  chainId: 700777, // Lithosphere Makalu (testnet) — see "Lithosphere chains" below for Mainnet (9005)
+  chainId: 9005, // Lithosphere Mainnet — see "Lithosphere chains" below for the other networks
 });
 
 // Click handler
@@ -59,7 +59,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 export function Header() {
   return (
     <ThanosConnectButton
-      config={{ appName: 'EGO Exchange', chainId: 700777 }}
+      config={{ appName: 'EGO Exchange', chainId: 9005 }}
       onSignIn={(session) => {
         console.log('signed in:', session.address);
         // Persist session.sessionToken in your auth context
@@ -81,7 +81,7 @@ import { useThanos } from 'thanos-connect/react';
 export function MyConnect() {
   const { signIn, signOut, session, isSigningIn, isAvailable } = useThanos({
     appName: 'AGII',
-    chainId: 700777,
+    chainId: 9005,
   });
 
   if (!isAvailable) return <a href="https://thanos.fi/app">Install Thanos</a>;
@@ -153,7 +153,7 @@ package — use them to keep the wire format identical on both sides.
 |-------|------|---------|-------|
 | `appName` | string | **required** | Shown in the SIWE message statement |
 | `appUrl` | string | `window.location.origin` | Canonical URL anchor |
-| `chainId` | number | `700777` (Makalu testnet) | Chain ID for the sign-in — see [Lithosphere chains](#lithosphere-chains) |
+| `chainId` | number | `9005` (Lithosphere Mainnet) | Chain ID for the sign-in — see [Lithosphere chains](#lithosphere-chains) |
 | `statement` | string | `Sign in to {appName} with your Thanos Wallet.` | Custom SIWE statement |
 | `nonceEndpoint` | string \| null | `/api/auth/nonce` | Set `null` to generate nonce client-side |
 | `verifyEndpoint` | string \| null | `/api/auth/verify` | Set `null` to skip backend round-trip |
@@ -186,12 +186,15 @@ The wallet is a first-class citizen on three Lithosphere networks. Pick the
 
 | Chain | chainId | hex | Explorer | Status |
 |-------|---------|-----|----------|--------|
-| **Lithosphere** (Mainnet) | `9005` | `0x2325` | [lithoscan.ai](https://lithoscan.ai) | Mainnet — flagship L1, live 2026-08 |
+| **Lithosphere** (Mainnet) | `9005` | `0x232d` | [lithoscan.ai](https://lithoscan.ai) | Mainnet — flagship L1, live 2026-08 |
 | Lithosphere Kamet | `900523` | `0xdbdab` | [explorer-3.litho.ai](https://explorer-3.litho.ai) | Testnet — sister chain, DNNS |
-| Lithosphere Makalu | `700777` | `0xab169` | [makalu.litho.ai](https://makalu.litho.ai) | Testnet |
+| Lithosphere Makalu | `700777` | `0xab169` | [makalu.litho.ai](https://makalu.litho.ai) | Testnet — not built into the Thanos wallets (2026-09-29); users add it manually |
 
-Production dApps should sign users in on **Lithosphere Mainnet (`9005`)**;
-Makalu is the testnet used throughout this doc's quick-start examples.
+Production dApps should sign users in on **Lithosphere Mainnet (`9005`)** —
+the default, used throughout this doc's quick-start examples. The testnets
+are opt-in: the Thanos wallets no longer carry Makalu built in, so a Makalu
+sign-in prompt is declined unless the user added the network manually
+(Settings → custom networks).
 
 ## Multi-chain example
 
@@ -208,7 +211,7 @@ Switch chains after sign-in:
 const provider = await thanos.getProvider();
 await provider.request({
   method: 'wallet_switchEthereumChain',
-  params: [{ chainId: '0x2325' }], // 9005 — Lithosphere Mainnet
+  params: [{ chainId: '0x232d' }], // 9005 — Lithosphere Mainnet
 });
 ```
 
@@ -225,7 +228,7 @@ the Thanos Discover screen, so consistency matters across both.
 import { ThanosConnectButton } from 'thanos-connect/react';
 
 <ThanosConnectButton
-  config={{ appName: 'Ignite DEX', chainId: 700777 }}
+  config={{ appName: 'Ignite DEX', chainId: 9005 }}
   onSignIn={({ address, sessionToken }) => {
     localStorage.setItem('ignite.session', sessionToken!);
     location.reload();
@@ -237,7 +240,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'EGO Exchange', chainId: 700777 }}
+  config={{ appName: 'EGO Exchange', chainId: 9005 }}
   onSignIn={(s) => myAuthStore.setSession(s)}
 />
 ```
@@ -246,7 +249,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'COLLE AI', chainId: 700777 }}
+  config={{ appName: 'COLLE AI', chainId: 9005 }}
   onSignIn={(s) => router.push('/dashboard?token=' + s.sessionToken)}
 />
 ```
@@ -255,7 +258,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'AGII', chainId: 700777 }}
+  config={{ appName: 'AGII', chainId: 9005 }}
   onSignIn={(s) => useAuthStore.getState().setSession(s)}
 />
 ```
@@ -264,7 +267,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'ATUA AI', chainId: 700777 }}
+  config={{ appName: 'ATUA AI', chainId: 9005 }}
   onSignIn={(s) => signInToAtua(s.address, s.sessionToken)}
 />
 ```
@@ -273,7 +276,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'Imagen Network', chainId: 700777 }}
+  config={{ appName: 'Imagen Network', chainId: 9005 }}
   onSignIn={(s) => attachSession(s)}
 />
 ```
@@ -282,7 +285,7 @@ import { ThanosConnectButton } from 'thanos-connect/react';
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'Mansa AI', chainId: 700777 }}
+  config={{ appName: 'Mansa AI', chainId: 9005 }}
   onSignIn={(s) => persistMansaSession(s)}
 />
 ```
@@ -300,7 +303,9 @@ Lithoscan is the explorer for Lithosphere Mainnet — use chainId 9005:
 
 ### Makalu Explorer — https://makalu.litho.ai
 
-Makalu is the Lithosphere testnet — use chainId 700777:
+Makalu is the Lithosphere testnet — use chainId 700777. (The Thanos wallets
+no longer carry Makalu built in; this sign-in's network prompt is declined
+unless the user added it manually.)
 
 ```tsx
 <ThanosConnectButton
@@ -327,7 +332,7 @@ one, the snippet is identical:
 
 ```tsx
 <ThanosConnectButton
-  config={{ appName: 'Lithosphere Ecosystem', chainId: 700777 }}
+  config={{ appName: 'Lithosphere Ecosystem', chainId: 9005 }}
   onSignIn={(s) => /* gate the listing dashboard */ null}
 />
 ```

@@ -158,7 +158,7 @@ export default function DocsPage() {
 
 const thanos = new ThanosConnect({
   appName: 'Ignite DEX',
-  chainId: 700777, // Lithosphere Makalu (testnet) — see "Lithosphere chains" below for Mainnet (9005)
+  chainId: 9005, // Lithosphere Mainnet — see "Lithosphere chains" below for the other networks
 });
 
 document.getElementById('signin').addEventListener('click', async () => {
@@ -179,7 +179,7 @@ document.getElementById('signin').addEventListener('click', async () => {
 export function Header() {
   return (
     <ThanosConnectButton
-      config={{ appName: 'EGO Exchange', chainId: 700777 }}
+      config={{ appName: 'EGO Exchange', chainId: 9005 }}
       onSignIn={(session) => {
         console.log('signed in:', session.address);
         // Persist session.sessionToken in your auth context
@@ -194,7 +194,7 @@ export function Header() {
 export function MyConnect() {
   const { signIn, signOut, session, isSigningIn, isAvailable } = useThanos({
     appName: 'AGII',
-    chainId: 700777,
+    chainId: 9005,
   });
 
   if (!isAvailable) return <a href="https://thanos.fi/app">Install Thanos</a>;
@@ -324,7 +324,7 @@ window.location.href = \`thanoswallet://wc?uri=\${encodeURIComponent(uri)}\`;`}<
               {[
                 ['appName', 'string', 'required', 'Shown in the SIWE message statement'],
                 ['appUrl', 'string', 'window.location.origin', 'Canonical URL anchor'],
-                ['chainId', 'number', '700777 (Makalu testnet)', 'Chain ID for the sign-in — see Lithosphere chains below'],
+                ['chainId', 'number', '9005 (Lithosphere Mainnet)', 'Chain ID for the sign-in — see Lithosphere chains below'],
                 ['statement', 'string', 'Sign in to {appName}…', 'Custom SIWE statement'],
                 ['nonceEndpoint', 'string | null', '/api/auth/nonce', 'null = generate nonce client-side'],
                 ['verifyEndpoint', 'string | null', '/api/auth/verify', 'null = skip backend round-trip'],
@@ -372,9 +372,9 @@ try {
             </thead>
             <tbody>
               {[
-                ['Lithosphere (Mainnet)', '9005', '0x2325', 'lithoscan.ai', 'Mainnet — flagship L1, live 2026-08'],
+                ['Lithosphere (Mainnet)', '9005', '0x232d', 'lithoscan.ai', 'Mainnet — flagship L1, live 2026-08'],
                 ['Lithosphere Kamet', '900523', '0xdbdab', 'explorer-3.litho.ai', 'Testnet — sister chain, DNNS'],
-                ['Lithosphere Makalu', '700777', '0xab169', 'makalu.litho.ai', 'Testnet'],
+                ['Lithosphere Makalu', '700777', '0xab169', 'makalu.litho.ai', 'Testnet — not built into the wallets; users add it manually'],
               ].map(([name, id, hex, exp, status]) => (
                 <tr key={id}>
                   <td style={{ ...td, fontWeight: 600, color: '#e2e8f0' }}>{name}</td>
@@ -388,8 +388,10 @@ try {
           </table>
         </div>
         <p style={p}>
-          Production dApps should sign users in on <strong>Lithosphere Mainnet (<span style={kbd}>9005</span>)</strong>;
-          Makalu is the testnet used throughout this page&apos;s quick-start examples.
+          Production dApps should sign users in on <strong>Lithosphere Mainnet (<span style={kbd}>9005</span>)</strong> —
+          the default, used throughout this page&apos;s quick-start examples. The testnets are opt-in: the Thanos
+          wallets no longer carry Makalu built in, so a Makalu sign-in prompt is declined unless the user added
+          the network manually.
         </p>
 
         {/* Multi-chain */}
@@ -400,19 +402,19 @@ try {
 const provider = await thanos.getProvider();
 await provider.request({
   method: 'wallet_switchEthereumChain',
-  params: [{ chainId: '0x2325' }], // 9005 — Lithosphere Mainnet
+  params: [{ chainId: '0x232d' }], // 9005 — Lithosphere Mainnet
 });`}</Code>
 
         {/* Ecosystem */}
         <h2 style={h2}>Ecosystem drop-in</h2>
         <p style={p}>
           Copy-paste snippets for the apps already wired into the Thanos Discover screen (full set in the
-          repo README). Most use the Makalu testnet (<span style={kbd}>700777</span>); Kamet uses
-          <span style={kbd}>900523</span> and Lithoscan uses Mainnet, <span style={kbd}>9005</span>:
+          repo README). All sign in on Lithosphere Mainnet (<span style={kbd}>9005</span>) except the
+          Kamet explorer, which uses its own chain, <span style={kbd}>900523</span>:
         </p>
         <Code>{`// Ignite DEX — ignite.trade
 <ThanosConnectButton
-  config={{ appName: 'Ignite DEX', chainId: 700777 }}
+  config={{ appName: 'Ignite DEX', chainId: 9005 }}
   onSignIn={({ sessionToken }) => { localStorage.setItem('ignite.session', sessionToken!); location.reload(); }}
 />
 
