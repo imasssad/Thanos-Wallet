@@ -1,7 +1,8 @@
 /**
- * External-EVM support for the mobile wallet — Ethereum, BNB Chain, Polygon,
- * Base, Arbitrum, Optimism, Linea, Avalanche. Same `0x` keypair as Makalu,
- * just routed through each chain's own RPC.
+ * EVM network support for the mobile wallet — Lithosphere Mainnet, Ethereum,
+ * BNB Chain, Polygon, Base, Arbitrum, Optimism, Linea, Avalanche, plus
+ * user-added custom networks. One `0x` keypair, routed through each chain's
+ * own RPC.
  *
  * Mirrors apps/web/lib/evm-chains.ts + apps/web/lib/evm-tokens.ts. Pure ethers
  * v6 + fetch — no native modules, bundles fine under Metro/Hermes.
@@ -10,7 +11,7 @@
  * decimals()) — a wrong token address is a fund-loss bug, so do not edit
  * without re-verifying. USDT/USDC are 6 decimals everywhere EXCEPT BSC (18).
  */
-import { Contract, JsonRpcProvider, HDNodeWallet, Wallet, Mnemonic, formatUnits, parseUnits, type Provider } from 'ethers';
+import { Contract, JsonRpcProvider, formatUnits, type Provider } from 'ethers';
 import { allEvmChains, allTokensForChain } from './custom-assets';
 
 export interface ExtEvmChain {
@@ -24,7 +25,9 @@ export interface ExtEvmChain {
   color:        string;
 }
 
-/** The 8 external EVM chains shown as first-class rows. Order = display order. */
+/** The built-in EVM networks, Lithosphere Mainnet first. Order = display
+ *  order. The Makalu testnet (700777) isn't built in any more (2026-09-29) —
+ *  users add it back as a custom network. */
 export const EXT_EVM_CHAINS: readonly ExtEvmChain[] = [
   { chainId: 9005,  name: 'Lithosphere', slug: 'lithosphere', rpcUrl: 'https://rpc-mainnet.litho.ai',           nativeSymbol: 'LITHO', nativeName: 'Lithosphere',       explorerUrl: 'https://lithoscan.ai',            color: '#22c55e' },
   { chainId: 1,     name: 'Ethereum',  slug: 'ethereum',  rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',  nativeName: 'Ether',              explorerUrl: 'https://etherscan.io',            color: '#627eea' },
@@ -87,150 +90,57 @@ export function extEvmTokensForChain(chainId: number): ExtEvmToken[] {
 }
 
 /* ─── Providers (memoised) ───────────────────────────────────────────── */
-const providers = new Map<number, Provider>();
+// Keyed by chain + RPC so a custom network re-added with another RPC in the
+// same session gets a fresh provider.
+const providers = new Map<string, Provider>();
 export function getExtEvmProvider(chainId: number): Provider {
-  const hit = providers.get(chainId);
-  if (hit) return hit;
   const chain = getExtEvmChain(chainId);
   if (!chain) throw new Error(`evm-external: unsupported chainId ${chainId}`);
+  const key = `${chainId}|${chain.rpcUrl}`;
+  const hit = providers.get(key);
+  if (hit) return hit;
   const p = new JsonRpcProvider(chain.rpcUrl, chainId, { staticNetwork: true });
-  providers.set(chainId, p);
+  providers.set(key, p);
   return p;
 }
 
 const ERC20_BALANCE_ABI  = ['function balanceOf(address owner) view returns (uint256)'];
-const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
 /* ─── Balance reads (parallel, error-tolerant) ───────────────────────── */
 
-/** Native gas-coin balance across all chains (built-in + custom). Failed/zero omitted. */
-export async function getAllExtEvmNativeBalances(address: string): Promise<Array<{ chain: ExtEvmChain; balance: number }>> {
+/** One slow public RPC must not hold up every other network's balance. */
+const BALANCE_READ_TIMEOUT_MS = 12_000;
+/** Run a read; null if it throws, rejects or takes too long. */
+function readOrNull<T>(read: () => Promise<T>): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), BALANCE_READ_TIMEOUT_MS); });
+  const attempt = (async () => { try { return await read(); } catch { return null; } })();
+  return Promise.race([attempt, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Native gas-coin balance on every chain (built-in + custom). `balance` is
+ *  null when that chain couldn't be read — callers keep the last-known value
+ *  rather than painting a real balance as 0. */
+export async function getAllExtEvmNativeBalances(address: string): Promise<Array<{ chain: ExtEvmChain; balance: number | null }>> {
   if (!address) return [];
-  const results = await Promise.allSettled(
-    allEvmChains().map(async (c) => {
-      const wei = await getExtEvmProvider(c.chainId).getBalance(address);
-      return { chain: c, balance: parseFloat(formatUnits(wei, 18)) || 0 };
-    }),
-  );
-  return results
-    .filter((r): r is PromiseFulfilledResult<{ chain: ExtEvmChain; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
-    .map(r => r.value);
+  return Promise.all(allEvmChains().map(async (chain) => {
+    const wei = await readOrNull(() => getExtEvmProvider(chain.chainId).getBalance(address));
+    return { chain, balance: wei == null ? null : (parseFloat(formatUnits(wei, 18)) || 0) };
+  }));
 }
 
 /** Minimal token shape the portfolio/send need — satisfied by both the
  *  built-in ExtEvmToken and user-added custom tokens. */
 export interface ExtTokenLike { chainId: number; symbol: string; name: string; address: string; decimals: number }
 
-/** ERC-20 balances across all chains — built-in + custom tokens. Failed/zero omitted. */
-export async function getAllExtEvmTokenBalances(address: string): Promise<Array<{ token: ExtTokenLike; balance: number }>> {
+/** ERC-20 balances on every chain — built-in + custom tokens. `balance` is
+ *  null when the read failed (callers keep the last-known value). */
+export async function getAllExtEvmTokenBalances(address: string): Promise<Array<{ token: ExtTokenLike; balance: number | null }>> {
   if (!address) return [];
   const all: ExtTokenLike[] = allEvmChains().flatMap((c) => allTokensForChain(c.chainId) as ExtTokenLike[]);
-  const results = await Promise.allSettled(
-    all.map(async (t) => {
-      const c = new Contract(t.address, ERC20_BALANCE_ABI, getExtEvmProvider(t.chainId));
-      const raw: bigint = await c.balanceOf(address);
-      return { token: t, balance: parseFloat(formatUnits(raw, t.decimals)) };
-    }),
-  );
-  return results
-    .filter((r): r is PromiseFulfilledResult<{ token: ExtTokenLike; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
-    .map(r => r.value);
-}
-
-/* ─── Send (chain-aware; native or ERC-20) ───────────────────────────── */
-
-export class ExtEvmSendError extends Error {
-  constructor(public readonly code: string, message: string) { super(message); this.name = 'ExtEvmSendError'; }
-}
-
-function walletFor(seed: string[], accountIdx: number, provider: Provider) {
-  const isPk = seed.length === 1 && /^0x[0-9a-fA-F]{64}$/.test((seed[0] ?? '').trim());
-  const w = isPk
-    ? new Wallet(seed[0].trim())
-    : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${accountIdx}`);
-  return w.connect(provider);
-}
-
-/**
- * Send a native coin (ETH/BNB/POL/AVAX) or an ERC-20 (USDT/USDC) on an
- * external EVM chain. `tokenAddress` present → ERC-20 transfer; else native.
- * Returns the broadcast tx hash.
- */
-export async function sendExtEvm(args: {
-  seed: string[];
-  accountIdx: number;
-  chainId: number;
-  recipient: string;
-  amount: string;       // human-readable
-  decimals: number;     // 18 native, token decimals for ERC-20
-  tokenAddress?: string;
-}): Promise<string> {
-  const chain = getExtEvmChain(args.chainId);
-  if (!chain) throw new ExtEvmSendError('invalid_chain', `Unsupported chain ${args.chainId}`);
-
-  const to = args.recipient.trim();
-  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) throw new ExtEvmSendError('invalid_address', `${chain.name} needs a 0x address`);
-
-  let value: bigint;
-  try { value = parseUnits(args.amount, args.decimals); }
-  catch { throw new ExtEvmSendError('invalid_amount', 'Enter a valid amount'); }
-  if (value <= 0n) throw new ExtEvmSendError('invalid_amount', 'Amount must be greater than zero');
-
-  const provider = getExtEvmProvider(args.chainId);
-  const wallet   = walletFor(args.seed, args.accountIdx, provider);
-
-  try {
-    if (args.tokenAddress) {
-      const c = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
-      const sent = await c.transfer(to, value);
-      return sent.hash as string;
-    }
-    const sent = await wallet.sendTransaction({ to, value });
-    return sent.hash;
-  } catch (e) {
-    const msg = (e as Error)?.message || 'Broadcast failed';
-    if (/insufficient funds/i.test(msg))               throw new ExtEvmSendError('insufficient', `Insufficient ${chain.nativeSymbol} for amount + gas`);
-    if (/transfer amount exceeds balance/i.test(msg))  throw new ExtEvmSendError('insufficient', 'Insufficient token balance');
-    throw new ExtEvmSendError('rpc_error', msg);
-  }
-}
-
-/**
- * Sign + broadcast an ARBITRARY transaction (incl. contract calls carrying
- * `data`) on an external EVM chain — the in-app dApp browser's
- * eth_sendTransaction path once the user has switched off Makalu (e.g. the
- * a multi-chain dApp on BNB Chain). Distinct from sendExtEvm (structured native/ERC-20
- * transfers only). ethers accepts the dApp's hex-string fields directly and
- * stamps the correct EIP-155 chainId from the chain-bound provider.
- */
-export async function sendExtEvmRaw(args: {
-  seed: string[];
-  accountIdx: number;
-  chainId: number;
-  tx: {
-    to?: string; value?: string; data?: string;
-    gas?: string; gasLimit?: string;
-    maxFeePerGas?: string; maxPriorityFeePerGas?: string;
-  };
-}): Promise<string> {
-  const chain = getExtEvmChain(args.chainId);
-  if (!chain) throw new ExtEvmSendError('invalid_chain', `Unsupported chain ${args.chainId}`);
-  const provider = getExtEvmProvider(args.chainId);
-  const wallet   = walletFor(args.seed, args.accountIdx, provider);
-  const t = args.tx;
-  try {
-    const sent = await wallet.sendTransaction({
-      to:                   t.to,
-      value:                t.value,
-      data:                 t.data,
-      gasLimit:             t.gas ?? t.gasLimit,
-      maxFeePerGas:         t.maxFeePerGas,
-      maxPriorityFeePerGas: t.maxPriorityFeePerGas,
-    });
-    return sent.hash;
-  } catch (e) {
-    const msg = (e as Error)?.message || 'Broadcast failed';
-    if (/insufficient funds/i.test(msg)) throw new ExtEvmSendError('insufficient', `Insufficient ${chain.nativeSymbol} for amount + gas`);
-    throw new ExtEvmSendError('rpc_error', msg);
-  }
+  return Promise.all(all.map(async (token) => {
+    const raw = await readOrNull(() =>
+      new Contract(token.address, ERC20_BALANCE_ABI, getExtEvmProvider(token.chainId)).balanceOf(address) as Promise<bigint>);
+    return { token, balance: raw == null ? null : (parseFloat(formatUnits(raw, token.decimals)) || 0) };
+  }));
 }

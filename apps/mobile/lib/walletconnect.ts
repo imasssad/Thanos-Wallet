@@ -22,18 +22,14 @@
 import type { IWalletKit, WalletKitTypes } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
 
-const MAKALU_CHAIN_ID = 700777;
-
-/* EVM chains the mobile wallet signs on — Makalu + the public chains. */
-// SAFETY: advertise ONLY the chains the signing path actually honours.
-// Every request handler in this client broadcasts via the MAKALU
-// provider regardless of the namespace the dApp asked on - advertising
-// mainnet/Polygon/etc. let a dApp think it was getting an eip155:1 tx
-// while the wallet broadcast on 700777 (chain-mismatch hazard, flagged
-// by the 2026-06 security audit). Re-add ids here ONLY together with
-// per-chain provider routing in the request handler.
-const SUPPORTED_EVM_CHAIN_IDS = [MAKALU_CHAIN_ID];
-const NAMESPACE_CHAINS = SUPPORTED_EVM_CHAIN_IDS.map(id => `eip155:${id}`);
+/* EVM chains the mobile wallet signs on — the built-in networks,
+   Lithosphere Mainnet first (mirrors lib/evm-external EXT_EVM_CHAINS; a plain
+   list so this module stays light). Every request is signed and broadcast on
+   the chain it names (lib/wc-signer), so advertising a chain is safe exactly
+   when the wallet has an RPC for it. User-added custom networks are added at
+   approval time. The Makalu testnet (700777) isn't built in any more
+   (2026-09-29) — it's advertised only if the user added it back. */
+const SUPPORTED_EVM_CHAIN_IDS = [9005, 1, 56, 137, 8453, 42161, 59144, 10, 43114];
 
 const SUPPORTED_METHODS = [
   'eth_sendTransaction',
@@ -90,21 +86,28 @@ export async function pair(uri: string): Promise<void> {
 
 /* ─── Session proposal handling ───────────────────────────────────── */
 
-/** Namespaces granted on approval — Makalu + every supported EVM chain. */
-export function buildApprovalNamespaces(evmAddress: string): SessionTypes.Namespaces {
+/** Namespaces granted on approval — every built-in EVM chain, Lithosphere
+ *  Mainnet first, plus any custom networks the user added. */
+export function buildApprovalNamespaces(evmAddress: string, customChainIds: number[] = []): SessionTypes.Namespaces {
+  const ids = [...SUPPORTED_EVM_CHAIN_IDS, ...customChainIds.filter((id) => !SUPPORTED_EVM_CHAIN_IDS.includes(id))];
+  const chains = ids.map((id) => `eip155:${id}`);
   return {
     eip155: {
-      chains:   NAMESPACE_CHAINS,
+      chains,
       methods:  SUPPORTED_METHODS,
       events:   SUPPORTED_EVENTS,
-      accounts: NAMESPACE_CHAINS.map(c => `${c}:${evmAddress}`),
+      accounts: chains.map(c => `${c}:${evmAddress}`),
     },
   };
 }
 
 export async function approveSession(id: number, evmAddress: string): Promise<void> {
   const kit = await getWalletKit();
-  await kit.approveSession({ id, namespaces: buildApprovalNamespaces(evmAddress) });
+  const { customChains } = await import('./custom-assets');
+  await kit.approveSession({
+    id,
+    namespaces: buildApprovalNamespaces(evmAddress, customChains().map((c) => c.chainId)),
+  });
 }
 
 export async function rejectSession(id: number, reason = 'User rejected the session'): Promise<void> {

@@ -22,7 +22,7 @@
  * tree dumps.
  */
 import {
-  Contract, HDNodeWallet, Wallet, JsonRpcProvider, Mnemonic, FallbackProvider,
+  Contract, HDNodeWallet, Wallet, JsonRpcProvider, Mnemonic,
   type BaseWallet, type TransactionRequest, type TypedDataDomain, type TypedDataField,
 } from 'ethers';
 
@@ -33,27 +33,20 @@ import {
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
 let _seed: string | null = null;
-let _provider: JsonRpcProvider | FallbackProvider | null = null;
-
-const MAKALU_RPC_URLS = [
-  'https://rpc.litho.ai',
-  'https://rpc-2.litho.ai',
-];
 
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
-function provider(): JsonRpcProvider | FallbackProvider {
-  if (_provider) return _provider;
-  const providers = MAKALU_RPC_URLS.map((url, i) => ({
-    provider: new JsonRpcProvider(url, undefined, { staticNetwork: true }),
-    priority: i + 1,
-    stallTimeout: 2_000,
-    weight: 1,
-  }));
-  _provider = providers.length > 1
-    ? new FallbackProvider(providers, undefined, { quorum: 1 })
-    : providers[0].provider;
-  return _provider;
+/** The chain a transfer was approved on — every broadcast names it. */
+export interface SignChain { chainId: number; rpcUrl: string }
+
+/** Provider for exactly that chain. There is no default network: a send
+ *  without a chain is refused, so a Mainnet balance can never be spent on
+ *  some other chain (this module used to broadcast everything on Makalu). */
+function chainProvider(chain: SignChain | undefined): JsonRpcProvider {
+  const chainId = chain && Number.isSafeInteger(chain.chainId) && chain.chainId > 0 ? chain.chainId : 0;
+  const rpcUrl  = chain && typeof chain.rpcUrl === 'string' && /^https?:\/\//i.test(chain.rpcUrl) ? chain.rpcUrl : '';
+  if (!chainId || !rpcUrl) throw new Error('No network selected for this transaction');
+  return new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
 }
 
 export function setSeed(seed: string | string[]): void {
@@ -81,19 +74,20 @@ export function deriveAddress(hdPath = "m/44'/60'/0'/0/0"): string {
 }
 
 export async function signAndBroadcast(
-  hdPath: string, tx: TransactionRequest,
+  hdPath: string, tx: TransactionRequest, chain: SignChain,
 ): Promise<string> {
-  const w = walletFor(hdPath).connect(provider());
-  const sent = await w.sendTransaction(tx);
+  const w = walletFor(hdPath).connect(chainProvider(chain));
+  // Pin the chain into the signature itself, not just the RPC we send to.
+  const sent = await w.sendTransaction({ ...tx, chainId: BigInt(chain.chainId) });
   return sent.hash;
 }
 
-/** Read-only: wait for a Makalu tx receipt so callers can fire a
+/** Read-only: wait for a tx receipt on its chain so callers can fire a
  *  "confirmed / failed" notification. Returns {ok} on a mined receipt,
  *  or null on timeout/error (never throws — pure best-effort). */
-export async function waitForReceipt(hash: string): Promise<{ ok: boolean } | null> {
+export async function waitForReceipt(hash: string, chain: SignChain): Promise<{ ok: boolean } | null> {
   try {
-    const r = await provider().waitForTransaction(hash, 1, 90_000); // 1 conf, 90s cap
+    const r = await chainProvider(chain).waitForTransaction(hash, 1, 90_000); // 1 conf, 90s cap
     return r ? { ok: r.status === 1 } : null;
   } catch { return null; }
 }
@@ -124,9 +118,9 @@ export async function signTypedData(
 }
 
 export async function transferErc20(
-  hdPath: string, args: { tokenAddress: string; to: string; amount: bigint },
+  hdPath: string, args: { tokenAddress: string; to: string; amount: bigint }, chain: SignChain,
 ): Promise<string> {
-  const w = walletFor(hdPath).connect(provider());
+  const w = walletFor(hdPath).connect(chainProvider(chain));
   const c = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, w);
   const sent = await c.transfer(args.to, args.amount);
   return sent.hash as string;

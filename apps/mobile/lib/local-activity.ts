@@ -1,13 +1,12 @@
 /**
  * Optimistic local activity log (mobile).
  *
- * The indexer only sees LEP100 Transfer events on Makalu, so native LITHO and
- * external-chain sends never appear in the Activity feed right away — a user
- * sends a tx and nothing shows until the indexer catches up (if ever). We
- * record every successful send locally (keyed by the wallet's EVM address,
- * backed by AsyncStorage) the instant the broadcast returns a hash, and the
- * activity hook merges it into the feed, deduped against the indexer by tx
- * hash. Once the indexer reports the tx the local copy drops out, so the real
+ * Only native LITHO on Lithosphere Mainnet has a feed (the explorer), so most
+ * sends would never appear in the Activity feed at all. We record every
+ * successful send locally (keyed by the wallet's EVM address, backed by
+ * AsyncStorage) the instant the broadcast returns a hash, and the activity
+ * hook merges it into the feed, deduped against the explorer by tx hash. Once
+ * the explorer reports the tx the local copy drops out, so the real
  * (confirmed) row replaces the optimistic "Pending" one with no double entry.
  *
  * Entries are shaped like IndexerActivityItem so they render through the same
@@ -16,16 +15,13 @@
  * lingers forever.
  *
  * RESOLUTION (added 2026-09-16, client-reported "some txns show pending yet
- * sent already"): Makalu/Kamet/Mainnet native LITHO get promoted out of
- * "Pending" by makalu-explorer.ts's explorer-based fetchers (Makalu/Kamet/
- * Mainnet all run the same explorer codebase). But sends on chain 9005 that
- * AREN'T native LITHO, and every one of the 8 external EVM chains (Ethereum/
- * BNB/Polygon/Base/Arbitrum/Linea/Optimism/Avalanche — routed through
- * lib/evm-external's sendExtEvm) have NO indexer or explorer coverage at
- * all, on any chain, for any asset. Those rows stayed "Pending" forever —
- * nothing ever told the app they'd confirmed. resolvePendingActivity() below
- * closes that gap directly: it polls the tx's OWN chain RPC for a receipt
- * (no indexer/explorer needed) and flips the stored status in place.
+ * sent already"): Mainnet native LITHO gets promoted out of "Pending" by the
+ * explorer feed (explorer-activity.ts). Every other send — tokens on 9005,
+ * the external EVM chains (Ethereum/BNB/Polygon/Base/Arbitrum/Linea/
+ * Optimism/Avalanche) and custom networks — has no explorer coverage, and
+ * those rows stayed "Pending" forever. resolvePendingActivity() below closes
+ * that gap directly: it polls the tx's OWN chain RPC for a receipt and flips
+ * the stored status in place.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { IndexerActivityItem } from './indexer';
@@ -62,9 +58,8 @@ export interface LocalActivityInput {
   amount:   string;   // human-readable, e.g. "1.5"
   ts:       number;   // epoch ms
   type?:    'send';
-  /** The chain this was actually broadcast on — pass coin.chainId. Native
-   *  Makalu sends (chainId 700777 or undefined) don't need this to resolve
-   *  (the explorer feeds cover them), but it's harmless to include. */
+  /** The chain this was actually broadcast on — what lets
+   *  resolvePendingActivity check its receipt. */
   chainId?: number;
 }
 
@@ -117,9 +112,8 @@ export async function addLocalActivity(addr: string, tx: LocalActivityInput): Pr
 /** Poll each still-pending row's OWN chain for a receipt and flip its status
  *  in place — see the module doc for why this exists (external EVM chains +
  *  non-native Mainnet assets have no indexer/explorer coverage at all, so
- *  nothing else was ever going to un-stick them). Rows with no chainId (pre-
- *  existing rows from before this field, or genuine Makalu sends that
- *  resolve via the explorer feed instead) are left untouched. Best-effort —
+ *  nothing else was ever going to un-stick them). Rows with no chainId (rows
+ *  from before this field, or BTC/SOL/ATOM sends) are left untouched. Best-effort —
  *  a chain that can't be reached just stays pending and gets retried on the
  *  next call (screen mount / pull-to-refresh). Returns the up-to-date list
  *  (same list getLocalActivity would return) so callers don't need a second

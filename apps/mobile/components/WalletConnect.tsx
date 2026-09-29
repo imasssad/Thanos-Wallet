@@ -30,7 +30,7 @@ import {
   getActiveSessions, disconnectSession,
   respondRequest, respondError, onSessionProposal, onSessionRequest,
 } from '../lib/walletconnect';
-import { executeWcRequest, WcSignerError } from '../lib/wc-signer';
+import { executeWcRequest, WcSignerError, chainIdFromCaip, DEFAULT_WC_CHAIN_ID } from '../lib/wc-signer';
 import { reviewSigningRequest } from '../lib/sign-review';
 import { SignReviewPanel } from './SignReviewPanel';
 import { QrScannerModal } from './QrScannerModal';
@@ -286,10 +286,10 @@ interface PendingReq {
   method:  string;
   params:  unknown;
   dApp:    string;
+  /** The chain the request is for — WalletConnect's CAIP-2 "eip155:<id>".
+   *  It's reviewed against, simulated on and signed on exactly this chain. */
+  chainId?: string;
 }
-
-/** The chain mobile WalletConnect sessions sign on (lib/wc-signer: Makalu). */
-const WC_CHAIN_ID = 700777;
 
 export function WalletConnectRequestHost({ seed, account }: { seed: string[]; account?: string }) {
   const [pending, setPending] = useState<PendingReq | null>(null);
@@ -310,7 +310,7 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
       const params = req.params.request.params;
       const dApp = (req as unknown as { verifyContext?: { verified?: { origin?: string } } })
                      .verifyContext?.verified?.origin ?? 'A connected dApp';
-      queueRef.current.push({ topic: req.topic, id: req.id, method, params, dApp });
+      queueRef.current.push({ topic: req.topic, id: req.id, method, params, dApp, chainId: req.params.chainId });
       if (queueRef.current.length === 1) setPending(queueRef.current[0]);
       // Alert the user even if the app is backgrounded — this host is always
       // mounted, so the notification fires for every incoming dApp request.
@@ -321,7 +321,7 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
 
   /* Simulate the pending eth_sendTransaction so the approval sheet can
      show contract-recipient warnings + insufficient-balance critical
-     before the user signs. Lithic chain → Makalu. */
+     before the user signs — on the chain the request is for. */
   useEffect(() => {
     if (!pending || pending.method !== 'eth_sendTransaction') {
       setSimReport(null); return;
@@ -329,6 +329,8 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
     const tx = (pending.params as unknown[] | undefined)?.[0] as { to?: string; value?: string; from?: string } | undefined;
     if (!tx?.to) { setSimReport(null); return; }
     const toAddr = tx.to;   // narrow for the async closure
+    const simChain = chainIdFromCaip(pending.chainId);
+    if (simChain == null) { setSimReport(null); return; }
     let cancelled = false;
     (async () => {
       try {
@@ -337,7 +339,7 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
         const valueWei  = BigInt(tx.value || '0x0');
         const amountEth = (Number(valueWei) / 1e18).toString();
         const report = await sim.simulateSend({
-          chainId: 700777,   // Makalu — the chain mobile WC sessions live on today
+          chainId: simChain,
           from:    tx.from || '',
           to:      toAddr,
           amount:  amountEth,
@@ -350,9 +352,13 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
 
   const close = () => { queueRef.current.shift(); setPending(queueRef.current[0] ?? null); setBusy(null); };
 
-  // Decoded request + verdict (lib/sign-review); a block offers Reject only.
+  // Decoded request + verdict (lib/sign-review), checked against the chain
+  // the request names; a block offers Reject only.
   const review = pending
-    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: WC_CHAIN_ID, account })
+    ? reviewSigningRequest({
+        method: pending.method, params: pending.params, account,
+        activeChainId: chainIdFromCaip(pending.chainId) ?? DEFAULT_WC_CHAIN_ID,
+      })
     : null;
   const blocked = review?.risk === 'block';
 
@@ -360,7 +366,10 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
     if (!pending || busy || blocked) return;
     setBusy('approve');
     try {
-      const result = await executeWcRequest(seed, { request: { method: pending.method, params: pending.params } });
+      const result = await executeWcRequest(seed, {
+        request: { method: pending.method, params: pending.params },
+        chainId: pending.chainId,
+      });
       await respondRequest({ topic: pending.topic, id: pending.id, result });
     } catch (e) {
       const code = e instanceof WcSignerError ? e.code : -32603;

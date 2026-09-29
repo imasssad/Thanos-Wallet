@@ -11,64 +11,56 @@
  *   eth_signTypedData_v4          → EIP-712 typed-data signature
  *   eth_sendTransaction           → sign + broadcast, returns tx hash
  *   eth_accounts / eth_requestAccounts → [address]
- *   eth_chainId                   → current chain (hex)
+ *   eth_chainId                   → the request's chain (hex)
+ *
+ * Every request names its chain (WalletConnect's CAIP-2 `eip155:<id>`, or
+ * the in-app browser's current chain) and a transaction is signed for and
+ * broadcast on exactly that chain. There is no default network to fall back
+ * to — a transaction for a chain the wallet doesn't know is refused.
  *
  * The seed never leaves this module; a fresh HDNodeWallet is built per
  * call and discarded.
  */
 import {
-  HDNodeWallet, Mnemonic, JsonRpcProvider, FallbackProvider, Contract,
-  getBytes, toUtf8Bytes, isHexString, parseUnits, type Provider,
+  JsonRpcProvider, getBytes, toUtf8Bytes, isHexString, parseUnits,
 } from 'ethers';
 import { bytesLikeToHex } from './bytes-normalize';
 import { getActiveAccountIndex } from './accounts';
+// Type only — the module itself is imported lazily below, like everywhere
+// else in the app, to keep the chain code off the eager load path.
+import type { ExtEvmChain } from './evm-external';
 
 /** HD path for the active EVM account. Read at sign time so a switch in
  *  the HomeScreen account chip takes effect on the very next signature. */
 function activeHdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
-const MAKALU_CHAIN_ID = 700777;
-// Makalu [primary, fallback] — failover via FallbackProvider.
-const MAKALU_RPCS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
+/** Lithosphere Mainnet — reported by eth_chainId when a request names no chain. */
+export const DEFAULT_WC_CHAIN_ID = 9005;
 
-/** Optional user-set RPC override (Settings → Custom RPC). Loaded from
- *  storage at app boot via setRpcOverride; preferred over the defaults. */
-let RPC_OVERRIDE: string | null = null;
-export function setRpcOverride(url: string | null): void {
-  RPC_OVERRIDE = url && url.trim() ? url.trim() : null;
-}
-function rpcUrls(): string[] {
-  return RPC_OVERRIDE ? [RPC_OVERRIDE, ...MAKALU_RPCS] : MAKALU_RPCS;
+/** "eip155:9005" (WalletConnect) → 9005; anything else → null. */
+export function chainIdFromCaip(caip: string | undefined): number | null {
+  const m = /^eip155:(\d+)$/.exec(caip ?? '');
+  const id = m ? Number(m[1]) : NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-/** Makalu provider with primary→fallback failover. */
-function makaluProvider(): Provider {
-  return new FallbackProvider(
-    rpcUrls().map(url => ({
-      provider:     new JsonRpcProvider(url, MAKALU_CHAIN_ID),
-      priority:     1,
-      weight:       1,
-      stallTimeout: 1500,
-    })),
-    MAKALU_CHAIN_ID,
-    { quorum: 1 },
-  );
+/** The chain a request asked for, from the registry (built-in + custom). */
+async function requestChain(reqParams: { chainId?: string }): Promise<ExtEvmChain | undefined> {
+  const id = chainIdFromCaip(reqParams.chainId);
+  if (id == null) return undefined;
+  const { getExtEvmChain } = await import('./evm-external');
+  return getExtEvmChain(id);
 }
 
 /** Proxy a read-only JSON-RPC call (eth_call, eth_getBalance,
- *  eth_estimateGas, eth_blockNumber, …) straight to Makalu. Used by the
- *  in-app dApp browser for methods the wallet doesn't sign. */
-export async function rpcProxy(method: string, params: unknown[], chainId: number = MAKALU_CHAIN_ID): Promise<unknown> {
-  // Route reads to the chain the in-app browser is currently on — a dApp on
-  // BNB/ETH/etc. must read that chain's state, not Makalu's.
-  if (chainId !== MAKALU_CHAIN_ID) {
-    const { getExtEvmProvider } = await import('./evm-external');
-    // getExtEvmProvider returns a JsonRpcProvider (typed as the base Provider).
-    return (getExtEvmProvider(chainId) as JsonRpcProvider).send(method, (params ?? []) as unknown[]);
-  }
-  const p = new JsonRpcProvider(rpcUrls()[0], MAKALU_CHAIN_ID);
-  return p.send(method, (params ?? []) as unknown[]);
+ *  eth_estimateGas, eth_blockNumber, …) to the chain the in-app browser is
+ *  on — a dApp on BNB/ETH/etc. reads that chain's state. */
+export async function rpcProxy(method: string, params: unknown[], chainId: number): Promise<unknown> {
+  const { getExtEvmChain, getExtEvmProvider } = await import('./evm-external');
+  if (!getExtEvmChain(chainId)) throw new WcSignerError(4901, 'This network is not available in the wallet.');
+  // getExtEvmProvider returns a JsonRpcProvider (typed as the base Provider).
+  return (getExtEvmProvider(chainId) as JsonRpcProvider).send(method, (params ?? []) as unknown[]);
 }
 
 export class WcSignerError extends Error {
@@ -78,13 +70,7 @@ export class WcSignerError extends Error {
   }
 }
 
-function walletFromSeed(seed: string[], provider?: Provider): HDNodeWallet {
-  const mnemonic = Mnemonic.fromPhrase(seed.join(' '));
-  const hd = HDNodeWallet.fromMnemonic(mnemonic, activeHdPath());
-  return provider ? (hd.connect(provider) as HDNodeWallet) : hd;
-}
-
-interface WcRequestParams {
+export interface WcRequestParams {
   request: { method: string; params: unknown };
   chainId?: string;
 }
@@ -136,7 +122,7 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       return [signer.deriveAddress(path)];
 
     case 'eth_chainId':
-      return `0x${MAKALU_CHAIN_ID.toString(16)}`;
+      return `0x${(chainIdFromCaip(reqParams.chainId) ?? DEFAULT_WC_CHAIN_ID).toString(16)}`;
 
     case 'personal_sign': {
       const raw = params[0];
@@ -172,6 +158,10 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         gas?: string; gasLimit?: string;
         maxFeePerGas?: string; maxPriorityFeePerGas?: string;
       });
+      // The chain the request names — its own RPC, and its chainId pinned
+      // into the signature, so the tx can only ever land there.
+      const chain = await requestChain(reqParams);
+      if (!chain) throw new WcSignerError(4901, 'This network is not available in the wallet.');
       try {
         return await signer.signAndBroadcast(path, {
           to:                   tx.to,
@@ -180,26 +170,27 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
           gasLimit:             tx.gas ?? tx.gasLimit,
           maxFeePerGas:         tx.maxFeePerGas,
           maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
-        });
+        }, { chainId: chain.chainId, rpcUrl: chain.rpcUrl });
       } catch (e) {
         const msg = (e as Error).message || 'Broadcast failed';
-        if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance');
+        if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, `Insufficient ${chain.nativeSymbol} for amount + gas`);
         throw new WcSignerError(-32603, msg);
       }
     }
 
-    /* EIP-3085/3326 — WalletConnect dApps (wagmi etc.) prompt every
-       wallet to add + switch to Makalu on sign-in. This wallet has the
-       chain built in, so both succeed as friendly no-ops for Makalu and
-       reject honestly for anything else. */
+    /* EIP-3085/3326 — WalletConnect dApps (wagmi etc.) ask to add / switch
+       to their chain on sign-in. Every request already names its chain and
+       is routed there, so a chain the wallet can sign on succeeds as a no-op
+       and anything else is refused honestly. */
     case 'wallet_addEthereumChain':
     case 'wallet_switchEthereumChain': {
-      const target = ((params[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
-      if (target !== `0x${MAKALU_CHAIN_ID.toString(16)}`) {
+      const target = Number(((params[0] as { chainId?: string })?.chainId ?? ''));
+      const { getExtEvmChain } = await import('./evm-external');
+      if (!Number.isSafeInteger(target) || target <= 0 || !getExtEvmChain(target)) {
         // 4902 ("add it first") only fits switch; add-refusal is 4001.
         throw new WcSignerError(
           method === 'wallet_switchEthereumChain' ? 4902 : 4001,
-          'Only Lithosphere Makalu (700777) is supported.',
+          'Unsupported network — add it in Settings → Custom networks & tokens first.',
         );
       }
       return null;
@@ -219,8 +210,12 @@ export type SendChain = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
 export interface SendAssetArgs {
   /** Unlocked BIP-39 seed words. */
   seed: string[];
-  /** Target chain — defaults to 'evm' (Makalu native LITHO + LEP100). */
+  /** Target chain family — defaults to 'evm'. */
   chain?: SendChain;
+  /** The EVM network the balance being spent lives on (Lithosphere Mainnet,
+   *  BNB Chain, a custom network, …). Required for an EVM send: the transfer
+   *  is signed for and broadcast on exactly this network. */
+  evmChain?: { chainId: number; rpcUrl: string };
   /** Recipient address — format depends on chain. */
   to: string;
   /** Human-readable amount, e.g. "12.5". */
@@ -237,7 +232,8 @@ export interface SendAssetArgs {
 
 /**
  * Sign + broadcast a transfer on the chain identified by `args.chain`
- * (default 'evm' for Makalu). Returns the broadcast tx hash/signature.
+ * (default 'evm', on `args.evmChain`). Returns the broadcast tx
+ * hash/signature.
  */
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
@@ -273,9 +269,11 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     });
   }
 
-  // ─── EVM / Makalu default ─────────────────────────────────────────────
+  // ─── EVM — on the network of the balance being spent ─────────────────
   // Signing happens in the module-isolated `./signer` so the caller's
   // closure never holds a derived private key.
+  const evmChain = args.evmChain;
+  if (!evmChain) throw new WcSignerError(-32602, 'Pick the network to send on.');
   let value: bigint;
   try { value = parseUnits(args.amount, args.decimals); }
   catch { throw new WcSignerError(-32602, 'Invalid amount'); }
@@ -289,9 +287,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     if (args.tokenAddress) {
       return await signer.transferErc20(path, {
         tokenAddress: args.tokenAddress, to: args.to, amount: value,
-      });
+      }, evmChain);
     }
-    return await signer.signAndBroadcast(path, { to: args.to, value });
+    return await signer.signAndBroadcast(path, { to: args.to, value }, evmChain);
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';
     if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance for amount + gas');

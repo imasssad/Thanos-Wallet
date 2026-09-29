@@ -7,7 +7,8 @@
  * the mobile app carries local mirrors. Keep in sync with the sdk-core version.
  *
  * Powers the "tap a past activity row" detail sheet: given a tx hash we probe
- * the known chains' RPCs (Makalu first, then the 8 external EVM chains), read
+ * the known chains' RPCs (Lithosphere Mainnet first, then the 8 external EVM
+ * chains; Makalu isn't built into the wallet any more, 2026-09-29), read
  * the transaction + receipt, and return the network fee (native + fiat), nonce,
  * status, from/to and a block-explorer link. Any field we can't establish is
  * null so the UI renders "—" rather than a fabricated value; the whole call is
@@ -24,7 +25,6 @@ interface TxChain {
 }
 
 const TX_CHAINS: readonly TxChain[] = [
-  { chainId: 700777, name: 'Lithosphere Makalu', rpcUrl: 'https://rpc.litho.ai',                    nativeSymbol: 'LITHO', explorer: 'https://makalu.litho.ai' },
   { chainId: 9005,   name: 'Lithosphere',        rpcUrl: 'https://rpc-mainnet.litho.ai',            nativeSymbol: 'LITHO', explorer: 'https://lithoscan.ai' },
   { chainId: 1,      name: 'Ethereum',           rpcUrl: 'https://ethereum.publicnode.com',         nativeSymbol: 'ETH',   explorer: 'https://etherscan.io' },
   { chainId: 56,     name: 'BNB Chain',          rpcUrl: 'https://bsc-dataseed.binance.org',        nativeSymbol: 'BNB',   explorer: 'https://bscscan.com' },
@@ -38,10 +38,8 @@ const TX_CHAINS: readonly TxChain[] = [
 
 const chainById = (id: number): TxChain | undefined => TX_CHAINS.find((c) => c.chainId === id);
 
-/* Makalu's explorer uses /txs/<hash> (a bare /tx/ 308-redirects); EVM explorers
-   use /tx/<hash>. Mirrors sdk-core tx-details. */
-const explorerTx = (c: TxChain, hash: string): string =>
-  `${c.explorer}/${c.chainId === 700777 ? 'txs' : 'tx'}/${hash}`;
+/* EVM explorers use /tx/<hash>. Mirrors sdk-core tx-details. */
+const explorerTx = (c: TxChain, hash: string): string => `${c.explorer}/tx/${hash}`;
 
 export interface OnchainTxDetails {
   chainId:       number;

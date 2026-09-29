@@ -23,10 +23,11 @@ const API_BASE = String(
 ).replace(/\/$/, '');
 
 // DNNS v0 is deployed on Kamet. Keep registration on the registry's
-// authoritative chain rather than routing it through the wallet's active
-// Makalu network.
+// authoritative chain rather than routing it through whichever network the
+// wallet has open. Kamet's RPC only: rpc-2.litho.ai (the old fallback here)
+// is a Makalu node, which put a Kamet registration on another network's RPC.
 const DNNS_KAMET_CHAIN_ID = 900523;
-const KAMET_RPCS = ['https://rpc-3.litho.ai', 'https://rpc-2.litho.ai'];
+const KAMET_RPCS = ['https://rpc-3.litho.ai'];
 
 const NAME_RE = /^[a-z0-9-]+\.litho$/;
 

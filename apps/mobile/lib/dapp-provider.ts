@@ -21,7 +21,11 @@
  * drops any message without the right nonce.
  */
 
-const MAKALU_CHAIN_HEX = `0x${(700777).toString(16)}`; // 0xab169
+/** The chain the in-app browser starts on — Lithosphere Mainnet (9005). The
+ *  RN side (InAppBrowser) is the source of truth after that: eth_chainId asks
+ *  it, and a switch updates chainId + networkVersion here. */
+const START_CHAIN_ID = 9005;
+const START_CHAIN_HEX = `0x${START_CHAIN_ID.toString(16)}`; // 0x232d
 
 /** The provider script for one browser instance; `nonce` must be random
  *  and [A-Za-z0-9] only (it is spliced into the script source). */
@@ -34,7 +38,7 @@ const INJECTED_PROVIDER_TEMPLATE = `(function () {
   if (window.ethereum && window.ethereum.__thanos) return;
   var NONCE = '__THANOS_NONCE__';
   var cbs = {}, nextId = 1, listeners = {};
-  var CHAIN_ID = '${MAKALU_CHAIN_HEX}';
+  var CHAIN_ID = '${START_CHAIN_HEX}';
 
   // Bytes-like sign params must become 0x hex BEFORE JSON.stringify —
   // a Uint8Array stringifies to {"0":105,…}, which the wallet side can't
@@ -100,7 +104,7 @@ const INJECTED_PROVIDER_TEMPLATE = `(function () {
     isMetaMask: true,
     isThanos: true,
     chainId: CHAIN_ID,
-    networkVersion: '700777',
+    networkVersion: '${START_CHAIN_ID}',
     selectedAddress: null,
     request: function (args) {
       var method = args && args.method, params = args && args.params;
@@ -117,6 +121,7 @@ const INJECTED_PROVIDER_TEMPLATE = `(function () {
         }
         if (method === 'eth_chainId' && res !== provider.chainId) {
           provider.chainId = res;
+          provider.networkVersion = String(parseInt(res, 16));
           window.__thanos_emit('chainChanged', res);
         }
         return res;

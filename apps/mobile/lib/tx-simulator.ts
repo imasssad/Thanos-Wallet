@@ -4,13 +4,16 @@
  * Mobile is workspace-detached (EAS Cloud can't resolve @thanos/sdk-core
  * symlinks), so this is a local copy of sdk-core's security/simulator.ts —
  * trimmed to the EVM read-only path the wallet actually uses. Both call
- * sites (Send sheet, WalletConnect approval) simulate on Makalu (chainId
- * 700777), which is EVM-compatible, so the EVM checks apply directly.
+ * sites (Send sheet, WalletConnect approval) simulate on the chain the
+ * transaction is for — any network in the wallet's registry (built-in or
+ * custom, lib/evm-external). A chain the wallet doesn't know throws, and the
+ * caller shows no report rather than checking some other chain.
  *
  * Read-only: never signs, never broadcasts. RPC calls are tolerant of
  * failure — a missing endpoint lowers fidelity but never crashes approval.
  */
-import { Interface, JsonRpcProvider, FallbackProvider, formatUnits, parseUnits } from 'ethers';
+import { Interface, formatUnits, parseUnits } from 'ethers';
+import { getExtEvmChain, getExtEvmProvider } from './evm-external';
 
 export interface SimulationIssue {
   level:   'info' | 'warning' | 'critical';
@@ -35,28 +38,14 @@ export interface SendAssetRequest {
   tokenDecimals?: number;
 }
 
-const MAKALU_RPC_URLS = ['https://rpc.litho.ai', 'https://rpc-2.litho.ai'];
-const NETWORK_NAME:  Record<number, string> = { 700777: 'Lithosphere Makalu', 900523: 'Lithosphere Kamet' };
-const NATIVE_SYMBOL: Record<number, string> = { 700777: 'LITHO', 900523: 'LITHO' };
-
-function provider(): JsonRpcProvider | FallbackProvider {
-  const providers = MAKALU_RPC_URLS.map((url, i) => ({
-    provider:     new JsonRpcProvider(url, undefined, { staticNetwork: true }),
-    priority:     i,
-    weight:       1,
-    stallTimeout: 2000,
-  }));
-  return providers.length > 1
-    ? new FallbackProvider(providers)
-    : (providers[0].provider as JsonRpcProvider);
-}
-
 export class TransactionSimulator {
   async simulateSend(request: SendAssetRequest): Promise<SimulationReport> {
-    const p         = provider();
+    const chain = getExtEvmChain(request.chainId);
+    if (!chain) throw new Error(`Unknown network ${request.chainId}`);
+    const p         = getExtEvmProvider(chain.chainId);
     const issues:   SimulationIssue[] = [];
-    const netName   = NETWORK_NAME[request.chainId]  ?? `chain ${request.chainId}`;
-    const nativeSym = NATIVE_SYMBOL[request.chainId] ?? '';
+    const netName   = chain.chainId === 9005 ? 'Lithosphere Mainnet' : chain.name;
+    const nativeSym = chain.nativeSymbol;
 
     const isToken  = !!request.tokenAddress;
     const tokenDec = request.tokenDecimals ?? 18;

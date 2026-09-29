@@ -12,13 +12,16 @@
 import { HDNodeWallet, JsonRpcProvider } from 'ethers';
 import { MAX_ACCOUNTS } from './accounts';
 
-const MAKALU_RPC = 'https://rpc.litho.ai';
-const KAMET_RPC  = 'https://rpc-3.litho.ai';
+// Lithosphere Mainnet (the wallet's home network) and Kamet (where DNNS
+// names live). Mirrors apps/web/lib/account-discovery.ts. Makalu isn't built
+// in any more (2026-09-29).
+const MAINNET_RPC = 'https://rpc-mainnet.litho.ai';
+const KAMET_RPC   = 'https://rpc-3.litho.ai';
 
-let _mak: JsonRpcProvider | null = null;
+let _main: JsonRpcProvider | null = null;
 let _kam: JsonRpcProvider | null = null;
-const makalu = () => (_mak ??= new JsonRpcProvider(MAKALU_RPC, 700777, { staticNetwork: true }));
-const kamet  = () => (_kam ??= new JsonRpcProvider(KAMET_RPC, 900523, { staticNetwork: true }));
+const mainnet = () => (_main ??= new JsonRpcProvider(MAINNET_RPC, 9005, { staticNetwork: true }));
+const kamet   = () => (_kam ??= new JsonRpcProvider(KAMET_RPC, 900523, { staticNetwork: true }));
 
 /**
  * m/44'/60'/0'/0 parent node. The mnemonic→seed step is PBKDF2-HMAC-SHA512 with
@@ -55,7 +58,7 @@ export function deriveAccountAddresses(seed: string[], count: number): string[] 
 
 /**
  * Scan HD indices 0..MAX_ACCOUNTS-1 for any account holding a native balance on
- * Makalu OR Kamet. Returns the account count to persist (highest funded index +
+ * Lithosphere Mainnet OR Kamet. Returns the account count to persist (highest funded index +
  * 1), clamped to [1, MAX_ACCOUNTS]. Best-effort — RPC failures count as "not
  * funded", so discovery can only grow the count, never shrink it.
  */
@@ -68,7 +71,7 @@ export async function discoverFundedAccountCount(seed: string[]): Promise<number
     Array.from({ length: MAX_ACCOUNTS }, (_, i) => i).map(async (i) => {
       let addr = '';
       try { addr = parent.deriveChild(i).address; } catch { return { i, funded: false }; }
-      const [m, k] = await Promise.allSettled([makalu().getBalance(addr), kamet().getBalance(addr)]);
+      const [m, k] = await Promise.allSettled([mainnet().getBalance(addr), kamet().getBalance(addr)]);
       const v = (r: PromiseSettledResult<bigint>) => (r.status === 'fulfilled' ? r.value : 0n);
       return { i, funded: v(m) > 0n || v(k) > 0n };
     }),

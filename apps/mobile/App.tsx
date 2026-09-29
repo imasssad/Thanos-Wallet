@@ -73,7 +73,8 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
   );
 }
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Wallet, HDNodeWallet, Mnemonic, formatUnits, randomBytes } from 'ethers';
+import Constants from 'expo-constants';
+import { Wallet, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
 import {
   quantt, quanttSignIn, quanttBindWithdrawalAddress, forgetQuanttSession, killSwitchMessage,
   type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
@@ -117,10 +118,6 @@ import {
 } from './lib/address-book';
 import { setContactEncryptionKey } from './lib/contact-crypto';
 import {
-  fetchMakaluAllowances, revokeAllowance, MAKALU_KNOWN_TOKENS,
-  type AllowanceRow,
-} from './lib/allowances';
-import {
   getActiveSessions, disconnectSession as wcDisconnect,
 } from './lib/walletconnect';
 
@@ -130,14 +127,14 @@ initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
-import { fetchNativeLithoActivity, fetchKametNativeActivity, fetchMainnetNativeActivity, mergeActivityFeeds } from './lib/makalu-explorer';
+import { fetchMainnetNativeActivity } from './lib/explorer-activity';
 import {
   formatFiat, initDisplayCurrency, applyDisplayCurrency, persistDisplayCurrency,
   convertFromUsd, withCurrencyAffix,
   CURRENCY_OPTS as FX_CURRENCY_OPTS, type DisplayCurrency,
 } from './lib/fx';
 import type { ImageSourcePropType } from 'react-native';
-import { getPortfolio, getActivity, type IndexerActivityItem } from './lib/indexer';
+import type { IndexerActivityItem } from './lib/indexer';
 import { addLocalActivity, resolvePendingActivity, type LocalActivityItem } from './lib/local-activity';
 import {
   getPortfolioSnapshot, setPortfolioSnapshot,
@@ -151,7 +148,7 @@ import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from './lib/bridge-meta'
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
-import { sendAsset, executeWcRequest, WcSignerError, rpcProxy, setRpcOverride } from './lib/wc-signer';
+import { sendAsset, executeWcRequest, WcSignerError, rpcProxy } from './lib/wc-signer';
 import { injectedProviderJs, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { reviewSigningRequest, checkRecipient } from './lib/sign-review';
 import { SignReviewPanel } from './components/SignReviewPanel';
@@ -168,7 +165,7 @@ import * as Clipboard from 'expo-clipboard';
 import {
   ArrowUpRight, ArrowDownLeft, Repeat, Plus, ArrowUpDown, Delete as DeleteKey,
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
-  Fingerprint, Zap, Globe, Server, Key, AlertTriangle, Moon, Sun, Shield,
+  Fingerprint, Zap, Globe, Key, AlertTriangle, Moon, Sun, Shield,
   Copy, Share2, Eye, EyeOff, ScanFace, ScanLine, Search, Compass,
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
@@ -185,11 +182,12 @@ import {
 import { fetchOnchainTxDetails, type OnchainTxDetails } from './lib/tx-details';
 import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregisterPush, notifyLocal, notifyIfEnabled } from './lib/notifications';
 
-/* ╔══════════════════════════════════════════════════════════════════╗
-   ║  APP VERSION — shown in Settings (bottom). BUMP THIS EVERY RELEASE ║
-   ║  so testers can confirm at a glance which build is installed.      ║
-   ╚══════════════════════════════════════════════════════════════════╝ */
-const APP_VERSION = 'thanos-v2.0.1';
+/* APP VERSION — shown in Settings (bottom) so testers can confirm at a
+   glance which build is installed, and compared by the update nudge. Read
+   from app.json's expo.version (embedded in every build): the hand-bumped
+   string it replaced had stayed at 2.0.1 through 2.0.4, so an up-to-date app
+   would have been told to update. The fallback is only for a missing config. */
+const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.5'}`;
 
 /* EXCHANGE_ENABLED gates the whole Swap surface. Swap (same-chain) and
    Cross-chain ship in release builds; only the Bridge tab is dev-build
@@ -480,7 +478,7 @@ interface PortfolioState {
   reload: () => void;
 }
 
-/** Fetch + price the wallet's portfolio from the indexer.
+/** Fetch + price the wallet's portfolio from each EVM network's RPC.
  *  When `seed` is provided, also derives BTC/SOL/ATOM addresses and
  *  fetches their native balances, merging them as additional assets so
  *  the dashboard shows a true cross-chain portfolio total. */
@@ -543,54 +541,75 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
     setLoading(true); setOffline(false);
     (async () => {
       try {
-        // Guard EACH fetch independently. A slow/failed Makalu indexer must NOT
-        // block prices, the external-EVM balances, or first paint — the plain
-        // Promise.all used to REJECT on any failure and strand the home on the
-        // full indexer timeout. On failure we keep the last-known balance
-        // (never blank it to $0) and just flag offline.
-        const [portfolio, prices] = await Promise.all([
-          getPortfolio(address).catch(() => null),
+        // Every EVM network the wallet supports — Lithosphere Mainnet first,
+        // then the external chains and any custom networks — read straight
+        // from each chain's own RPC at the same 0x address: native coin plus
+        // known tokens. (This phase used to be the Thanos indexer, which only
+        // covers the Makalu testnet — no longer part of the wallet,
+        // 2026-09-29.) Light (ethers + fetch, no heavy crypto lib), so it runs
+        // first and paints before the deferred native chains below. Each read
+        // is guarded on its own: a network that fails keeps its last-known
+        // balance (never blanked to $0), and failed prices just price at $0.
+        const [evm, prices] = await Promise.all([
+          (async () => {
+            const m = await import('./lib/evm-external');
+            const [natives, tokens] = await Promise.all([
+              m.getAllExtEvmNativeBalances(address),
+              m.getAllExtEvmTokenBalances(address),
+            ]);
+            return { natives, tokens, chainName: (id: number) => m.getExtEvmChain(id)?.name ?? '' };
+          })().catch(() => null),
           fetchEcosystemPrices().catch(() => ({} as Record<string, number>)),
         ]);
         if (cancelled) return;
 
-        if (portfolio) {
-          const evmRows: DisplayAsset[] = portfolio.assets.map((a) => {
-            let bal = 0;
-            try { bal = Number(formatUnits(a.balance || '0', a.decimals ?? 18)); } catch { bal = 0; }
-            const priceUsd = prices[a.symbol] ?? 0;
-            // Binance-style network label: show WHICH Lithosphere chain the
-            // asset lives on next to its name (client: distinguish Makalu vs
-            // Kamet holdings at a glance).
-            const netLabel = a.chainId === 9005 ? ' · Mainnet'
-              : a.chainId === 900523 ? ' · Kamet'
-              : a.chainId === 700777 ? ' · Makalu' : '';
-            return {
-              sym: a.symbol, name: `${a.name}${netLabel}`, chainId: a.chainId,
-              balance: bal, balanceText: formatAmount(bal), decimals: a.decimals ?? 18,
-              priceUsd, usdValue: bal * priceUsd,
-              color: assetColor(a.symbol),
-              tokenAddress: a.tokenAddress, native: !!a.native,
-            };
-          });
-          // UPSERT the Lithosphere rows, don't replace the whole list: keeping
-          // the previously-shown cross-chain + external rows while this fresh
-          // Makalu fetch lands is what stops a refresh from visibly shrinking
-          // the list (the "4 assets / 2 networks → 12 / 10" counter pop).
-          // The later phases replace their own scopes the same way.
+        const nativesRead = evm ? evm.natives.filter((n) => n.balance != null).length : 0;
+        if (evm) {
           setAssets(prev => {
-            const merged = [...evmRows, ...prev.filter(a => a.chainId !== 700777 && a.chainId !== 900523)];
-            // Persist this SUCCESSFUL fetch as the new snapshot (public data
-            // only). Guarded inside setPortfolioSnapshot: empty arrays are
-            // ignored so a bad/empty result never poisons a good snapshot.
-            void setPortfolioSnapshot(address, merged, merged.reduce((s, a) => s + a.usdValue, 0));
+            const prevRow = (chainId: number, tokenAddress?: string) => prev.find((p) =>
+              p.chainId === chainId
+              && (tokenAddress ? p.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase() : p.native));
+            // A row for EVERY supported network, even at zero balance (client
+            // request 2026-07-15: "show all supported networks").
+            const nativeRows: DisplayAsset[] = evm.natives.map(({ chain, balance }) => {
+              const bal = balance ?? prevRow(chain.chainId)?.balance ?? 0;
+              const priceUsd = prices[chain.nativeSymbol] ?? 0;
+              return {
+                sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
+                balance: bal, balanceText: formatAmount(bal), decimals: 18,
+                priceUsd, usdValue: bal * priceUsd, color: chain.color, native: true,
+              };
+            });
+            const tokenRows: DisplayAsset[] = [];
+            for (const { token, balance } of evm.tokens) {
+              const bal = balance ?? prevRow(token.chainId, token.address)?.balance ?? 0;
+              if (!(bal > 0)) continue;
+              // Built-in USDT/USDC are ≈$1; every other token (custom or
+              // ecosystem, e.g. COLLE/IMAGE) uses a live price if known,
+              // else $0 — never fabricate a stablecoin peg for it.
+              const isStable = token.symbol === 'USDT' || token.symbol === 'USDC';
+              const price = prices[token.symbol] ?? (isStable ? 1 : 0);
+              tokenRows.push({
+                sym: token.symbol,
+                name: `${token.symbol} · ${evm.chainName(token.chainId)}`.trim(),
+                chainId: token.chainId, balance: bal, balanceText: formatAmount(bal),
+                decimals: token.decimals, priceUsd: price, usdValue: bal * price,
+                color: token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : assetColor(token.symbol),
+                tokenAddress: token.address, native: false,
+              });
+            }
+            // Replace the whole EVM scope and keep the BTC/SOL/ATOM rows
+            // (chainId 0), so a network that's gone (e.g. Makalu) drops out
+            // instead of lingering. Persisted as the new snapshot (public data
+            // only) when at least one network answered — an offline refresh
+            // never overwrites a good snapshot.
+            const merged = [...nativeRows, ...tokenRows, ...prev.filter((p) => p.chainId === 0)];
+            if (nativesRead > 0) void setPortfolioSnapshot(address, merged, merged.reduce((s, x) => s + x.usdValue, 0));
             return merged;
           });
-          setOffline(false);
-        } else {
-          // Indexer down — keep the last-known assets/total, just flag offline.
-          setOffline(true);
         }
+        // Offline = not a single network could be read.
+        setOffline(nativesRead === 0);
         setLoading(false);
 
         // Cross-chain natives (BTC/SOL/ATOM) pull in heavy libraries
@@ -651,64 +670,6 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
                 return merged;
               });
             }
-
-            // External EVM (Ethereum / BNB / Polygon / Base / Arbitrum /
-            // Optimism / Linea / Avalanche) — native coins + USDT/USDC at the
-            // SAME 0x address. Light (ethers + fetch, no heavy crypto lib) so
-            // it's safe to read here without the per-chain memory caution.
-            if (cancelled) return;
-            try {
-              const m = await import('./lib/evm-external');
-              const [natives, tokens] = await Promise.all([
-                m.getAllExtEvmNativeBalances(address),
-                m.getAllExtEvmTokenBalances(address),
-              ]);
-              if (cancelled) return;
-              // Row for EVERY supported external chain — fetched (non-zero)
-              // balances merge in; the rest render as zero-balance rows so
-              // users can see the wallet supports the network.
-              const balByChain = new Map(natives.map((n) => [n.chain.chainId, n.balance]));
-              const cm = await import('./lib/custom-assets');
-              const extRows: DisplayAsset[] = [
-                ...cm.allEvmChains().map((chain) => {
-                  const balance = balByChain.get(chain.chainId) ?? 0;
-                  return {
-                    sym: chain.nativeSymbol, name: chain.name, chainId: chain.chainId,
-                    balance, balanceText: formatAmount(balance), decimals: 18,
-                    priceUsd: prices[chain.nativeSymbol] ?? 0,
-                    usdValue: balance * (prices[chain.nativeSymbol] ?? 0),
-                    color: chain.color, native: true,
-                  };
-                }),
-                ...tokens.map(({ token, balance }) => {
-                  // Built-in USDT/USDC are ≈$1; every other token (custom or
-                  // ecosystem, e.g. COLLE/IMAGE) uses a live price if known,
-                  // else $0 — never fabricate a stablecoin peg for it.
-                  const isStable = token.symbol === 'USDT' || token.symbol === 'USDC';
-                  const price = prices[token.symbol] ?? (isStable ? 1 : 0);
-                  return {
-                    sym: token.symbol,
-                    name: `${token.symbol} · ${m.getExtEvmChain(token.chainId)?.name ?? ''}`.trim(),
-                    chainId: token.chainId, balance, balanceText: formatAmount(balance),
-                    decimals: token.decimals, priceUsd: price, usdValue: balance * price,
-                    color: token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : assetColor(token.symbol),
-                    tokenAddress: token.address, native: false,
-                  };
-                }),
-              ];
-              if (!cancelled && extRows.length) {
-                setAssets(prev => {
-                  // Replace the external-chain scope wholesale (keep Lithosphere
-                  // + chainId-0 rows) — kept stale ext rows from the previous
-                  // cycle are superseded, never duplicated.
-                  const keep = prev.filter(p => p.chainId === 700777 || p.chainId === 900523 || p.chainId === 0);
-                  const merged = [...keep, ...extRows];
-                  // Re-save the fuller snapshot (native + cross-chain + external).
-                  void setPortfolioSnapshot(address, merged, merged.reduce((s, r) => s + r.usdValue, 0));
-                  return merged;
-                });
-              }
-            } catch { /* best-effort */ }
           })();
         });
       } catch {
@@ -758,7 +719,7 @@ function relativeTime(iso?: string): string {
 
 /** Map raw broadcast errors (ethers internals, RPC strings) to actionable
  *  copy. Users must never see internals like FallbackProvider's
- *  "no runners?!" (= every Makalu RPC endpoint was unreachable). */
+ *  "no runners?!" (= every RPC endpoint was unreachable). */
 function humanSendError(e: unknown): string {
   const raw  = (e as Error)?.message || '';
   const code = String((e as { code?: unknown })?.code ?? '');
@@ -824,7 +785,8 @@ interface ActivityState {
   reload: () => void;
 }
 
-/** Fetch the wallet's recent on-chain activity from the indexer. */
+/** Fetch the wallet's recent on-chain activity (Lithosphere Mainnet explorer
+ *  + the wallet's own sends on every network). */
 function useActivity(address: string): ActivityState {
   const [nonce, setNonce]   = useState(0);
   const [items, setItems]   = useState<IndexerActivityItem[]>([]);
@@ -835,8 +797,8 @@ function useActivity(address: string): ActivityState {
 
   // Load the optimistic local (unconfirmed) sends, and while we're at it,
   // resolve any that have actually confirmed since they were recorded —
-  // external EVM chains (and non-native assets on Mainnet) have no indexer/
-  // explorer coverage, so without this they'd stay "Pending" forever (client-
+  // external EVM chains (and non-native assets on Mainnet) have no explorer
+  // coverage, so without this they'd stay "Pending" forever (client-
   // reported: "some txns show pending yet sent already"). Runs on address
   // change and on every reload so a fresh broadcast + pull-to-refresh both
   // surface it, and so a row drops/updates once resolved (dedup below).
@@ -870,43 +832,32 @@ function useActivity(address: string): ActivityState {
     if (!address) { setItems([]); setLoading(false); setOffline(false); return; }
     let cancelled = false;
     setLoading(true); setOffline(false);
-    // Four feeds, fetched in parallel and merged (deduped by tx hash):
-    //   indexer          → LEP100 token transfers on Makalu (MUSA, JOT, …)
-    //   Makalu explorer  → NATIVE LITHO transfers (no logs → never reach the
-    //                      indexer; the "received 70,000 LITHO, no row" bug)
-    //   Kamet explorer   → native LITHO on Kamet (same explorer codebase)
-    //   Mainnet explorer → native LITHO on Lithosphere Mainnet (the wallet's
-    //                      default chain) — without this, Mainnet sends never
-    //                      resolved past the optimistic local "Pending" row,
-    //                      since nothing else ever reported them as confirmed.
-    // The indexer stays the primary for the offline flag; the explorer feeds
-    // are best-effort extra coverage.
-    Promise.allSettled([getActivity(address), fetchNativeLithoActivity(address), fetchKametNativeActivity(address), fetchMainnetNativeActivity(address)])
-      .then(([idx, nat, kam, main]) => {
+    // Native LITHO transfers on Lithosphere Mainnet, from its explorer
+    // (native transfers emit no logs, so nothing else reports them). Every
+    // other send shows through the local log above, resolved against its own
+    // chain. (The Thanos indexer and the Makalu/Kamet explorers used to be
+    // merged in here — they only cover the testnets, no longer part of the
+    // wallet, 2026-09-29.)
+    fetchMainnetNativeActivity(address)
+      .catch(() => null)
+      .then((main) => {
         if (cancelled) return;
-        const idxItems = idx.status === 'fulfilled' ? idx.value : null;
-        const natItems = [
-          ...(nat.status === 'fulfilled' ? nat.value : []),
-          ...(kam.status === 'fulfilled' ? kam.value : []),
-          ...(main.status === 'fulfilled' ? main.value : []),
-        ];
-        if (idxItems === null && natItems.length === 0) {
+        if (main === null) {
           // PRESERVE offline contract: keep whatever items we have, flag offline.
           setLoading(false); setOffline(true);
           return;
         }
-        const merged = mergeActivityFeeds(idxItems ?? [], natItems);
-        setItems(merged); setLoading(false); setOffline(idxItems === null);
+        setItems(main); setLoading(false); setOffline(false);
         // Persist the successful fetch (guarded: empty lists are not written so a
         // good snapshot is never clobbered by an empty/transient result).
-        if (merged.length) void setActivitySnapshot(address, merged);
+        if (main.length) void setActivitySnapshot(address, main);
       });
     return () => { cancelled = true; };
   }, [address, nonce]);
 
-  // Merge optimistic local sends into the indexer feed, deduped by tx hash.
-  // A local entry is kept ("Pending") only while the indexer hasn't reported
-  // its hash; the moment it does, the local copy drops and the real confirmed
+  // Merge the wallet's local sends into the explorer feed, deduped by tx
+  // hash. A local entry is kept only while the explorer hasn't reported its
+  // hash; the moment it does, the local copy drops and the real confirmed
   // row shows — no double entry, no layout shift. Local (newest) sort on top.
   const merged = useMemo(() => {
     if (local.length === 0) return items;
@@ -1020,8 +971,8 @@ function RowSkeleton({ count = 4 }: { count?: number }) {
    <Image> errors at runtime (e.g. a remote CDN logo 404s). */
 function Avatar({ symbol, color, size = 36, chainId, native, icon }: {
   symbol: string; color: string; size?: number;
-  /** Chain the asset lives on — switches per-network marks (LITHO Makalu vs
-   *  Kamet) and drives the MetaMask-style corner chain badge. */
+  /** Chain the asset lives on — switches per-network marks (LITHO on a
+   *  testnet vs Mainnet) and drives the MetaMask-style corner chain badge. */
   chainId?: number;
   /** Native coins never get a chain badge (the main icon IS the chain). */
   native?: boolean;
@@ -3688,13 +3639,11 @@ const HIDDEN_ASSETS_KEY   = 'thanos.hidden_assets.v1';
 const networkVisKey = (chainId: number, sym: string): string =>
   chainId === 0 ? `sym:${sym}` : `chain:${chainId}`;
 
-/** Static catalog of every network the wallet supports, for the "Manage
- *  networks" toggle list. LITHO is native on BOTH Lithosphere Mainnet (9005)
- *  and Lithosphere Makalu (700777) — listed as distinct, independently
- *  hideable rows, same as the portfolio treats them. */
+/** Static catalog of every built-in network, for the "Manage networks"
+ *  toggle list. The Makalu testnet (700777) isn't built in any more
+ *  (2026-09-29) — it can be added back as a custom network. */
 const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
   { key: networkVisKey(9005, 'LITHO'),   name: 'Lithosphere',        sub: 'Mainnet · chain 9005' },
-  { key: networkVisKey(700777, 'LITHO'), name: 'Lithosphere Makalu', sub: 'Testnet · chain 700777' },
   { key: networkVisKey(0, 'BTC'),        name: 'Bitcoin',            sub: 'Native' },
   { key: networkVisKey(0, 'SOL'),        name: 'Solana',             sub: 'Native' },
   { key: networkVisKey(0, 'ATOM'),       name: 'Cosmos Hub',         sub: 'Native' },
@@ -3708,12 +3657,17 @@ const ALL_NETWORKS: Array<{ key: string; name: string; sub: string }> = [
   { key: networkVisKey(43114, 'AVAX'),   name: 'Avalanche',          sub: 'chain 43114' },
 ];
 
+/** Hide keys for networks that aren't built in any more. Makalu (700777)
+ *  used to start hidden; a user who adds it back as a custom network means
+ *  to see it — and custom networks have no toggle in Manage networks to undo
+ *  a stale hide — so the key is dropped on load. */
+const RETIRED_NETWORK_KEYS = [networkVisKey(700777, 'LITHO')];
+
 /** Loads + persists the two hidden-key sets and exposes toggle/filter
  *  helpers. Cheap (a couple of small JSON arrays) — fine to load fresh in
  *  every screen that needs it. */
 function useHiddenAssets() {
-  // Makalu (testnet) starts hidden until the user saves their own choice.
-  const [hiddenNetworks, setHiddenNetworks] = useState<Set<string>>(() => new Set([networkVisKey(700777, 'LITHO')]));
+  const [hiddenNetworks, setHiddenNetworks] = useState<Set<string>>(new Set());
   const [hiddenAssets, setHiddenAssets]     = useState<Set<string>>(new Set());
   useEffect(() => {
     (async () => {
@@ -3722,7 +3676,10 @@ function useHiddenAssets() {
           AsyncStorage.getItem(HIDDEN_NETWORKS_KEY),
           AsyncStorage.getItem(HIDDEN_ASSETS_KEY),
         ]);
-        if (nRaw != null) setHiddenNetworks(new Set(JSON.parse(nRaw)));
+        if (nRaw != null) {
+          const keys = (JSON.parse(nRaw) as string[]).filter((k) => !RETIRED_NETWORK_KEYS.includes(k));
+          setHiddenNetworks(new Set(keys));
+        }
         if (aRaw) setHiddenAssets(new Set(JSON.parse(aRaw)));
       } catch { /* corrupt/missing pref — default to nothing hidden */ }
     })();
@@ -3750,42 +3707,37 @@ function useHiddenAssets() {
   return { hiddenNetworks, hiddenAssets, toggleNetwork, toggleAsset, isVisible };
 }
 
-/** chainIds of the external EVM chains (mirror lib/evm-external EXT_EVM_CHAINS).
- *  Used to route sends + skip the Makalu-only pre-send simulation. */
-const EXT_EVM_CHAIN_IDS = [1, 56, 137, 8453, 42161, 59144, 10, 43114];
-
-/** Display name per chainId, for the Send screen's pre-send "Network" row —
- *  mirrors lib/evm-external-meta EXT_EVM_CHAINS' `name` field. A plain data
+/** Display name per built-in chainId, for the Send screen's "Network" rows —
+ *  mirrors lib/evm-external EXT_EVM_CHAINS' `name` field. A plain data
  *  mirror (not a lib/evm-external import) so this stays synchronous: that
  *  module is dynamic-imported elsewhere in this file specifically to keep
- *  its heavier send-path deps out of the eager bundle. Lithosphere Mainnet
- *  (9005) included since the wallet defaults there now, not Makalu. */
+ *  its heavier send-path deps out of the eager bundle. */
 const EXT_EVM_CHAIN_NAMES: Record<number, string> = {
-  9005: 'Lithosphere', 1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon',
+  9005: 'Lithosphere Mainnet', 1: 'Ethereum', 56: 'BNB Chain', 137: 'Polygon',
   8453: 'Base', 42161: 'Arbitrum', 59144: 'Linea', 10: 'Optimism', 43114: 'Avalanche',
 };
-/** Network name for the Send screen's FROM coin — was hardcoded to "Makalu"
- *  regardless of which chain was actually selected (client-reported: sending
- *  USDT on BNB Chain still showed "Network: Makalu"). Falls back to
- *  "Lithosphere Makalu" for the native chain (chainId 700777, or unset on
- *  older portfolio rows), and to the chain id itself for anything unmapped
- *  rather than silently lying about which network it is. */
-function sendNetworkName(chainId?: number): string {
-  if (chainId == null || chainId === 700777) return 'Lithosphere Makalu';
-  return EXT_EVM_CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
+/** Network name for the Send screen's FROM coin — the network the send is
+ *  signed and broadcast on. `registryName` is the custom network's own name
+ *  (from lib/evm-external getExtEvmChain); anything unmapped shows its chain
+ *  id rather than naming some other network. */
+function sendNetworkName(chainId?: number, registryName?: string): string {
+  if (chainId == null) return 'No network';
+  return EXT_EVM_CHAIN_NAMES[chainId] ?? registryName ?? `Chain ${chainId}`;
 }
 
 /** Chain-appropriate tx-explorer URL — mirrors the web Send modal's routing.
  *  URLs duplicate lib/{bitcoin,solana,cosmos}.ts constants on purpose: those
  *  modules are lazy-loaded (heavy chain SDKs), and importing them here just
  *  for a URL would drag them into the eager bundle. */
-function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: string): string {
-  if (extExplorerBase) return `${extExplorerBase}/tx/${hash}`;
+function txExplorerUrl(chain: SendChainOption, hash: string, extExplorerBase?: string): string | null {
+  if (extExplorerBase) return `${extExplorerBase.replace(/\/+$/, '')}/tx/${hash}`;
   switch (chain) {
     case 'bitcoin': return `https://mempool.space/tx/${hash}`;
     case 'solana':  return `https://explorer.solana.com/tx/${hash}`;
     case 'cosmos':  return `https://www.mintscan.io/cosmos/tx/${hash}`;
-    default:        return `https://makalu.litho.ai/txs/${hash}`;
+    // An EVM network with no explorer configured: no link, never another
+    // network's explorer.
+    default:        return null;
   }
 }
 
@@ -3938,9 +3890,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const [simReport, setSimReport] = useState<import('./lib/tx-simulator').SimulationReport | null>(null);
   // Send-success modal state (replaces the OS white Alert — mirrors the web
   // Send modal's success stage: ✓ icon, hash → explorer link, Done).
-  const [sentInfo, setSentInfo] = useState<{ hash: string; sym: string; amount: string; network: string; explorerUrl: string } | null>(null);
+  const [sentInfo, setSentInfo] = useState<{ hash: string; sym: string; amount: string; network: string; explorerUrl: string | null } | null>(null);
 
-  // The EVM pill covers Makalu + all 8 external EVM chains — but ONLY EVM
+  // The EVM pill covers every EVM network (Lithosphere Mainnet, the external
+  // chains, custom networks) — but ONLY EVM
   // rows may appear in its FROM picker. The portfolio now also carries
   // BTC/SOL/ATOM rows (chainId 0, all-networks display); picking one here
   // would mis-route a send, so they're excluded — those chains have their
@@ -3950,17 +3903,39 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0 && isVisible(a)), [assets, isVisible]);
   const coin =
     (selectedKey ? evmAssets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
-    // Prefer an exact (symbol + chain) match — several symbols repeat across
-    // chains (LITHO on Makalu 700777 AND Lithosphere Mainnet 9005; USDT/USDC
-    // across EVM chains), so chainId disambiguates which one was tapped.
+    // An exact (symbol + chain) match — several symbols repeat across chains
+    // (USDT/USDC on every EVM chain, LITHO on Mainnet and on a custom
+    // network), so the chain decides which balance was tapped. Never a
+    // same-symbol row on another chain: that is how a send "from Mainnet"
+    // used to spend a different network's balance.
     ?? (initialSym && initialChainId != null ? evmAssets.find((a) => a.sym === initialSym && a.chainId === initialChainId) : undefined)
-    ?? (initialSym ? evmAssets.find((a) => a.sym === initialSym) : undefined)
-    ?? evmAssets[0] ?? null;
+    ?? (initialSym && initialChainId == null ? evmAssets.find((a) => a.sym === initialSym) : undefined)
+    ?? (initialSym ? undefined : evmAssets[0]) ?? null;
+  // The network the FROM balance lives on (built-in or custom), from the
+  // registry — the send is signed for and broadcast on exactly this chain.
+  const [evmNet, setEvmNet] = useState<import('./lib/evm-external').ExtEvmChain | null>(null);
+  const coinChainId = chain === 'evm' ? coin?.chainId : undefined;
+  useEffect(() => {
+    let cancelled = false;
+    setEvmNet(null);
+    if (coinChainId == null) return;
+    void import('./lib/evm-external').then((m) => {
+      if (!cancelled) setEvmNet(m.getExtEvmChain(coinChainId) ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [coinChainId]);
+  // Names of user-added networks, for the FROM picker's network headings.
+  const [customNetworkNames, setCustomNetworkNames] = useState<Record<number, string>>({});
+  useEffect(() => {
+    void import('./lib/custom-assets').then((m) => {
+      setCustomNetworkNames(Object.fromEntries(m.customChains().map((c) => [c.chainId, c.name])));
+    });
+  }, []);
   const amtNum = parseFloat(amt || '0');
   const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
   const reviewSym = chain === 'evm' && coin ? coin.sym : CHAIN_META[chain].sym;
-  const reviewNetwork = chain === 'evm' ? sendNetworkName(coin?.chainId) : CHAIN_META[chain].label;
+  const reviewNetwork = chain === 'evm' ? sendNetworkName(coin?.chainId, evmNet?.name) : CHAIN_META[chain].label;
 
   // Chain-specific recipient validation. The EVM path also accepts
   // litho1… and name.litho — handled inside isValidRecipient.
@@ -3973,40 +3948,41 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const simHasCritical = simReport?.issues.some(i => i.level === 'critical') ?? false;
   const canReview =
     chain === 'evm'
-      ? !!coin && amtNum > 0 && !overBalance && !!to && recipientOk && !sending && !simHasCritical
+      ? !!coin && !!evmNet && amtNum > 0 && !overBalance && !!to && recipientOk && !sending && !simHasCritical
       : amtNum > 0 && !!to && recipientOk && !sending;
 
-  /* Debounced pre-send simulation. Only EVM/Lithic chains for now —
-     Bitcoin + Solana have their own checks elsewhere. */
+  /* Debounced pre-send simulation. Only EVM chains for now — Bitcoin +
+     Solana have their own checks elsewhere. */
   useEffect(() => {
-    // Skip for external EVM — the simulator is hardcoded to Makalu (700777),
-    // so it'd mis-check a chain it isn't on and could throw a false 'critical'.
-    if (chain !== 'evm' || !coin || EXT_EVM_CHAIN_IDS.includes(coin.chainId)
-        || !to || !recipientOk || amtNum <= 0 || overBalance) { setSimReport(null); return; }
-    const toAddr = to;
+    // Simulated on the asset's own chain — the one the send is signed on.
+    // Only a plain 0x recipient: the simulator can't resolve litho1 / .litho.
+    if (chain !== 'evm' || !coin || !evmNet || !/^0x[0-9a-fA-F]{40}$/.test(to.trim())
+        || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+    const toAddr = to.trim();
     const fromAddr = addr;
     const amount = amt;
+    const simChain = evmNet.chainId;
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
         const { TransactionSimulator } = await import('./lib/tx-simulator');
         const sim = new TransactionSimulator();
         const r = await sim.simulateSend({
-          chainId:     700777,
+          chainId:     simChain,
           from:        fromAddr,
           to:          toAddr,
           amount,
           tokenSymbol: coin.sym,
-          // Without the token identity the simulator treats a LEP100 send as
-          // native and compares the token amount against the LITHO balance.
-          tokenAddress:  coin.tokenAddress,
+          // Without the token identity the simulator treats a token send as
+          // native and compares the token amount against the native balance.
+          tokenAddress:  coin.native ? undefined : coin.tokenAddress,
           tokenDecimals: coin.decimals,
         });
         if (!cancelled) setSimReport(r);
       } catch { if (!cancelled) setSimReport(null); }
     }, 450);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amt, recipientOk, amtNum, overBalance, addr]);
+  }, [coin, evmNet, to, amt, amtNum, overBalance, addr]);
 
   const doSend = async () => {
     if (sending) return;
@@ -4021,38 +3997,18 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
     try {
       const meta = CHAIN_META[chain];
 
-      // External EVM (Ethereum/BNB/Polygon/Base/Arbitrum/Optimism/Linea/
-      // Avalanche): the holding's chainId matches an external chain → route
-      // through THAT chain's RPC, not Makalu. Litho assets (chainId 700777)
-      // and non-EVM chains fall through to the existing sendAsset path.
-      if (chain === 'evm' && coin) {
-        const extm = await import('./lib/evm-external');
-        const extChain = extm.getExtEvmChain(coin.chainId);
-        if (extChain) {
-          const bad = checkRecipient(to.trim());
-          if (bad) { setSending(false); Alert.alert('Not sent', bad); return; }
-          const hash = await extm.sendExtEvm({
-            seed,
-            accountIdx:   getActiveAccountIndex(),
-            chainId:      coin.chainId,
-            recipient:    to.trim(),
-            amount:       amt,
-            decimals:     coin.decimals,
-            tokenAddress: coin.native ? undefined : coin.tokenAddress,
-          });
-          // Optimistic Activity row — recorded AFTER the broadcast returned a
-          // hash. Never touches signing/broadcast; merged + deduped by the
-          // activity hook, drops once the indexer reports the tx.
-          void addLocalActivity(addr, { hash, sym: coin.sym, amount: amt, ts: Date.now(), type: 'send', chainId: coin.chainId });
-          setSending(false);
-          setAmt(''); setTo(''); setMemo('');
-          isNotificationsEnabled().then(on => {
-            if (on) notifyLocal('Transaction sent', `${amt} ${coin.sym} broadcast on ${extChain.name}.`);
-          });
-          setSentInfo({ hash, sym: coin.sym, amount: amt, network: extChain.name, explorerUrl: txExplorerUrl(chain, hash, extChain.explorerUrl) });
-          return;
-        }
+      // EVM: the network the chosen balance lives on (Lithosphere Mainnet, an
+      // external chain, or a custom network), re-read from the registry at
+      // send time. There is no default network — no network, no send.
+      const net = chain === 'evm' && coin
+        ? (await import('./lib/evm-external')).getExtEvmChain(coin.chainId)
+        : undefined;
+      if (chain === 'evm' && !net) {
+        setSending(false);
+        Alert.alert('Not sent', 'Pick the network to send on.');
+        return;
       }
+      const sendChain = net ? { chainId: net.chainId, rpcUrl: net.rpcUrl } : undefined;
 
       const recipient = chain === 'evm' ? await resolveRecipient(to) : to.trim();
       // Checked after resolving, so a name.litho / litho1 input can't hide a
@@ -4062,6 +4018,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
       const hash = await sendAsset({
         seed,
         chain,
+        evmChain:     sendChain,
         to:           recipient,
         amount:       amt,
         decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
@@ -4070,29 +4027,28 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
       });
       const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
       // Optimistic Activity row — recorded AFTER the broadcast returned a hash.
-      // Never touches signing/broadcast; merged + deduped by the activity hook,
-      // drops once the indexer reports the tx.
-      void addLocalActivity(addr, { hash, sym, amount: amt, ts: Date.now(), type: 'send', chainId: chain === 'evm' ? coin?.chainId : undefined });
+      // Never touches signing/broadcast; merged + deduped by the activity hook.
+      void addLocalActivity(addr, { hash, sym, amount: amt, ts: Date.now(), type: 'send', chainId: net?.chainId });
       setSending(false);
       setAmt(''); setTo(''); setMemo('');
-      const network = chain === 'evm' ? sendNetworkName(coin?.chainId) : meta.label;
+      const network = net ? sendNetworkName(net.chainId, net.name) : meta.label;
       // Fire a local notification (works without a push server) when enabled.
       isNotificationsEnabled().then(on => {
         if (on) notifyLocal('Transaction sent', `${amt} ${sym} broadcast on ${network}.`);
       });
-      // Then watch the Makalu receipt (read-only, fire-and-forget — the tx is
-      // already broadcast) and notify confirmed/failed. Makalu path only; the
-      // external-EVM branch returned earlier, and BTC/SOL/ATOM use other chains.
-      if (chain === 'evm') {
+      // Then watch the receipt on the same network (read-only, fire-and-forget
+      // — the tx is already broadcast) and notify confirmed/failed. EVM only;
+      // BTC/SOL/ATOM use other chains.
+      if (sendChain) {
         void (async () => {
           try {
             const { waitForReceipt } = await import('./lib/signer');
-            const rc = await waitForReceipt(hash);
+            const rc = await waitForReceipt(hash, sendChain);
             if (rc) void notifyIfEnabled(rc.ok ? 'Transaction confirmed' : 'Transaction failed', `${amt} ${sym} on ${network}.`);
           } catch { /* best-effort */ }
         })();
       }
-      setSentInfo({ hash, sym, amount: amt, network, explorerUrl: txExplorerUrl(chain, hash) });
+      setSentInfo({ hash, sym, amount: amt, network, explorerUrl: txExplorerUrl(chain, hash, net?.explorerUrl) });
     } catch (e) {
       setSending(false);
       Alert.alert('Send failed', humanSendError(e));
@@ -4116,7 +4072,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
 
       {/* Chain selector — switching out of EVM hides the LEP-100 asset
           picker and uses chain-native recipient validation. Hidden for
-          private-key wallets, which are Makalu/EVM-only. */}
+          private-key wallets, which are EVM-only. */}
       {!pkOnly && (
       <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginBottom: 8 }}>
         {(Object.keys(CHAIN_META) as SendChainOption[]).filter(c => c === 'evm' || c === chain || !hiddenNetworks.has(networkVisKey(0, CHAIN_META[c].sym))).map(c => {
@@ -4133,8 +4089,8 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
               }}
             >
               <Text style={{ color: selected ? '#fff' : C.textSecondary, fontWeight: '700', fontSize: 11 }}>
-                {/* 'EVM' not 'LITHO': this pill covers Makalu + all 8 external
-                    EVM networks (pick the network via the FROM selector). */}
+                {/* 'EVM' not 'LITHO': this pill covers every EVM network
+                    (pick the network via the FROM selector). */}
                 {c === 'evm' ? 'EVM' : CHAIN_META[c].sym}
               </Text>
             </Pressable>
@@ -4157,7 +4113,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
               <Avatar symbol={coin.sym} color={coin.color} size={40}/>
               <View style={{ flex: 1 }}>
                 <Text style={styles.assetSelectName}>{coin.name}</Text>
-                <Text style={styles.assetSelectBal}>Balance: {coin.balanceText} {coin.sym}</Text>
+                <Text style={styles.assetSelectBal}>Balance: {coin.balanceText} {coin.sym} · {sendNetworkName(coin.chainId, evmNet?.name)}</Text>
               </View>
             </>
           ) : (
@@ -4346,10 +4302,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
               {(() => {
                 const groups: Array<{ name: string; items: typeof evmAssets }> = [];
                 for (const a of evmAssets) {
-                  const name =
-                      a.chainId === 700777 ? 'Lithosphere Makalu'
-                    : a.chainId === 900523 ? 'Lithosphere Kamet'
-                    : RECEIVE_NETWORKS.find((n) => n.chainId === a.chainId)?.name ?? `Chain ${a.chainId}`;
+                  const name = sendNetworkName(a.chainId, customNetworkNames[a.chainId]);
                   const g = groups.find((x) => x.name === name);
                   if (g) g.items.push(a); else groups.push({ name, items: [a] });
                 }
@@ -4394,11 +4347,11 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
                 <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 12 }}>
                   {sentInfo.amount} {sentInfo.sym} broadcast on {sentInfo.network}.
                 </Text>
-                <Pressable onPress={() => { Linking.openURL(sentInfo.explorerUrl).catch(() => {}); }} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
+                <Pressable disabled={!sentInfo.explorerUrl} onPress={() => { if (sentInfo.explorerUrl) Linking.openURL(sentInfo.explorerUrl).catch(() => {}); }} hitSlop={6} style={{ alignItems: 'center', marginBottom: 18 }}>
                   <Text style={{ color: C.blue, fontSize: 11, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }) }}>
                     {sentInfo.hash.slice(0, 14)}…{sentInfo.hash.slice(-10)}
                   </Text>
-                  <Text style={{ color: C.blue, fontSize: 12, marginTop: 4, fontWeight: '600' }}>View on explorer →</Text>
+                  {!!sentInfo.explorerUrl && <Text style={{ color: C.blue, fontSize: 12, marginTop: 4, fontWeight: '600' }}>View on explorer →</Text>}
                 </Pressable>
               </>
             )}
@@ -4449,7 +4402,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         <View style={[styles.feeRowCard]}>
           <View style={styles.feeRow}>
             <Text style={styles.feeText}>Network</Text>
-            <Text style={styles.feeTextValue}>{chain === 'evm' ? sendNetworkName(coin?.chainId) : CHAIN_META[chain].label}</Text>
+            <Text style={styles.feeTextValue}>{reviewNetwork}</Text>
           </View>
           <View style={styles.feeRow}>
             <Text style={styles.feeText}>Network fee</Text>
@@ -4499,11 +4452,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
    per-network (same for every asset on a chain); the asset drives the QR
    header (name + logo) and the coin-specific warning. */
 type ReceiveChain =
-  | 'lithosphere' | 'lithosphere-mainnet' | 'bitcoin' | 'solana' | 'cosmos'
+  | 'lithosphere-mainnet' | 'bitcoin' | 'solana' | 'cosmos'
   | 'ethereum' | 'bsc' | 'polygon' | 'base' | 'arbitrum' | 'linea' | 'optimism' | 'avalanche';
 const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string; chainId?: number }> = [
   { id: 'lithosphere-mainnet', name: 'Lithosphere', sym: 'LITHO', chainId: 9005 },
-  { id: 'lithosphere', name: 'Lithosphere Makalu', sym: 'LITHO', chainId: 700777 },
   { id: 'bitcoin',     name: 'Bitcoin',            sym: 'BTC'   },
   { id: 'solana',      name: 'Solana',             sym: 'SOL'   },
   { id: 'cosmos',      name: 'Cosmos Hub',         sym: 'ATOM'  },
@@ -4523,15 +4475,6 @@ const RECEIVE_NETWORKS: Array<{ id: ReceiveChain; name: string; sym: string; cha
 const RECEIVE_ASSETS: Record<ReceiveChain, Array<{ sym: string; name: string }>> = {
   'lithosphere-mainnet': [
     { sym: 'LITHO', name: 'Lithosphere' },
-  ],
-  lithosphere: [
-    { sym: 'LITHO',  name: 'Lithosphere' },
-    { sym: 'LAX',    name: 'Lithosphere Algorithmic' },
-    { sym: 'LitBTC', name: 'Bitcoin (wrapped)' },
-    { sym: 'JOT',    name: 'Jot Art' },
-    { sym: 'COLLE',  name: 'Colle AI' },
-    { sym: 'IMAGE',  name: 'Imagen Network' },
-    { sym: 'MUSA',   name: 'Mansa AI' },
   ],
   bitcoin: [{ sym: 'BTC',  name: 'Bitcoin' }],
   solana:  [{ sym: 'SOL',  name: 'Solana' }],
@@ -4563,7 +4506,7 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
       initialSym === 'BTC'  ? 'bitcoin'
     : initialSym === 'SOL'  ? 'solana'
     : initialSym === 'ATOM' ? 'cosmos'
-    : (initialChainId != null ? (RECEIVE_NETWORKS.find(n => n.chainId === initialChainId)?.id ?? 'lithosphere') : 'lithosphere');
+    : (initialChainId != null ? (RECEIVE_NETWORKS.find(n => n.chainId === initialChainId)?.id ?? 'lithosphere-mainnet') : 'lithosphere-mainnet');
   const preseeded = !!initialSym;
   const preseedAsset = preseeded
     ? (RECEIVE_ASSETS[preseedChain].find(a => a.sym.toLowerCase() === initialSym!.toLowerCase()) ?? { sym: initialSym!, name: initialSym! })
@@ -4573,7 +4516,7 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
   /** The asset being received (drives the QR header + warning). */
   const [asset, setAsset] = useState<{ sym: string; name: string } | null>(preseedAsset);
   /** Active chain — switches the displayed address + QR. */
-  const [chain, setChain] = useState<ReceiveChain>(preseeded ? preseedChain : 'lithosphere');
+  const [chain, setChain] = useState<ReceiveChain>(preseeded ? preseedChain : 'lithosphere-mainnet');
   const visibleReceiveNetworks = useMemo(
     () => RECEIVE_NETWORKS.filter((n) => {
       const key = networkVisKey(n.chainId ?? 0, n.sym);
@@ -4581,10 +4524,9 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
     }),
     [hiddenNetworks],
   );
-  // litho1 is the SAME keypair's bech32 form regardless of which Lithosphere
-  // network it's used on — Mainnet (9005) and Makalu (700777) both accept it,
-  // so both get the litho1/EVM toggle here (not just Makalu).
-  const isLitho = chain === 'lithosphere' || chain === 'lithosphere-mainnet';
+  // litho1 is the SAME keypair's bech32 form — Lithosphere Mainnet accepts
+  // it, so it gets the litho1/EVM toggle here.
+  const isLitho = chain === 'lithosphere-mainnet';
 
   // Derive the Lithosphere bech32 form from the same 0x keypair — one
   // wallet, two formats. Defaults to showing the chain-native litho1.
@@ -4620,7 +4562,6 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
   // Live balance for the active non-Lithosphere chain.
   useEffect(() => {
     setChainBalance('');
-    if (chain === 'lithosphere') return;
     // External EVM chains are surfaced on Home; the Receive sheet just shows the
     // 0x address + QR. (Skip here so we don't mis-route to the cosmos reader.)
     if (chain !== 'bitcoin' && chain !== 'solana' && chain !== 'cosmos') return;
@@ -4761,7 +4702,7 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
         {/* (legacy chain pills hidden — network is chosen in step 1) */}
         <View style={{ display: 'none' }}>
           {([
-            { id: 'lithosphere', label: 'Litho' },
+            { id: 'lithosphere-mainnet', label: 'Litho' },
             { id: 'bitcoin',     label: 'BTC'   },
             { id: 'solana',      label: 'SOL'   },
             { id: 'cosmos',      label: 'ATOM'  },
@@ -4785,8 +4726,7 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
         <View style={[styles.networkSelector, { marginTop: 10 }]}>
           <View style={styles.netDot}/>
           <Text style={styles.networkSelectorText}>
-            {chain === 'lithosphere'         ? 'Lithosphere · Makalu'
-             : chain === 'lithosphere-mainnet' ? 'Lithosphere · Mainnet'
+            {chain === 'lithosphere-mainnet' ? 'Lithosphere · Mainnet'
              : chain === 'bitcoin'   ? 'Bitcoin · mainnet'
              : chain === 'solana'    ? 'Solana · mainnet-beta'
              : chain === 'cosmos'    ? 'Cosmos Hub · cosmoshub-4'
@@ -4801,9 +4741,8 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
           </Text>
         )}
 
-        {/* Litho1 / EVM toggle — same wallet, two address formats. Shown for
-            BOTH Lithosphere networks (Mainnet + Makalu) — litho1 decodes to
-            the same 0x address on either. */}
+        {/* Litho1 / EVM toggle — same wallet, two address formats; litho1
+            decodes to the same 0x address. */}
         {isLitho && !!lithoAddr && (
           <View style={{
             flexDirection: 'row', alignSelf: 'center',
@@ -4945,7 +4884,8 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
   const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
   const counterparty = item.counterparty ?? (d.positive ? det?.from : det?.to) ?? null;
   const cpLabel = d.positive ? 'From' : 'Recipient';
-  const explorer = det?.explorerTxUrl ?? (item.txHash ? `https://makalu.litho.ai/txs/${item.txHash}` : null);
+  // No lookup result → no link (never another network's explorer).
+  const explorer = det?.explorerTxUrl ?? null;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -5129,7 +5069,7 @@ const MOBILE_CROSS_CHAINS: Array<{ id: string; name: string; sym: string; tokens
   { id: 'polygon',   name: 'Polygon',     sym: 'POL',   tokens: ['POL', 'USDC', 'USDT', 'DAI'] },
   { id: 'bsc',       name: 'BNB Chain',   sym: 'BNB',   tokens: ['BNB', 'USDC', 'USDT'] },
   { id: 'avalanche', name: 'Avalanche',   sym: 'AVAX',  tokens: ['AVAX', 'USDC', 'USDT'] },
-  { id: 'makalu',    name: 'Lithosphere', sym: 'LITHO', tokens: ['LITHO', 'LAX', 'LitBTC'] },
+  { id: 'lithosphere', name: 'Lithosphere', sym: 'LITHO', tokens: ['LITHO'] },
 ];
 
 /** Network picker for the Cross-chain swap — a themed bottom sheet with a
@@ -5376,6 +5316,12 @@ function MobileMakaluKametBridge() {
   );
 }
 
+/** Same-chain swaps quoted (MultX / Ignite) and ran on the Makalu testnet's
+ *  token set, which the wallet no longer includes (2026-09-29). Off until the
+ *  DEX quotes on Lithosphere Mainnet; the screen says so instead of quoting.
+ *  Mirrors SWAP_LIVE on web and desktop. */
+const SWAP_LIVE = false;
+
 /** Swap-screen mode tabs. Swap (same-chain) and Cross-chain ship; only
  *  'bridge' (Makalu<->Kamet TESTNET) is stripped from release builds. */
 const SWAP_MODE_TABS = ([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const)
@@ -5397,6 +5343,8 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
     unsignedTx?: {
       to: string; value?: string; data?: string;
       gas?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string;
+      /** The chain the tx must be signed for — required to sign. */
+      chainId?: number;
     };
   };
   const [quote,    setQuote]    = useState<QuoteShape | null>(null);
@@ -5407,7 +5355,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
 
   useEffect(() => {
     const v = amt.trim();
-    if (!v || parseFloat(v) <= 0 || from === to) {
+    if (!SWAP_LIVE || !v || parseFloat(v) <= 0 || from === to) {
       setQuote(null); setProvider(null); setErr(null);
       return;
     }
@@ -5466,6 +5414,10 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
       if (quote.unsignedTx) {
         const signer = await import('./lib/signer');
         if (signer.hasSeed()) {
+          // Sign on the chain the quote names — never a default network.
+          const { getExtEvmChain } = await import('./lib/evm-external');
+          const net = quote.unsignedTx.chainId ? getExtEvmChain(quote.unsignedTx.chainId) : undefined;
+          if (!net) throw new Error('This swap quote has no network the wallet can sign on.');
           signedTxHash = await signer.signAndBroadcast(`m/44'/60'/0'/0/${getActiveAccountIndex()}`, {
             to:                   quote.unsignedTx.to,
             value:                quote.unsignedTx.value ? BigInt(quote.unsignedTx.value) : undefined,
@@ -5473,7 +5425,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
             gasLimit:             quote.unsignedTx.gas,
             maxFeePerGas:         quote.unsignedTx.maxFeePerGas,
             maxPriorityFeePerGas: quote.unsignedTx.maxPriorityFeePerGas,
-          });
+          }, { chainId: net.chainId, rpcUrl: net.rpcUrl });
           setPollMsg(`Source tx: ${signedTxHash.slice(0, 10)}…`);
         }
       }
@@ -5525,7 +5477,14 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         </View>
       )}
 
-      {(__DEV__ && mode === 'bridge') ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : (
+      {(__DEV__ && mode === 'bridge') ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : !SWAP_LIVE ? (
+      <View style={{ paddingHorizontal: 16, paddingVertical: 24, alignItems: 'center', gap: 6 }}>
+        <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>Swap is coming soon</Text>
+        <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
+          Swaps will open on Lithosphere Mainnet. Until then, send and receive work as usual.
+        </Text>
+      </View>
+      ) : (
       <View style={{ paddingHorizontal: 16, gap: 12 }}>
         <Text style={styles.fieldLabel}>FROM</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -5616,7 +5575,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
 }
 
 /* Earn — honest "coming soon" mirroring web StakingView; the Lithosphere
-   staking contracts aren't deployed on Makalu yet. */
+   staking contracts aren't deployed yet. */
 function EarnScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
@@ -5635,7 +5594,7 @@ function EarnScreen({ goBack }: { goBack: () => void }) {
         </View>
         <Text style={{ fontSize: 16, fontWeight: '700', color: C.textPrimary, textAlign: 'center' }}>Staking opens with the protocol rollout</Text>
         <Text style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', lineHeight: 20 }}>
-          Lithosphere validator staking, LITHO/LitBTC LP, and the LAX stable-yield vault will appear here as soon as the staking contract is deployed on Makalu. Your active positions will show up automatically.
+          Lithosphere validator staking, LITHO/LitBTC LP, and the LAX stable-yield vault will appear here as soon as the staking contract is deployed on Lithosphere Mainnet. Your active positions will show up automatically.
         </Text>
       </View>
     </ScrollView>
@@ -5907,7 +5866,6 @@ function SettingsScreen() {
   const [revealTab, setRevealTab]       = useState<'phrase' | 'pk'>('phrase');
   const [changePwdOpen, setChangePwdOpen] = useState(false);
   const [autoLockOpen, setAutoLockOpen] = useState(false);
-  const [rpcOpen, setRpcOpen]           = useState(false);
   const [addrBookOpen, setAddrBookOpen] = useState(false);
   const [permsOpen, setPermsOpen] = useState(false);
   const [dnnsOpen, setDnnsOpen] = useState(false);
@@ -6001,7 +5959,7 @@ function SettingsScreen() {
     await refreshBio();
   };
 
-  // One keypair, two encodings: litho1 (Makalu-native, shown first) and 0x.
+  // One keypair, two encodings: litho1 (Lithosphere-native, shown first) and 0x.
   const lithoAddr = useMemo(() => {
     try { return walletAddr ? evmToLitho(walletAddr) : ''; } catch { return ''; }
   }, [walletAddr]);
@@ -6073,8 +6031,6 @@ function SettingsScreen() {
       onPress: () => setCustomAssetsOpen(true) },
     { label: 'Lithosphere names', desc: 'Register a .litho name for your wallet', Icon: BadgeCheck,
       onPress: () => setDnnsOpen(true) },
-    { label: 'Custom RPC',        desc: 'Override the Makalu RPC endpoint', Icon: Server,
-      onPress: () => setRpcOpen(true) },
     { label: 'Connected dApps',   desc: 'Pair via WalletConnect',          Icon: Zap,
       onPress: () => setWcOpen(true) },
   ];
@@ -6124,7 +6080,7 @@ function SettingsScreen() {
         <Text style={styles.setHeroSub}>Manage your wallet preferences, security, and account details.</Text>
       </View>
 
-      {/* Account header card — litho1 (Makalu-native) leads, 0x follows.
+      {/* Account header card — litho1 (Lithosphere-native) leads, 0x follows.
           Same keypair, two encodings; each row copies its own format. */}
       <View style={styles.acctHeaderCard}>
         <Image
@@ -6187,8 +6143,8 @@ function SettingsScreen() {
         { label: 'Manage contacts', desc: 'Add, view and remove saved addresses', Icon: Users,
           onPress: () => setAddrBookOpen(true) },
       ]}/>
-      <Section Icon={Shield} title="Permissions" sub="Token allowances + connected dApps" items={[
-        { label: 'Manage permissions', desc: 'Audit & revoke approvals, disconnect dApps', Icon: Shield,
+      <Section Icon={Shield} title="Permissions" sub="Connected dApps" items={[
+        { label: 'Manage permissions', desc: 'See and disconnect connected dApps', Icon: Shield,
           onPress: () => setPermsOpen(true) },
       ]}/>
       <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
@@ -6253,9 +6209,8 @@ function SettingsScreen() {
           ]);
         }}
       />
-      <CustomRpcModal visible={rpcOpen} onClose={() => setRpcOpen(false)}/>
       <AddressBookModal visible={addrBookOpen} onClose={() => setAddrBookOpen(false)}/>
-      <PermissionsModal visible={permsOpen} onClose={() => setPermsOpen(false)} seed={seed}/>
+      <PermissionsModal visible={permsOpen} onClose={() => setPermsOpen(false)}/>
       <DnnsModal visible={dnnsOpen} onClose={() => setDnnsOpen(false)} ownerAddr={walletAddr}/>
       <AccountModal visible={acctOpen} onClose={() => setAcctOpen(false)}/>
       <NetworksVisibilityModal visible={networksOpen} onClose={() => setNetworksOpen(false)}/>
@@ -6264,105 +6219,15 @@ function SettingsScreen() {
   );
 }
 
-/* ─── Permissions modal — token allowances + connected dApps ─────────── */
-function PermissionsModal({ visible, onClose, seed }: { visible: boolean; onClose: () => void; seed: string[] }) {
-  const C = useColors();
-  const [tab, setTab] = useState<'allowances' | 'sessions'>('allowances');
-
-  useEffect(() => { if (visible) setTab('allowances'); }, [visible]);
+/* ─── Permissions modal — connected dApps ────────────────────────────────
+   (The token-allowance scan only ever covered Makalu, which isn't built in
+   any more — 2026-09-29.) */
+function PermissionsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   if (!visible) return null;
-
   return (
-    <SheetShell title="Permissions" onClose={onClose}>
-      <View style={{ flexDirection: 'row', gap: 6, padding: 4, backgroundColor: C.bgElevated, borderRadius: 10 }}>
-        <Pressable onPress={() => setTab('allowances')} style={{
-          flex: 1, padding: 8, borderRadius: 6, alignItems: 'center',
-          backgroundColor: tab === 'allowances' ? C.bgCard : 'transparent',
-        }}>
-          <Text style={{ color: tab === 'allowances' ? C.textPrimary : C.textSecondary, fontWeight: '600', fontSize: 12 }}>Token allowances</Text>
-        </Pressable>
-        <Pressable onPress={() => setTab('sessions')} style={{
-          flex: 1, padding: 8, borderRadius: 6, alignItems: 'center',
-          backgroundColor: tab === 'sessions' ? C.bgCard : 'transparent',
-        }}>
-          <Text style={{ color: tab === 'sessions' ? C.textPrimary : C.textSecondary, fontWeight: '600', fontSize: 12 }}>Connected apps</Text>
-        </Pressable>
-      </View>
-      <View style={{ height: 8 }}/>
-      {tab === 'allowances' ? <MobileAllowancesPanel seed={seed}/> : <MobileSessionsPanel/>}
+    <SheetShell title="Connected apps" onClose={onClose}>
+      <MobileSessionsPanel/>
     </SheetShell>
-  );
-}
-
-function MobileAllowancesPanel({ seed }: { seed: string[] }) {
-  const C = useColors();
-  const [rows, setRows] = useState<AllowanceRow[] | null>(null);
-  const [err, setErr]   = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const load = async () => {
-    setErr(null);
-    try {
-      const ethers = require('ethers');
-      const provider = new ethers.JsonRpcProvider('https://rpc.litho.ai');
-      const w = ethers.HDNodeWallet.fromMnemonic(
-        ethers.Mnemonic.fromPhrase(seed.join(' ')),
-        `m/44'/60'/0'/0/${getActiveAccountIndex()}`,
-      );
-      setRows(await fetchMakaluAllowances({
-        walletAddress: w.address, provider,
-        knownTokens: MAKALU_KNOWN_TOKENS,
-      }));
-    } catch (e) { setErr((e as Error).message); setRows([]); }
-  };
-  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-
-  const revoke = async (r: AllowanceRow) => {
-    if (!seed.length) { setErr('Wallet is locked'); return; }
-    const k = `${r.tokenAddress}|${r.spender}`;
-    setBusy(k); setErr(null);
-    try {
-      const ethers = require('ethers');
-      const provider = new ethers.JsonRpcProvider('https://rpc.litho.ai');
-      const w = ethers.HDNodeWallet.fromMnemonic(
-        ethers.Mnemonic.fromPhrase(seed.join(' ')),
-        `m/44'/60'/0'/0/${getActiveAccountIndex()}`,
-      ).connect(provider);
-      const tx = await revokeAllowance({ signer: w, tokenAddress: r.tokenAddress, spender: r.spender });
-      await tx.wait();
-      void load();
-    } catch (e) { setErr((e as Error).message); }
-    finally { setBusy(null); }
-  };
-
-  if (!rows) return <Text style={{ color: C.textMuted, fontSize: 12 }}>Scanning approvals…</Text>;
-  if (err) return <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text>;
-  if (rows.length === 0) return <Text style={{ color: C.textMuted, fontSize: 12 }}>No active allowances on Makalu.</Text>;
-
-  return (
-    <ScrollView style={{ maxHeight: 360 }}>
-      {rows.map(r => {
-        const k = `${r.tokenAddress}|${r.spender}`;
-        return (
-          <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: C.bgElevated, borderRadius: 10, marginBottom: 6 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 13 }}>
-                {r.symbol}
-                {r.unlimited && <Text style={{ color: '#f59e0b', fontSize: 10, fontWeight: '800' }}>  · UNLIMITED</Text>}
-              </Text>
-              <Text numberOfLines={1} ellipsizeMode="middle" style={{ color: C.textMuted, fontFamily: MONO, fontSize: 10 }}>{r.spender}</Text>
-              <Text style={{ color: C.textMuted, fontSize: 11 }}>{r.unlimited ? 'Unlimited' : `${r.amount} ${r.symbol}`}</Text>
-            </View>
-            <Pressable onPress={() => revoke(r)} disabled={busy === k} style={{
-              paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6,
-              borderWidth: 1, borderColor: C.red, opacity: busy === k ? 0.6 : 1,
-            }}>
-              <Text style={{ color: C.red, fontWeight: '700', fontSize: 11 }}>{busy === k ? 'Revoking…' : 'Revoke'}</Text>
-            </Pressable>
-          </View>
-        );
-      })}
-    </ScrollView>
   );
 }
 
@@ -6380,7 +6245,7 @@ function MobileSessionsPanel() {
         topic: s.topic,
         name: s.peer?.metadata?.name || 'Unknown dApp',
         url:  s.peer?.metadata?.url  || '',
-        chains: (s.namespaces?.eip155?.chains ?? []).join(', ') || 'eip155:700777',
+        chains: (s.namespaces?.eip155?.chains ?? []).join(', ') || '—',
       })));
     } catch (e) { setErr((e as Error).message); setRows([]); }
   };
@@ -6562,10 +6427,9 @@ function SheetShell({ title, onClose, children }: { title: string; onClose: () =
 }
 
 /** "Manage networks" — toggle which chains show up in the portfolio. Purely a
- *  display preference (see useHiddenAssets' header note); LITHO mainnet and
- *  Makalu are independent rows here since the wallet holds native LITHO on
- *  both. Per-asset (single-token) hiding lives inline on the Assets screen
- *  instead, next to the specific row it affects. */
+ *  display preference (see useHiddenAssets' header note). Per-asset
+ *  (single-token) hiding lives inline on the Assets screen instead, next to
+ *  the specific row it affects. */
 function NetworksVisibilityModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const C = useColors();
   const styles = useStyles();
@@ -6968,32 +6832,6 @@ function AutoLockModal({ visible, current, onClose, onPick }: { visible: boolean
   );
 }
 
-function CustomRpcModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const C = useColors();
-  const [url, setUrl] = useState('');
-  useEffect(() => { if (visible) AsyncStorage.getItem(PREF_CUSTOM_RPC).then(v => setUrl(v || '')); }, [visible]);
-  if (!visible) return null;
-
-  const save = async () => {
-    const v = url.trim();
-    if (v && !/^https?:\/\//i.test(v)) { Alert.alert('Invalid URL', 'RPC URL must start with http:// or https://'); return; }
-    if (v) await AsyncStorage.setItem(PREF_CUSTOM_RPC, v); else await AsyncStorage.removeItem(PREF_CUSTOM_RPC);
-    setRpcOverride(v || null);
-    Alert.alert('Saved', v ? 'Custom RPC will be used (with the default as fallback).' : 'Reverted to the default Makalu RPC.');
-    onClose();
-  };
-  const inputStyle = { backgroundColor: C.bgElevated, borderRadius: 12, borderWidth: 1, borderColor: C.borderDefault, paddingVertical: 12, paddingHorizontal: 14, color: C.textPrimary, fontSize: 14 };
-  return (
-    <SheetShell title="Custom RPC" onClose={onClose}>
-      <Text style={{ fontSize: 12, color: C.textMuted }}>Default: https://rpc.litho.ai. Leave blank to reset.</Text>
-      <TextInput placeholder="https://your-makalu-rpc" placeholderTextColor={C.textMuted} value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} style={inputStyle}/>
-      <Pressable onPress={save} style={{ paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center' }}>
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Save</Text>
-      </Pressable>
-    </SheetShell>
-  );
-}
-
 /* DNNS — register a human-readable .litho name. Mirrors apps/web's
    DnnsSection: debounced availability check, years selector, and an
    on-chain register() submitted via lib/dnns (lithic_callContract). */
@@ -7199,7 +7037,7 @@ function AccountModal({ visible, onClose }: { visible: boolean; onClose: () => v
 
 /* ─────────────────────────── Token detail ─────────────────────────── */
 
-const TD_PROXY_FEEDS: Record<string, string> = { LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form on Makalu' };
+const TD_PROXY_FEEDS: Record<string, string> = { LitBTC: 'Bitcoin (BTC) — LitBTC is its wrapped form' };
 const TD_RANGES: Array<{ key: TokenRange; label: string }> = [
   { key: '1d', label: '1D' }, { key: '1w', label: '1W' }, { key: '1m', label: '1M' },
   { key: '3m', label: '3M' }, { key: '1y', label: '1Y' },
@@ -7252,9 +7090,9 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
   const seed = useWalletSeed();
   const { assets } = usePortfolio(addr, seed);
   const { items, loading: actLoading, offline: actOffline } = useActivity(addr);
-  // Prefer an exact (symbol + chain) match — LITHO exists natively on BOTH
-  // Lithosphere Makalu (700777) and Lithosphere Mainnet (9005), so matching by
-  // symbol alone always resolved to whichever came first in the list,
+  // Prefer an exact (symbol + chain) match — a symbol can exist on several
+  // networks (USDT/USDC on every EVM chain, LITHO on Mainnet and on a custom
+  // network), so matching by symbol alone resolved to whichever came first,
   // regardless of which row the user actually tapped. Falls back to a
   // symbol-only match for callers that don't know the chain (e.g. Market,
   // which browses prices rather than holdings).
@@ -7262,22 +7100,26 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
     ? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase() && a.chainId === chainId)
     : assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
-  // Gates the Swap action — the MultX/Ignite swap flow is Makalu-only, so a
-  // token must actually LIVE on Makalu (not merely be any contract token:
-  // USDT-on-BNB was wrongly getting a Swap button before the chainId check).
-  const isMakalu = !!coin && !coin.native && !!coin.tokenAddress && coin.chainId === 700777;
-  // Network from the asset's ACTUAL chainId (USDT-on-BNB must say BNB Chain,
-  // not the old hardcoded Makalu default). RECEIVE_NETWORKS is the single
-  // chainId -> display-name source; non-EVM rows carry chainId 0 and resolve
-  // by symbol; Kamet + unknown EVM chains get explicit fallbacks.
+  // Gates the Swap action: off while SWAP_LIVE is (swaps quoted on the Makalu
+  // testnet only); when it opens, for Lithosphere Mainnet tokens.
+  const canSwap = SWAP_LIVE && !!coin && !coin.native && !!coin.tokenAddress && coin.chainId === 9005;
+  // Network from the asset's ACTUAL chainId (USDT-on-BNB must say BNB Chain).
+  // Non-EVM rows carry chainId 0 and resolve by symbol; a custom network
+  // shows its name, anything unmapped its chain id.
+  const [customNetName, setCustomNetName] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    const id = coin?.chainId;
+    if (!id) { setCustomNetName(undefined); return; }
+    void import('./lib/evm-external').then((m) => { if (!cancelled) setCustomNetName(m.getExtEvmChain(id)?.name); });
+    return () => { cancelled = true; };
+  }, [coin?.chainId]);
   const network =
       coin?.sym === 'BTC'  ? 'Bitcoin'
     : coin?.sym === 'SOL'  ? 'Solana'
     : coin?.sym === 'ATOM' ? 'Cosmos Hub'
-    : coin?.chainId === 9005 ? 'Lithosphere Mainnet'
-    : coin?.chainId === 900523 ? 'Lithosphere Kamet'
-    : (coin?.chainId != null && RECEIVE_NETWORKS.find(n => n.chainId === coin.chainId)?.name)
-      || (coin?.chainId && coin.chainId !== 700777 ? `Chain ${coin.chainId}` : 'Lithosphere Makalu');
+    : coin?.chainId ? sendNetworkName(coin.chainId, customNetName)
+    : '—';
   const [range, setRange] = useState<TokenRange>('1d');
   const [hist, setHist] = useState<TokenHistory | null>(null);
   const [histLoading, setHistLoading] = useState(true);
@@ -7349,7 +7191,7 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
           <Pressable onPress={() => onReceive(coin?.chainId)} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
             <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Receive</Text>
           </Pressable>
-          {isMakalu && EXCHANGE_ENABLED && (
+          {canSwap && EXCHANGE_ENABLED && (
             <Pressable onPress={onSwap} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
               <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Swap</Text>
             </Pressable>
@@ -7506,7 +7348,6 @@ function autoLockMinutes(stored: string | null | undefined): number {
 }
 const AUTOLOCK_OFF_NOTE =
   'The wallet will stay unlocked until you lock it yourself or the app is closed, so anyone who picks up this phone can see your balances and approve transactions.';
-const PREF_CUSTOM_RPC = 'thanos.custom_rpc';
 const PREF_CURRENCY = 'thanos.display_currency'; // display currency code
 const PREF_LANGUAGE = 'thanos.language';         // interface language
 // Display-currency + language options mirror apps/web's Settings (General).
@@ -8083,7 +7924,7 @@ function OnboardingScreen({
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>Private key</Text>
-                <Text style={{ color: C.textMuted, fontSize: 12 }}>Single EVM account (Makalu) · no BTC/SOL/Cosmos</Text>
+                <Text style={{ color: C.textMuted, fontSize: 12 }}>Single EVM account · no BTC/SOL/Cosmos</Text>
               </View>
               <ChevronRight size={18} color={C.textMuted}/>
             </View>
@@ -8095,7 +7936,7 @@ function OnboardingScreen({
 
         {step === 'import-pk' && <>
           <Text style={styles.onboardTitle}>Import private key</Text>
-          <Text style={styles.onboardSub}>Paste a 64-character hex private key (with or without the 0x prefix). This imports one EVM account on Makalu.</Text>
+          <Text style={styles.onboardSub}>Paste a 64-character hex private key (with or without the 0x prefix). This imports one EVM account (Lithosphere and the other EVM networks).</Text>
           <TextInput
             style={[styles.input, { height: 84, textAlignVertical: 'top' }]}
             multiline
@@ -8363,7 +8204,13 @@ function OnboardingScreen({
 /* ─────────────────── In-app browser (WebView overlay) ─────────────────── */
 /** `host` is the page that sent the request (from the message's URL), not
  *  whatever the browser shows by the time the user looks at the sheet. */
-interface DappRequest { id: number; method: string; params: unknown[]; host: string }
+interface DappRequest {
+  id: number; method: string; params: unknown[]; host: string;
+  /** The chain the dApp was on when it asked — the request is reviewed
+   *  against and signed on this chain, even if the dApp switches chains
+   *  while the approval sheet is open. */
+  chainId: number;
+}
 
 /** Random [A-Za-z0-9] token for the injected provider (lib/dapp-provider). */
 function providerNonce(): string {
@@ -8373,14 +8220,13 @@ function providerNonce(): string {
   return Array.from(b, (x) => abc[x % abc.length]).join('');
 }
 
-const MAKALU_CHAIN_ID_NUM = 700777;
-/** EVM chains the in-app browser will switch to — the wallet's KNOWN set only
- *  (Makalu + the external EVM chains it already transacts on: ETH, BNB, Polygon,
- *  Base, Arbitrum, Linea, Optimism, Avalanche). Deliberately NO arbitrary
- *  wallet_addEthereumChain — adding a dApp-supplied chain would let it point the
- *  wallet at a malicious RPC. This is what unblocks dApps on other chains (e.g.
- *  multi-chain dApps on BNB) while keeping the wallet on known-good RPCs. */
-const BROWSER_EVM_CHAIN_IDS = new Set<number>([MAKALU_CHAIN_ID_NUM, 9005, 1, 56, 137, 8453, 42161, 59144, 10, 43114]);
+/** The chain the in-app browser starts on: Lithosphere Mainnet. A dApp can
+ *  switch to any network the wallet KNOWS — built in (ETH, BNB, Polygon, Base,
+ *  Arbitrum, Linea, Optimism, Avalanche) or added by the user in Settings →
+ *  Custom networks & tokens. Deliberately NO arbitrary wallet_addEthereumChain:
+ *  adding a dApp-supplied chain would let it point the wallet at a malicious
+ *  RPC. (Makalu isn't built in any more, 2026-09-29.) */
+const BROWSER_DEFAULT_CHAIN_ID = 9005;
 
 function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   url: string; minimized: boolean; onMinimize: () => void; onClose: () => void; seed: string[];
@@ -8406,10 +8252,10 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   // the main frame gets the provider, so an iframe can't forge requests.
   const nonce = useMemo(providerNonce, []);
   const providerJs = useMemo(() => injectedProviderJs(nonce), [nonce]);
-  // The EVM chain the dApp is currently on. Starts on Makalu; a dApp can
-  // wallet_switchEthereumChain to any BROWSER_EVM_CHAIN_IDS member, which
+  // The EVM chain the dApp is currently on. Starts on Lithosphere Mainnet; a
+  // dApp can wallet_switchEthereumChain to any network the wallet knows, which
   // routes eth_sendTransaction + reads to that chain.
-  const [currentChainId, setCurrentChainId] = useState(MAKALU_CHAIN_ID_NUM);
+  const [currentChainId, setCurrentChainId] = useState(BROWSER_DEFAULT_CHAIN_ID);
   // MUST derive at the ACTIVE account index — executeWcRequest signs with the
   // active hdPath, so an index-0 address here would make eth_accounts / the
   // already-connected reply disagree with the signer (a multi-account user's
@@ -8433,26 +8279,17 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   const send = (js: string) => ref.current?.injectJavaScript(js);
 
   // Run a request against the wallet signer and post the result back.
+  // eth_sendTransaction is signed for and broadcast on the chain the dApp was
+  // on when it asked (lib/wc-signer pins it); signatures are chain-independent.
   const run = async (req: DappRequest) => {
     try {
-      let result: unknown;
-      // eth_sendTransaction on a non-Makalu chain → broadcast on THAT chain
-      // (dApp contract calls carry `data`, so route through the raw sender).
-      // Signatures (personal_sign / eth_signTypedData_v4) are chain-independent
-      // and go through executeWcRequest regardless of the current chain.
-      if (req.method === 'eth_sendTransaction' && currentChainId !== MAKALU_CHAIN_ID_NUM) {
-        const tx = (req.params[0] ?? {}) as {
-          to?: string; value?: string; data?: string; gas?: string; gasLimit?: string;
-          maxFeePerGas?: string; maxPriorityFeePerGas?: string;
-        };
-        const extm = await import('./lib/evm-external');
-        result = await extm.sendExtEvmRaw({ seed, accountIdx: getActiveAccountIndex(), chainId: currentChainId, tx });
-      } else {
-        result = await executeWcRequest(seed, { request: { method: req.method, params: req.params } });
-      }
+      const result = await executeWcRequest(seed, {
+        request: { method: req.method, params: req.params },
+        chainId: `eip155:${req.chainId}`,
+      });
       if (req.method === 'eth_requestAccounts') {
         setConnected(true); setConnectedHost(req.host);
-        grantConnection(req.host, address, currentChainId);
+        grantConnection(req.host, address, req.chainId);
       }
       send(resolveJs(req.id, result));
     } catch (e) {
@@ -8468,7 +8305,7 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
     if (msg.nonce !== nonce) return; // not our provider (e.g. a cross-origin iframe)
     let reqHost = host;
     try { reqHost = new URL(frameUrl).host || host; } catch { /* keep the shown host */ }
-    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost };
+    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost, chainId: currentChainId };
 
     // Read-only / already-authorised methods resolve immediately.
     if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${currentChainId.toString(16)}`)); return; }
@@ -8485,21 +8322,23 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       send(resolveJs(req.id, [address]));
       return;
     }
-    // Chain management — switch to any of the wallet's KNOWN chains
-    // (BROWSER_EVM_CHAIN_IDS). switch + add behave the same: a known chain
-    // succeeds and becomes current; an unknown one is refused (no arbitrary
+    // Chain management — switch to any network the wallet KNOWS (built in
+    // or user-added). switch + add behave the same: a known chain succeeds
+    // and becomes current; an unknown one is refused (no arbitrary
     // dApp-supplied RPC). On success, sync the injected provider's chainId and
     // emit chainChanged so the dApp re-reads the new chain.
     if (req.method === 'wallet_switchEthereumChain' || req.method === 'wallet_addEthereumChain') {
       const target = Number((req.params?.[0] as { chainId?: string })?.chainId ?? NaN);
-      if (BROWSER_EVM_CHAIN_IDS.has(target)) {
-        setCurrentChainId(target);
-        send(resolveJs(req.id, null));
-        const hex = `0x${target.toString(16)}`;
-        send(`(function(){try{if(window.ethereum){window.ethereum.chainId='${hex}';window.ethereum.networkVersion='${target}';}window.__thanos_emit&&window.__thanos_emit('chainChanged','${hex}');}catch(e){}})();true;`);
-      } else {
-        send(rejectJs(req.id, req.method === 'wallet_switchEthereumChain' ? 4902 : 4001, 'Unsupported network — Thanos supports Lithosphere and major EVM chains'));
-      }
+      void import('./lib/evm-external').then((m) => {
+        if (Number.isSafeInteger(target) && target > 0 && m.getExtEvmChain(target)) {
+          setCurrentChainId(target);
+          send(resolveJs(req.id, null));
+          const hex = `0x${target.toString(16)}`;
+          send(`(function(){try{if(window.ethereum){window.ethereum.chainId='${hex}';window.ethereum.networkVersion='${target}';}window.__thanos_emit&&window.__thanos_emit('chainChanged','${hex}');}catch(e){}})();true;`);
+        } else {
+          send(rejectJs(req.id, req.method === 'wallet_switchEthereumChain' ? 4902 : 4001, 'Unsupported network — add it in Settings → Custom networks & tokens first.'));
+        }
+      });
       return;
     }
     if (APPROVAL_METHODS.has(req.method)) {
@@ -8512,7 +8351,7 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       return;
     }
     // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
-    // read — proxy straight to the Makalu RPC.
+    // read — proxy to the RPC of the chain the dApp is on.
     rpcProxy(req.method, req.params, currentChainId)
       .then(r => send(resolveJs(req.id, r)))
       .catch(e => send(rejectJs(req.id, -32603, (e as Error)?.message || 'RPC error')));
@@ -8521,7 +8360,7 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   const isConnect = pending?.method === 'eth_requestAccounts';
   // Decoded request + verdict (lib/sign-review) for every signing request.
   const review = pending && !isConnect
-    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: currentChainId, account: address })
+    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: pending.chainId, account: address })
     : null;
   const blocked = review?.risk === 'block';
 
@@ -8906,7 +8745,7 @@ function NFTsScreen({ goBack }: { goBack: () => void }) {
             on the Lithosphere marketplace.
           </Text>
           <Pressable
-            onPress={() => openBrowser('https://makalu.litho.ai/nfts')}
+            onPress={() => openBrowser('https://lithoscan.ai')}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: C.blue }}
           >
             <BadgeCheck size={14} color="#fff"/>
@@ -8918,21 +8757,21 @@ function NFTsScreen({ goBack }: { goBack: () => void }) {
   );
 }
 
-/* First-run welcome — introduces Lithosphere Mainnet, the wallet's home
-   network, the first time a user reaches the unlocked wallet. Self-gates on
-   an AsyncStorage flag (written the moment it shows) so it appears at most
-   once per install. Client request (Esha, 2026-06-15); copy updated to the
-   mainnet (chain 9005) once it went live — v2 flag re-shows it once for
-   users who already dismissed the old Makalu-testnet version. */
-const MAKALU_WELCOME_FLAG = 'thanos.makalu_welcome.v2';
-function MakaluWelcomeModal() {
+/* One-time welcome to Lithosphere Mainnet, the wallet's home network, the
+   first time a user reaches the unlocked wallet. It replaced the old welcome
+   when Makalu stopped being built in (2026-09-29), so existing users see it
+   once too — it's where they learn a Makalu balance now needs Makalu added
+   back as a custom network. Self-gates on an AsyncStorage flag (written the
+   moment it shows). Mirrors the desktop MainnetWelcomeModal. */
+const MAINNET_WELCOME_FLAG = 'thanos.mainnet_welcome.v1';
+function MainnetWelcomeModal() {
   const C = useColors();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    AsyncStorage.getItem(MAKALU_WELCOME_FLAG).then(v => {
+    AsyncStorage.getItem(MAINNET_WELCOME_FLAG).then(v => {
       if (v === '1') return;
       setVisible(true);
-      AsyncStorage.setItem(MAKALU_WELCOME_FLAG, '1').catch(() => {});
+      AsyncStorage.setItem(MAINNET_WELCOME_FLAG, '1').catch(() => {});
     }).catch(() => {});
   }, []);
   return (
@@ -8942,10 +8781,10 @@ function MakaluWelcomeModal() {
           <Image source={require('./assets/images/Thanos_Logo_Transparent.png')} style={{ width: 60, height: 60, marginBottom: 14, resizeMode: 'contain' }}/>
           <Text style={{ color: C.textPrimary, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Welcome to Thanos Wallet</Text>
           <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 6 }}>
-            Your wallet is on the Lithosphere network (chain 9005) — the Web4 home chain. The native coin is LITHO; Bitcoin, Solana, Cosmos and EVM are built in too.
+            Your wallet is on Lithosphere Mainnet (chain 9005) — the Web4 home chain. The native coin is LITHO; Bitcoin, Solana, Cosmos and EVM networks are built in too.
           </Text>
           <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, textAlign: 'center', marginBottom: 18 }}>
-            Explorer: lithoscan.ai · RPC: rpc-mainnet.litho.ai
+            Testnets such as Makalu aren't included — add one in Settings → Add network / token.
           </Text>
           <Pressable onPress={() => setVisible(false)} style={{ width: '100%', paddingVertical: 13, borderRadius: 12, backgroundColor: '#3b7af7', alignItems: 'center' }}>
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Got it</Text>
@@ -9143,8 +8982,8 @@ function App() {
   /** Token-detail overlay — opened by tapping a token row. */
   const [detailSym, setDetailSym] = useState<string | null>(null);
   /** Chain of the tapped row — several symbols exist on more than one chain
-   *  (e.g. LITHO is native on BOTH Lithosphere Makalu 700777 and Lithosphere
-   *  Mainnet 9005; USDT/USDC repeat across EVM chains), so the detail screen
+   *  (USDT/USDC repeat across EVM chains; LITHO on Mainnet and on a custom
+   *  network), so the detail screen
    *  must disambiguate by chain, not just symbol, or it always resolves to
    *  whichever same-symbol asset happens to be first in the list. */
   const [detailChainId, setDetailChainId] = useState<number | undefined>(undefined);
@@ -9428,10 +9267,10 @@ function App() {
     });
   }, [unlocked, walletSeed, walletAddr]);
 
-  // Load the custom-RPC override (Settings) into the signer at boot.
-  useEffect(() => {
-    AsyncStorage.getItem(PREF_CUSTOM_RPC).then(url => setRpcOverride(url || null)).catch(() => {});
-  }, []);
+  // The "Custom RPC" setting overrode Makalu's RPC, and Makalu isn't built in
+  // any more (2026-09-29) — clear the stale value. A custom network's RPC is
+  // set when it's added (Settings → Add network / token).
+  useEffect(() => { AsyncStorage.removeItem('thanos.custom_rpc').catch(() => {}); }, []);
 
   // A locked (or wiped) wallet keeps no live Quantt login: whenever the app
   // is locked — at launch, on "Lock", auto-lock or Delete wallet — the stored
@@ -9485,7 +9324,7 @@ function App() {
     // (in OnboardingScreen) wipes it.
   };
 
-  // Chain-native (Makalu) bech32 form of the same keypair — litho1 is the
+  // Chain-native (Lithosphere) bech32 form of the same keypair — litho1 is the
   // identity users see on-chain, so it leads wherever an address is shown;
   // the 0x form stays one tap away (Settings, Receive toggle).
   const lithoAddr = useMemo(() => {
@@ -9591,8 +9430,8 @@ function App() {
             <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bgBase} />
             <GlassAura dark={isDark}/>
 
-            {/* First-run Lithosphere Makalu welcome — self-gates, shows once. */}
-            <MakaluWelcomeModal/>
+            {/* One-time Lithosphere Mainnet welcome — self-gates, shows once. */}
+            <MainnetWelcomeModal/>
 
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}

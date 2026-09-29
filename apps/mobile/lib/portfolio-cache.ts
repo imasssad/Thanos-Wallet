@@ -10,8 +10,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { IndexerActivityItem } from './indexer';
 
-const PORTFOLIO_PREFIX = 'portfolio_cache:';
-const ACTIVITY_PREFIX  = 'activity_cache:';
+// v2 (2026-09-29): Makalu isn't built in any more — snapshots written before
+// that carry Makalu rows, so they're left behind rather than painted.
+const PORTFOLIO_PREFIX = 'portfolio_cache:v2:';
+const ACTIVITY_PREFIX  = 'activity_cache:v2:';
 
 /** Shape of a persisted portfolio asset row. Mirrors the display shape used by
  *  the home/assets screens, but declared structurally so this module has no
