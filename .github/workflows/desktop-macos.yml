@@ -50,9 +50,8 @@ jobs:
 
       # Builds BOTH architectures: Apple Silicon (arm64) + Intel (x64).
       # --publish never: artifacts are uploaded to the run, not to a release.
-      # --config.productName=Thanos: the Mac app's display name is "Thanos",
-      # not "Thanos Wallet" (client request, macOS only — Windows/Linux keep
-      # the electron-builder.yml default).
+      # The app is "Thanos Wallet" (electron-builder.yml productName) — the
+      # iOS app is "Thanos", so the two are easy to tell apart.
       - name: Package .dmg + .zip
         working-directory: apps/desktop
         run: |
@@ -71,7 +70,7 @@ jobs:
             unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
-          npx electron-builder --mac dmg zip --arm64 --x64 --publish never --config.productName=Thanos
+          npx electron-builder --mac dmg zip --arm64 --x64 --publish never
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

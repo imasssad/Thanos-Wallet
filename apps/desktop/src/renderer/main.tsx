@@ -4846,7 +4846,7 @@ function SettingsView({ toggleTheme, isDark, walletAddr, onLock, onDeleteWallet,
 
         <Section icon={Info} title="About" sub="Build info and version">
           <Row label="Version" sub="Thanos Wallet Desktop">
-            <span className="settings-version">v0.8.1</span>
+            <span className="settings-version">v{__APP_VERSION__}</span>
           </Row>
           <Row label="Build" sub="Release channel">
             <span className="settings-version">Stable</span>

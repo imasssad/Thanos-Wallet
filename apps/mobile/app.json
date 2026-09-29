@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "jsEngine": "hermes",
     "newArchEnabled": false,
     "orientation": "portrait",
@@ -19,9 +19,10 @@
       "supportsTablet": true,
       "buildNumber": "40",
       "infoPlist": {
-        "NSCameraUsageDescription": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
-        "NSFaceIDUsageDescription": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely.",
-        "NSLocalNetworkUsageDescription": "Thanos Wallet connects to local nodes when you configure a custom RPC endpoint.",
+        "CFBundleDisplayName": "Thanos",
+        "NSCameraUsageDescription": "Thanos uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
+        "NSFaceIDUsageDescription": "Thanos uses Face ID to unlock your wallet quickly and securely.",
+        "NSLocalNetworkUsageDescription": "Thanos connects to local nodes when you configure a custom RPC endpoint.",
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
           {
@@ -40,7 +41,7 @@
     "android": {
       "package": "ai.thanos.wallet",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 38,
+      "versionCode": 39,
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",
@@ -96,7 +97,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Thanos Wallet uses Face ID to unlock your wallet quickly and securely."
+          "faceIDPermission": "Thanos uses Face ID to unlock your wallet quickly and securely."
         }
       ],
       [
@@ -113,7 +114,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Thanos Wallet uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
+          "cameraPermission": "Thanos uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

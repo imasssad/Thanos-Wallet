@@ -44,12 +44,13 @@ Config lives in `apps/desktop/electron-builder.yml`. Output goes to
 itself packaged; see the comment in the yml). Artifact names follow
 `${productName}-${version}-${arch}.${ext}`.
 
-**The Mac app's display name is "Thanos"**, not "Thanos Wallet" (client
-request, macOS only — Windows/Linux keep "Thanos Wallet"). Every macOS build
-path below passes `--config.productName=Thanos` at package time, so artifacts
-are named e.g. `Thanos-0.3.3-arm64.dmg`, and the `.app` itself shows as
-"Thanos" in Finder/Dock/menu bar. `build-macos.sh` does this for you
-automatically — no extra flag needed.
+**The desktop app is "Thanos Wallet" on every platform, macOS included** (the
+`productName` in `electron-builder.yml`); the iOS app is "Thanos", so the two
+are easy to tell apart (client request, 2026-09-29). Artifacts are named e.g.
+`Thanos Wallet-0.3.5-arm64.dmg`, and the `.app` shows as "Thanos Wallet" in
+Finder/Dock/menu bar. (Mac builds before 0.3.5 were packaged as "Thanos"; an
+auto-updated install keeps its old `Thanos.app` file name, and its wallet data
+is unaffected — Electron's data folder doesn't depend on the display name.)
 
 Bundle id: `ai.thanos.wallet`. Apple team: `JEYAFQ92YG` (KaJ Labs LLC).
 
@@ -139,14 +140,14 @@ This must succeed before packaging.
 
 ```bash
 cd apps/desktop
-npx electron-builder --mac dmg --arm64 --publish never --config.productName=Thanos
+npx electron-builder --mac dmg --arm64 --publish never
 # add --x64 to also build the Intel binary
 ```
 
-Output: `apps/desktop/release/Thanos-<version>-arm64.dmg`.
+Output: `apps/desktop/release/Thanos Wallet-<version>-arm64.dmg`.
 
 Unsigned apps are Gatekeeper-blocked on first launch — **right-click → Open**,
-or `xattr -dr com.apple.quarantine "/Applications/Thanos.app"`.
+or `xattr -dr com.apple.quarantine "/Applications/Thanos Wallet.app"`.
 
 ### 4b. Signed + notarized `.dmg` — for distribution outside the store
 
@@ -160,7 +161,7 @@ export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # appleid.apple.com �
 export APPLE_TEAM_ID="JEYAFQ92YG"
 
 npx electron-builder --mac dmg zip --arm64 --x64 --publish never \
-  --config.mac.notarize.teamId="$APPLE_TEAM_ID" --config.productName=Thanos
+  --config.mac.notarize.teamId="$APPLE_TEAM_ID"
 ```
 
 electron-builder auto-discovers the Developer ID cert from the keychain, signs
@@ -183,15 +184,15 @@ bash apps/desktop/scripts/build-macos.sh --mas
 # equivalently, by hand:
 cd apps/desktop
 MAS_BUILD=1 pnpm --filter @thanos/desktop build   # dead-code-eliminates HW-wallet UI + auto-updater
-npx electron-builder --mac mas --publish never --config.productName=Thanos
-# → apps/desktop/release/mas/Thanos-<version>.pkg
+npx electron-builder --mac mas --publish never
+# → apps/desktop/release/mas/Thanos Wallet-<version>.pkg
 ```
 
 Upload to the (already-created) separate macOS ASC record — drag into the
 **Transporter** app, or reuse the EAS iOS **App Store Connect API key**:
 
 ```bash
-xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos-<version>.pkg" \
+xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos Wallet-<version>.pkg" \
   -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 ```
 

@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
@@ -26,6 +27,9 @@ const RENDERER_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+// The app's own version (package.json) for Settings → About.
+const APP_VERSION = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version;
+
 // Bitcoin's tiny-secp256k1 imports its .wasm via the ESM Wasm integration
 // proposal which Vite 5 doesn't handle by default — these two plugins make
 // the renderer build succeed. Same fix as apps/extension/wxt.config.ts.
@@ -42,6 +46,7 @@ export default defineConfig({
   // eliminated in the MAS bundle (and left intact in the direct-download build).
   define: {
     __MAS_BUILD__: JSON.stringify(process.env.MAS_BUILD === '1'),
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
   plugins: [
     {

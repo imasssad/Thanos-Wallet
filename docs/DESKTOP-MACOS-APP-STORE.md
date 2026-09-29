@@ -46,13 +46,15 @@ Both are gated and WIRED (2026-07-18):
 Verified: `MAS_BUILD=1 pnpm build` produces a bundle with no HW-wallet UI
 strings and no eager WebHID import; a normal build keeps them.
 
-## App name — DECIDED: "Thanos" (not "Thanos Wallet")
+## App name — DECIDED: "Thanos Wallet" (the iOS app is "Thanos")
 
-The Mac app's display name is **"Thanos"** — client request, macOS only.
-Every mac build path (`build-macos.sh`, both CI workflows, `release.yml`'s mac
-leg) already passes `--config.productName=Thanos`; Windows/Linux keep "Thanos
-Wallet". No further action needed for this — it's just why the `.pkg`/`.dmg`
-filenames and the installed `.app` read "Thanos".
+The desktop app is **"Thanos Wallet"** on every platform, macOS included, and
+the iOS app is **"Thanos"** — client request (2026-09-29), so the two App Store
+Connect records are easy to tell apart. The build side is just
+`electron-builder.yml`'s `productName`, so the `.pkg`/`.dmg` filenames and the
+installed `.app` read "Thanos Wallet". The App Store Connect record's own name
+is set in App Store Connect (App Information → Name), not by the build.
+(Mac builds before 0.3.5 were packaged with `--config.productName=Thanos`.)
 
 ## Bundle-ID decision — DECIDED: `ai.thanos.wallet` (separate desktop record)
 
@@ -97,13 +99,13 @@ Once the certs/profile exist:
   build" → Run workflow** → produces a signed, sandboxed **`.pkg`** artifact
   (`thanos-desktop-mas-pkg`). Download it.
 - **Local (Mac):** `bash apps/desktop/scripts/build-macos.sh --mas` →
-  `apps/desktop/release/mas/Thanos-<version>.pkg`.
+  `apps/desktop/release/mas/Thanos Wallet-<version>.pkg`.
 
 Then on a Mac, upload to the macOS ASC record with **Transporter** (drag the
 `.pkg` in) or:
 
 ```bash
-xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos-<version>.pkg" \
+xcrun altool --upload-app -f "apps/desktop/release/mas/Thanos Wallet-<version>.pkg" \
   -t macos --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 ```
 

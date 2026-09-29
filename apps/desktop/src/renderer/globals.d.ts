@@ -9,6 +9,10 @@
  */
 declare const __MAS_BUILD__: boolean;
 
+/** The desktop app's version from apps/desktop/package.json, injected by
+ *  vite.config.ts — what Settings → About shows. */
+declare const __APP_VERSION__: string;
+
 /** Vite's build-time env. `.DEV` is true under `vite dev` / `vite build
  *  --mode development` and false in a production `vite build`. The
  *  renderer's tsconfig doesn't pull in `vite/client`, so declare the
