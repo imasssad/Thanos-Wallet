@@ -2941,7 +2941,7 @@ function HomeScreen({
       </div>
       <div className="card list">
         {loading && coins.length === 0 && <SkeletonRows count={4} />}
-        {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
+        {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the network</div>}
         {!loading && !offline && coins.length === 0 && <div className="row-sub" style={{ padding: 12 }}>No assets yet</div>}
         {coins.map((a, i) => (
           <div key={`${a.sym}-${a.chainId ?? 'litho'}`} className={`row ${i < coins.length - 1 ? 'row-border' : ''}`} onClick={() => onOpenToken(a.sym, a.chainId)} style={{ cursor: 'pointer' }}>
@@ -2980,7 +2980,7 @@ function ActivityScreen() {
       <div className="section-header">Recent</div>
       <div className="card list">
         {loading && activity.length === 0 && <SkeletonRows count={4} />}
-        {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the indexer</div>}
+        {!loading && offline && <div className="row-sub" style={{ padding: 12 }}>Couldn’t reach the network</div>}
         {!loading && !offline && shown.length === 0 && (
           <div className="row-sub" style={{ padding: 12 }}>
             {activity.length === 0 ? 'No transactions yet' : `No ${filter.toLowerCase()} transactions`}
@@ -3584,9 +3584,9 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
     return () => { cancel = true; };
   }, [tx.txHash]);
 
-  // Local sends start optimistically as pending because the Makalu indexer
-  // does not report native LITHO transfers. Once the detail lookup has a
-  // receipt, the chain result is authoritative and must override that flag.
+  // Local sends start optimistically as pending — nothing else reports most
+  // sends. Once the detail lookup has a receipt, the chain result is
+  // authoritative and must override that flag.
   const effectiveStatus = det?.status ?? (tx.pending || tx.status === 'pending' ? 'pending' : tx.status);
   const statusText  = effectiveStatus === 'pending' ? 'Pending' : effectiveStatus === 'failed' ? 'Failed' : 'Completed';
   const statusColor = statusText === 'Pending' ? 'var(--orange, #f59e0b)' : statusText === 'Failed' ? 'var(--red, #f87171)' : 'var(--green, #10b981)';
