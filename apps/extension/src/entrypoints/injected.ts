@@ -12,7 +12,8 @@
  * Methods supported in this MVP slice:
  *   - eth_requestAccounts      (opens approval popup)
  *   - eth_accounts             (auto-reply from connected list)
- *   - eth_chainId              (Makalu = 0xab169 = 700777)
+ *   - eth_chainId              (the wallet's active chain; Lithosphere
+ *                                Mainnet 0x232d = 9005 until it answers)
  *   - wallet_switchEthereumChain
  *
  * Signing methods (eth_sendTransaction / personal_sign / etc.) are wired
@@ -64,8 +65,10 @@ export default defineUnlistedScript(() => {
   const provider = {
     isThanos:           true,
     isMetaMask:         false, // explicitly false — we don't impersonate
-    chainId:            '0xab169', // 700777 hex (default until we hear otherwise)
-    networkVersion:     '700777',
+    // Lithosphere Mainnet (9005) until the wallet reports its active chain
+    // below. (Was Makalu, 700777 — no longer built into the wallet.)
+    chainId:            '0x232d',
+    networkVersion:     '9005',
     selectedAddress:    null as string | null,
 
     /** EIP-1193 request method. */
@@ -90,7 +93,11 @@ export default defineUnlistedScript(() => {
   };
 
   // React to chain/account changes from the wallet.
-  provider.on('chainChanged', (newChainId) => { provider.chainId = String(newChainId); });
+  provider.on('chainChanged', (newChainId) => {
+    provider.chainId = String(newChainId);
+    const n = parseInt(provider.chainId, 16);
+    if (Number.isSafeInteger(n) && n > 0) provider.networkVersion = String(n);
+  });
   provider.on('accountsChanged', (accounts) => {
     const list = accounts as string[];
     provider.selectedAddress = list?.[0] ?? null;
@@ -99,11 +106,11 @@ export default defineUnlistedScript(() => {
   Object.defineProperty(window, 'thanos', { value: provider, writable: false, configurable: false });
 
   // Sync the cached chainId to the wallet's ACTUAL active chain on load — the
-  // wallet can now switch across EVM networks, so the 0xab169 default is only
+  // wallet can now switch across EVM networks, so the 0x232d default is only
   // a hint until this resolves. If it differs, EMIT chainChanged too: wagmi
   // and other libs cache the chain on connect from provider.chainId, so
   // without this a dApp reconnecting while the wallet is on (say) Ethereum
-  // would keep thinking it's on Makalu.
+  // would keep thinking it's on Lithosphere Mainnet.
   sendRequest('eth_chainId')
     .then((id) => {
       if (typeof id === 'string' && id && id !== provider.chainId) {

@@ -90,7 +90,7 @@ function projectSession(s: SessionTypes.Struct): DAppRow {
     name:    peer.name || 'Unknown dApp',
     url:     safeHttpUrl(peer.url),
     icon:    safeHttpsIcon(Array.isArray(peer.icons) ? peer.icons[0] : null),
-    chains:  chains.join(', ') || 'eip155:700777',
+    chains:  chains.join(', ') || '—',
     expires: ts,
   };
 }
