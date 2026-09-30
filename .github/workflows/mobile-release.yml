@@ -75,6 +75,23 @@ jobs:
           echo "${{ secrets.ASC_API_KEY_BASE64 }}"          | base64 -d > credentials/asc-api-key.p8
           echo "${{ secrets.PLAY_SERVICE_ACCOUNT_BASE64 }}" | base64 -d > credentials/play-service-account.json
 
+      # eas.json signs Android with credentialsSource: local, so the upload
+      # keystore has to be on this runner — same step as mobile-build.yml.
+      - name: Restore Android upload keystore from secrets
+        if: ${{ inputs.platform != 'ios' }}
+        env:
+          ANDROID_KEYSTORE_BASE64:   ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS:         ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD:      ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set"; exit 1; }
+          done
+          mkdir -p credentials
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > credentials/android-upload.jks
+          node -e "require('fs').writeFileSync('credentials.json',JSON.stringify({android:{keystore:{keystorePath:'credentials/android-upload.jks',keystorePassword:process.env.ANDROID_KEYSTORE_PASSWORD,keyAlias:process.env.ANDROID_KEY_ALIAS,keyPassword:process.env.ANDROID_KEY_PASSWORD}}}))"
+
       # App Store Connect rejects a repeated CFBundleVersion ("already submitted
       # this build"). eas autoIncrement only bumps the CI checkout's app.json
       # (33 -> 34 every run, never committed), so derive a unique, monotonically
