@@ -16,6 +16,16 @@ const nextConfig = {
   // Output a self-contained server in .next/standalone — used by the Docker image
   output: 'standalone',
   transpilePackages: ['@thanos/sdk-core', '@thanos/sdk-react', '@thanos/ui'],
+  // Loaded from node_modules at runtime, not bundled: tiny-secp256k1's Node
+  // entry reads secp256k1.wasm next to itself, and bundling bakes in the
+  // build machine's absolute path (/repo/node_modules/…), which doesn't exist
+  // in the runtime image — every server render of /app then threw ENOENT
+  // (HTTP 500). The file tracer can't follow the package's own path helper to
+  // the .wasm, so it is listed for the standalone output explicitly.
+  serverExternalPackages: ['tiny-secp256k1'],
+  outputFileTracingIncludes: {
+    '/**': ['../../node_modules/.pnpm/tiny-secp256k1@*/node_modules/tiny-secp256k1/lib/secp256k1.wasm'],
+  },
 
   // Baked into the client bundle at BUILD time — UpdateBanner compares this
   // against /api/version (read fresh per request) to detect a newer deploy
