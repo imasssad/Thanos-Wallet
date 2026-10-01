@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
  * BIP39 mnemonic with all-zero entropy. It's a public test value, not a
  * funded account; safe to paste anywhere.
  *
- * Walks: welcome → Import existing wallet → Recovery phrase →
+ * Walks: welcome → "I already have a wallet" → Recovery phrase →
  * paste phrase → set password → dashboard.
  */
 
@@ -18,7 +18,7 @@ test.describe('Import wallet', () => {
   test('paste-mnemonic flow lands on the dashboard', async ({ page }) => {
     await page.goto('/app');
 
-    await page.getByRole('button', { name: 'Import existing wallet' }).click();
+    await page.getByRole('button', { name: 'I already have a wallet' }).click();
     await page.getByRole('button', { name: /recovery phrase/i }).click();
 
     const phraseField = page.getByPlaceholder(/word1 word2 word3/i);
@@ -39,7 +39,7 @@ test.describe('Import wallet', () => {
 
   test('Continue is disabled until the phrase is a valid length', async ({ page }) => {
     await page.goto('/app');
-    await page.getByRole('button', { name: 'Import existing wallet' }).click();
+    await page.getByRole('button', { name: 'I already have a wallet' }).click();
     await page.getByRole('button', { name: /recovery phrase/i }).click();
 
     // 5-word junk — invalid length, Continue stays disabled.

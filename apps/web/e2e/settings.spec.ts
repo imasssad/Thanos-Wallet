@@ -30,18 +30,24 @@ test.describe('Settings', () => {
     await createWallet(page);
     await page.goto('/app/settings');
 
-    // The currency Select is a Radix combobox (aria-label="Display currency").
+    // The currency Select is a native <select> (aria-label="Display
+    // currency") — a native dropdown's open option list is OS-rendered, so
+    // the old "click and see the options" assertion can't work; drive it
+    // with selectOption instead.
     const currency = page.getByRole('combobox', { name: /display currency/i }).first();
     await expect(currency).toBeVisible();
+    await expect(currency).toHaveValue('USD');
+    await expect(currency.locator('option', { hasText: 'EUR' })).toHaveCount(1);
 
-    // The default is "USD"; clicking should open the dropdown options.
-    await expect(currency).toHaveText(/USD/);
-    await currency.click();
-
-    // At least one of the other currencies appears as an option (Radix
-    // portals these out of the DOM tree, but role + name still works).
-    await expect(page.getByRole('option', { name: 'EUR' }).first())
-      .toBeVisible({ timeout: 5_000 });
+    // Picking EUR applies async: the pick sticks once rates load, or the
+    // explicit "showing USD" fallback note appears when they can't be
+    // fetched (offline test runs) — never a silent no-op.
+    await currency.selectOption('EUR');
+    const fallbackNote = page.getByText(/Couldn't fetch live EUR rates/);
+    await expect(async () => {
+      const picked = (await currency.inputValue()) === 'EUR';
+      expect(picked || (await fallbackNote.isVisible())).toBeTruthy();
+    }).toPass({ timeout: 10_000 });
   });
 
   test('Manage permissions link navigates away from /settings', async ({ page }) => {
