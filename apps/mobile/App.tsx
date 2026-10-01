@@ -67,7 +67,8 @@ function HiAddr({ value, head = 6, tail = 6, full = false, style }: {
   return (
     <Text style={[{ fontFamily: MONO }, style]}>
       <Text style={{ color: '#10b981', fontWeight: '600' }}>{h}</Text>
-      <Text style={{ color: '#6b7280' }}>{mid}</Text>
+      {/* De-emphasised but readable (was #6b7280, ~3.9:1 on the dark bg). */}
+      <Text style={{ color: '#85859a' }}>{mid}</Text>
       <Text style={{ color: '#10b981', fontWeight: '600' }}>{t}</Text>
     </Text>
   );
@@ -8810,7 +8811,7 @@ function CrashScreen({ error, onReset }: { error: Error; onReset: () => void }) 
       <Text style={{ color: '#9aa3b2', fontSize: 13, textAlign: 'center', lineHeight: 19, marginBottom: 18 }}>
         The app hit an unexpected error. Your wallet is safe — it can always be restored from your recovery phrase.
       </Text>
-      <Text style={{ color: '#6b7280', fontSize: 11, marginBottom: 8 }}>Please screenshot the text below and send it over:</Text>
+      <Text style={{ color: '#9aa3b2', fontSize: 11, marginBottom: 8 }}>Please screenshot the text below and send it over:</Text>
       <ScrollView style={{ maxHeight: 220, alignSelf: 'stretch', marginBottom: 22 }}>
         <Text selectable style={{ color: '#f87171', fontFamily: MONO, fontSize: 11, lineHeight: 16 }}>
           {String(error?.message || error)}

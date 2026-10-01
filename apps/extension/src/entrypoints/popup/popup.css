@@ -32,9 +32,12 @@
   --red:            #f87171;
   --red-dim:        rgba(248,113,113,0.10);
 
+  /* Dark ladder raised 2026-10-02 to the desktop/web values (client: "all
+     text is not readable in dark mode"): muted was #52525b, 2.6:1 on
+     --bg-base; now 5.6:1, secondary 8.4:1. Light below is untouched. */
   --text-primary:   #f0f0f4;
-  --text-secondary: #9696aa;
-  --text-muted:     #52525b;
+  --text-secondary: #a6a6ba;
+  --text-muted:     #85859a;
 }
 
 [data-theme="light"] {

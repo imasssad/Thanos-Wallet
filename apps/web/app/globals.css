@@ -109,10 +109,13 @@
   --eth: #627eea;
   --sol: #14f195;
 
-  /* Text */
+  /* Text — dark ladder raised 2026-10-02 (client: "all text is not readable
+     in dark mode", reported on desktop; web shipped the same values). muted
+     was #52525b: 2.6:1 on --bg-base, far below WCAG AA; now 5.6:1, and
+     secondary 8.4:1. The light theme below keeps its own values. */
   --text-primary:   #f0f0f4;
-  --text-secondary: #9696aa;
-  --text-muted:     #52525b;
+  --text-secondary: #a6a6ba;
+  --text-muted:     #85859a;
   --text-inverse:   #0a0a0f;
 
   /* ── Radius */
