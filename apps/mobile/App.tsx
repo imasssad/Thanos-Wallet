@@ -227,9 +227,12 @@ const DARK = {
   btc:           '#f7931a',
   eth:           '#627eea',
   sol:           '#14f195',
+  // Raised 2026-10-02 to the desktop values (client: "all text is not
+  // readable in dark mode" — same tokens here): muted was #52525b, 2.6:1 on
+  // bgBase; now 5.6:1, secondary 8.4:1.
   textPrimary:   '#f0f0f4',
-  textSecondary: '#9696aa',
-  textMuted:     '#52525b',
+  textSecondary: '#a6a6ba',
+  textMuted:     '#85859a',
   statusBar:     'light-content' as 'light-content' | 'dark-content',
 };
 
@@ -9636,7 +9639,11 @@ function App() {
 
             {/* Top header */}
             <View style={styles.topbar}>
-              {GLASS && <BlurView intensity={isDark ? 45 : 60} tint={isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'} style={StyleSheet.absoluteFill}/>}
+              {/* Plain 'dark' tint, not systemChromeMaterialDark: the chrome
+                  material resolves to a light grey wash on device — a big part
+                  of "iOS dark mode is too bright" (client 2026-10-01/02). */}
+              {GLASS && <BlurView intensity={isDark ? 35 : 60} tint={isDark ? 'dark' : 'systemChromeMaterialLight'} style={StyleSheet.absoluteFill}/>}
+              {GLASS && isDark && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(8,8,12,0.35)' }]}/>}
               <Pressable
                 style={styles.acct}
                 /* Tap = account switcher (mnemonic wallets only). Long-press
@@ -9735,7 +9742,7 @@ function App() {
 
             {/* Bottom tabs */}
             <View style={styles.tabbar}>
-              {GLASS && <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'systemThinMaterialDark' : 'systemThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
+              {GLASS && <BlurView intensity={isDark ? 45 : 70} tint={isDark ? 'dark' : 'systemThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
               {TABS.map(t => {
                 const active = screen === t.key || (t.key === 'discover' && screen === 'market') || (t.key === 'home' && (screen === 'send' || screen === 'receive'));
                 return (
@@ -9798,7 +9805,10 @@ const isDarkPalette = (C: Colors) => C.bgBase === DARK.bgBase;
 function glassTokens(C: Colors) {
   const dark = isDarkPalette(C);
   return dark
-    ? { card: 'rgba(255,255,255,0.06)', raised: 'rgba(255,255,255,0.09)', edge: 'rgba(255,255,255,0.12)', bar: 'rgba(14,14,20,0.35)' }
+    // Dark values sit a step under the original (card .06 / raised .09 /
+    // edge .12, bar 14,14,20 @ .35) — client 2026-10-02: iOS dark a little
+    // darker; matches the desktop glass surfaces.
+    ? { card: 'rgba(255,255,255,0.05)', raised: 'rgba(255,255,255,0.075)', edge: 'rgba(255,255,255,0.10)', bar: 'rgba(10,10,16,0.55)' }
     : { card: 'rgba(255,255,255,0.58)', raised: 'rgba(255,255,255,0.72)', edge: 'rgba(255,255,255,0.95)', bar: 'rgba(255,255,255,0.45)' };
 }
 const GLASS_CARD_STYLES   = ['balanceCard', 'qaBtn', 'card', 'assetSelectCard', 'receiveCard', 'acctHeaderCard', 'onboardCard', 'seedWord', 'obInputWrap'];
@@ -9830,10 +9840,11 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
  *  glass surfaces have something to refract (iOS only). */
 function GlassAura({ dark }: { dark: boolean }) {
   if (!GLASS) return null;
-  // Dark aura matches the desktop glass theme's intensity (0.22/0.18/0.10
-  // radials) — at 0.55 the iOS dark background glowed far brighter than the
-  // mac app (client 2026-10-01: "dark mode is too bright").
-  const a = dark ? 0.22 : 0.35;
+  // Dark aura sits just under the desktop glass theme's intensity (0.22
+  // radials): at 0.55 the iOS dark background glowed far brighter than the
+  // mac app (client 2026-10-01 "dark mode is too bright"), and the follow-up
+  // asked for the iOS screen a little darker still (client 2026-10-02).
+  const a = dark ? 0.16 : 0.35;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width="100%" height="100%">
