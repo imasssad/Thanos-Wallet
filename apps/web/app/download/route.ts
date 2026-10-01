@@ -9,10 +9,23 @@
  *
  * Update APK_URL whenever a fresh production-apk build lands
  * (eas build:view <id> → "Application Archive URL").
+ *
+ * EAS artifact URLs EXPIRE (~30 days): the 2.0.0 link below 404'd by
+ * 2026-10-01 and this route answered 502 until it was re-pointed. Re-point it
+ * (or move the APK to permanent hosting) before the current one lapses.
  */
 
-// Latest production-apk build — app version 2.0.0 (versionCode 23), EAS
-// build ca3f17fa, 2026-09-03. Targets Android 16 / API 36.
+// Latest production-apk build — app version 2.0.5 (versionCode 39), EAS
+// build 7745d893, 2026-10-01, from commit 3a4a0d4. Signed with the Play upload
+// key (SHA1 72:6E:B5:F7:…:F6:41), so it installs over earlier 2.x builds.
+// NEW in 2.0.5: Send goes out on the chain of the balance you picked
+// (Lithosphere Mainnet 9005 — Makalu is no longer built in); decoded signing
+// review, one request at a time; recipient checks on every Send screen and
+// copied secrets wiped after 60 s; real inactivity auto-lock; common/patterned
+// vault passwords refused; Android backup disabled; Quantt agent settings +
+// kill-switch banner; LAX Card intro; full-screen Send keypad, own accounts as
+// one-tap recipients, Face ID / fingerprint offered right after setup.
+// From 2.0.0 (versionCode 23), EAS build ca3f17fa, 2026-09-03 (API 36).
 // NEW in 2.0.0: version bump to mark the current release milestone — carries
 // the Lithosphere-pin + Solana-icon-letter-bleed fix (all 4 clients), the
 // Kamet testnet-status correction, and the rebuilt Quantt client against the
@@ -90,12 +103,12 @@
 // NOTE: signed with the SAME imasssadkh keystore — testers on v1.06+ upgrade
 // IN-PLACE; only pre-v1.06 installs (different key) must uninstall first.
 // The Settings version tag (thanos-v1.13) confirms the new build took.
-const APK_URL = 'https://expo.dev/artifacts/eas/tMqUyTskHsYGDyvrwWQGAhCY1g2IQvrADsymSfXq6Gc.apk';
+const APK_URL = 'https://expo.dev/artifacts/eas/l7S-asFloq-2Z7OlMY1WYETLcOCiazeam2UZZ7Cee7Y.apk';
 // The downloaded file is named after this so testers can tell the version at a
 // glance (was always "thanos.apk"). KEEP IN SYNC with APK_URL on every wire-up.
 // Now tracks the REAL app version (app.json) instead of the old internal
 // v1.xx counter, so the filename matches what Play / the App Store report.
-const APK_VERSION = 'thanos-v2.0.0';
+const APK_VERSION = 'thanos-v2.0.5';
 
 // Always reflect the current APK_URL (no stale cache during active builds);
 // the stream itself is the heavy part, not the route resolution.
