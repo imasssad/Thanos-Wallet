@@ -14,6 +14,9 @@ export default defineConfig({
   // output — the Chrome Web Store rejects the zip on first upload, and
   // every token avatar in the popup falls through to its letter avatar.
   publicDir: '../public',
+  // The sources zip (for Firefox review) is the source tree only — not the
+  // release/ folder of earlier store zips and the Safari build.
+  zip: { excludeSources: ['release/**'] },
   // Bitcoin's tiny-secp256k1 ships a .wasm via the "ESM integration
   // proposal for Wasm" import style; Vite needs an explicit plugin to
   // load it. top-level-await covers the same library's await at module
