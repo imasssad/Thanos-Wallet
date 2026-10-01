@@ -9830,7 +9830,10 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
  *  glass surfaces have something to refract (iOS only). */
 function GlassAura({ dark }: { dark: boolean }) {
   if (!GLASS) return null;
-  const a = dark ? 0.55 : 0.35;
+  // Dark aura matches the desktop glass theme's intensity (0.22/0.18/0.10
+  // radials) — at 0.55 the iOS dark background glowed far brighter than the
+  // mac app (client 2026-10-01: "dark mode is too bright").
+  const a = dark ? 0.22 : 0.35;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width="100%" height="100%">

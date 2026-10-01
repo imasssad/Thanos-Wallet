@@ -467,7 +467,7 @@ function SkeletonTableRows({ rows = 5, cols }: { rows?: number; cols: number }) 
   );
 }
 
-function PortfolioList() {
+function PortfolioList({ onViewAll }: { onViewAll: () => void }) {
   const { coins: allCoins, loading, offline } = usePortfolioCtx();
   // Networks/assets hidden in Settings never reach this list — see
   // asset-visibility.ts's header note (Send/Receive/detail navigation stay
@@ -478,11 +478,11 @@ function PortfolioList() {
     <div className="card">
       <div className="card-header">
         <span className="card-title">My Portfolio</span>
-        <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }}>View all</button>
+        <button className="icon-btn-sm" style={{ fontSize: 11, color: 'var(--blue)', fontWeight: 600 }} onClick={onViewAll}>View all</button>
       </div>
       <div className="portfolio-list">
         {loading && coins.length === 0 && <SkeletonPortfolioRows n={4}/>}
-        {!loading && offline && <div className="portfolio-sym" style={{ padding: 12 }}>Indexer offline</div>}
+        {!loading && offline && <div className="portfolio-sym" style={{ padding: 12 }}>Couldn't reach the network</div>}
         {!loading && !offline && coins.length === 0 && (
           <div className="portfolio-sym" style={{ padding: 12 }}>No assets yet</div>
         )}
@@ -6523,7 +6523,7 @@ function App() {
         {view !== 'settings' && (
           <aside className="right-panel">
             <ExchangeWidget onSwap={() => setModal('swap')}/>
-            <PortfolioList/>
+            <PortfolioList onViewAll={() => setView('portfolio')}/>
             <LaxCard/>
             <AIAssistant/>
           </aside>
