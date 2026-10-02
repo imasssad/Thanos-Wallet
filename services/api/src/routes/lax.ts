@@ -32,9 +32,9 @@
  * safely:
  *   • POST /lax/account → hosted registration URL (lax.money).
  *   • the rest return 503 "LAX not configured yet".
- * Native one-shot card issuance stays off (`configuredForIssuance: false`)
- * until the physical create-card-holder + KYC flow is wired — Project 612
- * has no virtual-card product picker.
+ * In-app card ordering (POST /lax/card/issue → create-card-order-api, a
+ * user-paid checkout) turns on once LAX_IFRAME_ID + LAX_PRODUCT_ID are set;
+ * `node dist/scripts/lax-check.js` checks the key, host and product list.
  *
  * WEBHOOKS: laxWebhookRouter (mounted at /lax-webhook) requires
  * LAX_WEBHOOK_SECRET. Configure dash.zypto.com/webhooks →
@@ -81,14 +81,13 @@ import { z } from 'zod';
 import { query, queryOne } from '../lib/db.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { laxOpLimiter } from '../middleware/rate-limit.js';
+import { log } from '../lib/log.js';
 
 const LAX_API_KEY    = process.env.LAX_API_KEY    ?? '';
 const LAX_API_BASE   = process.env.LAX_API_BASE   ?? '';
 /** Dashboard Project id for LAX Card — confirmed 612. Not sent on every
  *  upstream call (Bearer key scopes the merchant); exposed via /lax/status. */
 const LAX_PROJECT_ID = process.env.LAX_PROJECT_ID ?? '';
-const LAX_IFRAME_ID  = process.env.LAX_IFRAME_ID  ?? '';
-const LAX_PRODUCT_ID = process.env.LAX_PRODUCT_ID ?? '';
 const LAX_WEBHOOK_SECRET = process.env.LAX_WEBHOOK_SECRET ?? '';
 const LAX_PUBLIC_REGISTER = 'https://lax.money';
 const LAX_REQUEST_TIMEOUT_MS = 15_000;
@@ -111,7 +110,9 @@ const projectConfigured = (): boolean => /^\d+$/.test(LAX_PROJECT_ID) && Number(
 const integerConfig = (value: string): number | null => /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : null;
 // Zypto product ids are alphanumeric (e.g. 'OB03362'), not integers.
 const productConfig = (value: string): string | null => /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : null;
-const configuredForIssuance = (): boolean => Boolean(configured() && integerConfig(LAX_IFRAME_ID) && productConfig(LAX_PRODUCT_ID));
+const laxIframeId  = (): number | null => integerConfig(process.env.LAX_IFRAME_ID ?? '');
+const laxProductId = (): string | null => productConfig(process.env.LAX_PRODUCT_ID ?? '');
+const configuredForIssuance = (): boolean => Boolean(configured() && laxIframeId() && laxProductId());
 /** Whether the configured card product can be refilled. The current Zypto
  *  product (OB03362, Obsidian Global Gold Mastercard) is a non-reloadable
  *  prepaid card, so top-up stays off unless LAX_CARD_RELOADABLE=true. */
@@ -259,7 +260,53 @@ async function laxFetch(path: string, opts: FetchOpts = {}): Promise<{ status: n
   } finally { clearTimeout(timer); }
   let json: unknown = null;
   try { json = await res.json(); } catch { /* non-JSON upstream */ }
+  // The spec documents these replies as text/plain JSON strings; some arrive
+  // double-encoded, so a body that parses to a JSON string gets one more pass.
+  if (typeof json === 'string') {
+    try { const inner: unknown = JSON.parse(json); if (inner && typeof inner === 'object') json = inner; } catch { /* plain text */ }
+  }
   return { status: res.status, json };
+}
+
+type Upstream = { status: number; json: unknown };
+
+/** Zypto reports failures as HTTP 401 ("Something went wrong!") or as
+ *  `{ success: false }` on a 2xx. */
+function upstreamFailed(u: Upstream): boolean {
+  if (u.status < 200 || u.status >= 300) return true;
+  return Boolean(u.json && typeof u.json === 'object' && (u.json as Record<string, unknown>).success === false);
+}
+
+/** The human-readable reason in a Zypto error body, if any (Laravel-style
+ *  `message`, or the first entry of an `errors` field map). */
+function upstreamMessage(json: unknown): string | undefined {
+  if (typeof json === 'string') return json.trim().slice(0, 300) || undefined;
+  if (!json || typeof json !== 'object') return undefined;
+  const o = json as Record<string, unknown>;
+  for (const k of ['message', 'error', 'errors', 'msg']) {
+    const v = o[k];
+    if (typeof v === 'string' && v.trim() && !/^https:\/\//.test(v)) return v.trim().slice(0, 300);
+    if (v && typeof v === 'object') {
+      const first = Object.values(v as Record<string, unknown>).flat().find((x) => typeof x === 'string');
+      if (typeof first === 'string') return first.slice(0, 300);
+    }
+  }
+  return undefined;
+}
+
+/** Reply to a failed upstream call in our own error shape. Never passes on
+ *  Zypto's 401/403: the apps' API client reads a 401 as "Thanos session
+ *  expired", refreshes and re-sends the request — a second card order. */
+function sendUpstreamError(res: Response, route: string, u: Upstream, error: string) {
+  const detail = upstreamMessage(u.json);
+  log.warn({ route, upstreamStatus: u.status, detail }, '[lax] upstream call failed');
+  const passThrough = u.status >= 400 && u.status < 500 && u.status !== 401 && u.status !== 403;
+  return res.status(passThrough ? u.status : 502).json({ error, ...(detail ? { detail } : {}), upstreamStatus: u.status });
+}
+
+function sendUpstream(res: Response, route: string, u: Upstream, error: string) {
+  if (upstreamFailed(u)) return sendUpstreamError(res, route, u, error);
+  return res.status(u.status).json(u.json);
 }
 
 /** GET /lax/status — readiness check without exposing secrets. */
@@ -269,8 +316,8 @@ laxRouter.get('/status', async (_req, res: Response) => {
     configuredForIssuance: configuredForIssuance(),
     projectId:             projectConfigured() ? Number(LAX_PROJECT_ID) : null,
     virtualCard: {
-      iframeId: Boolean(integerConfig(LAX_IFRAME_ID)),
-      productId: Boolean(productConfig(LAX_PRODUCT_ID)),
+      iframeId: Boolean(laxIframeId()),
+      productId: Boolean(laxProductId()),
       reloadable: cardReloadable(),
     },
     reloadable: cardReloadable(),
@@ -344,7 +391,7 @@ laxRouter.post('/physical/holder', laxOpLimiter, async (req, res: Response) => {
   if (existing) return res.status(200).json({ holderId: existing.holder_id, status: existing.status ?? 'created', existing: true });
   try {
     const upstream = await laxFetch('/api/physical-cards/create-card-holder', { method: 'POST', body: JSON.stringify(parsed.data) });
-    if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
+    if (upstreamFailed(upstream)) return sendUpstreamError(res, 'physical/holder', upstream, 'LAX could not create your card holder profile.');
     const holderId = findProviderId(upstream.json);
     if (!holderId) return res.status(502).json({ error: 'LAX did not return a card-holder id' });
     await query(`insert into lax_card_holders (user_id, holder_id, status) values ($1, $2, $3) on conflict (user_id) do update set holder_id = excluded.holder_id, status = excluded.status`, [userId, holderId, 'created']);
@@ -366,7 +413,7 @@ laxRouter.post('/physical/kyc/start', laxOpLimiter, async (req, res: Response) =
   if (!(await ownedHolder(userId, parsed.data.holderId))) return res.status(404).json({ error: 'Card holder not found' });
   try {
     const upstream = await laxFetch('/api/physical-cards/send-kyc', { method: 'POST', body: JSON.stringify({ card_holder_id: parsed.data.holderId }) });
-    return res.status(upstream.status).json(upstream.json);
+    return sendUpstream(res, 'physical/kyc/start', upstream, 'LAX could not start verification right now.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
@@ -377,7 +424,8 @@ laxRouter.post('/physical/submit', laxOpLimiter, async (req, res: Response) => {
   if (!(await ownedHolder(userId, parsed.data.holderId))) return res.status(404).json({ error: 'Card holder not found' });
   try {
     const upstream = await laxFetch('/api/physical-cards/submit_to_issuer', { method: 'POST', body: JSON.stringify({ card_holder_id: parsed.data.holderId }) });
-    if (upstream.status >= 200 && upstream.status < 300) await query(`update lax_card_holders set status = $1 where user_id = $2 and holder_id = $3`, ['submitted', userId, parsed.data.holderId]);
+    if (upstreamFailed(upstream)) return sendUpstreamError(res, 'physical/submit', upstream, 'LAX could not submit your card application.');
+    await query(`update lax_card_holders set status = $1 where user_id = $2 and holder_id = $3`, ['submitted', userId, parsed.data.holderId]);
     return res.status(upstream.status).json(upstream.json);
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
@@ -392,7 +440,7 @@ laxRouter.get('/products', async (_req, res) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   try {
     const upstream = await laxFetch('/api/cards/get-products');
-    return res.status(upstream.status).json(upstream.json);
+    return sendUpstream(res, 'products', upstream, 'LAX product list unavailable.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
@@ -409,7 +457,7 @@ laxRouter.get('/currencies', async (_req, res) => {
       return res.status(status).json(filtered);
     }
     if (currenciesCache) return res.status(currenciesCache.status).json(currenciesCache.json);
-    return res.status(status).json(json);
+    return sendUpstreamError(res, 'currencies', { status, json }, 'LAX currency list unavailable.');
   } catch {
     if (currenciesCache) return res.status(currenciesCache.status).json(currenciesCache.json);
     return res.status(502).json({ error: 'LAX upstream unreachable' });
@@ -452,10 +500,10 @@ laxRouter.get('/card/:cardNumber/balance', async (req, res: Response) => {
   if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     // Virtual-card balance (the cards Thanos issues are Zypto virtual cards).
-    const { status, json } = await laxFetch('/api/cards/get-card-balance', {
+    const upstream = await laxFetch('/api/cards/get-card-balance', {
       method: 'POST', body: JSON.stringify({ card_number: cardParse.data }),
     });
-    return res.status(status).json(json);
+    return sendUpstream(res, 'card/balance', upstream, 'Card balance unavailable right now.');
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
@@ -482,9 +530,9 @@ laxRouter.post('/card/topup', laxOpLimiter, async (req, res: Response) => {
     const upstream = await laxFetch('/api/cards/create-refill-card-order-api', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber, amount }),
     });
-    if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
+    if (upstreamFailed(upstream)) return sendUpstreamError(res, 'card/topup', upstream, 'LAX could not start the top-up right now — please try again later.');
     const checkoutUrl = findCheckoutUrl(upstream.json);
-    if (!checkoutUrl) return res.status(502).json({ error: 'LAX did not return a checkout page' });
+    if (!checkoutUrl) return sendUpstreamError(res, 'card/topup', upstream, 'LAX did not return a checkout page.');
     const orderId = findOrderId(upstream.json);
     if (orderId) {
       await query(
@@ -505,8 +553,8 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
   const parse = IssueSchema.safeParse(req.body);
   if (!parse.success) return res.status(400).json({ error: 'Validation failed', issues: parse.error.issues });
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
-  const iframeId = integerConfig(LAX_IFRAME_ID);
-  const productId = productConfig(LAX_PRODUCT_ID);
+  const iframeId = laxIframeId();
+  const productId = laxProductId();
   if (!iframeId || !productId) {
     return res.status(503).json({
       error: 'Virtual card issuance is not configured',
@@ -520,14 +568,18 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
     // is funded from the merchant's allowance, i.e. every signed-in user could
     // mint cards on Thanos' account. Zypto returns a checkout page; the card is
     // issued after the user pays and the webhook links it back (lax_card_orders).
+    // The spec types product_id as an integer; Zypto's own ids are also
+    // alphanumeric (e.g. 'OB03362'), which go as strings.
+    const product = /^\d+$/.test(productId) ? Number(productId) : productId;
     const upstream = await laxFetch('/api/cards/create-card-order-api', {
       method: 'POST',
-      body: JSON.stringify({ iframe_id: iframeId, product_id: productId, ...parse.data }),
+      body: JSON.stringify({ iframe_id: iframeId, product_id: product, ...parse.data }),
     });
-    if (upstream.status < 200 || upstream.status >= 300) return res.status(upstream.status).json(upstream.json);
+    if (upstreamFailed(upstream)) return sendUpstreamError(res, 'card/issue', upstream, 'LAX card ordering is unavailable right now — please try again later.');
     const checkoutUrl = findCheckoutUrl(upstream.json);
-    if (!checkoutUrl) return res.status(502).json({ error: 'LAX did not return a checkout page' });
+    if (!checkoutUrl) return sendUpstreamError(res, 'card/issue', upstream, 'LAX did not return a checkout page.');
     const orderId = findOrderId(upstream.json);
+    if (!orderId) log.warn({ route: 'card/issue' }, '[lax] order created without an order_id — the paid card cannot be linked to this user automatically');
     if (orderId) {
       await query(
         `insert into lax_card_orders (user_id, order_id, kind, email, amount, currency) values ($1, $2, 'issue', $3, $4, $5) on conflict (order_id) do nothing`,
@@ -548,10 +600,10 @@ laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
   if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/cards/get-card-transactions', {
+    const upstream = await laxFetch('/api/cards/get-card-transactions', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
     });
-    return res.status(status).json(json);
+    return sendUpstream(res, 'card/transactions', upstream, 'Card transactions unavailable right now.');
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
@@ -566,10 +618,10 @@ laxRouter.get('/card/:cardNumber/details', laxOpLimiter, async (req, res: Respon
   if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
   if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
-    const { status, json } = await laxFetch('/api/cards/get-card-details', {
+    const upstream = await laxFetch('/api/cards/get-card-details', {
       method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
     });
-    return res.status(status).json(json);
+    return sendUpstream(res, 'card/details', upstream, 'Card details unavailable right now.');
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
@@ -592,10 +644,10 @@ laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Respon
   const body: Record<string, unknown> = { card_number: cardNumber };
   if (typeof desired === 'string' && desired) body.status = desired;
   try {
-    const { status, json } = await laxFetch('/api/physical-cards/change-card-status', {
+    const upstream = await laxFetch('/api/physical-cards/change-card-status', {
       method: 'POST', body: JSON.stringify(body),
     });
-    return res.status(status).json(json);
+    return sendUpstream(res, 'card/status', upstream, 'LAX could not change the card status.');
   } catch {
     return res.status(502).json({ error: 'LAX upstream unreachable' });
   }
@@ -609,7 +661,7 @@ laxRouter.get('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response) 
   if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
     const upstream = await laxFetch('/api/physical-cards/get-pin', { method: 'POST', body: JSON.stringify({ card_number: cardNumber }) });
-    return res.status(upstream.status).json(upstream.json);
+    return sendUpstream(res, 'card/pin', upstream, 'LAX could not retrieve the PIN.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
@@ -622,7 +674,7 @@ laxRouter.post('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response)
   if (!parsed.success) return res.status(400).json({ error: 'PIN must contain 4 to 6 digits' });
   try {
     const upstream = await laxFetch('/api/physical-cards/set-pin', { method: 'POST', body: JSON.stringify({ card_number: cardNumber, PIN: parsed.data.PIN }) });
-    return res.status(upstream.status).json(upstream.json);
+    return sendUpstream(res, 'card/pin', upstream, 'LAX could not set the PIN.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
@@ -633,7 +685,7 @@ laxRouter.post('/card/:cardNumber/activate', laxOpLimiter, async (req, res: Resp
   if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
   try {
     const upstream = await laxFetch('/api/physical-cards/activate-card', { method: 'POST', body: JSON.stringify({ card_number: cardNumber }) });
-    return res.status(upstream.status).json(upstream.json);
+    return sendUpstream(res, 'card/activate', upstream, 'LAX could not activate the card.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
@@ -709,8 +761,7 @@ laxWebhookRouter.post('/', async (req, res: Response) => {
   } catch (e) {
     // Never fail the webhook response over our own logging — log server-side
     // and still ack, so Zypto doesn't retry-storm us over a DB hiccup.
-    // eslint-disable-next-line no-console
-    console.error('[lax] failed to persist webhook event', e);
+    log.error({ err: e }, '[lax] failed to persist webhook event');
   }
   return res.status(200).json({ received: true });
 });
