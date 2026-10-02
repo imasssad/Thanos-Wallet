@@ -29,9 +29,9 @@ import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
 import { quantt, quanttSignIn, forgetQuanttSession } from './quantt';
 import { isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from './asset-visibility';
-import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState, QuanttStrategy, QuanttChain } from '@thanos/sdk-core';
+import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState, QuanttStrategy, QuanttChain, QuanttFundingOption } from '@thanos/sdk-core';
 import {
-  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
+  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, agentFundingOptions,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
   startIdleLock, idleExpired, readAutoLockMinutes, writeAutoLockMinutes, AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE,
   checkRecipient, copySecretToClipboard, passwordProblem,
@@ -947,9 +947,38 @@ function QuanttOverviewTab({ rows, extra, loadErr, status, halted, toggling, tog
 
 /** Wallet address + balances (GET /v1/agents/:id/wallet), reusing the
  *  Receive modal's QR + copy pattern. */
-function QuanttWalletTab({ agentId, wallet, onOpenSend }: {
-  agentId: string; wallet: unknown; onOpenSend?: (address: string, sym?: string) => void;
+/** The token + network that fund this agent; "Send to this address" opens on
+ *  the chosen one. Several when the agent trades on more than one chain. */
+function QuanttFundTarget({ funding, pick, onPick }: {
+  funding: QuanttFundingOption[] | null; pick: number; onPick: (i: number) => void;
 }) {
+  if (!funding) return <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Checking which network this agent uses…</div>;
+  if (funding.length === 0) {
+    return (
+      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+        Couldn&apos;t read which network this agent trades on — check it before sending.
+      </div>
+    );
+  }
+  const f = funding[pick] ?? funding[0];
+  return (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.5, textAlign: 'left' }}>
+      {funding.length > 1 && (
+        <select className="field-select" aria-label="Network to fund the agent on" value={pick} onChange={e => onPick(Number(e.target.value))}>
+          {funding.map((o, i) => <option key={o.chain} value={i}>{o.sym} on {o.label}</option>)}
+        </select>
+      )}
+      <span>Fund it with <b>{f.sym}</b> on <b>{f.label}</b> — anything sent on another network won&apos;t reach the agent.</span>
+    </div>
+  );
+}
+
+function QuanttWalletTab({ agentId, wallet, funding, onOpenSend }: {
+  agentId: string; wallet: unknown; funding: QuanttFundingOption[] | null;
+  onOpenSend?: (address: string, sym?: string, chainId?: number) => void;
+}) {
+  const [pick, setPick] = useState(0);
+  const fund = funding?.[pick] ?? funding?.[0];
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
   const address = qWalletAddress(wallet);
@@ -999,9 +1028,12 @@ function QuanttWalletTab({ agentId, wallet, onOpenSend }: {
         </div>
       )}
       {onOpenSend && (
-        <button className="btn-primary" style={{ marginTop: 10 }} onClick={() => onOpenSend(address, 'USDC')}>
-          Send to this address
-        </button>
+        <>
+          <div style={{ width: '100%', marginTop: 10 }}><QuanttFundTarget funding={funding} pick={pick} onPick={setPick}/></div>
+          <button className="btn-primary" onClick={() => onOpenSend(address, fund?.sym ?? 'USDC', fund?.chainId)} disabled={!funding}>
+            Send to this address
+          </button>
+        </>
       )}
     </div>
   );
@@ -1175,10 +1207,13 @@ function QuanttPositionsTab({ agentId }: { agentId: string }) {
  *  (POST /v1/agents/:id/deposit, no body). The two are visually distinct
  *  steps so it's clear A must actually confirm on-chain before B means
  *  anything. NO SANDBOX — both legs move/acknowledge real funds. */
-function QuanttDepositTab({ agentId, agentName, wallet, onOpenSend }: {
-  agentId: string; agentName: string; wallet: unknown; onOpenSend?: (address: string, sym?: string) => void;
+function QuanttDepositTab({ agentId, agentName, wallet, funding, onOpenSend }: {
+  agentId: string; agentName: string; wallet: unknown; funding: QuanttFundingOption[] | null;
+  onOpenSend?: (address: string, sym?: string, chainId?: number) => void;
 }) {
   const address = qWalletAddress(wallet);
+  const [pick, setPick] = useState(0);
+  const fund = funding?.[pick] ?? funding?.[0];
   const [confirming, setConfirming] = useState(false);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -1207,7 +1242,8 @@ function QuanttDepositTab({ agentId, agentName, wallet, onOpenSend }: {
         {address ? (
           <>
             <div className="addr-box" style={{ fontSize: 10, marginBottom: 10 }}><HiAddr value={address} full/></div>
-            <button className="btn-primary" onClick={() => onOpenSend?.(address, 'USDC')} disabled={!onOpenSend}>
+            <div style={{ marginBottom: 10 }}><QuanttFundTarget funding={funding} pick={pick} onPick={setPick}/></div>
+            <button className="btn-primary" onClick={() => onOpenSend?.(address, fund?.sym ?? 'USDC', fund?.chainId)} disabled={!onOpenSend || !funding}>
               Send to this address
             </button>
           </>
@@ -1525,6 +1561,8 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
   const [tab, setTab] = useState<QuanttDetailTab>('overview');
   const [raw, setRaw] = useState<unknown>(null);
   const [loadErr, setLoadErr] = useState(false);
+  // null while the agent record loads, so Send can't open on a guessed network.
+  const funding = useMemo(() => (raw ? agentFundingOptions(raw) : loadErr ? agentFundingOptions(agent) : null), [raw, loadErr, agent]);
   const [wallet, setWallet] = useState<unknown>(null);
   const [status, setStatus] = useState(agent.status);
   const [toggling, setToggling] = useState(false);
@@ -1617,11 +1655,11 @@ function QuanttAgentDetailModal({ agent, onClose, onStateChanged }: {
           />
         )}
         {tab === 'settings'  && <QuanttSettingsTab agentId={agent.id} raw={raw} onSaved={() => { reloadAgent(); onStateChanged(); }}/>}
-        {tab === 'wallet'    && <QuanttWalletTab agentId={agent.id} wallet={wallet} onOpenSend={onOpenSend}/>}
+        {tab === 'wallet'    && <QuanttWalletTab agentId={agent.id} wallet={wallet} funding={funding} onOpenSend={onOpenSend}/>}
         {tab === 'decisions' && <QuanttDecisionsTab agentId={agent.id}/>}
         {tab === 'trades'    && <QuanttTradesTab agentId={agent.id}/>}
         {tab === 'positions' && <QuanttPositionsTab agentId={agent.id}/>}
-        {tab === 'deposit'   && <QuanttDepositTab agentId={agent.id} agentName={agent.name} wallet={wallet} onOpenSend={onOpenSend}/>}
+        {tab === 'deposit'   && <QuanttDepositTab agentId={agent.id} agentName={agent.name} wallet={wallet} funding={funding} onOpenSend={onOpenSend}/>}
         {tab === 'withdraw'  && <QuanttWithdrawTab agentId={agent.id} agentName={agent.name}/>}
       </div>
     </Modal>
@@ -5808,7 +5846,7 @@ const DappOpenerContext = React.createContext<((url: string, name: string, purpo
  *  actual on-chain send to the agent's own wallet). Set by App(); consumed
  *  by the Quantt wallet/deposit tabs so they don't need Send's state
  *  threaded all the way down through AIAssistant. */
-const SendToContext = React.createContext<((address: string, sym?: string) => void) | null>(null);
+const SendToContext = React.createContext<((address: string, sym?: string, chainId?: number) => void) | null>(null);
 
 /** Wrapper around openExternal that prefers the in-app browser when
  *  the desktop bridge is available. Used by every Discover entry
@@ -6054,9 +6092,9 @@ function App() {
   const [seedChainId, setSeedChainId] = useState<number | undefined>(undefined);
   /** Recipient pre-fill for Send — set by openSendTo (Quantt deposit "leg A"). */
   const [pendingSendTo, setPendingSendTo] = useState<string | null>(null);
-  const openSendTo = (recipientAddr: string, sym?: string) => {
+  const openSendTo = (recipientAddr: string, sym?: string, chainId?: number) => {
     setSeedSym(sym ?? null);
-    setSeedChainId(undefined);
+    setSeedChainId(chainId);
     setPendingSendTo(recipientAddr);
     setModal('send');
   };

@@ -87,6 +87,38 @@ export function toAgentConfig(raw: unknown): QuanttAgentConfig | null {
   };
 }
 
+/** EVM chain id of each Quantts chain. */
+export const QUANTT_CHAIN_IDS: Readonly<Record<QuanttChain, number>> = {
+  arbitrum: 42161, base: 8453, lithosphere: 9005, bnb: 56,
+};
+export const QUANTT_CHAIN_LABELS: Readonly<Record<QuanttChain, string>> = {
+  arbitrum: 'Arbitrum', base: 'Base', lithosphere: 'Lithosphere Mainnet', bnb: 'BNB Chain',
+};
+
+export interface QuanttFundingOption {
+  sym: QuanttQuoteAsset;
+  chain: QuanttChain;
+  chainId: number;
+  label: string;
+}
+
+/** What an agent's wallet is funded with: its quote asset (default USDC) on
+ *  each chain it trades, in the agent's own order (Magma deposits assume USDC
+ *  is already in the agent wallet). Funds sent on another network never reach
+ *  the agent, so "Send to this address" must open on one of these. Reads only `chains` and `quoteAsset`, so it works on
+ *  records toAgentConfig() rejects; empty when no known chain is named, and
+ *  callers must not guess a network then. */
+export function agentFundingOptions(raw: unknown): QuanttFundingOption[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const top = raw as Record<string, unknown>;
+  const o = (top.agent && typeof top.agent === 'object') ? (top.agent as Record<string, unknown>) : top;
+  const quote = o.quoteAsset ?? o.quote_asset;
+  const sym: QuanttQuoteAsset = oneOf(QUANTT_QUOTE_ASSETS, quote) ? quote : 'USDC';
+  const named = Array.isArray(o.chains) ? o.chains : typeof o.chain === 'string' ? [o.chain] : [];
+  const chains = [...new Set(named.filter((c): c is QuanttChain => oneOf(QUANTT_CHAINS, c)))];
+  return chains.map((chain) => ({ sym, chain, chainId: QUANTT_CHAIN_IDS[chain], label: QUANTT_CHAIN_LABELS[chain] }));
+}
+
 /** Human-readable problems with an update body, checked against the PATCH
  *  schema. Empty array = valid. Unknown keys are reported (the server rejects
  *  them: additionalProperties is false). */

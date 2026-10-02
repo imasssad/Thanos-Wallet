@@ -45,9 +45,9 @@ import {
 import type {
   QuanttSession, QuanttOverview, QuanttRuntimeState,
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
-  QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput,
+  QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput, QuanttFundingOption,
 } from '@thanos/sdk-core';
-import { toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
+import { toAgentConfig, agentFundingOptions, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -2030,7 +2030,11 @@ function QuanttWalletTab({ agentId }: { agentId: string }) {
  *  separate explicit action telling Quantt to recognize/credit that
  *  transfer. NO SANDBOX — both legs move/touch real funds from the first
  *  click. */
-function QuanttDepositTab({ agentId, myAddress }: { agentId: string; myAddress: string }) {
+function QuanttDepositTab({ agentId, myAddress, funding }: {
+  agentId: string; myAddress: string; funding: QuanttFundingOption[] | null;
+}) {
+  const [pick, setPick] = useState(0);
+  const fund = funding?.[pick] ?? funding?.[0];
   const [wallet, setWallet] = useState<unknown>(null);
   const [err, setErr] = useState(false);
   const [showSend, setShowSend] = useState(false);
@@ -2076,7 +2080,19 @@ function QuanttDepositTab({ agentId, myAddress }: { agentId: string; myAddress: 
         <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 10, marginBottom: 8 }}>
           {address ?? (err ? 'Unavailable' : 'Loading…')}
         </div>
-        <button className="btn-primary" disabled={!address} onClick={() => setShowSend(true)}>Send to this address</button>
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+          {!funding ? 'Checking which network this agent uses…'
+            : !fund ? 'Couldn’t read which network this agent trades on — check it before sending.'
+            : <>
+                {funding.length > 1 && (
+                  <select className="field" aria-label="Network to fund the agent on" value={pick} onChange={e => setPick(Number(e.target.value))} style={{ marginBottom: 6 }}>
+                    {funding.map((o, i) => <option key={o.chain} value={i}>{o.sym} on {o.label}</option>)}
+                  </select>
+                )}
+                Fund it with <b>{fund.sym}</b> on <b>{fund.label}</b> — anything sent on another network won&apos;t reach the agent.
+              </>}
+        </div>
+        <button className="btn-primary" disabled={!address || !funding} onClick={() => setShowSend(true)}>Send to this address</button>
       </div>
 
       <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
@@ -2094,9 +2110,9 @@ function QuanttDepositTab({ agentId, myAddress }: { agentId: string; myAddress: 
       </div>
 
       {showSend && address && (
-        // Agents default to quoteAsset USDC (CreateAgentInput); pre-select it
-        // so "Send to this address" doesn't default to the wrong asset.
-        <SendModal onClose={() => setShowSend(false)} initialChain="evm" initialCoin="USDC" initialTo={address} address={myAddress}/>
+        // The agent's quote asset on the agent's network — a symbol alone
+        // picked whichever USDC came first (e.g. Ethereum for a Base agent).
+        <SendModal onClose={() => setShowSend(false)} initialChain="evm" initialCoin={fund?.sym ?? 'USDC'} initialChainId={fund?.chainId} initialNetworkLabel={fund?.label} initialTo={address} address={myAddress}/>
       )}
     </div>
   );
@@ -2498,6 +2514,8 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
   const [tab, setTab] = useState<QuanttDetailTab>('overview');
   const [raw, setRaw] = useState<unknown>(null);
   const [loadErr, setLoadErr] = useState(false);
+  // null while the agent record loads, so Send can't open on a guessed network.
+  const funding = useMemo(() => (raw ? agentFundingOptions(raw) : loadErr ? [] : null), [raw, loadErr]);
   const [status, setStatus] = useState(agent.status);
   const [toggling, setToggling] = useState(false);
   const [actionErr, setActionErr] = useState<string | null>(null);
@@ -2583,7 +2601,7 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
         )}
         {tab === 'settings'  && <QuanttSettingsTab agentId={agent.id} raw={raw} onSaved={() => { reloadAgent(); onChanged(); }}/>}
         {tab === 'wallet'    && <QuanttWalletTab agentId={agent.id}/>}
-        {tab === 'deposit'   && <QuanttDepositTab agentId={agent.id} myAddress={myAddress}/>}
+        {tab === 'deposit'   && <QuanttDepositTab agentId={agent.id} myAddress={myAddress} funding={funding}/>}
         {tab === 'withdraw'  && <QuanttWithdrawTab agentId={agent.id} seed={seed} myAddress={myAddress}/>}
         {tab === 'decisions' && <QuanttDecisionsTab agentId={agent.id}/>}
         {tab === 'trades'    && <QuanttTradesTab agentId={agent.id}/>}
@@ -3910,11 +3928,13 @@ function OwnAccountPicker({ seed, current, to, onPick }: {
   );
 }
 
-function SendModal({ onClose, initialChain, initialCoin, initialChainId, initialTo, address }: {
+function SendModal({ onClose, initialChain, initialCoin, initialChainId, initialNetworkLabel, initialTo, address }: {
   onClose: () => void;
   initialChain?: ExtSendChain;
   initialCoin?: string;
   initialChainId?: number;
+  /** Shown when the seeded asset isn't held on initialChainId. */
+  initialNetworkLabel?: string;
   /** Pre-fill the recipient field — e.g. routing in from a Quantt agent's
    *  deposit address so the user doesn't have to paste it. */
   initialTo?: string;
@@ -3931,13 +3951,18 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  // A seed pinned to a chain never falls back to the same symbol on another
+  // chain — that would send on the wrong network. Holdings omit zero
+  // balances, so a miss means none is held there.
+  const pinned = initialCoin != null && initialChainId != null;
   const coin =
     (selectedKey ? coins.find(c => coinKey(c) === selectedKey) : undefined)
-    // Prefer an exact (symbol + chain) match — LITHO repeats across Makalu and
-    // Lithosphere Mainnet, so chainId disambiguates which one was tapped.
+    // Prefer an exact (symbol + chain) match — USDC/USDT repeat across chains,
+    // so chainId disambiguates which one was meant.
     ?? (initialCoin ? coins.find(c => c.sym === initialCoin && c.chainId === initialChainId) : undefined)
-    ?? (initialCoin ? coins.find(c => c.sym === initialCoin) : undefined)
-    ?? coins[0] ?? null;
+    ?? (pinned ? undefined : (initialCoin ? coins.find(c => c.sym === initialCoin) : undefined) ?? coins[0])
+    ?? null;
+  const seedMissing = pinned && !selectedKey && !coin;
   const amtNum = parseFloat(amt || '0');
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
   const recipientOk = (() => {
@@ -4038,8 +4063,15 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
             <label className="field-label">ASSET</label>
             <select className="field" value={coin ? coinKey(coin) : ''} onChange={e => setSelectedKey(e.target.value)}>
               {coins.length === 0 && <option value="">No assets available</option>}
+              {seedMissing && coins.length > 0 && <option value="">Choose an asset</option>}
               {coins.map(c => <option key={coinKey(c)} value={coinKey(c)}>{c.sym} — {c.name}</option>)}
             </select>
+            {seedMissing && (
+              <div role="status" style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.4, marginTop: 6 }}>
+                You don&apos;t hold any {initialCoin} on {initialNetworkLabel ?? 'that network'} yet. Add some there first —
+                the same token on another network won&apos;t reach this address.
+              </div>
+            )}
           </>
         ) : (
           <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg-elevated)', fontSize: 12 }}>

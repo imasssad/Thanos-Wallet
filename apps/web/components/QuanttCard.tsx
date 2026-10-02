@@ -33,8 +33,8 @@ import { quantt, quanttSignIn, quanttBindWithdrawalAddress } from '../lib/quantt
 import { useWallet } from './shell/AppShell';
 import { SendModal } from './modals';
 import {
-  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
-  type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
+  toAgentConfig, agentFundingOptions, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
+  type QuanttFundingOption, type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
   type CreateAgentInput, type WithdrawInput, type QuanttStrategy, type QuanttChain, type QuanttDexPreference,
   type QuanttAgentConfig, type QuanttKillSwitch, type QuanttStreamStatus, type QuanttTimeframe, type UpdateAgentInput,
 } from '@thanos/sdk-core';
@@ -196,13 +196,6 @@ const CHAINS: Array<{ value: QuanttChain; label: string }> = [
 /** Route "send to this agent's wallet" into the existing Send modal on a
  *  plausible network for the agent's chain. Falls back to Lithosphere
  *  Makalu (the modal's own default) for an unrecognised chain string. */
-type SendNetId = NonNullable<Parameters<typeof SendModal>[0]['initialNetwork']>;
-const CHAIN_TO_SEND_NETWORK: Partial<Record<string, SendNetId>> = {
-  arbitrum:    'evm:42161',
-  base:        'evm:8453',
-  bnb:         'evm:56',
-  lithosphere: 'evm:9005',   // Lithosphere Mainnet (Makalu isn't built in any more)
-};
 
 /* ── tiny shared bits ──────────────────────────────────────────────────── */
 
@@ -326,7 +319,11 @@ function RecordCard({ obj, exclude = [], action }: { obj: Record<string, unknown
 
 /* ── Wallet + Deposit tab ──────────────────────────────────────────────── */
 
-function WalletTab({ agent, onSendClick }: { agent: AgentRow; onSendClick: (address: string) => void }) {
+function WalletTab({ agent, funding, onSendClick }: {
+  agent: AgentRow; funding: QuanttFundingOption[] | null; onSendClick: (address: string, fund?: QuanttFundingOption) => void;
+}) {
+  const [pick, setPick] = useState(0);
+  const fund = funding?.[pick] ?? funding?.[0];
   const [wallet, setWallet] = useState<AgentWalletInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -400,7 +397,17 @@ function WalletTab({ agent, onSendClick }: { agent: AgentRow; onSendClick: (addr
         <p style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
           Send from your own Thanos wallet to the address above. This is a real on-chain transfer.
         </p>
-        <button className="btn-outline" onClick={() => onSendClick(wallet.address!)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        {funding && funding.length > 1 && (
+          <select className="field-select" aria-label="Network to fund the agent on" value={pick} onChange={e => setPick(Number(e.target.value))}>
+            {funding.map((o, i) => <option key={o.chain} value={i}>{o.sym} on {o.label}</option>)}
+          </select>
+        )}
+        <p style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+          {!funding ? 'Checking which network this agent uses…'
+            : !fund ? 'Couldn’t read which network this agent trades on — check it before sending.'
+            : <>Fund it with <b>{fund.sym}</b> on <b>{fund.label}</b> — anything sent on another network won&apos;t reach the agent.</>}
+        </p>
+        <button className="btn-outline" disabled={!funding} onClick={() => onSendClick(wallet.address!, fund)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <ArrowUpRight size={15}/> Send to this address
         </button>
       </div>
@@ -842,6 +849,12 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
   const [loadErr, setLoadErr] = useState(false);
   const [tab, setTab] = useState<DetailTab>('overview');
   const [sendAddress, setSendAddress] = useState<string | null>(null);
+  const [sendFund, setSendFund] = useState<QuanttFundingOption | undefined>(undefined);
+  // null while the agent record loads, so Send can't open on a guessed network.
+  const funding = useMemo(
+    () => (Object.keys(agent.raw).length ? agentFundingOptions(agent.raw) : loadErr ? [] : null),
+    [agent.raw, loadErr],
+  );
 
   const [pendingState, setPendingState] = useState<QuanttRuntimeState | null>(null);
   const [stateBusy, setStateBusy] = useState(false);
@@ -907,8 +920,6 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
     ['30d P&L',  agent.pnlPercent != null ? pct(agent.pnlPercent) : '—'],
   ];
   const extra = primitiveEntries(agent.raw, ['id', '_id', 'agentId', 'agent_id', 'name', 'agentName', 'status', 'state', 'strategy', 'chain', 'chains']);
-
-  const sendNet = agent.chain ? CHAIN_TO_SEND_NETWORK[agent.chain] : undefined;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
@@ -1007,7 +1018,7 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
             )}
 
             {tab === 'settings'  && <SettingsTab agent={agent} onSaved={() => { reload(); onChanged(); }} />}
-            {tab === 'wallet'    && <WalletTab agent={agent} onSendClick={addr => setSendAddress(addr)} />}
+            {tab === 'wallet'    && <WalletTab agent={agent} funding={funding} onSendClick={(addr, fund) => { setSendFund(fund); setSendAddress(addr); }} />}
             {tab === 'withdraw'  && <WithdrawTab agent={agent} />}
             {tab === 'decisions' && <DecisionsTab agent={agent} />}
             {tab === 'trades'    && <SimpleListTab loadFn={() => quantt.getAgentTrades(agent.id, 50)} />}
@@ -1049,14 +1060,11 @@ function AgentDetailModal({ agentStub, onClose, onChanged }: {
         <SendModal
           onClose={() => setSendAddress(null)}
           initialAddress={sendAddress}
-          initialNetwork={sendNet}
-          // Agents trade a quoteAsset (default USDC per CreateAgentInput) —
-          // no create-agent form in any client exposes a picker for it, so
-          // every agent created through Thanos today IS USDC. Without this,
-          // the button defaulted to native LITHO, so tapping "Send to this
-          // address" would send the wrong asset to the agent with no
-          // verification the deposit-confirm step catches it (no sandbox).
-          initialCoin="USDC"
+          // The agent's quote asset on the network picked above. Without a
+          // seed Send opened on native LITHO — the wrong asset for an agent,
+          // and the deposit-confirm step can't catch it (no sandbox).
+          initialNetwork={sendFund ? `evm:${sendFund.chainId}` : undefined}
+          initialCoin={sendFund?.sym ?? 'USDC'}
         />
       )}
     </div>
