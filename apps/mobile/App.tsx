@@ -9687,7 +9687,7 @@ function App() {
                 <Pressable
                   onPress={() => setScreen('activity')}
                   hitSlop={6}
-                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated }}
+                  style={styles.headerIconBtn}
                   accessibilityLabel="Activity history"
                 >
                   <History size={18} color={colors.textSecondary}/>
@@ -9695,7 +9695,7 @@ function App() {
                 <Pressable
                   onPress={() => setHeaderScanOpen(true)}
                   hitSlop={6}
-                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated }}
+                  style={styles.headerIconBtn}
                   accessibilityLabel="Scan to connect"
                 >
                   <Scan size={18} color={colors.textSecondary}/>
@@ -9942,6 +9942,15 @@ function makeStyles(C: Colors) {
       // Text's numberOfLines={1} truncation is inert until the row it
       // sits in is allowed to shrink below its content width.
       flexShrink: 1, minWidth: 0,
+    },
+    /* Floating header icon buttons (History / Scan) — outline only, no
+       background disc, like the client's reference ("no need for
+       background", 2026-10-02). */
+    headerIconBtn: {
+      width: 36, height: 36, borderRadius: 18,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: 'transparent',
+      borderWidth: 1, borderColor: C.borderDefault,
     },
     acctAvatar: {
       width: 32, height: 32, borderRadius: 16,
