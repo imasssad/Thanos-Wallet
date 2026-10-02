@@ -9860,9 +9860,13 @@ function TopFade() {
     <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 124, zIndex: 5 }}>
       <Svg width="100%" height="100%">
         <Defs>
+          {/* Near-opaque through the header band (0.55 ≈ TOPBAR_SPACE/124),
+              so scrolled content is masked behind the floating chip/buttons
+              and only emerges in the tail below them — a weaker fade let the
+              balance text show through the translucent chip mid-scroll. */}
           <SvgGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0"    stopColor={base} stopOpacity={0.95}/>
-            <Stop offset="0.55" stopColor={base} stopOpacity={0.55}/>
+            <Stop offset="0"    stopColor={base} stopOpacity={1}/>
+            <Stop offset="0.55" stopColor={base} stopOpacity={0.92}/>
             <Stop offset="1"    stopColor={base} stopOpacity={0}/>
           </SvgGradient>
         </Defs>
