@@ -252,6 +252,23 @@ residual risk after review:
   file in the repository's own assets. No client parses untrusted images
   with it.
 
+### `node-forge ≤1.4.0` — RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements ([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv))
+
+- **No patch published** (advisory lists no fixed version; 1.4.0 is the
+  latest on npm).
+- **Where it's used:** only by developer tooling — React Native's dev
+  server (`@react-native/dev-middleware → selfsigned`, reached through
+  WalletConnect's optional React Native peers), `@expo/cli`,
+  `@expo/code-signing-certificates` and `@devicefarmer/adbkit`. Overriding
+  `selfsigned` to 5.x (which dropped node-forge) would not remove it.
+- **Exploit surface:** none in shipped code. No workspace source imports
+  node-forge, and the built web app, extension and desktop (renderer and
+  main) bundles contain none of it (checked 2026-10-02). Forged-signature
+  acceptance would matter only where node-forge verifies untrusted
+  signatures at runtime, which no client does.
+- **Mitigation:** none needed beyond keeping it out of runtime code. When a
+  patched node-forge ships, add an override and drop this entry.
+
 ## Secrets, CI and the deployed environment
 
 - `.env` is in `.gitignore`. Only `.env.example` is committed.
