@@ -14,6 +14,15 @@
    previously the only light-first client and flashed white on every
    popup open for dark users. */
 :root,
+:root {
+  /* Brand aura — same geometry/strengths as web + desktop glass. Theme-
+     agnostic: it layers over --bg-base, which flips with [data-theme]. */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.30), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.22), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.12), transparent 70%);
+}
+
 [data-theme="dark"] {
   --bg-base:        #080809;
   --bg-surface:     #0e0e12;
@@ -41,6 +50,12 @@
 }
 
 [data-theme="light"] {
+  /* Softer aura on light so it stays a pastel wash. */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.22), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.18), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.10), transparent 70%);
+
   --bg-base:        #ffffff;
   --bg-surface:     #ffffff;
   --bg-card:        #ffffff;
@@ -65,7 +80,11 @@ html, body { width: 360px; height: 600px; overflow: hidden; }
 body {
   font-family: 'Satoshi', 'Geist', system-ui, -apple-system, sans-serif;
   font-feature-settings: 'cv11' 1, 'ss01' 1;
-  background: var(--bg-base); color: var(--text-primary);
+  /* Brand aura, same geometry/strengths as web and the desktop glass theme,
+     over --bg-base so both themes get the same treatment (.app and
+     .root-loading are transparent so it shows through the popup). */
+  background: var(--bg-aura), var(--bg-base);
+  color: var(--text-primary);
   font-size: 13px; letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   /* NO `zoom` here — it makes EVERY button in the popup un-clickable.
@@ -101,11 +120,13 @@ html[data-expanded] body {
   justify-content: center;
   align-items: flex-start;
   padding: 40px 16px;
-  background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(139,125,247,0.06), transparent 60%),
-    var(--bg-base);
+  background: var(--bg-aura), var(--bg-base);
+  background-attachment: fixed;
 }
 html[data-expanded] #root {
+  /* The centred card floats over the page aura, so unlike the popup it
+     carries its own opaque ground (the transparent .app sits inside it). */
+  background: var(--bg-base);
   width: 400px;
   max-width: 100%;
   height: min(880px, calc(100vh - 80px));
@@ -149,7 +170,7 @@ html[data-sidepanel] #root {
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
 
 .root-loading {
-  width: 100%; height: 100%; min-height: 360px; background: var(--bg-base);
+  width: 100%; height: 100%; min-height: 360px; background: transparent;
   display: flex; align-items: center; justify-content: center;
 }
 .root-loading::after {
@@ -188,7 +209,7 @@ html[data-sidepanel] #root {
 .sk-row-right { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 
 /* ─── App shell ─── */
-.app { display: flex; flex-direction: column; height: 100%; background: var(--bg-base); }
+.app { display: flex; flex-direction: column; height: 100%; background: transparent; }
 .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
 /* ─── Bottom tabbar ─── */
@@ -420,7 +441,7 @@ html[data-sidepanel] #root {
 }
 .modal {
   width: 100%; height: 100%;
-  background: var(--bg-base);
+  background: var(--bg-aura), var(--bg-base);
   display: flex; flex-direction: column;
   animation: modalSlide 0.2s ease-out;
 }
@@ -531,7 +552,7 @@ html[data-sidepanel] #root {
 /* ─── Onboarding ─── */
 .onb-wrap {
   width: 100%; height: 100%;
-  background: var(--bg-base);
+  background: var(--bg-aura), var(--bg-base);
   display: flex; align-items: center; justify-content: center;
   padding: 14px;
   position: relative; overflow: hidden;

@@ -35,6 +35,14 @@
      apps/extension/src/entrypoints/popup/popup.css, apps/mobile/App.tsx
      ═══════════════════════════════════════════════════════════════ */
 
+  /* Brand aura — same geometry/strengths as desktop glass + mobile
+     GlassAura. Theme-agnostic: layers over --bg-base, which flips with
+     [data-theme]. */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.30), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.22), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.12), transparent 70%);
+
   /* Surfaces (dark theme is default) */
   --bg-base:     #080809;
   --bg-surface:  #0e0e12;
@@ -149,6 +157,12 @@
 
 /* ─── Light mode (canonical, matches desktop) ──────────────────── */
 :root[data-theme="light"] {
+  /* Softer aura on light so it stays a pastel wash. */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.22), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.18), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.10), transparent 70%);
+
   --bg-base:        #ffffff;
   --bg-surface:     #ffffff;
   --bg-elevated:    #f4f4f7;
@@ -199,7 +213,12 @@ html {
 body {
   font-family: 'Satoshi', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-feature-settings: 'cv11' 1, 'ss01' 1;   /* Geist alternate forms (ignored by Satoshi) */
-  background: var(--bg-base);
+  /* Brand aura, same geometry/strengths as the desktop macOS glass theme
+     (client-approved) and the mobile GlassAura. Sits over --bg-base, so it
+     tints both themes; fixed attachment keeps it anchored while the app
+     scrolls. The landing (.lp-root) paints its own background over this. */
+  background: var(--bg-aura), var(--bg-base);
+  background-attachment: fixed;
   color: var(--text-primary);
   line-height: 1.5;
   letter-spacing: -0.005em;
@@ -262,7 +281,7 @@ body {
    viewport above the zoomed app-shell. */
 .token-detail-screen {
   position: fixed; inset: 0; z-index: 100;
-  background: var(--bg-base);
+  background: var(--bg-aura), var(--bg-base);
   display: flex; flex-direction: column;
   animation: tdSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -11,6 +11,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* Brand aura — same geometry/strengths as web + mobile GlassAura.
+     Theme-agnostic: layers over --bg-base, which flips with [data-theme]. */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.30), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.22), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.12), transparent 70%);
+
   --bg-base:        #080809;
   --bg-surface:     #0e0e12;
   --bg-card:        #141418;
@@ -54,6 +61,12 @@
 }
 
 [data-theme="light"] {
+  /* Softer aura on light so it stays a pastel wash. */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.22), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.18), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.10), transparent 70%);
+
   --bg-base:        #ffffff;
   --bg-surface:     #ffffff;
   --bg-card:        #ffffff;
@@ -72,7 +85,10 @@ html, body, #root { height: 100%; }
 body {
   font-family: 'Satoshi', 'Geist', system-ui, -apple-system, sans-serif;
   font-feature-settings: 'cv11' 1, 'ss01' 1;
-  background: var(--bg-base);
+  /* Brand aura on every platform, same geometry/strengths as the macOS
+     glass theme below (which still overrides this on darwin with its
+     translucent base). Over --bg-base, so it tints both themes. */
+  background: var(--bg-aura), var(--bg-base);
   color: var(--text-primary);
   font-size: 13px;
   letter-spacing: -0.005em;
@@ -97,7 +113,9 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
 /* ── Titlebar ─────────────────────────────────────────────────── */
 .titlebar {
   height: 28px;
-  background: var(--bg-base);
+  /* Transparent so the body aura isn't clipped by a solid strip; darwin
+     restores its translucent bar in the glass block below. */
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
   -webkit-app-region: drag;
   display: flex;
@@ -1592,6 +1610,11 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
    brand aura and specular top edges, like macOS 26. Windows/Linux keep the
    solid palette above. */
 html[data-platform="darwin"]:not([data-theme="light"]) {
+  /* Keep the shipped macOS glass aura exactly (vibrancy brightens it). */
+  --bg-aura:
+    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.22), transparent 70%),
+    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.18), transparent 70%),
+    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.10), transparent 70%);
   --bg-base:        rgba(9, 9, 14, 0.62);
   --bg-surface:     rgba(18, 18, 26, 0.45);
   --bg-card:        rgba(255, 255, 255, 0.055);
@@ -1620,13 +1643,13 @@ html[data-platform="darwin"] body {
   background: transparent;
 }
 html[data-platform="darwin"] body {
-  background:
-    radial-gradient(60% 50% at 12% 0%,   rgba(59, 122, 247, 0.22), transparent 70%),
-    radial-gradient(50% 45% at 100% 40%, rgba(139, 125, 247, 0.18), transparent 70%),
-    radial-gradient(55% 45% at 30% 100%, rgba(34, 211, 238, 0.10), transparent 70%),
-    var(--bg-base);
+  background: var(--bg-aura), var(--bg-base);
   background-attachment: fixed;
 }
+/* Keep the darwin titlebar as it shipped: the generic .titlebar went
+   transparent for the cross-platform aura, but on glass the bar carries the
+   translucent base so the traffic-light strip reads as its own surface. */
+html[data-platform="darwin"] .titlebar { background: var(--bg-base); }
 html[data-platform="darwin"] .card,
 html[data-platform="darwin"] .staking-card,
 html[data-platform="darwin"] .topnav,
