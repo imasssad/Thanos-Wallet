@@ -7353,6 +7353,7 @@ function autoLockMinutes(stored: string | null | undefined): number {
 const AUTOLOCK_OFF_NOTE =
   'The wallet will stay unlocked until you lock it yourself or the app is closed, so anyone who picks up this phone can see your balances and approve transactions.';
 const PREF_CURRENCY = 'thanos.display_currency'; // display currency code
+const PREF_THEME = 'thanos.theme';               // 'dark' | 'light'
 const PREF_LANGUAGE = 'thanos.language';         // interface language
 // Display-currency + language options mirror apps/web's Settings (General).
 // Like the web, these are display preferences — prices stream in USD and the
@@ -9010,6 +9011,12 @@ function App() {
   // Dark-first, matching the web/desktop/extension clients (they're all
   // dark by default). The Settings toggle still lets users switch to light.
   const [isDark, setIsDark] = useState(true);
+  // The theme pick used to be session-only state — switching to light and
+  // relaunching came back dark every time (client 2026-10-02). Load the
+  // stored choice at boot; `toggle` below persists each change.
+  useEffect(() => {
+    AsyncStorage.getItem(PREF_THEME).then((v) => { if (v === 'light') setIsDark(false); }).catch(() => {});
+  }, []);
   const [unlocked, setUnlocked] = useState(false);
   // WalletConnect deep-link handoff. A wc: URI handed off by an integrating dApp
   // (thanoswallet://wc?uri=… / a raw wc: link / the thanos.fi universal link) is
@@ -9260,7 +9267,11 @@ function App() {
 
   const colors = isDark ? DARK : LIGHT;
   const styles = useMemo(() => makeStyles(colors), [isDark]);
-  const toggle = () => setIsDark(d => !d);
+  const toggle = () => setIsDark(d => {
+    const next = !d;
+    AsyncStorage.setItem(PREF_THEME, next ? 'dark' : 'light').catch(() => {});
+    return next;
+  });
 
   // Once unlocked, if the user has opted into notifications, (re)register
   // this device's push token against the wallet address.
@@ -9638,13 +9649,11 @@ function App() {
               </Pressable>
             </Modal>
 
-            {/* Top header */}
+            {/* Top header — no bar: the account chip and the two round
+                buttons float over the page, with TopFade below painting a
+                soft fade from the top edge in place of the old strip
+                (client 2026-10-02, kajlabs.org / furgpt.org reference). */}
             <View style={styles.topbar}>
-              {/* Plain 'dark' tint, not systemChromeMaterialDark: the chrome
-                  material resolves to a light grey wash on device — a big part
-                  of "iOS dark mode is too bright" (client 2026-10-01/02). */}
-              {GLASS && <BlurView intensity={isDark ? 35 : 60} tint={isDark ? 'dark' : 'systemChromeMaterialLight'} style={StyleSheet.absoluteFill}/>}
-              {GLASS && isDark && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(8,8,12,0.35)' }]}/>}
               <Pressable
                 style={styles.acct}
                 /* Tap = account switcher (mnemonic wallets only). Long-press
@@ -9741,6 +9750,10 @@ function App() {
               )}
             </Modal>
 
+            {/* Soft top fade — painted over the screens' top edge, under
+                the floating header buttons. */}
+            <TopFade/>
+
             {/* Bottom tabs */}
             <View style={styles.tabbar}>
               {GLASS && <BlurView intensity={isDark ? 45 : 70} tint={isDark ? 'dark' : 'systemThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
@@ -9824,7 +9837,6 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
   if (out.card) out.card = { ...out.card, borderRadius: 22 };
   if (out.balanceCard) out.balanceCard = { ...out.balanceCard, borderRadius: 26 };
   if (out.root) out.root = { ...out.root, backgroundColor: isDarkPalette(C) ? '#05050a' : '#eef1f8' };
-  if (out.topbar) out.topbar = { ...out.topbar, backgroundColor: 'transparent', borderBottomColor: g.edge, borderBottomWidth: StyleSheet.hairlineWidth, overflow: 'hidden' };
   if (out.tabbar) out.tabbar = {
     ...out.tabbar, backgroundColor: g.bar, borderTopWidth: 0,
     marginHorizontal: 14, marginBottom: 4, borderRadius: 30, overflow: 'hidden',
@@ -9835,6 +9847,29 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
   // iOS 26 tab bar: the selected tab sits in its own soft glass capsule.
   if (out.tabActiveBar) out.tabActiveBar = { position: 'absolute', top: 2, bottom: 2, left: 2, right: 2, borderRadius: 24, backgroundColor: isDarkPalette(C) ? 'rgba(255,255,255,0.13)' : 'rgba(59,122,247,0.12)' };
   return out as T;
+}
+
+/** Fading shadow from the top of the screen — replaces the old header
+ *  bar's background/border (client 2026-10-02; kajlabs.org / furgpt.org
+ *  reference). Sits above the screens (zIndex 5) and below the floating
+ *  header buttons (topbar zIndex 10); never intercepts touches. */
+function TopFade() {
+  const C = useColors();
+  const base = GLASS ? (isDarkPalette(C) ? '#05050a' : '#eef1f8') : C.bgBase;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 124, zIndex: 5 }}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <SvgGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0"    stopColor={base} stopOpacity={0.95}/>
+            <Stop offset="0.55" stopColor={base} stopOpacity={0.55}/>
+            <Stop offset="1"    stopColor={base} stopOpacity={0}/>
+          </SvgGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#topFade)"/>
+      </Svg>
+    </View>
+  );
 }
 
 /** Soft brand-colour aura painted behind the whole app so the translucent
@@ -9878,12 +9913,13 @@ function makeStyles(C: Colors) {
     scroll:    { flex: 1 },
     scrollContent: { padding: 16, gap: 14 },
 
-    /* Topbar */
+    /* Topbar — no background or border: the chip + buttons float, and
+       TopFade renders the soft top shadow behind them (client 2026-10-02). */
     topbar: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       paddingHorizontal: 16, paddingVertical: 12,
-      borderBottomWidth: 1, borderBottomColor: C.borderSubtle,
-      backgroundColor: C.bgSurface,
+      backgroundColor: 'transparent',
+      zIndex: 10,
     },
     acct: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
