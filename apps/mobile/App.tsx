@@ -1967,8 +1967,8 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   return (
     <>
     <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
+      style={[styles.scroll, styles.underTopbar]}
+      contentContainerStyle={[styles.scrollContent, styles.underTopbarContent]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={loading} onRefresh={reload} tintColor={C.textSecondary} />
@@ -4965,8 +4965,8 @@ function ActivityScreen() {
   return (
     <>
     <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
+      style={[styles.scroll, styles.underTopbar]}
+      contentContainerStyle={[styles.scrollContent, styles.underTopbarContent]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={loading} onRefresh={reload} tintColor={C.textSecondary} />
@@ -5665,7 +5665,7 @@ function DiscoverScreen({ onOpenMarket }: { onOpenMarket: () => void }) {
   };
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView style={[styles.scroll, styles.underTopbar]} contentContainerStyle={[styles.scrollContent, styles.underTopbarContent]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <Text style={styles.pageTitleLarge}>Discover</Text>
       <Text style={styles.pageSubtitle}>Lithosphere ecosystem apps — open in the in-app browser</Text>
 
@@ -6077,7 +6077,7 @@ function SettingsScreen() {
   );
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={[styles.scroll, styles.underTopbar]} contentContainerStyle={[styles.scrollContent, styles.underTopbarContent]}>
       {/* Gradient hero header */}
       <View style={styles.setHero}>
         <Text style={styles.setHeroTitle}>Settings</Text>
@@ -7284,7 +7284,7 @@ function QuanttTabIcon({ size = 20 }: { size?: number; color?: string; strokeWid
 function QuanttScreen() {
   const styles = useStyles();
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView style={[styles.scroll, styles.underTopbar]} contentContainerStyle={[styles.scrollContent, styles.underTopbarContent]} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitleLarge}>Quantts</Text>
       <Text style={styles.pageSubtitle}>AI trading agents you fund and monitor across chains</Text>
       <QuanttAgentsCard/>
@@ -9906,12 +9906,23 @@ function GlassAura({ dark }: { dark: boolean }) {
   );
 }
 
+/** Height the floating topbar occupies (padding 12×2 + the 42px chip). */
+const TOPBAR_SPACE = 66;
+
 function makeStyles(C: Colors) {
   return StyleSheet.create(applyGlass(_scaleFontSizes({
     root:      { flex: 1, backgroundColor: C.bgBase },
     body:      { flex: 1 },
     scroll:    { flex: 1 },
     scrollContent: { padding: 16, gap: 14 },
+    /* Tab screens (Home / Quantts / Discover / Activity / Settings) pull
+       their scroll viewport up underneath the floating topbar, and pad the
+       content back down by the same amount — identical at rest, but
+       scrolling slides the content under the chip + TopFade instead of
+       clipping at a hard line (client 2026-10-02, kajlabs.org / furgpt.org
+       reference). Screens with their own back-button headers stay in flow. */
+    underTopbar:        { marginTop: -TOPBAR_SPACE },
+    underTopbarContent: { paddingTop: TOPBAR_SPACE + 16 },
 
     /* Topbar — no background or border: the chip + buttons float, and
        TopFade renders the soft top shadow behind them (client 2026-10-02). */
