@@ -228,6 +228,10 @@ export interface SendAssetArgs {
   splMintAddress?: string;
   /** Optional Cosmos memo. */
   memo?: string;
+  /** Optional calldata for a native EVM send (Settings → Show hex data):
+   *  0x followed by whole bytes. Not allowed with a token send, whose data
+   *  is its own transfer() call. */
+  data?: string;
 }
 
 /**
@@ -274,10 +278,16 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   // closure never holds a derived private key.
   const evmChain = args.evmChain;
   if (!evmChain) throw new WcSignerError(-32602, 'Pick the network to send on.');
+  const data = args.data && args.data !== '0x' ? args.data : undefined;
+  if (data && !/^0x(?:[0-9a-fA-F]{2})+$/.test(data)) {
+    throw new WcSignerError(-32602, 'Hex data must be 0x followed by an even number of hex digits');
+  }
+  if (data && args.tokenAddress) throw new WcSignerError(-32602, 'Hex data can only be sent with the network’s native coin');
   let value: bigint;
   try { value = parseUnits(args.amount, args.decimals); }
   catch { throw new WcSignerError(-32602, 'Invalid amount'); }
-  if (value <= 0n) throw new WcSignerError(-32602, 'Amount must be greater than zero');
+  // A zero-value send is only meaningful as a call carrying data.
+  if (value < 0n || (value === 0n && !data)) throw new WcSignerError(-32602, 'Amount must be greater than zero');
 
   const path = activeHdPath();
   const signer = await import('./signer');
@@ -289,7 +299,7 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
         tokenAddress: args.tokenAddress, to: args.to, amount: value,
       }, evmChain);
     }
-    return await signer.signAndBroadcast(path, { to: args.to, value }, evmChain);
+    return await signer.signAndBroadcast(path, { to: args.to, value, ...(data ? { data } : {}) }, evmChain);
   } catch (e) {
     const msg = (e as Error).message || 'Broadcast failed';
     if (/insufficient funds/i.test(msg)) throw new WcSignerError(-32000, 'Insufficient balance for amount + gas');

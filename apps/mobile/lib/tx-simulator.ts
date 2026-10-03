@@ -36,6 +36,8 @@ export interface SendAssetRequest {
   /** LEP100/ERC-20 decimals — lets the simulator parse the human amount
    *  without an extra decimals() RPC. */
   tokenDecimals?: number;
+  /** Calldata sent with a native transfer (Settings → Show hex data). */
+  data?: string;
 }
 
 export class TransactionSimulator {
@@ -48,6 +50,7 @@ export class TransactionSimulator {
     const nativeSym = chain.nativeSymbol;
 
     const isToken  = !!request.tokenAddress;
+    const data     = !isToken && request.data && request.data !== '0x' ? request.data : undefined;
     const tokenDec = request.tokenDecimals ?? 18;
     const sendSym  = request.tokenSymbol ?? nativeSym;
 
@@ -76,7 +79,7 @@ export class TransactionSimulator {
         ? p.estimateGas(isToken
             ? { from: request.from, to: request.tokenAddress!,
                 data: erc20.encodeFunctionData('transfer', [request.to, amountUnits]) }
-            : { from: request.from, to: request.to, value: amountUnits })
+            : { from: request.from, to: request.to, value: amountUnits, ...(data ? { data } : {}) })
         : Promise.resolve(null),
     ]);
     const feeData       = feeDataResult.status === 'fulfilled' ? feeDataResult.value : null;
@@ -88,13 +91,26 @@ export class TransactionSimulator {
       try { tokenBalance = BigInt(tokenBalResult.value); } catch { /* non-numeric eth_call result */ }
     }
 
-    const gasLimit = gasResult.status === 'fulfilled' && gasResult.value != null
-      ? BigInt(gasResult.value.toString())
-      : (isToken ? 65_000n : 21_000n);
+    const estimatedGas = gasResult.status === 'fulfilled' ? gasResult.value : null;
+    const gasEstimated = estimatedGas != null;
+    // Without an estimate: 21k base plus calldata at 16 gas per byte, the
+    // non-zero-byte price (zero bytes cost 4, so this never undershoots).
+    const gasLimit = estimatedGas != null
+      ? BigInt(estimatedGas.toString())
+      : (isToken ? 65_000n : 21_000n + (data ? BigInt((data.length - 2) / 2) * 16n : 0n));
     const gasPrice = feeData?.maxFeePerGas ?? feeData?.gasPrice ?? null;
     const feeWei   = gasPrice != null ? gasLimit * BigInt(gasPrice.toString()) : null;
 
-    if (recipientCode && recipientCode !== '0x') {
+    if (data && request.from && amountUnits !== null && !gasEstimated) {
+      issues.push({
+        level:   'warning',
+        code:    'CALL_MAY_FAIL',
+        message: `The network couldn't estimate gas for this hex data — the transaction will probably fail on ${netName}. Check the data and the recipient.`,
+      });
+    }
+
+    // Sending hex data to a contract is the point of it, so no warning then.
+    if (!data && recipientCode && recipientCode !== '0x') {
       issues.push({
         level:   'warning',
         code:    'RECIPIENT_IS_CONTRACT',

@@ -1,9 +1,14 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Platform, Pressable, RefreshControl, SafeAreaView,
+  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Platform, Pressable, RefreshControl,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+// react-native's own SafeAreaView pads only on iOS. Android 15+ draws every
+// app edge-to-edge (targetSdk 36), so the header sat under the status bar and
+// the tab bar under the navigation bar; this one applies the real insets on
+// both platforms (per view, so Modals get their own window's insets too).
+import { SafeAreaProvider, SafeAreaView, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 // Modal whose touches count as activity for auto-lock (see lib/activity.ts).
 import { Modal } from './components/ActivityModal';
 import { markUserActivity, idleMs } from './lib/activity';
@@ -171,7 +176,7 @@ import {
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
   ChevronDown, ChevronUp, Star, History, Scan, Wallet as WalletIcon,
-  RefreshCw, Play, Pause, Square as SquareIcon, ListChecks,
+  RefreshCw, Play, Pause, Square as SquareIcon, ListChecks, Code,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -3887,6 +3892,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const otherAccounts = ownAccounts.filter((a) => a.address.toLowerCase() !== addr.toLowerCase());
   const [sending, setSending] = useState(false);
   const [memo, setMemo] = useState('');
+  // Settings → Show hex data: optional calldata on a native-coin send
+  // (token sends already carry their own transfer() data).
+  const [showHex] = useShowHexData();
+  const [hexData, setHexData] = useState('');
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   // Pre-send simulation — fires when recipient + amount are both valid,
   // mirrors the web Send modal so mobile users get the same
@@ -3936,6 +3945,12 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
     });
   }, []);
   const amtNum = parseFloat(amt || '0');
+  const hexApplies = showHex && chain === 'evm' && !!coin?.native;
+  const hexInput = hexApplies ? hexData.trim() : '';
+  const hexOk = hexInput === '' || isHexData(hexInput);
+  const hexBytes = hexOk && hexInput.length > 2 ? (hexInput.length - 2) / 2 : 0;
+  // A call with data may send 0; anything else needs an amount.
+  const shownAmt = amt.trim() === '' && hexBytes > 0 ? '0' : amt;
   const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
   const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
   const reviewSym = chain === 'evm' && coin ? coin.sym : CHAIN_META[chain].sym;
@@ -3952,7 +3967,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const simHasCritical = simReport?.issues.some(i => i.level === 'critical') ?? false;
   const canReview =
     chain === 'evm'
-      ? !!coin && !!evmNet && amtNum > 0 && !overBalance && !!to && recipientOk && !sending && !simHasCritical
+      ? !!coin && !!evmNet && (amtNum > 0 || (hexBytes > 0 && amtNum === 0)) && hexOk && !overBalance && !!to && recipientOk && !sending && !simHasCritical
       : amtNum > 0 && !!to && recipientOk && !sending;
 
   /* Debounced pre-send simulation. Only EVM chains for now — Bitcoin +
@@ -3961,10 +3976,10 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
     // Simulated on the asset's own chain — the one the send is signed on.
     // Only a plain 0x recipient: the simulator can't resolve litho1 / .litho.
     if (chain !== 'evm' || !coin || !evmNet || !/^0x[0-9a-fA-F]{40}$/.test(to.trim())
-        || amtNum <= 0 || overBalance) { setSimReport(null); return; }
+        || (amtNum <= 0 && hexBytes === 0) || !hexOk || overBalance) { setSimReport(null); return; }
     const toAddr = to.trim();
     const fromAddr = addr;
-    const amount = amt;
+    const amount = shownAmt;
     const simChain = evmNet.chainId;
     let cancelled = false;
     const t = setTimeout(async () => {
@@ -3981,12 +3996,13 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           // native and compares the token amount against the native balance.
           tokenAddress:  coin.native ? undefined : coin.tokenAddress,
           tokenDecimals: coin.decimals,
+          data:          hexBytes > 0 ? hexInput : undefined,
         });
         if (!cancelled) setSimReport(r);
       } catch { if (!cancelled) setSimReport(null); }
     }, 450);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, evmNet, to, amt, amtNum, overBalance, addr]);
+  }, [coin, evmNet, to, amt, amtNum, overBalance, addr, hexInput, hexBytes, hexOk]);
 
   const doSend = async () => {
     if (sending) return;
@@ -4024,21 +4040,22 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         chain,
         evmChain:     sendChain,
         to:           recipient,
-        amount:       amt,
+        amount:       shownAmt,
         decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
         tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
         memo:         chain === 'cosmos' ? memo : undefined,
+        data:         hexBytes > 0 ? hexInput : undefined,
       });
       const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
       // Optimistic Activity row — recorded AFTER the broadcast returned a hash.
       // Never touches signing/broadcast; merged + deduped by the activity hook.
-      void addLocalActivity(addr, { hash, sym, amount: amt, ts: Date.now(), type: 'send', chainId: net?.chainId });
+      void addLocalActivity(addr, { hash, sym, amount: shownAmt, ts: Date.now(), type: 'send', chainId: net?.chainId });
       setSending(false);
-      setAmt(''); setTo(''); setMemo('');
+      setAmt(''); setTo(''); setMemo(''); setHexData('');
       const network = net ? sendNetworkName(net.chainId, net.name) : meta.label;
       // Fire a local notification (works without a push server) when enabled.
       isNotificationsEnabled().then(on => {
-        if (on) notifyLocal('Transaction sent', `${amt} ${sym} broadcast on ${network}.`);
+        if (on) notifyLocal('Transaction sent', `${shownAmt} ${sym} broadcast on ${network}.`);
       });
       // Then watch the receipt on the same network (read-only, fire-and-forget
       // — the tx is already broadcast) and notify confirmed/failed. EVM only;
@@ -4048,11 +4065,11 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           try {
             const { waitForReceipt } = await import('./lib/signer');
             const rc = await waitForReceipt(hash, sendChain);
-            if (rc) void notifyIfEnabled(rc.ok ? 'Transaction confirmed' : 'Transaction failed', `${amt} ${sym} on ${network}.`);
+            if (rc) void notifyIfEnabled(rc.ok ? 'Transaction confirmed' : 'Transaction failed', `${shownAmt} ${sym} on ${network}.`);
           } catch { /* best-effort */ }
         })();
       }
-      setSentInfo({ hash, sym, amount: amt, network, explorerUrl: txExplorerUrl(chain, hash, net?.explorerUrl) });
+      setSentInfo({ hash, sym, amount: shownAmt, network, explorerUrl: txExplorerUrl(chain, hash, net?.explorerUrl) });
     } catch (e) {
       setSending(false);
       Alert.alert('Send failed', humanSendError(e));
@@ -4084,7 +4101,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           return (
             <Pressable
               key={c}
-              onPress={() => { setChain(c); setTo(''); setAmt(''); setMemo(''); }}
+              onPress={() => { setChain(c); setTo(''); setAmt(''); setMemo(''); setHexData(''); }}
               style={{
                 flex: 1, paddingVertical: 8, borderRadius: 999,
                 backgroundColor: selected ? C.blue : C.bgElevated,
@@ -4273,6 +4290,28 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         </View>
       )}
 
+      {hexApplies && (
+        <View style={styles.assetSelectCard}>
+          <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>HEX DATA (optional)</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: 'transparent', borderWidth: 0, padding: 0, fontSize: 13, fontFamily: MONO }]}
+            placeholder="0x…"
+            placeholderTextColor={C.textMuted}
+            value={hexData}
+            onChangeText={setHexData}
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+            accessibilityLabel="Hex data"
+          />
+          {!hexOk ? (
+            <Text style={{ color: C.red, fontSize: 12, marginTop: 6 }}>Enter 0x followed by an even number of hex digits.</Text>
+          ) : hexBytes > 0 ? (
+            <Text style={{ color: C.textMuted, fontSize: 12, marginTop: 6 }}>{hexBytes} {hexBytes === 1 ? 'byte' : 'bytes'} sent with this transaction</Text>
+          ) : null}
+        </View>
+      )}
+
       {/* Camera QR scanner — decodes a recipient address (or bare 0x /
           litho1 / bc1 / base58) and drops it into the field. */}
       <QrScannerModal
@@ -4373,11 +4412,16 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
           <View style={{ width: '100%', maxWidth: 380, backgroundColor: C.bgCard, borderRadius: 20, padding: 24 }}>
             <Text style={{ color: C.textPrimary, fontSize: 22, fontWeight: '800', marginBottom: 16 }}>Confirm send</Text>
             <Text style={{ color: C.textSecondary, fontSize: 18, fontWeight: '700', lineHeight: 25 }}>
-              Send {amt} {reviewSym}
+              Send {shownAmt} {reviewSym}
             </Text>
             <Text style={{ color: C.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 4 }}>
               To: {to}
             </Text>
+            {hexBytes > 0 && (
+              <Text style={{ color: C.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 2 }}>
+                Hex data: {hexBytes} {hexBytes === 1 ? 'byte' : 'bytes'} ({hexInput.length > 24 ? `${hexInput.slice(0, 12)}…${hexInput.slice(-8)}` : hexInput})
+              </Text>
+            )}
             {chain === 'evm' && <Text style={{ color: C.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 2 }}>
               ≈ {formatUsd(usd)}
             </Text>}
@@ -4402,7 +4446,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         </View>
       </Modal>
 
-      {amtNum > 0 && !!coin && (
+      {(amtNum > 0 || hexBytes > 0) && !!coin && (
         <View style={[styles.feeRowCard]}>
           <View style={styles.feeRow}>
             <Text style={styles.feeText}>Network</Text>
@@ -5877,6 +5921,7 @@ function SettingsScreen() {
   const [networksOpen, setNetworksOpen] = useState(false);
   const [customAssetsOpen, setCustomAssetsOpen] = useState(false);
   const [autoLockMin, setAutoLockMin]   = useState(DEFAULT_AUTOLOCK_MIN);
+  const [showHex, setShowHex]           = useShowHexData();
   const [language, setLanguage]         = useState('English');
   useEffect(() => {
     AsyncStorage.getItem(PREF_AUTOLOCK).then(v => setAutoLockMin(autoLockMinutes(v)));
@@ -6152,6 +6197,15 @@ function SettingsScreen() {
           onPress: () => setPermsOpen(true) },
       ]}/>
       <Section Icon={Globe}  title="Network"    sub="Connection and RPC endpoints"  items={NETWORK_OPTS}/>
+      <Section Icon={Code} title="Advanced" sub="Options for experienced users" items={[
+        { label: 'Show hex data', desc: 'Show the hex data field on the Send screen', Icon: Code,
+          onPress: () => setShowHex(!showHex),
+          accessory: (
+            <View style={[styles.toggleSwitch, showHex && styles.toggleSwitchOn]}>
+              <View style={[styles.toggleThumb, showHex && styles.toggleThumbOn]}/>
+            </View>
+          ) },
+      ]}/>
 
       {/* Legal + transparency — required by App Store + Google Play
           submission reviewers, and standard wallet-UX hygiene. Opens in the
@@ -7355,6 +7409,26 @@ const AUTOLOCK_OFF_NOTE =
 const PREF_CURRENCY = 'thanos.display_currency'; // display currency code
 const PREF_THEME = 'thanos.theme';               // 'dark' | 'light'
 const PREF_LANGUAGE = 'thanos.language';         // interface language
+const PREF_SHOW_HEX = 'thanos.show_hex_data';     // '1' = hex data field on Send
+
+/** Settings → Advanced → Show hex data. Off unless the user turns it on. */
+function useShowHexData(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(PREF_SHOW_HEX).then((v) => setOn(v === '1')).catch(() => {});
+  }, []);
+  const set = (next: boolean) => {
+    setOn(next);
+    AsyncStorage.setItem(PREF_SHOW_HEX, next ? '1' : '0').catch(() => {});
+  };
+  return [on, set];
+}
+
+const MAX_HEX_DATA_BYTES = 64 * 1024;
+/** 0x followed by whole bytes ("0x" alone = no data). */
+function isHexData(v: string): boolean {
+  return /^0x(?:[0-9a-fA-F]{2})*$/.test(v) && v.length <= 2 + MAX_HEX_DATA_BYTES * 2;
+}
 // Display-currency + language options mirror apps/web's Settings (General).
 // Like the web, these are display preferences — prices stream in USD and the
 // UI is English; the choice is persisted and surfaced, full FX conversion /
@@ -8496,14 +8570,17 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
 }
 
 /** Floating "call is minimized" style pill for a backgrounded browser tab —
- *  tap to restore exactly where the dApp session left off, X to end it. Sits
- *  above the tab bar so it never blocks the bottom nav. */
+ *  tap to restore exactly where the dApp session left off, X to end it.
+ *  Shown on the Discover tab, just above the tab bar. */
 function MinimizedBrowserChip({ url, onRestore, onClose }: { url: string; onRestore: () => void; onClose: () => void }) {
   const C = useColors();
+  // Measured from the screen's bottom edge (absolute children skip the
+  // root's safe-area padding): clear the system navigation bar + tab bar.
+  const { bottom } = useSafeAreaInsets();
   let host = url;
   try { host = new URL(url).host; } catch { /* keep raw */ }
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 104, alignItems: 'center', zIndex: 40, elevation: 40 }}>
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: bottom + 70, alignItems: 'center', zIndex: 40, elevation: 40 }}>
       <Pressable
         onPress={onRestore}
         style={({ pressed }) => [{
@@ -8893,11 +8970,12 @@ export default function Root() {
     _onGlobalError = setGlobalError;
     return () => { _onGlobalError = null; };
   }, []);
-  if (globalError) return <CrashScreen error={globalError} onReset={() => setGlobalError(null)}/>;
   return (
-    <ErrorBoundary>
-      <App/>
-    </ErrorBoundary>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      {globalError
+        ? <CrashScreen error={globalError} onReset={() => setGlobalError(null)}/>
+        : <ErrorBoundary><App/></ErrorBoundary>}
+    </SafeAreaProvider>
   );
 }
 
@@ -9477,7 +9555,9 @@ function App() {
                 seed={walletSeed}
               />
             )}
-            {browserTab?.minimized && (
+            {/* Discover tab only: everywhere else the pill sat on top of the
+                screen's own content (client report: Settings, 2026-10-03). */}
+            {browserTab?.minimized && (screen === 'discover' || screen === 'market') && (
               <MinimizedBrowserChip
                 url={browserTab.url}
                 onRestore={() => setBrowserTab(t => (t ? { ...t, minimized: false } : t))}
@@ -9752,7 +9832,7 @@ function App() {
 
             {/* Soft top fade — painted over the screens' top edge, under
                 the floating header buttons. */}
-            <TopFade/>
+            {UNDER_TOPBAR_SCREENS.has(screen) && <TopFade/>}
 
             {/* Bottom tabs */}
             <View style={styles.tabbar}>
@@ -9855,20 +9935,24 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
  *  header buttons (topbar zIndex 10); never intercepts touches. */
 function TopFade() {
   const C = useColors();
+  const { top } = useSafeAreaInsets();
   const base = GLASS ? (isDarkPalette(C) ? '#05050a' : '#eef1f8') : C.bgBase;
+  // Absolute children are placed from the root's edge, not inside its
+  // safe-area padding, so this starts at the top of the screen. It stays
+  // opaque through the status bar and the header's chip/buttons (scrolled
+  // content must never show through them) and has faded out exactly where
+  // tab content starts at rest, so an unscrolled screen is never dimmed.
+  const solid = top + TOPBAR_SPACE - 6;
+  const height = top + TOPBAR_CONTENT_TOP;
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 124, zIndex: 5 }}>
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height, zIndex: 5 }}>
       <Svg width="100%" height="100%">
         <Defs>
-          {/* Fully opaque through the header band (0.55 ≈ TOPBAR_SPACE/124):
-              scrolled content must never bleed through the translucent
-              chip/buttons, only emerge in the ease-out tail below them.
-              Even 0.92 let the 34px balance ghost through mid-scroll. */}
           <SvgGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0"    stopColor={base} stopOpacity={1}/>
-            <Stop offset="0.55" stopColor={base} stopOpacity={1}/>
-            <Stop offset="0.8"  stopColor={base} stopOpacity={0.5}/>
-            <Stop offset="1"    stopColor={base} stopOpacity={0}/>
+            <Stop offset={0}                                 stopColor={base} stopOpacity={1}/>
+            <Stop offset={solid / height}                    stopColor={base} stopOpacity={1}/>
+            <Stop offset={(solid + height) / 2 / height}     stopColor={base} stopOpacity={0.5}/>
+            <Stop offset={1}                                 stopColor={base} stopOpacity={0}/>
           </SvgGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#topFade)"/>
@@ -9913,6 +9997,11 @@ function GlassAura({ dark }: { dark: boolean }) {
 
 /** Height the floating topbar occupies (padding 12×2 + the 42px chip). */
 const TOPBAR_SPACE = 66;
+/** Where tab-screen content starts at rest (styles.underTopbarContent). */
+const TOPBAR_CONTENT_TOP = TOPBAR_SPACE + 16;
+/** Screens whose content scrolls up under the floating header — the only
+ *  ones that need TopFade (the rest start below the header). */
+const UNDER_TOPBAR_SCREENS: ReadonlySet<string> = new Set(['home', 'activity', 'discover', 'settings', 'quantt']);
 
 function makeStyles(C: Colors) {
   return StyleSheet.create(applyGlass(_scaleFontSizes({
@@ -9927,7 +10016,7 @@ function makeStyles(C: Colors) {
        clipping at a hard line (client 2026-10-02, kajlabs.org / furgpt.org
        reference). Screens with their own back-button headers stay in flow. */
     underTopbar:        { marginTop: -TOPBAR_SPACE },
-    underTopbarContent: { paddingTop: TOPBAR_SPACE + 16 },
+    underTopbarContent: { paddingTop: TOPBAR_CONTENT_TOP },
 
     /* Topbar — no background or border: the chip + buttons float, and
        TopFade renders the soft top shadow behind them (client 2026-10-02). */
