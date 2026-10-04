@@ -7,7 +7,8 @@ import {
 // react-native's own SafeAreaView pads only on iOS. Android 15+ draws every
 // app edge-to-edge (targetSdk 36), so the header sat under the status bar and
 // the tab bar under the navigation bar; this one applies the real insets on
-// both platforms (per view, so Modals get their own window's insets too).
+// both platforms. Inside a Modal it needs the Modal's own SafeAreaProvider,
+// which components/ActivityModal.tsx adds to every Modal.
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 // Modal whose touches count as activity for auto-lock (see lib/activity.ts).
 import { Modal } from './components/ActivityModal';
@@ -194,7 +195,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    from app.json's expo.version (embedded in every build): the hand-bumped
    string it replaced had stayed at 2.0.1 through 2.0.4, so an up-to-date app
    would have been told to update. The fallback is only for a missing config. */
-const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.5'}`;
+const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.6'}`;
 
 /* EXCHANGE_ENABLED gates the whole Swap surface. Swap (same-chain) and
    Cross-chain ship in release builds; only the Bridge tab is dev-build
@@ -1207,7 +1208,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
-      <View style={{ flex: 1, backgroundColor: C.bgBase }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bgBase }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 }}>
           <Pressable hitSlop={12} onPress={() => (view === 'intro' || view === 'dashboard') ? onClose() : setView('dashboard')} style={{ padding: 8 }}>
             <ChevronLeft size={22} color={C.textPrimary}/>
@@ -1246,7 +1247,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
             {view === 'success'  && <LaxSuccess C={C} styles={styles} last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
           </ScrollView>
         )}
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }

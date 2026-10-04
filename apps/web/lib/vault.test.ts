@@ -93,9 +93,12 @@ describe('vault — encrypt/decrypt round-trip', () => {
   it('rejects a tampered IV', async () => {
     const vault = await createVault(MNEMONIC, PASSWORD);
     // Flip a byte of the IV; AES-GCM detects this as auth-tag mismatch.
+    // XOR, not overwrite: writing '00' left the IV unchanged whenever the
+    // random last byte was already 00 (1 run in 256).
+    const lastByte = parseInt(vault.iv.slice(-2), 16) ^ 0xff;
     const tampered: EncryptedVault = {
       ...vault,
-      iv: vault.iv.slice(0, -2) + '00',
+      iv: vault.iv.slice(0, -2) + lastByte.toString(16).padStart(2, '0'),
     };
     const opened = await openVault(tampered, PASSWORD);
     expect(opened).toBeNull();

@@ -269,6 +269,24 @@ residual risk after review:
 - **Mitigation:** none needed beyond keeping it out of runtime code. When a
   patched node-forge ships, add an override and drop this entry.
 
+### `braces ≤3.0.3` — stack-exhaustion denial of service through deeply nested patterns ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm))
+
+- **No patch published** (the advisory lists no fixed version; 3.0.3 is the
+  latest on npm).
+- **Where it's used:** only by developer tooling, through `micromatch` —
+  `@expo/cli`, Metro, the React Native Babel preset / codegen and
+  `jscodeshift`. They reach the production tree as optional Expo / React
+  Native peers of `@trezor/connect-web` and WalletConnect
+  (`@react-native-async-storage/async-storage → react-native`). The backend
+  services (`api`, `indexer`, `worker`) have no path to it.
+- **Exploit surface:** none in shipped code. No workspace source imports
+  `braces`, `micromatch`, `fast-glob` or `globby`, and the built web app,
+  extension and desktop bundles contain none of it (checked 2026-10-04). The
+  patterns these tools expand are the repository's own build globs, never
+  user input.
+- **Mitigation:** none needed beyond keeping it out of runtime code. When a
+  patched braces ships, add an override and drop this entry.
+
 ## Secrets, CI and the deployed environment
 
 - `.env` is in `.gitignore`. Only `.env.example` is committed.
