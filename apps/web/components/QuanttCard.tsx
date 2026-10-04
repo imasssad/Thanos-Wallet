@@ -33,7 +33,7 @@ import { quantt, quanttSignIn, quanttBindWithdrawalAddress } from '../lib/quantt
 import { useWallet } from './shell/AppShell';
 import { SendModal } from './modals';
 import {
-  toAgentConfig, agentFundingOptions, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
+  toAgentConfig, agentFundingOptions, agentFundingBlock, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
   type QuanttFundingOption, type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
   type CreateAgentInput, type WithdrawInput, type QuanttStrategy, type QuanttChain, type QuanttDexPreference,
   type QuanttAgentConfig, type QuanttKillSwitch, type QuanttStreamStatus, type QuanttTimeframe, type UpdateAgentInput,
@@ -124,6 +124,9 @@ function coerceAgentList(raw: unknown): AgentRow[] {
 interface AgentWalletInfo {
   address?: string;
   balances: Array<{ symbol: string; amount: string }>;
+  /** The response as Quantts sent it — it also names the network it runs the
+   *  agent's wallet on (see agentFundingBlock). */
+  raw: unknown;
 }
 function coerceWallet(raw: unknown): AgentWalletInfo {
   const o = asObj(raw);
@@ -149,7 +152,7 @@ function coerceWallet(raw: unknown): AgentWalletInfo {
       }
     }
   }
-  return { address, balances };
+  return { address, balances, raw };
 }
 function coerceWithdrawalAddress(raw: unknown): string | undefined {
   const o = asObj(raw);
@@ -361,6 +364,8 @@ function WalletTab({ agent, funding, onSendClick }: {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}><Spinner/></div>;
   if (err) return <span style={{ color: '#ef4444', fontSize: 13 }}>{err}</span>;
   if (!wallet?.address) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>This agent has no wallet yet.</span>;
+  // Quantts may still run the agent on another network (Lithosphere on Makalu).
+  const block = agentFundingBlock(fund, wallet.raw);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -399,15 +404,17 @@ function WalletTab({ agent, funding, onSendClick }: {
         </p>
         {funding && funding.length > 1 && (
           <select className="field-select" aria-label="Network to fund the agent on" value={pick} onChange={e => setPick(Number(e.target.value))}>
-            {funding.map((o, i) => <option key={o.chain} value={i}>{o.sym} on {o.label}</option>)}
+            {funding.map((o, i) => <option key={`${o.chain}:${o.sym}`} value={i}>{o.sym} on {o.label}</option>)}
           </select>
         )}
-        <p style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
-          {!funding ? 'Checking which network this agent uses…'
-            : !fund ? 'Couldn’t read which network this agent trades on — check it before sending.'
-            : <>Fund it with <b>{fund.sym}</b> on <b>{fund.label}</b> — anything sent on another network won&apos;t reach the agent.</>}
-        </p>
-        <button className="btn-outline" disabled={!funding} onClick={() => onSendClick(wallet.address!, fund)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        {block ? <WarningBanner>{block}</WarningBanner> : (
+          <p style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+            {!funding ? 'Checking which network this agent uses…'
+              : !fund ? 'Couldn’t read which network this agent trades on — check it before sending.'
+              : <>Fund it with <b>{fund.sym}</b> on <b>{fund.label}</b> — anything sent on another network won&apos;t reach the agent.</>}
+          </p>
+        )}
+        <button className="btn-outline" disabled={!funding || !!block} onClick={() => onSendClick(wallet.address!, fund)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <ArrowUpRight size={15}/> Send to this address
         </button>
       </div>

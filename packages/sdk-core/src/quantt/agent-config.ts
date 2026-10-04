@@ -94,20 +94,31 @@ export const QUANTT_CHAIN_IDS: Readonly<Record<QuanttChain, number>> = {
 export const QUANTT_CHAIN_LABELS: Readonly<Record<QuanttChain, string>> = {
   arbitrum: 'Arbitrum', base: 'Base', lithosphere: 'Lithosphere Mainnet', bnb: 'BNB Chain',
 };
+/** Lithosphere's test networks (Makalu, Kamet): what Quantts reports while it
+ *  still runs a Lithosphere agent off Mainnet. */
+const LITHOSPHERE_TESTNET_IDS: readonly number[] = [700777, 900523];
+
+/** An asset sent to an agent's wallet: its quote asset, or LITHO. */
+export type QuanttFundingAsset = QuanttQuoteAsset | 'LITHO';
 
 export interface QuanttFundingOption {
-  sym: QuanttQuoteAsset;
+  sym: QuanttFundingAsset;
   chain: QuanttChain;
   chainId: number;
   label: string;
 }
 
+/** Lithosphere Mainnet has no USDC or USDT: agents there are funded with LAX
+ *  and LITHO, which also pays the agent wallet's gas (client, 2026-10-04). */
+const LITHOSPHERE_FUNDING: readonly QuanttFundingAsset[] = ['LAX', 'LITHO'];
+
 /** What an agent's wallet is funded with: its quote asset (default USDC) on
- *  each chain it trades, in the agent's own order (Magma deposits assume USDC
- *  is already in the agent wallet). Funds sent on another network never reach
- *  the agent, so "Send to this address" must open on one of these. Reads only `chains` and `quoteAsset`, so it works on
- *  records toAgentConfig() rejects; empty when no known chain is named, and
- *  callers must not guess a network then. */
+ *  each chain it trades — LAX and LITHO on Lithosphere Mainnet — in the
+ *  agent's own order (Magma deposits assume the asset is already in the agent
+ *  wallet). Funds sent on another network never reach the agent, so "Send to
+ *  this address" must open on one of these. Reads only `chains` and
+ *  `quoteAsset`, so it works on records toAgentConfig() rejects; empty when no
+ *  known chain is named, and callers must not guess a network then. */
 export function agentFundingOptions(raw: unknown): QuanttFundingOption[] {
   if (!raw || typeof raw !== 'object') return [];
   const top = raw as Record<string, unknown>;
@@ -116,7 +127,58 @@ export function agentFundingOptions(raw: unknown): QuanttFundingOption[] {
   const sym: QuanttQuoteAsset = oneOf(QUANTT_QUOTE_ASSETS, quote) ? quote : 'USDC';
   const named = Array.isArray(o.chains) ? o.chains : typeof o.chain === 'string' ? [o.chain] : [];
   const chains = [...new Set(named.filter((c): c is QuanttChain => oneOf(QUANTT_CHAINS, c)))];
-  return chains.map((chain) => ({ sym, chain, chainId: QUANTT_CHAIN_IDS[chain], label: QUANTT_CHAIN_LABELS[chain] }));
+  return chains.flatMap((chain) => (chain === 'lithosphere' ? LITHOSPHERE_FUNDING : [sym]).map((s) => ({
+    sym: s, chain, chainId: QUANTT_CHAIN_IDS[chain], label: QUANTT_CHAIN_LABELS[chain],
+  })));
+}
+
+/** The network Quantts says it runs an agent's wallet on. The live
+ *  GET /v1/agents/{id}/wallet returns chainKey / chainName / chainId /
+ *  chainIsTestnet (not in the 0.4.0 spec), possibly under `wallet`. null when
+ *  it names no chain id. */
+export interface QuanttWalletNetwork {
+  /** Quantts chain key ('lithosphere', 'base', …), when reported. */
+  chain?: string;
+  chainId: number;
+  name?: string;
+  testnet: boolean;
+}
+
+export function agentWalletNetwork(raw: unknown): QuanttWalletNetwork | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const top = raw as Record<string, unknown>;
+  const inner = (top.wallet && typeof top.wallet === 'object') ? (top.wallet as Record<string, unknown>) : {};
+  const get = (...keys: string[]) => keys.map((k) => inner[k] ?? top[k]).find((v) => v !== undefined && v !== null);
+  const rawId = get('chainId', 'chain_id');
+  const chainId = typeof rawId === 'number' ? rawId
+    : typeof rawId === 'string' && /^(?:0x[0-9a-f]+|\d+)$/i.test(rawId.trim()) ? Number(rawId.trim()) : NaN;
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) return null;
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  return {
+    chain: text(get('chainKey', 'chain_key'))?.toLowerCase(),
+    chainId,
+    name: text(get('chainName', 'chain_name')),
+    testnet: get('chainIsTestnet', 'chain_is_testnet') === true,
+  };
+}
+
+/** Why `option` can't be funded yet, or null when it can. Quantts watches each
+ *  chain's deposits on one network; when it reports a different one for the
+ *  option's chain — Lithosphere on the Makalu testnet (700777) while the wallet
+ *  sends on Mainnet (9005) — a transfer would land where Quantts never looks,
+ *  so the deposit has to wait until Quantts moves the agent. */
+export function agentFundingBlock(
+  option: Pick<QuanttFundingOption, 'chain' | 'chainId' | 'label'> | undefined, wallet: unknown,
+): string | null {
+  const net = agentWalletNetwork(wallet);
+  if (!option || !net || net.chainId === option.chainId) return null;
+  // Which chain the reported network belongs to: Quantts' own key, else its id.
+  const chain = net.chain
+    ?? (LITHOSPHERE_TESTNET_IDS.includes(net.chainId) ? 'lithosphere'
+      : QUANTT_CHAINS.find((c) => QUANTT_CHAIN_IDS[c] === net.chainId));
+  if (chain !== option.chain) return null;
+  const where = `${net.name ?? 'another network'} (${net.testnet ? 'testnet, ' : ''}chain ${net.chainId})`;
+  return `Quantts still runs this agent on ${where}, so a deposit on ${option.label} wouldn't be credited. Quantts has to move the agent to ${option.label} first.`;
 }
 
 /** Human-readable problems with an update body, checked against the PATCH

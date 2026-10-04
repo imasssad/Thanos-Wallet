@@ -31,7 +31,7 @@ import { quantt, quanttSignIn, forgetQuanttSession } from './quantt';
 import { isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from './asset-visibility';
 import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState, QuanttStrategy, QuanttChain, QuanttFundingOption } from '@thanos/sdk-core';
 import {
-  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, agentFundingOptions,
+  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, agentFundingOptions, agentFundingBlock,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
   startIdleLock, idleExpired, readAutoLockMinutes, writeAutoLockMinutes, AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE,
   checkRecipient, copySecretToClipboard, passwordProblem,
@@ -948,9 +948,11 @@ function QuanttOverviewTab({ rows, extra, loadErr, status, halted, toggling, tog
 /** Wallet address + balances (GET /v1/agents/:id/wallet), reusing the
  *  Receive modal's QR + copy pattern. */
 /** The token + network that fund this agent; "Send to this address" opens on
- *  the chosen one. Several when the agent trades on more than one chain. */
-function QuanttFundTarget({ funding, pick, onPick }: {
-  funding: QuanttFundingOption[] | null; pick: number; onPick: (i: number) => void;
+ *  the chosen one. Several when the agent trades on more than one chain.
+ *  `block` (agentFundingBlock) replaces the instruction when Quantts still
+ *  runs the agent on another network — the caller disables Send then. */
+function QuanttFundTarget({ funding, pick, onPick, block }: {
+  funding: QuanttFundingOption[] | null; pick: number; onPick: (i: number) => void; block: string | null;
 }) {
   if (!funding) return <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Checking which network this agent uses…</div>;
   if (funding.length === 0) {
@@ -965,10 +967,16 @@ function QuanttFundTarget({ funding, pick, onPick }: {
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.5, textAlign: 'left' }}>
       {funding.length > 1 && (
         <select className="field-select" aria-label="Network to fund the agent on" value={pick} onChange={e => onPick(Number(e.target.value))}>
-          {funding.map((o, i) => <option key={o.chain} value={i}>{o.sym} on {o.label}</option>)}
+          {funding.map((o, i) => <option key={`${o.chain}:${o.sym}`} value={i}>{o.sym} on {o.label}</option>)}
         </select>
       )}
-      <span>Fund it with <b>{f.sym}</b> on <b>{f.label}</b> — anything sent on another network won&apos;t reach the agent.</span>
+      {block ? (
+        <div role="alert" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 10, padding: 10, color: '#f59e0b' }}>
+          ⚠ {block}
+        </div>
+      ) : (
+        <span>Fund it with <b>{f.sym}</b> on <b>{f.label}</b> — anything sent on another network won&apos;t reach the agent.</span>
+      )}
     </div>
   );
 }
@@ -979,6 +987,7 @@ function QuanttWalletTab({ agentId, wallet, funding, onOpenSend }: {
 }) {
   const [pick, setPick] = useState(0);
   const fund = funding?.[pick] ?? funding?.[0];
+  const block = agentFundingBlock(fund, wallet);
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
   const address = qWalletAddress(wallet);
@@ -1029,8 +1038,8 @@ function QuanttWalletTab({ agentId, wallet, funding, onOpenSend }: {
       )}
       {onOpenSend && (
         <>
-          <div style={{ width: '100%', marginTop: 10 }}><QuanttFundTarget funding={funding} pick={pick} onPick={setPick}/></div>
-          <button className="btn-primary" onClick={() => onOpenSend(address, fund?.sym ?? 'USDC', fund?.chainId)} disabled={!funding}>
+          <div style={{ width: '100%', marginTop: 10 }}><QuanttFundTarget funding={funding} pick={pick} onPick={setPick} block={block}/></div>
+          <button className="btn-primary" onClick={() => onOpenSend(address, fund?.sym ?? 'USDC', fund?.chainId)} disabled={!funding || !!block}>
             Send to this address
           </button>
         </>
@@ -1214,6 +1223,7 @@ function QuanttDepositTab({ agentId, agentName, wallet, funding, onOpenSend }: {
   const address = qWalletAddress(wallet);
   const [pick, setPick] = useState(0);
   const fund = funding?.[pick] ?? funding?.[0];
+  const block = agentFundingBlock(fund, wallet);
   const [confirming, setConfirming] = useState(false);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -1242,8 +1252,8 @@ function QuanttDepositTab({ agentId, agentName, wallet, funding, onOpenSend }: {
         {address ? (
           <>
             <div className="addr-box" style={{ fontSize: 10, marginBottom: 10 }}><HiAddr value={address} full/></div>
-            <div style={{ marginBottom: 10 }}><QuanttFundTarget funding={funding} pick={pick} onPick={setPick}/></div>
-            <button className="btn-primary" onClick={() => onOpenSend?.(address, fund?.sym ?? 'USDC', fund?.chainId)} disabled={!onOpenSend || !funding}>
+            <div style={{ marginBottom: 10 }}><QuanttFundTarget funding={funding} pick={pick} onPick={setPick} block={block}/></div>
+            <button className="btn-primary" onClick={() => onOpenSend?.(address, fund?.sym ?? 'USDC', fund?.chainId)} disabled={!onOpenSend || !funding || !!block}>
               Send to this address
             </button>
           </>

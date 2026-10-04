@@ -89,6 +89,7 @@ import {
 } from './lib/quantt';
 import {
   toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES, type QuanttAgentConfig,
+  agentFundingBlock, agentWalletNetwork, QUANTT_CHAIN_LABELS as QUANTT_FUNDING_LABELS,
 } from './lib/quantt-agent-config';
 import {
   createVault, openVault, openVaultWithKey,
@@ -2205,15 +2206,16 @@ const QUANTT_CHAIN_META: Record<QuanttChain, { chainId: number; native: string }
   lithosphere: { chainId: 9005, native: 'LITHO' }, bnb: { chainId: 56, native: 'BNB' },
 };
 interface QuanttDepositAsset { sym: string; chain: QuanttChain; chainId: number }
-/** Assets a user can fund an agent with: the agent's quote asset first, then
- *  stablecoins and the chain's native coin, on each chain the agent trades. */
+/** Assets a user can fund an agent with, on each chain it trades: the agent's
+ *  quote asset first, then stablecoins and the chain's native coin — on
+ *  Lithosphere Mainnet, which has no stablecoins, LAX and LITHO (LITHO also
+ *  pays the agent's gas). Empty when no known chain is named: never guess. */
 function quanttDepositAssets(chains: string[], quoteAsset?: string): QuanttDepositAsset[] {
-  const valid = chains.filter((c): c is QuanttChain => c in QUANTT_CHAIN_META);
-  const list = valid.length ? valid : (['lithosphere'] as QuanttChain[]);
+  const valid = chains.filter((c): c is QuanttChain => (QUANTT_CHAINS as string[]).includes(c));
   const out: QuanttDepositAsset[] = [];
-  for (const chain of list) {
+  for (const chain of valid) {
     const { chainId, native } = QUANTT_CHAIN_META[chain];
-    const syms = chain === 'lithosphere' ? [quoteAsset ?? 'USDC', 'LAX', native] : [quoteAsset ?? 'USDC', 'USDC', 'USDT', native];
+    const syms = chain === 'lithosphere' ? ['LAX', native] : [quoteAsset ?? 'USDC', 'USDC', 'USDT', native];
     for (const sym of syms) if (!out.some((a) => a.sym === sym && a.chain === chain)) out.push({ sym, chain, chainId });
   }
   return out;
@@ -2327,6 +2329,15 @@ function QuanttKillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
   return (
     <View accessibilityRole="alert" style={{ backgroundColor: 'rgba(245,158,11,0.12)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10 }}>
       <Text style={{ color: '#f59e0b', fontSize: 12, lineHeight: 17 }}>{killSwitchMessage(ks)}</Text>
+    </View>
+  );
+}
+
+/** Why an agent can't be funded on a network yet (agentFundingBlock). */
+function QuanttDepositBlockNote({ text }: { text: string }) {
+  return (
+    <View accessibilityRole="alert" style={{ backgroundColor: 'rgba(245,158,11,0.12)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10, width: '100%' }}>
+      <Text style={{ color: '#f59e0b', fontSize: 12, lineHeight: 17 }}>{text}</Text>
     </View>
   );
 }
@@ -2740,7 +2751,12 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
 
   const name = summary?.name ?? qStr(qAsObj(raw), 'name') ?? 'Agent';
   const walletAddress = qWalletAddress(wallet);
-  const agentChains = (() => { const o = qAsObj(raw); const arr = o && Array.isArray(o.chains) ? (o.chains as unknown[]).filter((x): x is string => typeof x === 'string') : []; const one = qStr(o, 'chain', 'network') ?? summary?.chain; return arr.length ? arr : one ? [one] : []; })();
+  const agentChains = (() => { const o = qAsObj(raw); const arr = o && Array.isArray(o.chains) ? (o.chains as unknown[]).filter((x): x is string => typeof x === 'string') : []; const one = qStr(o, 'chain', 'network') ?? summary?.chain ?? agentWalletNetwork(wallet)?.chain; return arr.length ? arr : one ? [one] : []; })();
+  const depositAssets = quanttDepositAssets(agentChains, qStr(qAsObj(raw), 'quoteAsset', 'quote_asset'));
+  // Quantts may still run the agent on another network (Lithosphere on Makalu):
+  // a deposit sent on Mainnet then wouldn't be credited.
+  const depositBlock = (a: QuanttDepositAsset | undefined) =>
+    a ? agentFundingBlock({ chain: a.chain, chainId: a.chainId, label: QUANTT_FUNDING_LABELS[a.chain] }, wallet) : null;
 
   const confirmSetState = (next: QuanttRuntimeState) => {
     const verb = next === 'active' ? 'resume' : next === 'paused' ? 'pause' : 'stop';
@@ -2862,7 +2878,7 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
           )}
 
           {tab === 'wallet' && (
-            <QuanttWalletTab C={C} wallet={wallet} address={walletAddress} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)}/>
+            <QuanttWalletTab C={C} wallet={wallet} address={walletAddress} notice={depositAssets.map(depositBlock).find(Boolean) ?? null} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)}/>
           )}
 
           {tab === 'decisions' && (
@@ -2948,7 +2964,7 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
         )}
       </SafeAreaView>
 
-      {showDeposit && <QuanttDepositModal agentId={agentId} agentName={name} address={walletAddress} assets={quanttDepositAssets(agentChains, qStr(qAsObj(raw), 'quoteAsset', 'quote_asset'))} onClose={() => { setShowDeposit(false); reload(); }}/>}
+      {showDeposit && <QuanttDepositModal agentId={agentId} agentName={name} address={walletAddress} assets={depositAssets} blockFor={depositBlock} onClose={() => { setShowDeposit(false); reload(); }}/>}
       {showWithdraw && <QuanttWithdrawModal agentId={agentId} agentName={name} onClose={() => { setShowWithdraw(false); reload(); }}/>}
     </Modal>
   );
@@ -2956,8 +2972,10 @@ function QuanttAgentManageModal({ agentId, summary, onClose, onChanged }: {
 
 /** Wallet tab — the agent's OWN deposit address + balances, with the same
  *  copy/QR pattern the app's Receive screen uses. */
-function QuanttWalletTab({ C, wallet, address, onDeposit, onWithdraw }: {
+function QuanttWalletTab({ C, wallet, address, notice, onDeposit, onWithdraw }: {
   C: ReturnType<typeof useColors>; wallet: unknown; address: string | undefined;
+  /** Why the agent can't be funded yet (agentFundingBlock), if so. */
+  notice: string | null;
   onDeposit: () => void; onWithdraw: () => void;
 }) {
   const [qrSvg, setQrSvg] = useState<string | null>(null);
@@ -3017,6 +3035,7 @@ function QuanttWalletTab({ C, wallet, address, onDeposit, onWithdraw }: {
           Agent balances are temporarily unavailable from Quantts. Your funds are unaffected — check again shortly.
         </Text>
       )}
+      {notice && <QuanttDepositBlockNote text={notice}/>}
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, width: '100%' }}>
         <Pressable onPress={onDeposit} style={({ pressed }) => [{ flex: 1, alignItems: 'center', paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue }, pressed && { opacity: 0.85 }]}>
@@ -3295,10 +3314,17 @@ function styles_quanttInput(C: ReturnType<typeof useColors>) {
  *  existing Send screen via SendNavCtx rather than a new send mechanism.
  *  Leg B just tells Quantts to recognize/credit that transfer; it moves no
  *  funds itself, which is why the two steps are visually separated. */
-function QuanttDepositModal({ agentId, agentName, address, assets, onClose }: {
-  agentId: string; agentName: string; address: string | undefined; assets: QuanttDepositAsset[]; onClose: () => void;
+function QuanttDepositModal({ agentId, agentName, address, assets, blockFor, onClose }: {
+  agentId: string; agentName: string; address: string | undefined; assets: QuanttDepositAsset[];
+  /** Why an asset can't be deposited yet (agentFundingBlock), or null. */
+  blockFor: (a: QuanttDepositAsset | undefined) => string | null;
+  onClose: () => void;
 }) {
-  const [asset, setAsset] = useState<QuanttDepositAsset>(assets[0]);
+  // The pick, while it's still on offer; else the first asset (the list fills
+  // in once the agent record loads).
+  const [picked, setAsset] = useState<QuanttDepositAsset | undefined>(undefined);
+  const asset = (picked && assets.find((a) => a.sym === picked.sym && a.chain === picked.chain)) ?? assets[0];
+  const block = blockFor(asset);
   const [assetOpen, setAssetOpen] = useState(false);
   const C = useColors();
   const goSend = useSendNav();
@@ -3363,6 +3389,10 @@ function QuanttDepositModal({ agentId, agentName, address, assets, onClose }: {
                   <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Done</Text>
                 </Pressable>
               </View>
+            ) : !asset ? (
+              <Text style={{ fontSize: 12, color: C.textMuted, lineHeight: 17 }}>
+                Couldn&apos;t read which network this agent trades on — close and reopen this agent, then try again.
+              </Text>
             ) : (
               <>
 
@@ -3391,8 +3421,12 @@ function QuanttDepositModal({ agentId, agentName, address, assets, onClose }: {
                 )}
 
                 <Text style={[styles_quanttLabel(C), { marginTop: 18 }]}>Step 1 · Send {asset.sym} to the agent</Text>
-                <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 17 }}>Send only {asset.sym} on {QUANTT_CHAIN_LABELS[asset.chain]} to this address.</Text>
-                {address ? (
+                {block ? (
+                  <QuanttDepositBlockNote text={block}/>
+                ) : (
+                  <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 10, lineHeight: 17 }}>Send only {asset.sym} on {QUANTT_CHAIN_LABELS[asset.chain]} to this address.</Text>
+                )}
+                {block ? null : address ? (
                   <View style={{ alignItems: 'center' }}>
                     {qrSvg && <View style={{ backgroundColor: '#fff', padding: 12, borderRadius: 14 }}><SvgXml xml={qrSvg} width={160} height={160}/></View>}
                     <View style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginTop: 10, width: '100%' }}>

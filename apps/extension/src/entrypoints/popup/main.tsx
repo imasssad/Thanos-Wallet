@@ -47,7 +47,7 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput, QuanttFundingOption,
 } from '@thanos/sdk-core';
-import { toAgentConfig, agentFundingOptions, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
+import { toAgentConfig, agentFundingOptions, agentFundingBlock, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -2049,6 +2049,8 @@ function QuanttDepositTab({ agentId, myAddress, funding }: {
   }, [agentId]);
 
   const address = quanttPickStr(quanttAsObj(wallet), ['address', 'walletAddress', 'wallet_address']);
+  // Quantts may still run the agent on another network (Lithosphere on Makalu).
+  const block = agentFundingBlock(fund, wallet);
 
   const confirmDeposit = async () => {
     setConfirming(true); setConfirmResult(null); setConfirmMsg(null);
@@ -2086,13 +2088,20 @@ function QuanttDepositTab({ agentId, myAddress, funding }: {
             : <>
                 {funding.length > 1 && (
                   <select className="field" aria-label="Network to fund the agent on" value={pick} onChange={e => setPick(Number(e.target.value))} style={{ marginBottom: 6 }}>
-                    {funding.map((o, i) => <option key={o.chain} value={i}>{o.sym} on {o.label}</option>)}
+                    {funding.map((o, i) => <option key={`${o.chain}:${o.sym}`} value={i}>{o.sym} on {o.label}</option>)}
                   </select>
                 )}
-                Fund it with <b>{fund.sym}</b> on <b>{fund.label}</b> — anything sent on another network won&apos;t reach the agent.
+                {block ? (
+                  <div role="alert" style={{
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)',
+                    borderRadius: 9, padding: '8px 10px', color: '#f59e0b',
+                  }}>
+                    {block}
+                  </div>
+                ) : <>Fund it with <b>{fund.sym}</b> on <b>{fund.label}</b> — anything sent on another network won&apos;t reach the agent.</>}
               </>}
         </div>
-        <button className="btn-primary" disabled={!address || !funding} onClick={() => setShowSend(true)}>Send to this address</button>
+        <button className="btn-primary" disabled={!address || !funding || !!block} onClick={() => setShowSend(true)}>Send to this address</button>
       </div>
 
       <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
@@ -2110,8 +2119,8 @@ function QuanttDepositTab({ agentId, myAddress, funding }: {
       </div>
 
       {showSend && address && (
-        // The agent's quote asset on the agent's network — a symbol alone
-        // picked whichever USDC came first (e.g. Ethereum for a Base agent).
+        // The picked asset on the agent's network — a symbol alone picked
+        // whichever USDC came first (e.g. Ethereum for a Base agent).
         <SendModal onClose={() => setShowSend(false)} initialChain="evm" initialCoin={fund?.sym ?? 'USDC'} initialChainId={fund?.chainId} initialNetworkLabel={fund?.label} initialTo={address} address={myAddress}/>
       )}
     </div>
