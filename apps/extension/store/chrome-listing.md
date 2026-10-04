@@ -22,7 +22,7 @@ seed, in a single window.
 
 WHAT'S IN THE BOX
 
-• Lithosphere (Makalu) — native LITHO + LEP-100 token transfers, DNNS
+• Lithosphere Mainnet — native LITHO + LEP-100 token transfers, DNNS
   name resolution (.litho names), Ignite DEX swaps, MultX bridge.
 • Bitcoin — BIP-84 P2WPKH addresses, RBF-signaled sends, mempool.space
   fee estimates.

@@ -276,7 +276,7 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
       const spec = params?.[0] as { chainId?: string } | undefined;
       if (!spec?.chainId) throw rpcError(-32602, 'Invalid params');
       if (!dappChainByHex(spec.chainId.toLowerCase())) {
-        throw rpcError(4001, 'Unsupported network. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.');
+        throw rpcError(4001, 'Unsupported network. Thanos supports Lithosphere Mainnet plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche, Linea and networks added in Settings.');
       }
       return null;
     }
@@ -293,7 +293,7 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
       if (!conns[origin]) throw rpcError(4100, 'Unauthorized — call eth_requestAccounts first');
       const target = ((params?.[0] as { chainId?: string })?.chainId ?? '').toLowerCase();
       const chain = dappChainByHex(target);
-      if (!chain) throw rpcError(4902, 'Unrecognized chain. Thanos supports Lithosphere Makalu plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche and Linea.');
+      if (!chain) throw rpcError(4902, 'Unrecognized chain. Thanos supports Lithosphere Mainnet plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche, Linea and networks added in Settings.');
       const hex = toChainHex(chain.chainId);
       await browser.storage.local.set({ chain_id_hex: hex });
       broadcastEvent('chainChanged', hex);

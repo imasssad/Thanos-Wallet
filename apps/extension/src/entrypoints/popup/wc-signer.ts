@@ -192,7 +192,7 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       if (!chain) {
         throw new WcSignerError(
           method === 'wallet_switchEthereumChain' ? 4902 : 4001,
-          'Unsupported network. Thanos supports Lithosphere plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche, Linea and networks added in Settings.',
+          'Unsupported network. Thanos supports Lithosphere Mainnet plus Ethereum, BNB Chain, Polygon, Base, Arbitrum, Optimism, Avalanche, Linea and networks added in Settings.',
         );
       }
       await browser.storage.local.set({ chain_id_hex: toChainHex(chain.chainId) });

@@ -60,7 +60,7 @@ App-access/review-access issue, not a licensing one.)
 
 **Option B — Import the demo wallet (fastest; skips the quiz)**
 1. Launch the app. On the Welcome screen, tap **"I already have a wallet"**.
-2. On the **"Import wallet"** chooser, tap the **"Private key"** card (labeled *"Single EVM account (Makalu) · no BTC/SOL/Cosmos"*).
+2. On the **"Import wallet"** chooser, tap the **"Private key"** card (labeled *"Single EVM account · no BTC/SOL/Cosmos"*).
 3. On **"Import private key"**, use the temporary reviewer key supplied through the private Play Console access channel. Do not commit wallet keys to this repository. The **"Continue"** button stays disabled until a valid 64-character hex key is entered; once accepted, tap **"Continue"**.
 4. On **"Set a password"**, enter an 8+ character password in **"Password"** and the identical value in **"Confirm password"** (example: `Review1234`). This password is created locally on the device — it is not a credential we hold. Tap **"Import wallet"** (button briefly shows **"Encrypting…"**).
 5. You land on the wallet **Home**. Dismiss the one-time **"Welcome to Thanos Wallet"** modal by tapping **"Got it"**. Send, Receive, and balances are now fully accessible. No biometric prompt appears during this flow.
@@ -78,19 +78,20 @@ App-access/review-access issue, not a licensing one.)
 │  Derived address: shown in-app after import; note it next to the key in    │
 │  Play Console so it can be topped up.                                       │
 │                                                                              │
-│  Network: Lithosphere Makalu (chain 700777) — the app's fixed default.       │
+│  Network: Lithosphere Mainnet (chain 9005) — the app's default.              │
 │  Generate a fresh throwaway key for each review cycle.                       │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
 > **RECOMMENDED — fund the demo wallet before submitting.** Send a small amount of
-> **Makalu (LITHO) native token** to the reviewer key's address (noted in Play Console)
+> **LITHO on Lithosphere Mainnet (chain 9005)** to the reviewer key's address (noted in Play Console)
 > so the reviewer sees a **non-zero balance** and can actually exercise **Send**.
 > An **empty** demo wallet is the single most common cause of a *repeat* rejection:
 > the reviewer imports it, sees 0 balance and a greyed-out Send, and concludes
 > "functionality still not accessible." Keep it topped up — Google requires the
-> access be reusable and valid at all times. (The app opens on Makalu by default,
-> so funding on Makalu is what the reviewer will see — no wrong-network trap.)
+> access be reusable and valid at all times. (The app opens on Lithosphere Mainnet.
+> Makalu is no longer built in, so LITHO sent on Makalu would not show at all —
+> fund on Mainnet.)
 >
 > Keep the key inside Play Console's App access fields only — don't host it at a
 > URL (a "private" gist or file link is readable by anyone who has the link).
