@@ -10130,8 +10130,12 @@ function GlassAura({ dark }: { dark: boolean }) {
   );
 }
 
-/** Height the floating topbar occupies (padding 12×2 + the 42px chip). */
-const TOPBAR_SPACE = 66;
+/** How far the header row sits below the status bar, on top of its own
+ *  12px padding — lowered 10px (client 2026-10-08). TopFade grows with it,
+ *  so the dark gradient still covers the buttons. */
+const TOPBAR_DROP = 10;
+/** Height the floating topbar occupies (padding 12×2 + the drop + the 42px chip). */
+const TOPBAR_SPACE = 66 + TOPBAR_DROP;
 /** Where tab-screen content starts at rest (styles.underTopbarContent). */
 const TOPBAR_CONTENT_TOP = TOPBAR_SPACE + 16;
 /** Screens whose content scrolls under the floating header and the floating
@@ -10158,7 +10162,7 @@ function makeStyles(C: Colors) {
        TopFade renders the soft top shadow behind them (client 2026-10-02). */
     topbar: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: 16, paddingVertical: 12,
+      paddingHorizontal: 16, paddingTop: 12 + TOPBAR_DROP, paddingBottom: 12,
       backgroundColor: 'transparent',
       zIndex: 10,
     },
