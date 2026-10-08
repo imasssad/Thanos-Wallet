@@ -29,6 +29,7 @@ const SEQUENCE_ERR = /invalid nonce|invalid sequence|account sequence mismatch|n
 async function sendWithNonceRetry(
   signer: Signer,
   send: (overrides?: { nonce: number }) => Promise<{ wait: () => Promise<{ status?: number | null } | null>; hash: string }>,
+  onSent?: (hash: string) => void | Promise<void>,
 ): Promise<{ hash: string; status: number }> {
   let tx;
   try {
@@ -40,6 +41,7 @@ async function sendWithNonceRetry(
     const nonce = await signer.provider!.getTransactionCount(await signer.getAddress(), 'pending');
     tx = await send({ nonce });
   }
+  await onSent?.(tx.hash);
   const receipt = await tx.wait();
   if (!receipt || receipt.status !== 1) throw new MultXAdapterError('SOURCE_TX_FAILED', 'The source-chain transaction failed.');
   return { hash: tx.hash, status: 1 };
@@ -52,13 +54,17 @@ export interface ApproveAndLockParams {
   amountBaseUnits:     bigint;
   destinationChainId:  number;
   onStep?: (step: 'checking' | 'approving' | 'locking') => void;
+  /** Called with the lock hash once it's broadcast, before its receipt —
+   *  so the caller can persist it and keep tracking the transfer even if
+   *  the app closes while the lock confirms. */
+  onLockSent?: (sourceTxHash: string) => void | Promise<void>;
 }
 
 /** Runs the balance/support pre-flight, approves if needed, then locks.
  *  Returns the lock transaction hash — the value every downstream record
  *  (InternalMultXTransfer.sourceTxHash) is keyed on. */
 export async function approveAndLock(params: ApproveAndLockParams): Promise<{ sourceTxHash: string }> {
-  const { signer, tokenAddress, bridgeAddress, amountBaseUnits, destinationChainId, onStep } = params;
+  const { signer, tokenAddress, bridgeAddress, amountBaseUnits, destinationChainId, onStep, onLockSent } = params;
   const owner = await signer.getAddress();
 
   const tokenC  = new Contract(tokenAddress, TOKEN_ABI, signer);
@@ -88,6 +94,7 @@ export async function approveAndLock(params: ApproveAndLockParams): Promise<{ so
   try {
     const lock = await sendWithNonceRetry(signer, (ov) =>
       bridgeC.lockTokens(tokenAddress, amountBaseUnits, destinationChainId, ov ?? {}) as Promise<{ wait: () => Promise<{ status?: number | null } | null>; hash: string }>,
+      onLockSent,
     );
     return { sourceTxHash: lock.hash };
   } catch (err) {

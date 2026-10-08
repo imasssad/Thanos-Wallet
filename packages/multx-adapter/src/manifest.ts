@@ -17,6 +17,9 @@ export async function loadManifest(opts: {
   expectedSha256: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** SHA-256 of a UTF-8 string as lowercase hex. Defaults to WebCrypto;
+   *  runtimes without `crypto.subtle` (React Native) pass their own. */
+  sha256Hex?: (text: string) => Promise<string>;
 }): Promise<MultXManifest> {
   const { manifestUrl, expectedSha256, timeoutMs = 8_000 } = opts;
   const doFetch = opts.fetchImpl ?? fetch;
@@ -45,7 +48,7 @@ export async function loadManifest(opts: {
     clearTimeout(timer);
   }
 
-  const actualSha256 = await sha256Hex(raw);
+  const actualSha256 = await (opts.sha256Hex ?? sha256Hex)(raw);
   if (actualSha256.toLowerCase() !== expectedSha256.toLowerCase()) {
     // Integrity mismatch is treated as an attack/corruption signal, not a
     // retryable network error — fail closed, do not fall back to any
@@ -99,6 +102,9 @@ function validateManifest(v: unknown): MultXManifest {
 }
 
 async function sha256Hex(text: string): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new MultXAdapterError('MANIFEST_INVALID', 'No SHA-256 implementation available to check the manifest.');
+  }
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');

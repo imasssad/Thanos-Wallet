@@ -7,7 +7,7 @@
  * historical bridge or token address is hard-coded."
  */
 
-export type PartnerId = 'ignite' | 'magmadex' | 'quantts' | 'kajlabs';
+export type PartnerId = 'ignite' | 'magmadex' | 'quantts' | 'kajlabs' | 'thanos';
 
 /** The normalized record every integration persists, per the integration plan. */
 export interface InternalMultXTransfer {

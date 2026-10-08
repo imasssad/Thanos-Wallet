@@ -63,10 +63,10 @@ npm install ethers@^6   # peer dependency — you likely already have this
 ## Usage
 
 ```ts
-import { MultXAdapter } from 'multx-adapter';
+import { MultXAdapter, verifyErc20ReleaseViaRpc } from 'multx-adapter';
 
 const adapter = new MultXAdapter({
-  integration: 'ignite',                       // or 'magmadex' | 'quantts' | 'kajlabs'
+  integration: 'ignite',                       // or 'magmadex' | 'quantts' | 'kajlabs' | 'thanos'
   enabled: process.env.MULTX_ENABLED === 'true', // defaults to disabled — see env template below
   manifestUrl: process.env.MULTX_MANIFEST_URL!,
   manifestSha256: process.env.MULTX_MANIFEST_SHA256!,
@@ -81,18 +81,25 @@ const record = await adapter.transfer({
   destinationChainId: 900523,
   tokenSymbol: 'wLITHO',
   amountBaseUnits: '100000000000000000000', // base units — never a float
-  recipient: userAddress,
-  verifyDestinationReceipt: async ({ destinationChainId, destinationTxHash, expectedRecipient, expectedAmountBaseUnits, expectedTokenAddress }) => {
-    // Read the destination chain yourself and confirm the receipt really
-    // matches — do not just trust that the bridge API said "completed".
-    return myOwnDestinationChainCheck({ destinationChainId, destinationTxHash, expectedRecipient, expectedAmountBaseUnits, expectedTokenAddress });
-  },
+  recipient: userAddress,          // must be the signer: lockTokens releases to the sender
+  // Reads the destination chain itself: the release must have succeeded and
+  // emitted a Transfer of exactly this amount of the route's token to the user.
+  // Supply your own check instead if you have one — never trust "completed".
+  verifyDestinationReceipt: verifyErc20ReleaseViaRpc({ rpcUrlFor: (chainId) => myRpcUrls[chainId] }),
 });
 
 if (record.status === 'RELEASED') {
   // only now is it safe to credit anything
 }
 ```
+
+`persist` receives the record at every step, including the lock hash as soon
+as the lock is broadcast. After a restart, pass any record still in
+`FINALIZING`, `SIGNING` or `REVIEW` to `adapter.resume(record, verify)` to
+finish tracking it. A 404 from `/bridge/status/:txHash` means the bridge
+hasn't indexed the lock yet and is polled through; the release hash is read
+from `releaseTxHash`. React Native has no WebCrypto: pass `sha256Hex` in the
+config.
 
 ### Environment template (from the integration plan)
 
@@ -116,8 +123,8 @@ package on purpose — it's each product's own responsibility.
 
 ## Status
 
-`adapter.ts`, `manifest.ts`, `preflight.ts`, `bridge.ts`, `status.ts`, and
-`errors.ts` are implemented and typechecked. Still blocked on (see the
+`adapter.ts`, `manifest.ts`, `preflight.ts`, `bridge.ts`, `status.ts`,
+`verify.ts` and `errors.ts` are implemented, typechecked and tested. Still blocked on (see the
 integration plan's "Inputs still required"):
 
 - Autha's accepted release identity → a real manifest to point at

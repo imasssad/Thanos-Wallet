@@ -5,8 +5,23 @@ import { approveAndLock } from './bridge.js';
 import { pollAndReconcile, type VerifyDestinationReceipt } from './status.js';
 import { classifyError, MultXAdapterError } from './errors.js';
 import type {
-  InternalMultXTransfer, MultXManifest, PartnerId, PersistTransfer, TelemetrySink,
+  InternalMultXTransfer, MultXErrorCode, MultXManifest, PartnerId, PersistTransfer, TelemetrySink,
 } from './types.js';
+
+/** Errors raised before any lock transaction left the wallet. */
+const NOTHING_SENT: ReadonlySet<MultXErrorCode> = new Set([
+  'WALLET_REJECTED', 'INSUFFICIENT_BALANCE', 'INSUFFICIENT_GAS', 'UNSUPPORTED_TOKEN', 'EXECUTION_REVERTED', 'NONCE_MISMATCH',
+]);
+
+/** Where a transfer stands after an error. FAILED only when no tokens can
+ *  have been locked: the lock was never broadcast and the error proves it,
+ *  or the lock was mined and reverted. Anything else (a lock sent but
+ *  unconfirmed, a status-API error mid-poll, a network error during send)
+ *  is REVIEW, which a later resume() can still settle. */
+function settledStatusAfterError(sourceTxHash: string, code: MultXErrorCode): InternalMultXTransfer['status'] {
+  if (!sourceTxHash) return NOTHING_SENT.has(code) ? 'FAILED' : 'REVIEW';
+  return code === 'EXECUTION_REVERTED' || code === 'SOURCE_TX_FAILED' ? 'FAILED' : 'REVIEW';
+}
 
 export interface MultXAdapterConfig {
   integration: PartnerId;
@@ -18,6 +33,8 @@ export interface MultXAdapterConfig {
   persist: PersistTransfer;
   onEvent?: TelemetrySink;
   fetchImpl?: typeof fetch;
+  /** SHA-256 for the manifest check, for runtimes without WebCrypto. */
+  sha256Hex?: (text: string) => Promise<string>;
 }
 
 export interface TransferParams {
@@ -62,9 +79,16 @@ export class MultXAdapter {
       manifestUrl: this.config.manifestUrl,
       expectedSha256: this.config.manifestSha256,
       fetchImpl: this.config.fetchImpl,
+      sha256Hex: this.config.sha256Hex,
     });
     this.manifestCache = manifest;
     return manifest;
+  }
+
+  /** The approved routes a UI may offer — none unless the feature is on
+   *  (see isEnabled), so an app never shows a route it would refuse. */
+  routes(): MultXManifest['routes'] {
+    return this.isEnabled() && this.manifestCache ? this.manifestCache.routes : [];
   }
 
   /** True only when BOTH this partner app's own flag is on AND the last-
@@ -101,6 +125,12 @@ export class MultXAdapter {
 
     this.emit({ type: 'preflight', integration: this.config.integration, integrationRequestId: params.integrationRequestId });
     await preflightNetwork(params.signer, route.sourceChainId);
+    // lockTokens takes no recipient: the bridge releases to the locking
+    // address on the destination chain. Refuse rather than imply otherwise.
+    const signerAddress = await params.signer.getAddress();
+    if (params.recipient.toLowerCase() !== signerAddress.toLowerCase()) {
+      throw new MultXAdapterError('UNSUPPORTED_ROUTE', 'Bridged funds arrive at your own address on the destination chain; a different recipient isn’t supported.');
+    }
 
     const now = new Date().toISOString();
     let record: InternalMultXTransfer = {
@@ -111,7 +141,7 @@ export class MultXAdapter {
       sourceChainId: route.sourceChainId,
       sourceBridge: route.sourceBridge,
       sourceToken: token.sourceAddress,
-      userAddress: await params.signer.getAddress(),
+      userAddress: signerAddress,
       amountBaseUnits: amount.toString(),
       destinationChainId: route.destinationChainId,
       destinationBridge: route.destinationBridge,
@@ -137,6 +167,12 @@ export class MultXAdapter {
           integrationRequestId: params.integrationRequestId,
           meta: { step },
         }),
+        // Keep the hash the moment the lock is broadcast, so a transfer the
+        // app loses track of mid-confirmation can still be resumed.
+        onLockSent: async (hash) => {
+          record = { ...record, sourceTxHash: hash, status: 'FINALIZING', updatedAt: new Date().toISOString() };
+          await this.config.persist(record).catch(() => { /* re-persisted below */ });
+        },
       });
 
       record = { ...record, sourceTxHash, status: 'FINALIZING', updatedAt: new Date().toISOString() };
@@ -151,6 +187,7 @@ export class MultXAdapter {
         expectedRecipient: record.userAddress,
         expectedAmountBaseUnits: amount,
         verifyDestinationReceipt: params.verifyDestinationReceipt,
+        fetchImpl: this.config.fetchImpl,
         onStep: (status) => {
           if (status === 'signing' || status === 'signed' || status === 'locked') {
             record = { ...record, status: 'SIGNING', updatedAt: new Date().toISOString() };
@@ -176,7 +213,7 @@ export class MultXAdapter {
       return record;
     } catch (err) {
       const classified = classifyError(err);
-      record = { ...record, status: 'REVIEW', updatedAt: new Date().toISOString() };
+      record = { ...record, status: settledStatusAfterError(record.sourceTxHash, classified.code), updatedAt: new Date().toISOString() };
       await this.config.persist(record).catch(() => { /* persistence failure is logged by the caller's own emit path */ });
       this.emit({
         type: 'error',
@@ -186,5 +223,43 @@ export class MultXAdapter {
       });
       throw classified;
     }
+  }
+
+  /**
+   * Continue a transfer persisted mid-flight — the app closed after the lock
+   * (FINALIZING / SIGNING), or a REVIEW that may have settled since. Polls
+   * and reconciles exactly like transfer(), against the record's own route
+   * values rather than today's manifest, and persists the outcome.
+   */
+  async resume(
+    record: InternalMultXTransfer,
+    verifyDestinationReceipt: VerifyDestinationReceipt,
+  ): Promise<InternalMultXTransfer> {
+    if (!record.sourceTxHash || record.status === 'RELEASED' || record.status === 'FAILED') return record;
+    const manifest = await this.loadManifest();
+    const reconciled = await pollAndReconcile({
+      apiUrl: manifest.apiUrl,
+      sourceTxHash: record.sourceTxHash,
+      destinationChainId: record.destinationChainId,
+      destinationTokenAddress: record.destinationToken,
+      expectedRecipient: record.userAddress,
+      expectedAmountBaseUnits: BigInt(record.amountBaseUnits),
+      verifyDestinationReceipt,
+      fetchImpl: this.config.fetchImpl,
+    });
+    const next: InternalMultXTransfer = {
+      ...record,
+      status: reconciled.status,
+      destinationTxHash: reconciled.destinationTxHash ?? record.destinationTxHash,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.config.persist(next);
+    this.emit({
+      type: 'reconcile',
+      integration: this.config.integration,
+      integrationRequestId: record.integrationRequestId,
+      meta: { status: reconciled.status, reason: reconciled.failureReason ?? null, resumed: true },
+    });
+    return next;
   }
 }

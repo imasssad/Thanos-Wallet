@@ -95,4 +95,25 @@ describe('loadManifest', () => {
       fetchImpl: fetchReturning('', false, 503),
     })).rejects.toMatchObject({ code: 'MANIFEST_UNREACHABLE' });
   });
+
+  it('checks the hash with an injected SHA-256 where WebCrypto is missing (React Native)', async () => {
+    const raw = JSON.stringify(VALID_MANIFEST);
+    const injected = vi.fn().mockImplementation(sha256Hex);
+    const manifest = await loadManifest({
+      manifestUrl: 'https://example.com/manifest.json',
+      expectedSha256: (await sha256Hex(raw)).toUpperCase(),
+      fetchImpl: fetchReturning(raw),
+      sha256Hex: injected,
+    });
+    expect(injected).toHaveBeenCalledWith(raw);
+    expect(manifest.tag).toBe('2026.08.1');
+
+    await expect(loadManifest({
+      manifestUrl: 'https://example.com/manifest.json',
+      expectedSha256: await sha256Hex(raw),
+      fetchImpl: fetchReturning(raw),
+      sha256Hex: async () => '0'.repeat(64),
+    })).rejects.toMatchObject({ code: 'MANIFEST_INVALID' });
+  });
 });
+
