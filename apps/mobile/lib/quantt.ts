@@ -612,10 +612,19 @@ const store: SessionStore = {
 
 export const quantt = new QuanttClient({ store });
 
+/** The wallet address the saved Quantt sign-in belongs to. The session stays
+ *  in the keychain across app restarts and locks (client 2026-10-08: no
+ *  reconnecting after every app close), so the app drops it when the active
+ *  account is a different one. */
+const OWNER_KEY = 'quantt_session_addr';
+export async function quanttSessionOwner(): Promise<string | null> {
+  try { return await SecureStore.getItemAsync(OWNER_KEY); } catch { return null; }
+}
+
 /** Drop the Quantt session (stored copy first, then a best-effort server
- *  logout). Called when the wallet locks or is wiped, so a locked phone
- *  keeps no live Quantt login. */
-export function forgetQuanttSession(): Promise<void> {
+ *  logout). Called when the wallet is wiped or the account changes. */
+export async function forgetQuanttSession(): Promise<void> {
+  try { await SecureStore.deleteItemAsync(OWNER_KEY); } catch { /* nothing stored */ }
   return quantt.signOut();
 }
 
@@ -632,7 +641,9 @@ export async function quanttSignIn(seed: string[], accountIdx: number): Promise<
       typed.message,
     );
   };
-  return quantt.signIn(wallet.address, sign);
+  const session = await quantt.signIn(wallet.address, sign);
+  try { await SecureStore.setItemAsync(OWNER_KEY, wallet.address); } catch { /* the session still works */ }
+  return session;
 }
 
 /** Bind (or re-verify) the address withdrawals pay out to, signed inline

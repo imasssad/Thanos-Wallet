@@ -83,7 +83,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Wallet, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
 import {
-  quantt, quanttSignIn, quanttBindWithdrawalAddress, forgetQuanttSession, killSwitchMessage,
+  quantt, quanttSignIn, quanttBindWithdrawalAddress, forgetQuanttSession, quanttSessionOwner, killSwitchMessage,
   type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
   type QuanttStrategy, type QuanttChain, type QuanttDexPreference, type CreateAgentInput,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttTimeframe, type UpdateAgentInput,
@@ -2980,8 +2980,11 @@ function QuanttWalletTab({ C, wallet, address, notice, onDeposit, onWithdraw }: 
   // never surface Quantt's raw internal balance error (e.g. their own RPC URL).
   const walletObj = qAsObj(wallet) ?? {};
   const balanceUnavailable = typeof walletObj.balanceError === 'string' && walletObj.balanceError.length > 0;
+  // Quantts' vault ledger (Magma) failing reaches us as their raw internal
+  // error (e.g. 'magma-auth: challenge failed 403 {"error":"restricted_jurisdiction",…}').
+  const ledgerError = typeof walletObj.magmaLedgerError === 'string' ? walletObj.magmaLedgerError : '';
   const walletDisplay = Object.fromEntries(Object.entries(walletObj).filter(([k, v]) =>
-    !['address', 'walletAddress', 'wallet_address', 'supported', 'balanceError'].includes(k)
+    !['address', 'walletAddress', 'wallet_address', 'supported', 'balanceError', 'magmaLedgerError'].includes(k)
     && !(Array.isArray(v) && v.length === 0)));
   const rows = qEntries(walletDisplay);
 
@@ -3013,6 +3016,13 @@ function QuanttWalletTab({ C, wallet, address, notice, onDeposit, onWithdraw }: 
       {balanceUnavailable && (
         <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 14, textAlign: 'center' }}>
           Agent balances are temporarily unavailable from Quantts. Your funds are unaffected — check again shortly.
+        </Text>
+      )}
+      {ledgerError !== '' && (
+        <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 14, textAlign: 'center', lineHeight: 17 }}>
+          {/restricted_jurisdiction/i.test(ledgerError)
+            ? 'Quantts’ vault (Magma) refused the connection for a restricted jurisdiction, so vault balances can’t load. Quantts has to resolve this.'
+            : 'Quantts’ vault (Magma) is unavailable right now, so vault balances can’t load.'}
         </Text>
       )}
       {notice && <QuanttDepositBlockNote text={notice}/>}
@@ -7902,6 +7912,7 @@ function OnboardingScreen({
     // Also wipe the biometric-protected key — it pointed at the now-
     // deleted vault. Future re-onboarding starts a fresh enrolment.
     await disableBiometricUnlock();
+    void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     setStep('welcome');
     setUnlockPwd('');
     setUnlockErr('');
@@ -9406,12 +9417,18 @@ function App() {
   // set when it's added (Settings → Add network / token).
   useEffect(() => { AsyncStorage.removeItem('thanos.custom_rpc').catch(() => {}); }, []);
 
-  // A locked (or wiped) wallet keeps no live Quantt login: whenever the app
-  // is locked — at launch, on "Lock", auto-lock or Delete wallet — the stored
-  // session goes, with a best-effort server logout (lib/quantt.ts).
+  // The Quantt sign-in stays in the keychain across app restarts and locks
+  // (client 2026-10-08: no "Connect with Thanos" after every app close); the
+  // Quantts screens only open once the wallet is unlocked anyway. It's
+  // dropped when the wallet is reset or deleted, and when the active account
+  // isn't the one that signed in (sessions saved before the owner was
+  // recorded included).
   useEffect(() => {
-    if (!unlocked) void forgetQuanttSession().catch(() => { /* nothing to forget */ });
-  }, [unlocked]);
+    if (!unlocked || !walletAddr) return;
+    void Promise.all([quantt.session(), quanttSessionOwner()]).then(([session, owner]) => {
+      if (session && owner?.toLowerCase() !== walletAddr.toLowerCase()) void forgetQuanttSession().catch(() => {});
+    }).catch(() => {});
+  }, [unlocked, walletAddr]);
 
   // Auto-lock: lock once the configured timeout (0 = never) passes without a
   // touch — checked every 15 s in the foreground and on return from the
@@ -9438,6 +9455,7 @@ function App() {
     void (async () => {
       try { await clearVaultStore(); } catch { /* already gone */ }
       try { await disableBiometricUnlock(); } catch { /* nothing enrolled */ }
+      void forgetQuanttSession().catch(() => { /* nothing to forget */ });
       setUnlocked(false);
       setWalletSeed([]);
       setHasVault(false);
