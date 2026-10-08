@@ -45,13 +45,18 @@ export interface MockChain {
 
 const k = (...parts: string[]) => parts.map((p) => p.toLowerCase()).join(':');
 
-export interface MockEvm {
-  url(chainId: number): string;
+export interface MockChains {
   chain(chainId: number): MockChain;
   setBalance(chainId: number, token: string, owner: string, amount: bigint): void;
   /** Mines a transaction on `chainId` that emitted one ERC-20 Transfer — the
    *  bridge relayer's release. Returns its hash. */
   release(chainId: number, t: { token: string; from: string; to: string; amount: bigint }): string;
+  /** Answers one JSON-RPC request body (single or batch) for `chainId`. */
+  rpc(chainId: number, body: unknown): unknown;
+}
+
+export interface MockEvm extends MockChains {
+  url(chainId: number): string;
   close(): Promise<void>;
 }
 
@@ -59,7 +64,8 @@ class RpcError extends Error {
   constructor(readonly code: number, message: string) { super(message); }
 }
 
-export async function startMockEvm(chainIds: number[]): Promise<MockEvm> {
+/** The chains' state and JSON-RPC handling, without a server. */
+export function createMockChains(chainIds: number[]): MockChains {
   const chains = new Map<number, MockChain>(chainIds.map((chainId) => [chainId, {
     chainId, balances: new Map(), allowances: new Map(), supported: new Set(), locks: new Map(),
     receipts: new Map(), nonces: new Map(), sent: [], block: 100, revertLocks: false,
@@ -133,6 +139,7 @@ export async function startMockEvm(chainIds: number[]): Promise<MockEvm> {
       case 'eth_maxPriorityFeePerGas': return GWEI;
       case 'eth_getTransactionCount': return toBeHex(c.nonces.get(String(params[0]).toLowerCase()) ?? 0);
       case 'eth_getCode': return '0x60';
+      case 'eth_getBalance': return toBeHex(5n * 10n ** 18n);
       case 'eth_call':
       case 'eth_estimateGas': {
         const tx = params[0] as { from?: string; to: string; data?: string; input?: string };
@@ -182,31 +189,22 @@ export async function startMockEvm(chainIds: number[]): Promise<MockEvm> {
     }
   }
 
-  const server = createServer((req, res) => {
-    let body = '';
-    req.on('data', (d) => { body += d; });
-    req.on('end', () => {
-      const c = chains.get(Number((req.url ?? '/').slice(1)));
-      const answer = (call: { id: unknown; method: string; params?: unknown[] }) => {
-        try {
-          if (!c) throw new RpcError(-32000, 'unknown chain');
-          return { jsonrpc: '2.0', id: call.id, result: handle(c, call.method, call.params ?? []) };
-        } catch (err) {
-          const e = err as RpcError;
-          return { jsonrpc: '2.0', id: call.id, error: { code: e.code ?? -32603, message: e.message, ...(e.code === 3 ? { data: '0x' } : {}) } };
-        }
-      };
-      const parsed = JSON.parse(body);
-      const out = Array.isArray(parsed) ? parsed.map(answer) : answer(parsed);
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(out));
-    });
-  });
-  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  const port = (server.address() as AddressInfo).port;
+  function rpc(chainId: number, parsed: unknown): unknown {
+    const c = chains.get(chainId);
+    const answer = (call: { id: unknown; method: string; params?: unknown[] }) => {
+      try {
+        if (!c) throw new RpcError(-32000, 'unknown chain');
+        return { jsonrpc: '2.0', id: call.id, result: handle(c, call.method, call.params ?? []) };
+      } catch (err) {
+        const e = err as RpcError;
+        return { jsonrpc: '2.0', id: call.id, error: { code: e.code ?? -32603, message: e.message, ...(e.code === 3 ? { data: '0x' } : {}) } };
+      }
+    };
+    return Array.isArray(parsed) ? parsed.map(answer) : answer(parsed as Parameters<typeof answer>[0]);
+  }
 
   return {
-    url: (chainId) => `http://127.0.0.1:${port}/${chainId}`,
+    rpc,
     chain: getChain,
     setBalance(chainId, token, owner, amount) { getChain(chainId).balances.set(k(token, owner), amount); },
     release(chainId, t) {
@@ -220,6 +218,26 @@ export async function startMockEvm(chainIds: number[]): Promise<MockEvm> {
       });
       return hash;
     },
+  };
+}
+
+/** The mock chains behind a local HTTP server, one path per chain id. */
+export async function startMockEvm(chainIds: number[]): Promise<MockEvm> {
+  const mock = createMockChains(chainIds);
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      const out = mock.rpc(Number((req.url ?? '/').slice(1)), JSON.parse(body));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(out));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const port = (server.address() as AddressInfo).port;
+  return {
+    ...mock,
+    url: (chainId) => `http://127.0.0.1:${port}/${chainId}`,
     close: () => new Promise<void>((r) => server.close(() => r())),
   };
 }

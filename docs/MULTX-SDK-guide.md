@@ -11,14 +11,12 @@ MultX Bridge SDK — Integration Guide
 > "in EVM deployment planning" for MultX, not live; Solana is requested for
 > this phase but not live either.
 >
-> **This directly conflicts with what's shipped**: Thanos Wallet's Bridge tab
-> currently runs the exact Makalu→Kamet route this guide describes below as
-> production, live, in every client, for real users, right now. Whether that
-> needs to come down is an open question sent back to Lithosphere on
-> 2026-09-09 — not yet resolved as of this note. Do NOT treat anything below
-> this box as an accurate description of what's safe to ship until that's
-> answered. See docs/integrations/LAX-INTEGRATION-REQUEST.md's structure for
-> the kind of "still open" tracking this needs once resolved.
+> **Thanos no longer uses this SDK or its presets (2026-10-08).** The Bridge
+> in every Thanos client now runs only the routes a pinned MultX release
+> manifest approves, and is off until that manifest exists — see
+> docs/integrations/MULTX-THANOS.md. The hard-coded Makalu→Kamet route is
+> gone. Do NOT treat anything below this box as a description of what Thanos
+> ships.
 
 `@litho/multx-sdk` **v0.2.0** — TypeScript SDK for the Lithosphere **MultX cross-chain bridge**.
 Framework-agnostic core (`MultXClient`) + optional React adapter (`useMultX`).
