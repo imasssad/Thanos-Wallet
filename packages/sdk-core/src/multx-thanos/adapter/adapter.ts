@@ -1,12 +1,13 @@
+// Copied from packages/multx-adapter/src/adapter.ts by scripts/sync-multx-thanos.mjs — edit the original and re-run it.
 import type { Signer } from 'ethers';
-import { loadManifest } from './manifest.js';
-import { resolveRoute, preflightNetwork, validateAmount } from './preflight.js';
-import { approveAndLock } from './bridge.js';
-import { pollAndReconcile, type VerifyDestinationReceipt } from './status.js';
-import { classifyError, MultXAdapterError } from './errors.js';
+import { loadManifest } from './manifest';
+import { resolveRoute, preflightNetwork, validateAmount } from './preflight';
+import { approveAndLock } from './bridge';
+import { pollAndReconcile, type VerifyDestinationReceipt } from './status';
+import { classifyError, MultXAdapterError } from './errors';
 import type {
   InternalMultXTransfer, MultXErrorCode, MultXManifest, PartnerId, PersistTransfer, TelemetrySink,
-} from './types.js';
+} from './types';
 
 /** Errors raised before any lock transaction left the wallet. */
 const NOTHING_SENT: ReadonlySet<MultXErrorCode> = new Set([

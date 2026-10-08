@@ -40,6 +40,7 @@ export * from './portfolio/makalu-allowances';
 export * from './swaps/multx';
 export * from './bridge/kamet-config';
 export * from './bridge/status';
+export * from './multx-thanos/service';
 export * from './dex/ignite';
 
 /* ── Quantt (AI trading agents) ──────────────────────────────────────── */
