@@ -7719,22 +7719,46 @@ function OnboardingScreen({
   const [unlockErr, setUnlockErr] = useState('');
   const [copiedSeed, setCopiedSeed] = useState(false);
 
-  /* Biometric unlock availability for the unlock step. Probed once on
-     mount; if a protected-key slot exists and the device can prompt,
-     the unlock step shows a Face ID / Fingerprint button alongside the
-     password input. */
+  /* Biometric unlock availability for the unlock step. If a protected-key
+     slot exists and the device can prompt, the unlock step shows a Face ID /
+     Fingerprint button alongside the password input. Probed on mount AND
+     every time the app comes to the foreground: iOS can start the app in the
+     background (prewarming) while the phone is still locked, when the
+     keychain refuses the read — biometric then looked off, so the screen had
+     no Face ID button and never prompted ("stuck", client 2026-10-08). */
   const [bioAvail, setBioAvail] = useState<{ kind: BiometricKind; on: boolean }>({ kind: 'none', on: false });
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const autoBioFired = useRef(false);
   useEffect(() => {
     if (!hasVault) return;
-    (async () => {
+    const probe = async () => {
       const cap = await getBiometricCapability();
       const on  = await isBiometricUnlockEnabled();
       setBioAvail({
         kind: cap.kind,
         on:   on && cap.hasHardware && cap.isEnrolled,
       });
-    })();
+    };
+    void probe();
+    const sub = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
+      if (state === 'active') void probe();
+      // Back from the background on a still-locked screen: prompt again.
+      if (state === 'background') autoBioFired.current = false;
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasVault]);
+  // A Face ID attempt in flight. Separate from `busy` so a prompt that never
+  // answers can't also disable the password path.
+  const [bioBusy, setBioBusy] = useState(false);
+  // Password and Face ID can both finish; enter the wallet once.
+  const unlockedRef = useRef(false);
+  const finishUnlock = (words: string[]) => {
+    if (unlockedRef.current) return;
+    unlockedRef.current = true;
+    onComplete(words);
+  };
 
   // Length is chosen on the create-length step (parity with web/desktop);
   // generate the seed for the picked word count, then go to the warning.
@@ -7847,16 +7871,19 @@ function OnboardingScreen({
         const mnemonic = opened.mnemonic, pwd = unlockPwd;
         InteractionManager.runAfterInteractions(() => { void upgradeVaultKdf(mnemonic, pwd); });
       }
-      onComplete(opened.mnemonic.split(' '));
+      finishUnlock(opened.mnemonic.split(' '));
     } finally { setBusy(false); }
   };
 
   /* Biometric path — reads the OS-protected stash of the derived AES
      key, then decrypts the vault with it. No Argon2id round-trip. */
   const tryBiometricUnlock = async (opts?: { silentCancel?: boolean }) => {
-    if (busy) return;
-    setBusy(true);
+    if (busy || bioBusy) return;
+    setBioBusy(true);
     setUnlockErr('');
+    // The OS prompt can fail to answer when it was raised while the app wasn't
+    // fully in front; the button comes back after 15 s either way.
+    const watchdog = setTimeout(() => setBioBusy(false), 15_000);
     try {
       const vault = await loadVault();
       if (!vault) { setUnlockErr('No wallet on this device.'); return; }
@@ -7873,23 +7900,23 @@ function OnboardingScreen({
         return;
       }
       cacheSessionKey(key);
-      onComplete(mnemonic.split(' '));
-    } finally { setBusy(false); }
+      finishUnlock(mnemonic.split(' '));
+    } finally { clearTimeout(watchdog); setBioBusy(false); }
   };
 
   /* Auto-prompt Face ID / fingerprint as soon as the unlock screen shows —
      standard wallet UX; the button remains as a manual retry. Fires once per
-     mount (per lock), only after the capability probe confirms biometric
-     unlock is enabled, and waits a beat so the OS sheet doesn't race the
-     mount animation. */
-  const autoBioFired = useRef(false);
+     lock (again after the app returns from the background), only once the
+     capability probe confirms biometric unlock is enabled and the app is
+     actually in front — a prompt raised while it isn't is cancelled by iOS —
+     and waits a beat so the OS sheet doesn't race the mount animation. */
   useEffect(() => {
-    if (step !== 'unlock' || !bioAvail.on || busy || autoBioFired.current) return;
+    if (step !== 'unlock' || !bioAvail.on || !appActive || busy || bioBusy || autoBioFired.current) return;
     autoBioFired.current = true;
     const t = setTimeout(() => { void tryBiometricUnlock({ silentCancel: true }); }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, bioAvail.on, busy]);
+  }, [step, bioAvail.on, appActive, busy, bioBusy]);
 
   const resetWallet = async () => {
     await clearVaultStore();
@@ -7950,8 +7977,8 @@ function OnboardingScreen({
             <View style={styles.obActions}>
               {bioAvail.on && (
                 <Btn
-                  style={[styles.obBio, { opacity: busy ? 0.6 : 1 }]}
-                  disabled={busy}
+                  style={[styles.obBio, { opacity: busy || bioBusy ? 0.6 : 1 }]}
+                  disabled={busy || bioBusy}
                   onPress={() => { void tryBiometricUnlock(); }}
                   ripple="rgba(59,122,247,0.18)"
                 >
