@@ -8637,12 +8637,12 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
 function MinimizedBrowserChip({ url, onRestore, onClose }: { url: string; onRestore: () => void; onClose: () => void }) {
   const C = useColors();
   // Measured from the screen's bottom edge (absolute children skip the
-  // root's safe-area padding): clear the system navigation bar + tab bar.
+  // root's safe-area padding): just above the floating tab bar.
   const { bottom } = useSafeAreaInsets();
   let host = url;
   try { host = new URL(url).host; } catch { /* keep raw */ }
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: bottom + 70, alignItems: 'center', zIndex: 40, elevation: 40 }}>
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: tabBarBottom(bottom) + TABBAR_HEIGHT + 10, alignItems: 'center', zIndex: 40, elevation: 40 }}>
       <Pressable
         onPress={onRestore}
         style={({ pressed }) => [{
@@ -9876,6 +9876,7 @@ function App() {
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
+              {!UNDER_TOPBAR_SCREENS.has(screen) && <TabBarSpacer/>}
             </View>
 
             {/* Token-detail overlay — full-screen Modal over the tab shell. */}
@@ -9896,26 +9897,12 @@ function App() {
                 the floating header buttons. */}
             {UNDER_TOPBAR_SCREENS.has(screen) && <TopFade/>}
 
-            {/* Bottom tabs */}
-            <View style={styles.tabbar}>
-              {GLASS && <BlurView intensity={isDark ? 45 : 70} tint={isDark ? 'dark' : 'systemThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
-              {TABS.map(t => {
-                const active = screen === t.key || (t.key === 'discover' && screen === 'market') || (t.key === 'home' && (screen === 'send' || screen === 'receive'));
-                return (
-                  <Pressable
-                    key={t.key}
-                    style={({ pressed }) => [styles.tab, pressed && (GLASS ? { transform: [{ scale: 0.9 }] } : { opacity: 0.55 })]}
-                    android_ripple={{ color: 'rgba(91,124,250,0.18)', borderless: false }}
-                    hitSlop={6}
-                    onPress={() => { if (GLASS && !active) void Haptics.selectionAsync().catch(() => {}); setScreen(t.key); }}
-                  >
-                    {active && <View style={styles.tabActiveBar}/>}
-                    <t.Icon size={20} color={active ? colors.blue : colors.textMuted} strokeWidth={active ? 2.4 : 2}/>
-                    <Text numberOfLines={1} style={[styles.tabLabel, active && { color: colors.blue, fontWeight: '700' }]}>{t.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {/* Content on the tab screens scrolls under the floating tab bar
+                and fades out toward the bottom edge, like the header. */}
+            {UNDER_TOPBAR_SCREENS.has(screen) && <BottomFade/>}
+
+            {/* Bottom tabs — a floating liquid-glass pill (client 2026-10-08). */}
+            <LiquidTabBar screen={screen} onSelect={setScreen}/>
           </SafeAreaView>
         </OwnAccountsCtx.Provider>
         </SendNavCtx.Provider>
@@ -9979,16 +9966,123 @@ function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
   if (out.card) out.card = { ...out.card, borderRadius: 22 };
   if (out.balanceCard) out.balanceCard = { ...out.balanceCard, borderRadius: 26 };
   if (out.root) out.root = { ...out.root, backgroundColor: isDarkPalette(C) ? '#05050a' : '#eef1f8' };
-  if (out.tabbar) out.tabbar = {
-    ...out.tabbar, backgroundColor: g.bar, borderTopWidth: 0,
-    marginHorizontal: 14, marginBottom: 4, borderRadius: 30, overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth * 2, borderColor: g.edge,
-    paddingTop: 4, paddingBottom: 4,
-  };
-  if (out.tab) out.tab = { ...out.tab, borderRadius: 24 };
-  // iOS 26 tab bar: the selected tab sits in its own soft glass capsule.
-  if (out.tabActiveBar) out.tabActiveBar = { position: 'absolute', top: 2, bottom: 2, left: 2, right: 2, borderRadius: 24, backgroundColor: isDarkPalette(C) ? 'rgba(255,255,255,0.13)' : 'rgba(59,122,247,0.12)' };
   return out as T;
+}
+
+/** Height of the floating tab bar. */
+const TABBAR_HEIGHT = 64;
+/** End padding of tab-screen content, so the last row scrolls clear of the
+ *  floating tab bar (which overlaps the content by at most ~80 px). */
+const TABBAR_CONTENT_BOTTOM = 104;
+/** Gap between the screen's bottom edge and the floating tab bar: on iOS it
+ *  sits in the home-indicator area, as iOS 26's does; on Android it stays
+ *  clear of the gesture or 3-button navigation bar. */
+function tabBarBottom(insetBottom: number): number {
+  if (Platform.OS === 'ios') return insetBottom > 0 ? insetBottom - 12 : 10;
+  return insetBottom + 8;
+}
+const isTabActive = (key: Screen, screen: Screen): boolean =>
+  screen === key || (key === 'discover' && screen === 'market') || (key === 'home' && (screen === 'send' || screen === 'receive'));
+
+/** Liquid-glass tab bar (client 2026-10-08, iOS 26 reference): a floating
+ *  pill over the content — blurred glass with a bright edge and a top sheen —
+ *  whose selected tab sits in a lighter glass capsule that slides between
+ *  tabs. Android has no native blur here, so its glass is a denser tint. */
+function LiquidTabBar({ screen, onSelect }: { screen: Screen; onSelect: (s: Screen) => void }) {
+  const C = useColors();
+  const dark = isDarkPalette(C);
+  const { bottom } = useSafeAreaInsets();
+  const active = TABS.findIndex((t) => isTabActive(t.key, screen));
+  const [rowW, setRowW] = useState(0);
+  const slide = useRef(new Animated.Value(Math.max(active, 0))).current;
+  useEffect(() => {
+    if (active < 0) return;
+    Animated.spring(slide, { toValue: active, useNativeDriver: true, damping: 17, stiffness: 190, mass: 0.8 }).start();
+  }, [active, slide]);
+  const PAD = 5;
+  const tabW = rowW > 0 ? (rowW - PAD * 2) / TABS.length : 0;
+  const ios = Platform.OS === 'ios';
+  const glass = dark
+    ? { tint: ios ? 'rgba(18,18,28,0.42)' : 'rgba(22,22,32,0.88)', edge: 'rgba(255,255,255,0.16)', sheen: 0.14, capsule: 'rgba(255,255,255,0.14)', capsuleEdge: 'rgba(255,255,255,0.22)' }
+    : { tint: ios ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)', edge: 'rgba(255,255,255,0.95)', sheen: 0.55, capsule: 'rgba(59,122,247,0.13)', capsuleEdge: 'rgba(59,122,247,0.2)' };
+  return (
+    <View pointerEvents="box-none" style={{
+      position: 'absolute', left: 14, right: 14, bottom: tabBarBottom(bottom), height: TABBAR_HEIGHT, zIndex: 20,
+      shadowColor: '#000', shadowOpacity: dark ? 0.35 : 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 8 },
+    }}>
+      <View style={{ flex: 1, borderRadius: TABBAR_HEIGHT / 2, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth * 2, borderColor: glass.edge }}>
+        {ios && <BlurView intensity={dark ? 70 : 80} tint={dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.tint }]}/>
+        <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+          <Defs>
+            <SvgGradient id="tabSheen" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset={0}    stopColor="#ffffff" stopOpacity={glass.sheen}/>
+              <Stop offset={0.55} stopColor="#ffffff" stopOpacity={0}/>
+            </SvgGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#tabSheen)"/>
+        </Svg>
+        <View style={{ flex: 1, flexDirection: 'row', paddingHorizontal: PAD }} onLayout={(e) => setRowW(e.nativeEvent.layout.width)}>
+          {active >= 0 && tabW > 0 && (
+            <Animated.View pointerEvents="none" style={{
+              position: 'absolute', top: PAD, bottom: PAD, left: PAD, width: tabW,
+              borderRadius: (TABBAR_HEIGHT - PAD * 2) / 2, backgroundColor: glass.capsule,
+              borderWidth: StyleSheet.hairlineWidth * 2, borderColor: glass.capsuleEdge,
+              transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [0, tabW] }) }],
+            }}/>
+          )}
+          {TABS.map((t, i) => {
+            const on = i === active;
+            return (
+              <Pressable
+                key={t.key}
+                accessibilityRole="tab"
+                accessibilityLabel={t.label}
+                accessibilityState={{ selected: on }}
+                hitSlop={4}
+                onPress={() => { if (ios && !on) void Haptics.selectionAsync().catch(() => {}); onSelect(t.key); }}
+                style={({ pressed }) => [{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 }, pressed && { transform: [{ scale: 0.9 }] }]}
+              >
+                <t.Icon size={21} color={on ? C.blue : C.textSecondary} strokeWidth={on ? 2.4 : 2}/>
+                <Text numberOfLines={1} style={{ fontSize: 10.5, letterSpacing: -0.1, fontWeight: on ? '700' : '600', color: on ? C.textPrimary : C.textSecondary }}>{t.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/** Keeps a screen's content clear of the floating tab bar — screens whose
+ *  content doesn't scroll under it. */
+function TabBarSpacer() {
+  const { bottom } = useSafeAreaInsets();
+  return <View style={{ height: Math.max(0, tabBarBottom(bottom) + TABBAR_HEIGHT - bottom + 8) }}/>;
+}
+
+/** Fades tab-screen content out toward the bottom edge, behind the floating
+ *  tab bar: light enough that the rows still show through the glass, solid
+ *  only under the home indicator where the content ends. */
+function BottomFade() {
+  const C = useColors();
+  const { bottom } = useSafeAreaInsets();
+  const base = GLASS ? (isDarkPalette(C) ? '#05050a' : '#eef1f8') : C.bgBase;
+  const height = tabBarBottom(bottom) + TABBAR_HEIGHT + 28;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height, zIndex: 5 }}>
+      <Svg width="100%" height="100%">
+        <Defs>
+          <SvgGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset={0}    stopColor={base} stopOpacity={0}/>
+            <Stop offset={0.55} stopColor={base} stopOpacity={0.35}/>
+            <Stop offset={1}    stopColor={base} stopOpacity={0.85}/>
+          </SvgGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bottomFade)"/>
+      </Svg>
+    </View>
+  );
 }
 
 /** Fading shadow from the top of the screen — replaces the old header
@@ -10061,8 +10155,9 @@ function GlassAura({ dark }: { dark: boolean }) {
 const TOPBAR_SPACE = 66;
 /** Where tab-screen content starts at rest (styles.underTopbarContent). */
 const TOPBAR_CONTENT_TOP = TOPBAR_SPACE + 16;
-/** Screens whose content scrolls up under the floating header — the only
- *  ones that need TopFade (the rest start below the header). */
+/** Screens whose content scrolls under the floating header and the floating
+ *  tab bar — the only ones that need TopFade / BottomFade (the rest start
+ *  below the header and end above the tab bar). */
 const UNDER_TOPBAR_SCREENS: ReadonlySet<string> = new Set(['home', 'activity', 'discover', 'settings', 'quantt']);
 
 function makeStyles(C: Colors) {
@@ -10078,7 +10173,7 @@ function makeStyles(C: Colors) {
        clipping at a hard line (client 2026-10-02, kajlabs.org / furgpt.org
        reference). Screens with their own back-button headers stay in flow. */
     underTopbar:        { marginTop: -TOPBAR_SPACE },
-    underTopbarContent: { paddingTop: TOPBAR_CONTENT_TOP },
+    underTopbarContent: { paddingTop: TOPBAR_CONTENT_TOP, paddingBottom: TABBAR_CONTENT_BOTTOM },
 
     /* Topbar — no background or border: the chip + buttons float, and
        TopFade renders the soft top shadow behind them (client 2026-10-02). */
@@ -10517,28 +10612,6 @@ function makeStyles(C: Colors) {
     settingDesc:  { color: C.textMuted, fontSize: 11, marginTop: 2 },
     chevron:      { color: C.textMuted, fontSize: 22, fontWeight: '300' },
     versionText:  { color: C.textMuted, fontSize: 10, textAlign: 'center', marginTop: 16 },
-
-    /* Tabbar */
-    tabbar: {
-      flexDirection: 'row',
-      borderTopWidth: 1, borderTopColor: C.borderSubtle,
-      backgroundColor: C.bgSurface,
-      paddingTop: 6, paddingBottom: 8,
-      paddingHorizontal: 8,
-      gap: 4,
-    },
-    tab: {
-      flex: 1, paddingVertical: 8,
-      alignItems: 'center', justifyContent: 'center', gap: 3,
-      borderRadius: 12,
-    },
-    tabActiveBar: {
-      position: 'absolute', top: 4, alignSelf: 'center',
-      width: 4, height: 4, borderRadius: 2,
-      backgroundColor: C.blue,
-    },
-    tabIcon:  { color: C.textMuted, fontSize: 17 },
-    tabLabel: { color: C.textMuted, fontSize: 10, fontWeight: '600', letterSpacing: -0.1 },
 
     /* ── Onboarding ── */
     onboardWrap: {
