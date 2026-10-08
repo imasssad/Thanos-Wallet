@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
   ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Platform, Pressable, RefreshControl,
-  ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View,
+  ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 // react-native's own SafeAreaView pads only on iOS. Android 15+ draws every
 // app edge-to-edge (targetSdk 36), so the header sat under the status bar and
@@ -165,7 +165,7 @@ import {
   loadBrowserHistory, getRecents, getFavorites, isFavorited,
   recordVisit, toggleFavorite, type VisitedApp,
 } from './lib/browser-history';
-import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle } from 'react-native-svg';
+import { SvgXml, Svg, Defs, LinearGradient as SvgGradient, RadialGradient, Stop, Rect, Circle, Mask, G } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { WebView } from 'react-native-webview';
@@ -9793,6 +9793,7 @@ function App() {
                   ],
                 )}
               >
+                <HeaderGlass/>
                 <View style={styles.acctAvatar}><WalletIcon size={16} color="#fff" strokeWidth={2.2}/></View>
                 <Text style={styles.acctName} numberOfLines={1}>{getAccountName(walletSeed.length > 0 && !isPrivateKeyWallet(walletSeed) ? activeIdx : 0)}</Text>
               </Pressable>
@@ -9811,6 +9812,7 @@ function App() {
                   style={styles.headerIconBtn}
                   accessibilityLabel="Activity history"
                 >
+                  <HeaderGlass/>
                   <History size={18} color={colors.textSecondary}/>
                 </Pressable>
                 <Pressable
@@ -9819,6 +9821,7 @@ function App() {
                   style={styles.headerIconBtn}
                   accessibilityLabel="Scan to connect"
                 >
+                  <HeaderGlass/>
                   <Scan size={18} color={colors.textSecondary}/>
                 </Pressable>
               </View>
@@ -9934,7 +9937,7 @@ function glassTokens(C: Colors) {
     : { card: 'rgba(255,255,255,0.58)', raised: 'rgba(255,255,255,0.72)', edge: 'rgba(255,255,255,0.95)', bar: 'rgba(255,255,255,0.45)' };
 }
 const GLASS_CARD_STYLES   = ['balanceCard', 'qaBtn', 'card', 'assetSelectCard', 'receiveCard', 'acctHeaderCard', 'onboardCard', 'seedWord', 'obInputWrap'];
-const GLASS_RAISED_STYLES = ['acct', 'themeBtn', 'assetsCount', 'backBtn', 'feeRowCard', 'btnSecondary', 'networkSelector', 'addrCard', 'filterPill', 'settingIcon', 'input', 'addrBox', 'seedGrid', 'copyableBox', 'btnOutline'];
+const GLASS_RAISED_STYLES = ['themeBtn', 'assetsCount', 'backBtn', 'feeRowCard', 'btnSecondary', 'networkSelector', 'addrCard', 'filterPill', 'settingIcon', 'input', 'addrBox', 'seedGrid', 'copyableBox', 'btnOutline'];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyGlass<T extends Record<string, any>>(styles: T, C: Colors): T {
   if (!GLASS) return styles;
@@ -10040,59 +10043,116 @@ function TabBarSpacer() {
   return <View style={{ height: Math.max(0, tabBarBottom(bottom) + TABBAR_HEIGHT - bottom + 8) }}/>;
 }
 
-/** Fades tab-screen content out toward the bottom edge, behind the floating
- *  tab bar: light enough that the rows still show through the glass, solid
- *  only under the home indicator where the content ends. */
+/** Fades tab-screen content into the page background toward the bottom
+ *  edge, behind the floating tab bar: light enough that rows still show
+ *  through the glass, fullest under the home indicator where content ends. */
 function BottomFade() {
-  const C = useColors();
   const { bottom } = useSafeAreaInsets();
-  const base = GLASS ? (isDarkPalette(C) ? '#05050a' : '#eef1f8') : C.bgBase;
-  const height = tabBarBottom(bottom) + TABBAR_HEIGHT + 28;
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height, zIndex: 5 }}>
-      <Svg width="100%" height="100%">
+    <BackgroundFade edge="bottom" height={tabBarBottom(bottom) + TABBAR_HEIGHT + 28} id="bottomFade"
+      stops={[[0, 0], [0.55, 0.35], [1, 0.85]]}/>
+  );
+}
+
+/** The brand aura painted behind the whole app on iOS (GlassAura). One list,
+ *  so the fades can repaint exactly the same background. */
+const AURA = [
+  { id: 'Blue',   color: '#3b7af7', cx: '15%', cy: '8%',  r: '60%', k: 1 },
+  { id: 'Purple', color: '#8b7df7', cx: '95%', cy: '38%', r: '55%', k: 0.8 },
+  { id: 'Teal',   color: '#22d3ee', cx: '30%', cy: '92%', r: '55%', k: 0.45 },
+] as const;
+// Dark aura sits just under the desktop glass theme's intensity (0.22
+// radials): at 0.55 the iOS dark background glowed far brighter than the
+// mac app (client 2026-10-01 "dark mode is too bright"), and the follow-up
+// asked for the iOS screen a little darker still (client 2026-10-02).
+const auraAlpha = (dark: boolean) => (dark ? 0.16 : 0.35);
+const appBase = (C: Colors) => (GLASS ? (isDarkPalette(C) ? '#05050a' : '#eef1f8') : C.bgBase);
+
+/** The app background — base colour plus, on iOS, the aura — as SVG content
+ *  laid out for the full screen (w×h) and shifted up by `y`, so a strip of it
+ *  drawn anywhere matches what's behind that strip. */
+function AppBackgroundSvg({ C, w, h, y, id }: { C: Colors; w: number; h: number; y: number; id: string }) {
+  const a = auraAlpha(isDarkPalette(C));
+  return (
+    <>
+      {GLASS && (
         <Defs>
-          <SvgGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset={0}    stopColor={base} stopOpacity={0}/>
-            <Stop offset={0.55} stopColor={base} stopOpacity={0.35}/>
-            <Stop offset={1}    stopColor={base} stopOpacity={0.85}/>
-          </SvgGradient>
+          {AURA.map((g) => (
+            <RadialGradient key={g.id} id={`${id}${g.id}`} cx={g.cx} cy={g.cy} r={g.r}>
+              <Stop offset="0" stopColor={g.color} stopOpacity={a * g.k}/>
+              <Stop offset="1" stopColor={g.color} stopOpacity={0}/>
+            </RadialGradient>
+          ))}
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bottomFade)"/>
+      )}
+      <Rect x="0" y={-y} width={w} height={h} fill={appBase(C)}/>
+      {GLASS && AURA.map((g) => <Rect key={g.id} x="0" y={-y} width={w} height={h} fill={`url(#${id}${g.id})`}/>)}
+    </>
+  );
+}
+
+/** A strip of the app background that fades out along `stops` ([offset,
+ *  opacity], top to bottom): content under it dissolves into the same
+ *  gradient that's behind it, so there's no band or separate header. */
+function BackgroundFade({ edge, height, stops, id }: {
+  edge: 'top' | 'bottom'; height: number; stops: ReadonlyArray<readonly [number, number]>; id: string;
+}) {
+  const C = useColors();
+  const { width: w, height: h } = useWindowDimensions();
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, [edge]: 0, height, zIndex: 5 }}>
+      <Svg width={w} height={height}>
+        <Defs>
+          <SvgGradient id={`${id}Alpha`} x1="0" y1="0" x2="0" y2="1">
+            {stops.map(([o, op]) => <Stop key={o} offset={o} stopColor="#ffffff" stopOpacity={op}/>)}
+          </SvgGradient>
+          <Mask id={`${id}Mask`} maskUnits="userSpaceOnUse" x="0" y="0" width={w} height={height}>
+            <Rect x="0" y="0" width={w} height={height} fill={`url(#${id}Alpha)`}/>
+          </Mask>
+        </Defs>
+        <G mask={`url(#${id}Mask)`}>
+          <AppBackgroundSvg C={C} w={w} h={h} y={edge === 'top' ? 0 : h - height} id={id}/>
+        </G>
       </Svg>
     </View>
   );
 }
 
-/** Fading shadow from the top of the screen — replaces the old header
- *  bar's background/border (client 2026-10-02; kajlabs.org / furgpt.org
- *  reference). Sits above the screens (zIndex 5) and below the floating
- *  header buttons (topbar zIndex 10); never intercepts touches. */
+/** Top of the tab screens, Trust Wallet style (client 2026-10-08): no header
+ *  surface — the chip and buttons float on glass, and scrolled content
+ *  dissolves into the page's own background gradient. The status-bar strip
+ *  stays clear; through the button row the content fades out, and it is
+ *  fully visible again where tab content starts at rest, so an unscrolled
+ *  screen is never dimmed. Placed from the screen's top edge (absolute
+ *  children skip the root's safe-area padding). */
 function TopFade() {
-  const C = useColors();
   const { top } = useSafeAreaInsets();
-  const base = GLASS ? (isDarkPalette(C) ? '#05050a' : '#eef1f8') : C.bgBase;
-  // Absolute children are placed from the root's edge, not inside its
-  // safe-area padding, so this starts at the top of the screen. It stays
-  // opaque through the status bar and the header's chip/buttons (scrolled
-  // content must never show through them) and has faded out exactly where
-  // tab content starts at rest, so an unscrolled screen is never dimmed.
-  const solid = top + TOPBAR_SPACE - 6;
   const height = top + TOPBAR_CONTENT_TOP;
+  const at = (y: number) => Math.min(1, Math.max(0, y / height));
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height, zIndex: 5 }}>
-      <Svg width="100%" height="100%">
-        <Defs>
-          <SvgGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset={0}                                 stopColor={base} stopOpacity={1}/>
-            <Stop offset={solid / height}                    stopColor={base} stopOpacity={1}/>
-            <Stop offset={(solid + height) / 2 / height}     stopColor={base} stopOpacity={0.5}/>
-            <Stop offset={1}                                 stopColor={base} stopOpacity={0}/>
-          </SvgGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#topFade)"/>
-      </Svg>
-    </View>
+    <BackgroundFade edge="top" height={height} id="topFade" stops={[
+      [0, 1],
+      [at(top + 2), 1],
+      [at(top + TOPBAR_SPACE * 0.5), 0.8],
+      [at(top + TOPBAR_SPACE), 0.35],
+      [1, 0],
+    ]}/>
+  );
+}
+
+/** Frosted disc behind a floating header control: content passing under the
+ *  header blurs behind it rather than showing through. iOS blurs; Android
+ *  (no native blur here) uses a denser tint. Parent clips (overflow hidden). */
+function HeaderGlass() {
+  const C = useColors();
+  const dark = isDarkPalette(C);
+  const ios = Platform.OS === 'ios';
+  const tint = dark ? (ios ? 'rgba(18,18,28,0.38)' : 'rgba(28,28,36,0.94)') : (ios ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.94)');
+  return (
+    <>
+      {ios && <BlurView intensity={dark ? 60 : 70} tint={dark ? 'systemUltraThinMaterialDark' : 'systemUltraThinMaterialLight'} style={StyleSheet.absoluteFill}/>}
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tint }]}/>
+    </>
   );
 }
 
@@ -10100,39 +10160,26 @@ function TopFade() {
  *  glass surfaces have something to refract (iOS only). */
 function GlassAura({ dark }: { dark: boolean }) {
   if (!GLASS) return null;
-  // Dark aura sits just under the desktop glass theme's intensity (0.22
-  // radials): at 0.55 the iOS dark background glowed far brighter than the
-  // mac app (client 2026-10-01 "dark mode is too bright"), and the follow-up
-  // asked for the iOS screen a little darker still (client 2026-10-02).
-  const a = dark ? 0.16 : 0.35;
+  const a = auraAlpha(dark);
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width="100%" height="100%">
         <Defs>
-          <RadialGradient id="auraBlue" cx="15%" cy="8%" r="60%">
-            <Stop offset="0" stopColor="#3b7af7" stopOpacity={a}/>
-            <Stop offset="1" stopColor="#3b7af7" stopOpacity={0}/>
-          </RadialGradient>
-          <RadialGradient id="auraPurple" cx="95%" cy="38%" r="55%">
-            <Stop offset="0" stopColor="#8b7df7" stopOpacity={a * 0.8}/>
-            <Stop offset="1" stopColor="#8b7df7" stopOpacity={0}/>
-          </RadialGradient>
-          <RadialGradient id="auraTeal" cx="30%" cy="92%" r="55%">
-            <Stop offset="0" stopColor="#22d3ee" stopOpacity={a * 0.45}/>
-            <Stop offset="1" stopColor="#22d3ee" stopOpacity={0}/>
-          </RadialGradient>
+          {AURA.map((g) => (
+            <RadialGradient key={g.id} id={`aura${g.id}`} cx={g.cx} cy={g.cy} r={g.r}>
+              <Stop offset="0" stopColor={g.color} stopOpacity={a * g.k}/>
+              <Stop offset="1" stopColor={g.color} stopOpacity={0}/>
+            </RadialGradient>
+          ))}
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#auraBlue)"/>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#auraPurple)"/>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#auraTeal)"/>
+        {AURA.map((g) => <Rect key={g.id} x="0" y="0" width="100%" height="100%" fill={`url(#aura${g.id})`}/>)}
       </Svg>
     </View>
   );
 }
 
 /** How far the header row sits below the status bar, on top of its own
- *  12px padding — lowered 10px (client 2026-10-08). TopFade grows with it,
- *  so the dark gradient still covers the buttons. */
+ *  12px padding — lowered 10px (client 2026-10-08); TopFade follows it. */
 const TOPBAR_DROP = 10;
 /** Height the floating topbar occupies (padding 12×2 + the drop + the 42px chip). */
 const TOPBAR_SPACE = 66 + TOPBAR_DROP;
@@ -10167,8 +10214,8 @@ function makeStyles(C: Colors) {
       zIndex: 10,
     },
     acct: {
-      flexDirection: 'row', alignItems: 'center', gap: 10,
-      backgroundColor: C.bgElevated, borderColor: C.borderDefault, borderWidth: 1,
+      flexDirection: 'row', alignItems: 'center', gap: 10, overflow: 'hidden',
+      backgroundColor: 'transparent', borderColor: C.borderDefault, borderWidth: 1,
       borderRadius: 999, paddingVertical: 5, paddingHorizontal: 16, paddingLeft: 5,
       // RN defaults flexShrink to 0, so without this a near-max-length
       // (24-char) custom account name pushes the topbar's History/Scan
@@ -10181,7 +10228,7 @@ function makeStyles(C: Colors) {
        background disc, like the client's reference ("no need for
        background", 2026-10-02). */
     headerIconBtn: {
-      width: 36, height: 36, borderRadius: 18,
+      width: 38, height: 38, borderRadius: 19, overflow: 'hidden',
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'transparent',
       borderWidth: 1, borderColor: C.borderDefault,
