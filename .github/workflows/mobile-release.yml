@@ -100,6 +100,16 @@ jobs:
         run: |
           node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('app.json','utf8'));j.expo.ios.buildNumber=String(100+Number(process.env.GITHUB_RUN_NUMBER));fs.writeFileSync('app.json',JSON.stringify(j,null,2));console.log('iOS buildNumber =',j.expo.ios.buildNumber)"
 
+      # MultX bridge — off unless the repository variables MULTX_ENABLED=true,
+      # MULTX_MANIFEST_URL and MULTX_MANIFEST_SHA256 are set; written into
+      # the profile's env so EAS inlines them as EXPO_PUBLIC_MULTX_*.
+      - name: MultX bridge settings
+        env:
+          MULTX_ENABLED:         ${{ vars.MULTX_ENABLED }}
+          MULTX_MANIFEST_URL:    ${{ vars.MULTX_MANIFEST_URL }}
+          MULTX_MANIFEST_SHA256: ${{ vars.MULTX_MANIFEST_SHA256 }}
+        run: |
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('eas.json','utf8'));const e=j.build.production.env||(j.build.production.env={});e.EXPO_PUBLIC_MULTX_ENABLED=process.env.MULTX_ENABLED||'false';e.EXPO_PUBLIC_MULTX_MANIFEST_URL=process.env.MULTX_MANIFEST_URL||'';e.EXPO_PUBLIC_MULTX_MANIFEST_SHA256=process.env.MULTX_MANIFEST_SHA256||'';fs.writeFileSync('eas.json',JSON.stringify(j,null,2));console.log('MultX bridge',e.EXPO_PUBLIC_MULTX_ENABLED==='true'?'on':'off')"
       - name: Build (and submit) via EAS
         env:
           EXPO_TOKEN:            ${{ secrets.EXPO_TOKEN }}

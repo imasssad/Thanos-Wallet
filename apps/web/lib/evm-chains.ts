@@ -182,6 +182,11 @@ export function registerChainLookup(fn: (chainId: number) => EvmChain | undefine
   chainLookup = fn;
 }
 
+/** A built-in or custom network by chain id. */
+export function findEvmChain(chainId: number): EvmChain | undefined {
+  return chainLookup(chainId);
+}
+
 /* Lithosphere's own RPC hosts send no CORS headers, so a browser reaches
    them through this site's same-origin proxy (next.config.js rewrites).
    This is what lets a user add Makalu back as a custom network with its

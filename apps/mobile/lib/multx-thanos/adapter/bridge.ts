@@ -3,12 +3,10 @@ import { Contract, type Signer } from 'ethers';
 import { classifyError, MultXAdapterError } from './errors';
 
 /**
- * On-chain approve + lock. Deliberately minimal — the same two calls every
- * MultX integration in this monorepo already makes (each app's own
- * lib/multx-bridge.ts), generalized to take addresses from a validated
- * manifest route instead of a hardcoded Makalu config. This package never
- * holds or requests a private
- * key — it only calls methods on the `Signer` the partner app already has
+ * On-chain approve + lock. Deliberately minimal — the bridge contract's
+ * approve + lockTokens, with addresses taken from a validated manifest route
+ * rather than a hardcoded chain config. This package never holds or
+ * requests a private key — it only calls methods on the `Signer` the partner app already has
  * connected ("No signer, validator, admin, recovery, or deployment private
  * key is required by the partner application").
  */

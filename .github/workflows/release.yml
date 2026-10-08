@@ -23,6 +23,17 @@ on:
 permissions:
   contents: write   # required to upload artifacts to the GitHub Release
 
+# MultX bridge — off unless the repository variables MULTX_ENABLED=true,
+# MULTX_MANIFEST_URL and MULTX_MANIFEST_SHA256 are set (Settings → Secrets
+# and variables → Actions → Variables). Each app reads its own prefix.
+env:
+  NEXT_PUBLIC_MULTX_ENABLED:         ${{ vars.MULTX_ENABLED || 'false' }}
+  NEXT_PUBLIC_MULTX_MANIFEST_URL:    ${{ vars.MULTX_MANIFEST_URL }}
+  NEXT_PUBLIC_MULTX_MANIFEST_SHA256: ${{ vars.MULTX_MANIFEST_SHA256 }}
+  VITE_MULTX_ENABLED:                ${{ vars.MULTX_ENABLED || 'false' }}
+  VITE_MULTX_MANIFEST_URL:           ${{ vars.MULTX_MANIFEST_URL }}
+  VITE_MULTX_MANIFEST_SHA256:        ${{ vars.MULTX_MANIFEST_SHA256 }}
+
 jobs:
   # ─── 1. Web — bundle the Next.js standalone output for the VPS ──────
   build-web:

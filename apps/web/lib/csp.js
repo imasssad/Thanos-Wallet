@@ -26,6 +26,17 @@
  * CommonJS so next.config.js can require() it; middleware.ts imports it.
  */
 
+/** Origin of the MultX release manifest, when the build enables the bridge
+ *  (its status API, bridge.litho.ai, is listed below). */
+function multxOrigin() {
+  try {
+    const u = new URL(process.env.NEXT_PUBLIC_MULTX_MANIFEST_URL || '');
+    return u.protocol === 'https:' ? ` ${u.origin}` : '';
+  } catch {
+    return '';
+  }
+}
+
 /** @param {string} [nonce] per-request script nonce (the wallet); omit for the static policy */
 function buildCsp(nonce) {
   return [
@@ -61,7 +72,7 @@ function buildCsp(nonce) {
       // Mainnet (9005): rpc-mainnet, its only RPC.
       + " https://rpc.litho.ai https://rpc-2.litho.ai https://rpc-3.litho.ai https://api-3.litho.ai"
       + " https://rpc-mainnet.litho.ai"
-      + " https://bridge.litho.ai"
+      + " https://bridge.litho.ai" + multxOrigin()
       + " https://ignite.trade"
       // Quantt AI agents — native wallet sign-in + /v1/mobile BFF. api.quantts.ai
       // returns CORS for https://thanos.fi, so the browser calls it directly.

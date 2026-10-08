@@ -95,6 +95,10 @@ services:
         NEXT_PUBLIC_REOWN_PROJECT_ID: ${NEXT_PUBLIC_REOWN_PROJECT_ID:-}
         NEXT_PUBLIC_INDEXER_URL:      ${NEXT_PUBLIC_INDEXER_URL:-/indexer}
         NEXT_PUBLIC_MULTX_API_URL:    ${NEXT_PUBLIC_MULTX_API_URL:-https://bridge.litho.ai}
+        # MultX bridge: off unless .env sets all three (see .env.example).
+        NEXT_PUBLIC_MULTX_ENABLED:         ${NEXT_PUBLIC_MULTX_ENABLED:-false}
+        NEXT_PUBLIC_MULTX_MANIFEST_URL:    ${NEXT_PUBLIC_MULTX_MANIFEST_URL:-}
+        NEXT_PUBLIC_MULTX_MANIFEST_SHA256: ${NEXT_PUBLIC_MULTX_MANIFEST_SHA256:-}
     container_name: thanos-web
     restart: unless-stopped
     environment:

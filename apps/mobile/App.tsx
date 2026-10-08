@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
   ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Platform, Pressable, RefreshControl,
@@ -152,7 +152,11 @@ import { fetchEcosystemPrices, fetchMarketQuotes, type MarketQuote } from './lib
 // Lightweight bridge metadata only (no SDK/ethers) so the Bridge UI renders
 // without pulling the heavy ESM bridge SDK onto the eager load path. The
 // execution fn (bridgeMakaluToKamet) is lazy-imported when a bridge is run.
-import { BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep } from './lib/bridge-meta';
+import {
+  bridgeErrorMessage, bridgeTransferLabel, formatBridgeAmount, parseBridgeAmount,
+  type MultXBridgeOption, type MultXBridgeStep, type MultXBridgeTransfer,
+} from './lib/multx-thanos/service';
+import { MULTX_CONFIG, thanosBridge, multxChain, multxSigner, multxPrivateKey } from './lib/thanos-bridge';
 import { resolveRecipient, evmToLitho } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
@@ -178,7 +182,7 @@ import {
   Users, Trash2, TrendingUp, Image as ImageIcon, BadgeCheck,
   Check, CreditCard, Sparkles, Pencil, MapPin, BookUser, X as XIcon,
   ChevronDown, ChevronUp, Star, History, Scan, Wallet as WalletIcon,
-  RefreshCw, Play, Pause, Square as SquareIcon, ListChecks, Code,
+  RefreshCw, Play, Pause, Square as SquareIcon, ListChecks, Code, ArrowLeftRight,
 } from 'lucide-react-native';
 import { ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp, looksLikeUrl, normalizeUrl } from './lib/ecosystem';
 import { discoverAppIcon } from './lib/token-icons';
@@ -2007,6 +2011,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         <QuickAction Icon={ArrowUpRight}  label="Send"    onPress={() => navigate('send')}/>
         <QuickAction Icon={ArrowDownLeft} label="Receive" onPress={() => navigate('receive')}/>
         {EXCHANGE_ENABLED && <QuickAction Icon={Repeat} label="Swap" onPress={() => navigate('swap')}/>}
+        {MULTX_CONFIG.enabled && <QuickAction Icon={ArrowLeftRight} label="Bridge" onPress={() => navigate('bridge')}/>}
       </View>
 
       {/* Update-available nudge — above the security nudge since acting on
@@ -5290,104 +5295,235 @@ function MobileCrossChainSwap({ bridge }: { bridge: boolean }) {
   );
 }
 
-/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via lib/multx-bridge
-   (ethers v6, no ESM SDK): approve -> lock on Makalu -> validators sign ->
-   relayer releases on Kamet. Funds arrive at the same address (no recipient). */
-function MobileMakaluKametBridge() {
+/* MultX bridge — every route the signed release manifest approves
+   (lib/thanos-bridge.ts). Lock on the source chain → validators sign → the
+   relayer releases to the same address on the destination chain; it shows
+   as arrived only once the release is verified there. Its own screen (Home →
+   Bridge) so it doesn't depend on Swap, which iOS doesn't show. */
+const BRIDGE_TONE = { pending: '#3b7af7', ok: '#10b981', bad: '#ef4444', warn: '#eab308' } as const;
+
+function bridgeStepText(step: MultXBridgeStep, o: MultXBridgeOption): string {
+  switch (step) {
+    case 'checking':  return 'Checking balance…';
+    case 'approving': return `Approving ${o.symbol}…`;
+    case 'locking':   return `Locking ${o.symbol} on ${multxChain(o.sourceChainId).name}…`;
+    case 'bridging':  return 'Validators signing — this can take a few minutes…';
+  }
+}
+
+function BridgeScreen({ goBack }: { goBack: () => void }) {
   const C = useColors();
   const styles = useStyles();
   const seed = useWalletSeed();
   const openBrowser = useBrowser();
-  const [tokenSym, setTokenSym] = useState(BRIDGE_TOKENS[0].symbol);
-  const [amt, setAmt]   = useState('');
-  const [step, setStep] = useState<BridgeStep>('idle');
-  const [txHash, setTxHash] = useState('');
-  const [err, setErr]   = useState('');
+  const bridge = thanosBridge();
+  const address = useMemo(() => { try { return seed.length ? new Wallet(multxPrivateKey(seed)).address : ''; } catch { return ''; } }, [seed]);
 
-  const token  = BRIDGE_TOKENS.find(t => t.symbol === tokenSym) ?? BRIDGE_TOKENS[0];
-  const amtNum = parseFloat(amt) || 0;
-  const ready  = seed.length > 0;
-  const busy   = step === 'approving' || step === 'locking' || step === 'signing';
-  const done   = step === 'completed';
+  const [options, setOptions] = useState<MultXBridgeOption[] | null>(null);
+  const [loadErr, setLoadErr] = useState('');
+  const [src, setSrc] = useState<number | null>(null);
+  const [dst, setDst] = useState<number | null>(null);
+  const [sym, setSym] = useState('');
+  const [amt, setAmt] = useState('');
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const [step, setStep] = useState<MultXBridgeStep | null>(null);
+  const [current, setCurrent] = useState<MultXBridgeTransfer | null>(null);
+  const [err, setErr] = useState('');
+  const [history, setHistory] = useState<MultXBridgeTransfer[]>([]);
+  const running = useRef(false);
 
-  useEffect(() => { if (step === 'completed' || step === 'error') { setStep('idle'); setErr(''); setTxHash(''); } /* eslint-disable-next-line */ }, [tokenSym, amt]);
+  const refreshHistory = useCallback(() => {
+    if (address) void bridge.history(address).then(setHistory);
+  }, [bridge, address]);
 
-  const label: Record<BridgeStep, string> = {
-    idle: 'Bridge to Kamet', approving: 'Approving…', locking: 'Locking on Makalu…',
-    signing: 'Validators signing…', completed: 'Bridged ✓', error: 'Try again',
-  };
+  const load = useCallback(() => {
+    setLoadErr(''); setOptions(null);
+    bridge.load({ refresh: true }).then((list) => {
+      setOptions(list);
+      if (address) void bridge.resumePending(address, refreshHistory);
+    }).catch((e) => setLoadErr(bridgeErrorMessage(e)));
+  }, [bridge, address, refreshHistory]);
 
-  const pickTok = () => Alert.alert('Select asset', undefined, [
-    ...BRIDGE_TOKENS.map(t => ({ text: t.symbol, onPress: () => setTokenSym(t.symbol) })),
-    { text: 'Cancel', style: 'cancel' as const },
-  ]);
+  useEffect(() => { load(); refreshHistory(); }, [load, refreshHistory]);
+
+  const sources = useMemo(() => [...new Set((options ?? []).map((o) => o.sourceChainId))], [options]);
+  const dests = useMemo(() => [...new Set((options ?? []).filter((o) => o.sourceChainId === src).map((o) => o.destinationChainId))], [options, src]);
+  const tokens = useMemo(() => (options ?? []).filter((o) => o.sourceChainId === src && o.destinationChainId === dst), [options, src, dst]);
+  const option = tokens.find((o) => o.symbol === sym) ?? null;
+
+  useEffect(() => { if (sources.length && (src === null || !sources.includes(src))) setSrc(sources[0]); }, [sources, src]);
+  useEffect(() => { if (dests.length && (dst === null || !dests.includes(dst))) setDst(dests[0]); }, [dests, dst]);
+  useEffect(() => { if (tokens.length && !tokens.some((o) => o.symbol === sym)) setSym(tokens[0].symbol); }, [tokens, sym]);
+
+  useEffect(() => {
+    setBalance(null);
+    if (!option || !address) return;
+    let live = true;
+    bridge.balanceOf(option, address).then((b) => { if (live) setBalance(b); }).catch(() => {});
+    return () => { live = false; };
+  }, [bridge, option, address, current?.status]);
+
+  const busy = step !== null;
+  let amountErr = '';
+  let base: bigint | null = null;
+  if (option && amt.trim()) {
+    try {
+      base = parseBridgeAmount(amt, option);
+      if (balance !== null && base > balance) amountErr = `More than your ${option.symbol} balance.`;
+    } catch (e) { amountErr = bridgeErrorMessage(e); }
+  }
+  const canRun = !!option && !!address && !!base && !amountErr && !busy;
 
   async function run() {
-    if (!ready || amtNum <= 0) return;
-    setErr(''); setTxHash(''); setStep('approving');
+    if (!option || !canRun || running.current) return;
+    running.current = true;
+    setErr(''); setCurrent(null); setStep('checking');
+    let signer: ReturnType<typeof multxSigner> | null = null;
     try {
-      const source = isPrivateKeyWallet(seed)
-        ? { privateKey: seed.join(' ') }
-        : { seed, accountIdx: getActiveAccountIndex() };
-      // Lazy-load the bridge SDK (heavy ESM + ethers v5) only now, on demand.
-      const { bridgeMakaluToKamet } = await import('./lib/multx-bridge');
-      const res = await bridgeMakaluToKamet({
-        source, token, amount: amt,
-        onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
+      signer = multxSigner(seed, option.sourceChainId);
+      const done = await bridge.send({
+        signer: signer.signer, option, amount: amt,
+        onStep: setStep,
+        onUpdate: (t) => { setCurrent(t); refreshHistory(); },
       });
-      if (res.status !== 'completed') {
-        setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.');
-        void notifyIfEnabled('Bridge — release pending', `${amt} ${token.symbol} locked on Makalu; awaiting release on Kamet.`);
-      } else {
-        void notifyIfEnabled('Bridge complete', `${amt} ${token.symbol} bridged Makalu → Kamet.`);
+      setCurrent(done);
+      const amount = `${formatBridgeAmount(done.amountBaseUnits, done.decimals)} ${done.symbol}`;
+      if (done.status === 'RELEASED') {
+        setAmt('');
+        void notifyIfEnabled('Bridge complete', `${amount} arrived on ${multxChain(done.destinationChainId).name}.`);
+      } else if (done.status === 'REVIEW') {
+        void notifyIfEnabled('Bridge — release not confirmed yet', `${amount} sent; Thanos keeps checking the release.`);
       }
     } catch (e) {
-      // MultXError extends Error and carries a decoded user-facing .message.
-      setStep('error');
-      setErr(e instanceof Error ? e.message : 'Bridge failed');
-      void notifyIfEnabled('Bridge failed', e instanceof Error ? e.message : 'The bridge could not complete.');
+      setErr(bridgeErrorMessage(e));
+      void notifyIfEnabled('Bridge failed', bridgeErrorMessage(e));
+    } finally {
+      signer?.destroy();
+      setStep(null);
+      running.current = false;
+      refreshHistory();
     }
   }
 
-  const chip = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
-
-  return (
-    <View style={{ paddingHorizontal: 16, gap: 10 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ color: C.textSecondary, fontSize: 12 }}>Route</Text>
-        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{BRIDGE_ROUTE.source.name} → {BRIDGE_ROUTE.dest.name}</Text>
-      </View>
-      <Text style={styles.fieldLabel}>ASSET</Text>
-      <Pressable onPress={pickTok} style={[styles.input, chip]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Avatar symbol={token.symbol} color={ASSET_COLORS[token.symbol.toUpperCase()] ?? C.blue} size={20}/>
-          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{token.symbol}</Text>
-        </View>
+  const pick = (title: string, items: Array<{ label: string; onPress: () => void }>) => Alert.alert(title, undefined, [
+    ...items.map((i) => ({ text: i.label, onPress: i.onPress })),
+    { text: 'Cancel', style: 'cancel' as const },
+  ]);
+  const row = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
+  const Picker = ({ label, value, onPress }: { label: string; value: string; onPress: () => void }) => (
+    <>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <Pressable onPress={onPress} disabled={busy} accessibilityRole="button" accessibilityLabel={`${label}: ${value}`} style={[styles.input, row, { opacity: busy ? 0.6 : 1 }]}>
+        <Text style={{ color: C.textPrimary, fontWeight: '700' }}>{value}</Text>
         <Text style={{ color: C.textMuted }}>▾</Text>
       </Pressable>
-      <Text style={styles.fieldLabel}>AMOUNT</Text>
-      <TextInput style={[styles.input, { color: C.textPrimary }]} value={amt} onChangeText={setAmt} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={C.textMuted}/>
-
-      <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, marginTop: 2 }}>
-        Locks {token.symbol} on Makalu; a relayer releases the same amount to your address on Kamet — hands-off.
+    </>
+  );
+  const TxLine = ({ chainId, hash, label }: { chainId: number; hash?: string; label: string }) => {
+    if (!hash) return null;
+    const href = multxChain(chainId).explorerTx?.(hash);
+    return (
+      <Text style={{ color: href ? C.blue : C.textSecondary, fontSize: 12 }} onPress={href ? () => openBrowser(href) : undefined}>
+        {label}: {hash.slice(0, 10)}…{hash.slice(-6)}
       </Text>
+    );
+  };
 
-      {txHash ? (
-        <Text style={{ color: C.blue, fontSize: 11 }} onPress={() => openBrowser(`https://makalu.litho.ai/txs/${txHash}`)}>
-          Lock tx: {txHash.slice(0, 10)}…{txHash.slice(-6)}
-        </Text>
-      ) : null}
-      {busy && <Text style={{ color: C.blue, fontSize: 12 }}>{label[step]}</Text>}
-      {done && <Text style={{ color: '#10b981', fontSize: 12 }}>✓ Bridged to Kamet</Text>}
-      {err ? <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text> : null}
+  const from = src !== null ? multxChain(src) : null;
+  const to = dst !== null ? multxChain(dst) : null;
+  const outcome = current && !busy ? bridgeTransferLabel(current) : null;
+  const release = bridge.release();
 
-      <Pressable style={[styles.btnPrimary, { opacity: (ready && amtNum > 0 && !busy) ? 1 : 0.5 }]} disabled={!ready || amtNum <= 0 || busy} onPress={run}>
-        <Text style={styles.btnPrimaryText}>{!ready ? 'Unlock to bridge' : busy ? label[step] : done ? 'Bridge more' : label.idle}</Text>
-      </Pressable>
-      <Text style={{ color: C.textMuted, fontSize: 10, lineHeight: 15 }}>
-        Makalu → Kamet is live. Kamet → Makalu and external chains are coming soon.
-      </Text>
-    </View>
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <View style={styles.screenHeader}>
+        <Pressable onPress={goBack} hitSlop={16} style={styles.backBtn}>
+          <ChevronLeft size={22} color={C.textPrimary} strokeWidth={2.2}/>
+        </Pressable>
+        <Text style={styles.screenTitle}>Bridge</Text>
+        <View style={{ width: 28 }}/>
+      </View>
+
+      {loadErr ? (
+        <View style={{ paddingHorizontal: 16, paddingVertical: 24, alignItems: 'center', gap: 6 }}>
+          <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>Bridge unavailable</Text>
+          <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>{loadErr}</Text>
+          <Pressable style={[styles.btnSecondary, { marginTop: 10, paddingHorizontal: 18 }]} onPress={load}>
+            <Text style={styles.btnSecondaryText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : !options ? (
+        <View style={{ paddingVertical: 32, alignItems: 'center' }}><ActivityIndicator color={C.blue}/></View>
+      ) : !options.length ? (
+        <View style={{ paddingHorizontal: 16, paddingVertical: 24, alignItems: 'center', gap: 6 }}>
+          <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>No bridge routes are open</Text>
+          <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>MultX transfers are paused right now. Try again later.</Text>
+        </View>
+      ) : (
+        <View style={{ paddingHorizontal: 16, gap: 10 }}>
+          <Picker label="FROM" value={from?.name ?? '—'} onPress={() => pick('Bridge from', sources.map((id) => ({ label: multxChain(id).name, onPress: () => setSrc(id) })))}/>
+          <Picker label="TO" value={to?.name ?? '—'} onPress={() => pick('Bridge to', dests.map((id) => ({ label: multxChain(id).name, onPress: () => setDst(id) })))}/>
+          <Picker label="ASSET" value={option?.symbol ?? '—'} onPress={() => pick('Select asset', tokens.map((o) => ({ label: o.symbol, onPress: () => setSym(o.symbol) })))}/>
+
+          <View style={row}>
+            <Text style={[styles.fieldLabel, { marginBottom: 0 }]}>AMOUNT</Text>
+            {option && balance !== null && (
+              <Text style={{ color: C.blue, fontSize: 11 }} onPress={busy ? undefined : () => setAmt(formatBridgeAmount(balance, option.decimals))}>
+                Balance {formatBridgeAmount(balance, option.decimals)} {option.symbol} · Max
+              </Text>
+            )}
+          </View>
+          <TextInput style={[styles.input, { color: C.textPrimary, borderColor: amountErr ? C.red : undefined }]} value={amt} onChangeText={setAmt} editable={!busy}
+            keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={C.textMuted} accessibilityLabel="Amount"/>
+          {amountErr ? <Text style={{ color: C.red, fontSize: 11 }}>{amountErr}</Text> : null}
+
+          {option && from && to && (
+            <Text style={{ color: C.textMuted, fontSize: 11, lineHeight: 16, marginTop: 2 }}>
+              Arrives at your address on {to.name}{address ? ` (${address.slice(0, 6)}…${address.slice(-4)})` : ''}. The network fee is paid in {from.nativeSymbol} on {from.name}{base ? '; the first transfer of a token also needs an approval' : ''}.
+            </Text>
+          )}
+
+          {busy && option && step && <Text style={{ color: BRIDGE_TONE.pending, fontSize: 12 }}>{bridgeStepText(step, option)}</Text>}
+          {outcome && current && (
+            <Text style={{ color: BRIDGE_TONE[outcome.tone], fontSize: 12, lineHeight: 17 }}>
+              {current.status === 'RELEASED' ? `✓ ${formatBridgeAmount(current.amountBaseUnits, current.decimals)} ${current.symbol} arrived on ${multxChain(current.destinationChainId).name}.`
+                : current.status === 'REVIEW' ? 'Your tokens were sent, but the release on the other network isn’t confirmed yet. It stays in Recent transfers and is checked again next time you open the bridge.'
+                : current.status === 'FAILED' ? 'The transfer failed on the source network, so no tokens left your wallet.'
+                : outcome.label}
+            </Text>
+          )}
+          {current && <TxLine chainId={current.sourceChainId} hash={current.sourceTxHash} label="Lock"/>}
+          {current && <TxLine chainId={current.destinationChainId} hash={current.destinationTxHash} label="Release"/>}
+          {err ? <Text style={{ color: C.red, fontSize: 12 }}>{err}</Text> : null}
+
+          <Pressable style={[styles.btnPrimary, { opacity: canRun ? 1 : 0.5 }]} disabled={!canRun} onPress={run} accessibilityRole="button">
+            <Text style={styles.btnPrimaryText}>
+              {!address ? 'Unlock to bridge' : busy ? 'Bridging…' : `Bridge${option ? ` ${option.symbol}` : ''}${to ? ` to ${to.name}` : ''}`}
+            </Text>
+          </Pressable>
+
+          {history.length > 0 && (
+            <View style={{ marginTop: 12, gap: 8 }}>
+              <Text style={styles.fieldLabel}>RECENT TRANSFERS</Text>
+              {history.slice(0, 8).map((t) => {
+                const l = bridgeTransferLabel(t);
+                const href = t.sourceTxHash ? multxChain(t.sourceChainId).explorerTx?.(t.sourceTxHash) : undefined;
+                return (
+                  <Pressable key={t.integrationRequestId} style={row} disabled={!href} onPress={href ? () => openBrowser(href) : undefined}>
+                    <Text style={{ color: C.textPrimary, fontSize: 12, flexShrink: 1 }}>
+                      {formatBridgeAmount(t.amountBaseUnits, t.decimals)} {t.symbol}
+                      <Text style={{ color: C.textMuted }}> · {multxChain(t.sourceChainId).name} → {multxChain(t.destinationChainId).name}</Text>
+                    </Text>
+                    <Text style={{ color: BRIDGE_TONE[l.tone], fontSize: 12, fontWeight: '600' }}>{l.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {release && <Text style={{ color: C.textMuted, fontSize: 10 }}>MultX release {release.tag} · {release.commit.slice(0, 7)}</Text>}
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
@@ -5397,15 +5533,14 @@ function MobileMakaluKametBridge() {
  *  Mirrors SWAP_LIVE on web and desktop. */
 const SWAP_LIVE = false;
 
-/** Swap-screen mode tabs. Swap (same-chain) and Cross-chain ship; only
- *  'bridge' (Makalu<->Kamet TESTNET) is stripped from release builds. */
-const SWAP_MODE_TABS = ([['swap', 'Swap'], ['cross', 'Cross-chain'], ['bridge', 'Bridge']] as const)
-  .filter(([id]) => __DEV__ || id !== 'bridge');
+/** Swap-screen mode tabs: Swap (same-chain) and Cross-chain. The MultX
+ *  bridge has its own screen (BridgeScreen). */
+const SWAP_MODE_TABS = [['swap', 'Swap'], ['cross', 'Cross-chain']] as const;
 
 function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?: string }) {
   const C = useColors();
   const styles = useStyles();
-  const [mode, setMode] = useState<'swap' | 'cross' | 'bridge'>('swap');
+  const [mode, setMode] = useState<'swap' | 'cross'>('swap');
   const [from, setFrom] = useState(initialFrom ?? 'LITHO');
   const [to,   setTo]   = useState(initialFrom === 'LitBTC' ? 'LITHO' : 'LitBTC');
   const [amt,  setAmt]  = useState('100');
@@ -5535,10 +5670,8 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         <View style={{ width: 28 }}/>
       </View>
 
-      {/* Mode tabs. Only the Bridge tab is dev-build only — it moves funds
-          between the Lithosphere Makalu/Kamet TESTNETS (App Store won't
-          take it; client called it useless). Swap and Cross-chain ship.
-          __DEV__ is false in any EAS release build. */}
+      {/* Mode tabs: Swap and Cross-chain. The MultX bridge is its own
+          screen (Home → Bridge) when the build enables it. */}
       {SWAP_MODE_TABS.length > 1 && (
         <View style={{ flexDirection: 'row', gap: 4, marginHorizontal: 16, marginBottom: 12, padding: 4, borderRadius: 12, backgroundColor: C.bgElevated, borderWidth: 1, borderColor: C.borderDefault }}>
           {SWAP_MODE_TABS.map(([id, label]) => {
@@ -5552,7 +5685,7 @@ function SwapScreen({ goBack, initialFrom }: { goBack: () => void; initialFrom?:
         </View>
       )}
 
-      {(__DEV__ && mode === 'bridge') ? <MobileMakaluKametBridge/> : mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : !SWAP_LIVE ? (
+      {mode === 'cross' ? <MobileCrossChainSwap bridge={false}/> : !SWAP_LIVE ? (
       <View style={{ paddingHorizontal: 16, paddingVertical: 24, alignItems: 'center', gap: 6 }}>
         <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '700' }}>Swap is coming soon</Text>
         <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
@@ -7353,7 +7486,7 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'quantt' | 'assets' | 'nfts';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'bridge' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'quantt' | 'assets' | 'nfts';
 
 /** Bottom-nav Quantts icon — the brand mark (full colour, not tinted) so it
  *  matches the Quantts app's own menu. Sized up because the PNG has padding. */
@@ -9870,6 +10003,7 @@ function App() {
                   initialTo={sendPrefillTo ?? undefined}/>}
                 {screen === 'receive'  && <ReceiveScreen goBack={() => { setScreen('home'); setSeedSym(null); setSeedChainId(null); }} initialSym={seedSym ?? undefined} initialChainId={seedChainId ?? undefined}/>}
                 {screen === 'swap' && EXCHANGE_ENABLED && <SwapScreen goBack={() => { setScreen('home'); setSeedSym(null); }} initialFrom={seedSym ?? undefined}/>}
+                {screen === 'bridge' && MULTX_CONFIG.enabled && <BridgeScreen goBack={() => setScreen('home')}/>}
                 {screen === 'discover' && <DiscoverScreen onOpenMarket={() => setScreen('market')}/>}
                 {screen === 'quantt'   && <QuanttScreen/>}
                 {screen === 'earn'     && <EarnScreen goBack={() => setScreen('home')}/>}
@@ -9985,7 +10119,7 @@ function tabBarBottom(insetBottom: number): number {
   return insetBottom + 8;
 }
 const isTabActive = (key: Screen, screen: Screen): boolean =>
-  screen === key || (key === 'discover' && screen === 'market') || (key === 'home' && (screen === 'send' || screen === 'receive'));
+  screen === key || (key === 'discover' && screen === 'market') || (key === 'home' && (screen === 'send' || screen === 'receive' || screen === 'bridge'));
 
 /** Liquid-glass tab bar (client 2026-10-08, iOS 26 reference): a floating
  *  pill over the content — blurred glass with a bright edge and a top sheen —

@@ -37,7 +37,8 @@ import {
   checkRecipient, copySecretToClipboard, passwordProblem,
 } from '@thanos/sdk-core';
 import { addLocalActivity } from './local-activity';
-import { bridgeMakaluToKamet, BRIDGE_TOKENS, BRIDGE_ROUTE, type BridgeStep, MultXError } from './multx-bridge';
+import { MultXBridgePanel } from './MultXBridgePanel';
+import { MULTX_CONFIG } from './multx-thanos';
 import {
   evmToLitho, preferredAddressFormat, DUAL_ADDRESS_CHAIN_IDS,
   ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -4258,10 +4259,9 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
   return (
     <Modal title="Swap" onClose={onClose}>
       <div className="modal-body">
-        {/* Bridge is Makalu<->Kamet TESTNET — dev-build only (import.meta.env.DEV
-            is false in a `vite build`), so a shipped desktop app is same-chain
-            swap only and the tab strip is dropped. */}
-        {import.meta.env.DEV && (
+        {/* Bridge (MultX) only in a build that enables it with a pinned
+            release manifest (multx-thanos.ts); otherwise no tab strip. */}
+        {MULTX_CONFIG.enabled && (
           <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, border: '1px solid var(--border-default)' }}>
             {(['swap', 'bridge'] as const).map(m => (
               <button key={m} type="button" onClick={() => setMode(m)} style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent', color: mode === m ? '#fff' : 'var(--text-secondary)' }}>
@@ -4270,7 +4270,7 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
             ))}
           </div>
         )}
-        {(import.meta.env.DEV && mode === 'bridge') ? <DesktopBridgePanel seed={seed}/> : !SWAP_LIVE ? (
+        {(MULTX_CONFIG.enabled && mode === 'bridge') ? <MultXBridgePanel seed={seed}/> : !SWAP_LIVE ? (
           <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, padding: '18px 4px' }}>
             <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Swap is coming soon</div>
             Swaps will open on Lithosphere Mainnet. Until then, send and receive work as usual.
@@ -4360,91 +4360,6 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
         </>)}
       </div>
     </Modal>
-  );
-}
-
-/* MultX bridge — Makalu -> Kamet (LIVE). Real execution via @litho/multx-sdk:
-   approve -> lock on Makalu -> validators sign -> relayer releases on Kamet.
-   Funds arrive at the same address on Kamet (no recipient field). */
-function DesktopBridgePanel({ seed }: { seed: string[] }) {
-  const [tokenSym, setTokenSym] = useState(BRIDGE_TOKENS[0].symbol);
-  const [amt, setAmt]   = useState('');
-  const [step, setStep] = useState<BridgeStep>('idle');
-  const [txHash, setTxHash] = useState('');
-  const [err, setErr]   = useState('');
-
-  const token  = BRIDGE_TOKENS.find(t => t.symbol === tokenSym) ?? BRIDGE_TOKENS[0];
-  const amtNum = parseFloat(amt) || 0;
-  const ready  = seed.length > 0;
-  const busy   = step === 'approving' || step === 'locking' || step === 'signing';
-  const done   = step === 'completed';
-
-  useEffect(() => { if (step === 'completed' || step === 'error') { setStep('idle'); setErr(''); setTxHash(''); } /* eslint-disable-next-line */ }, [tokenSym, amt]);
-
-  const label: Record<BridgeStep, string> = {
-    idle: 'Bridge to Kamet', approving: 'Approving…', locking: 'Locking on Makalu…',
-    signing: 'Validators signing…', completed: 'Bridged ✓', error: 'Try again',
-  };
-
-  async function run() {
-    if (!ready || amtNum <= 0) return;
-    setErr(''); setTxHash(''); setStep('approving');
-    try {
-      const res = await bridgeMakaluToKamet({
-        source: { seed, accountIdx: getActiveAccountIndex() }, token, amount: amt,
-        onStep: (s, info) => { setStep(s); if (info?.txHash) setTxHash(info.txHash); },
-      });
-      if (res.status !== 'completed') {
-        setStep('error'); setErr('Locked on Makalu — release is pending. Check bridge history shortly.');
-        void window.thanosDesktop?.notify?.('Bridge — release pending', `${amt} ${token.symbol} locked on Makalu; awaiting release on Kamet.`);
-      } else {
-        void window.thanosDesktop?.notify?.('Bridge complete', `${amt} ${token.symbol} bridged Makalu → Kamet.`);
-      }
-    } catch (e) {
-      setStep('error');
-      setErr(e instanceof MultXError ? e.message : (e instanceof Error ? e.message : 'Bridge failed'));
-      void window.thanosDesktop?.notify?.('Bridge failed', e instanceof Error ? e.message : 'The bridge could not complete.');
-    }
-  }
-
-  return (
-    <>
-      <div className="fee-row" style={{ borderTop: 'none', marginTop: 0 }}>
-        <span>Route</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, color: 'var(--text-primary)' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b7af7' }}/>{BRIDGE_ROUTE.source.name}
-          <span style={{ color: 'var(--text-muted)' }}>→</span>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6366f1' }}/>{BRIDGE_ROUTE.dest.name}
-        </span>
-      </div>
-      <label className="field-label" style={{ marginTop: 12 }}>Asset</label>
-      <CoinSelect
-        items={BRIDGE_TOKENS.map(t => ({ value: t.symbol, sym: t.symbol, color: coinColor(t.symbol), label: t.symbol }))}
-        value={tokenSym} onChange={setTokenSym}
-      />
-      <label className="field-label" style={{ marginTop: 12 }}>Amount</label>
-      <input className="field-input" type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00"/>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
-        Locks {token.symbol} on Makalu; a relayer releases the same amount to your address on Kamet — hands-off.
-      </div>
-      {txHash && (
-        <div className="fee-row" style={{ marginTop: 10 }}>
-          <span>Lock tx</span>
-          <a href={`https://makalu.litho.ai/txs/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)', fontFamily: 'monospace', fontSize: 12 }}>
-            {txHash.slice(0, 10)}…{txHash.slice(-6)}
-          </a>
-        </div>
-      )}
-      {busy && <div style={{ fontSize: 12, color: 'var(--blue, #3b7af7)', marginTop: 8 }}>{label[step]}</div>}
-      {done && <div style={{ fontSize: 12, color: 'var(--green, #10b981)', marginTop: 8 }}>✓ Bridged to Kamet</div>}
-      {err  && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{err}</div>}
-      <button className="btn-primary" style={{ marginTop: 16 }} disabled={!ready || amtNum <= 0 || busy} onClick={run}>
-        {!ready ? 'Unlock to bridge' : busy ? label[step] : done ? 'Bridge more' : label.idle}
-      </button>
-      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
-        Makalu → Kamet is live. Kamet → Makalu and external chains are coming soon.
-      </div>
-    </>
   );
 }
 

@@ -76,4 +76,4 @@ if (check && drift.length) {
   console.error(`MultX copies are out of date — run node scripts/sync-multx-thanos.mjs:\n  ${drift.join('\n  ')}`);
   process.exit(1);
 }
-if (!check) console.log('MultX copies written.');
+if (!check) console.info('MultX copies written.');
