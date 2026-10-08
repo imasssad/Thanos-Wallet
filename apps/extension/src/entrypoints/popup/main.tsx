@@ -982,6 +982,8 @@ const LAX_CREATE_RAIL: Array<{ step: LaxCreateStep; label: string }> = [
   { step: 'complete', label: 'Complete' },
 ];
 const LAX_ISSUE_QUICK = [50, 100, 200, 500];
+/** Smallest card order Zypto accepts (the API enforces it too). */
+const LAX_MIN_CARD_USD = 20;
 
 function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () => void }) {
   const [step, setStep]     = useState<LaxCreateStep>('checking');
@@ -991,8 +993,6 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   const [agreed, setAgreed] = useState(false);
 
   const [amount, setAmount]         = useState('');
-  const [currency, setCurrency]     = useState('USDT');
-  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
 
   const [verifyUrl, setVerifyUrl] = useState<string | null>(null);
 
@@ -1017,19 +1017,6 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
     })();
   }, []);
 
-  useEffect(() => {
-    if (step !== 'amount') return;
-    (async () => {
-      try {
-        const raw = await laxCurrencies();
-        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
-        if (Array.isArray(arr) && arr.length) {
-          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
-        }
-      } catch { /* keep the fallback list */ }
-    })();
-  }, [step]);
-
   const submitAccount = async () => {
     setErr(null);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
@@ -1050,11 +1037,12 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   const submitAmount = async () => {
     setErr(null);
     const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
+    if (!Number.isFinite(amt) || amt < LAX_MIN_CARD_USD) { setErr(`The minimum is $${LAX_MIN_CARD_USD}.`); return; }
     if (!status?.configuredForIssuance) { onDone(); return; }
     setBusy(true);
     try {
-      const res = await laxIssueCard({ amount: amt, currency, email: email.trim() });
+      // The card's own currency: the crypto is picked on LAX's checkout page.
+      const res = await laxIssueCard({ amount: amt, currency: 'USD', email: email.trim() });
       const url = extractLaxRedirectUrl(res);
       if (url) {
         try { browser.tabs.create({ url }); } catch { /* no tabs API — ignore */ }
@@ -1146,20 +1134,7 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {rail}
-        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Fund your new card with</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {currencies.map(cur => (
-            <button key={cur} onClick={() => setCurrency(cur)} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
-              border: `1px solid ${currency === cur ? 'var(--blue)' : 'var(--border-default)'}`,
-              background: currency === cur ? 'var(--blue-dim)' : 'transparent', cursor: 'pointer',
-            }}>
-              <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}>{cur}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 2 }}>Starting balance (USD)</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 2 }}>Starting balance (USD, minimum ${LAX_MIN_CARD_USD})</div>
         <input className="field" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
           style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', height: 52 }}/>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -1170,6 +1145,8 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
             }}>${q}</button>
           ))}
         </div>
+
+        <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.45 }}>You’ll pay with crypto — USDT, USDC, ETH, BTC and more — on LAX’s secure checkout page.</div>
 
         {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
 
@@ -1190,12 +1167,12 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
         <div style={{ width: 64, height: 64, borderRadius: 32, background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
           <Shield size={28} color="var(--blue)"/>
         </div>
-        <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800, textAlign: 'center' }}>Verification opened in a new tab</div>
+        <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800, textAlign: 'center' }}>LAX’s checkout opened in a new tab</div>
         <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
-          Complete verification in the new tab, then come back — your card will appear here once it&apos;s ready.
+          Pay for your card there (and verify your identity if LAX asks), then come back — your card will appear here once it&apos;s ready.
         </div>
         {verifyUrl && (
-          <button className="btn-link" onClick={() => browser.tabs.create({ url: verifyUrl })}>Reopen verification tab</button>
+          <button className="btn-link" onClick={() => browser.tabs.create({ url: verifyUrl })}>Reopen checkout</button>
         )}
         <button className="btn-primary" style={{ alignSelf: 'stretch' }} onClick={onDone}>Continue</button>
       </div>

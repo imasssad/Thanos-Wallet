@@ -1793,6 +1793,8 @@ const LAX_BENEFITS = [
 const LAX_INTRO_BENEFITS = ['Spend online and in-store', 'Manage your card instantly', 'Track transactions in real time', 'Secure payments wherever you go'];
 const LAX_KYC_STEPS = ['Prepare your Passport or ID card', 'Be at your home', 'Allow location access', 'Take a selfie'];
 const LAX_TOPUP_QUICK = [50, 100, 200, 500];
+/** Smallest card order Zypto accepts (the API enforces it too). */
+const LAX_MIN_CARD_USD = 20;
 
 type LaxView = 'intro' | 'soon' | 'create' | 'dashboard' | 'topup' | 'success';
 
@@ -2091,8 +2093,6 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   const [err, setErr]       = useState<string | null>(null);
 
   const [amount, setAmount]         = useState('');
-  const [currency, setCurrency]     = useState('USDT');
-  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
   const [issuing, setIssuing]       = useState(false);
   const [issueErr, setIssueErr]     = useState<string | null>(null);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
@@ -2115,19 +2115,6 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (step !== 'amount') return;
-    (async () => {
-      try {
-        const raw = await laxCurrencies();
-        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
-        if (Array.isArray(arr) && arr.length) {
-          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
-        }
-      } catch { /* keep the fallback list */ }
-    })();
-  }, [step]);
-
   const submitAccount = async () => {
     setErr(null);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr('Enter a valid email.'); return; }
@@ -2146,10 +2133,11 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   const submitAmount = async () => {
     setIssueErr(null);
     const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setIssueErr('Enter an amount.'); return; }
+    if (!Number.isFinite(amt) || amt < LAX_MIN_CARD_USD) { setIssueErr(`The minimum is $${LAX_MIN_CARD_USD}.`); return; }
     setIssuing(true);
     try {
-      const res = await laxIssueCard({ amount: amt, currency, email: email.trim() });
+      // The card's own currency: the crypto is picked on LAX's checkout page.
+      const res = await laxIssueCard({ amount: amt, currency: 'USD', email: email.trim() });
       const url = extractKycUrl(res);
       if (url) {
         setRedirectUrl(url);
@@ -2228,22 +2216,7 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
 
       {step === 'amount' && (
         <>
-          <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Fund your card with</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {currencies.map(cur => (
-              <button key={cur} onClick={() => setCurrency(cur)} style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
-                border: `1px solid ${currency === cur ? 'var(--blue)' : 'var(--border-default)'}`,
-                background: currency === cur ? 'rgba(59,122,247,0.14)' : 'transparent',
-                cursor: 'pointer', fontFamily: 'inherit',
-              }}>
-                <TokenAvatar sym={cur} color={coinColor(cur)} className="tx-avatar" label={cur.slice(0, 1)} style={{ width: 18, height: 18, fontSize: 9 }}/>
-                <span style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{cur}</span>
-              </button>
-            ))}
-          </div>
-
-          <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 2 }}>Initial card amount (USD)</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 2 }}>Initial card amount (USD, minimum ${LAX_MIN_CARD_USD})</div>
           <input className="field-input" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
             style={{ fontSize: 22, fontWeight: 800, textAlign: 'center', padding: '14px 12px' }}/>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -2256,7 +2229,7 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
 
           <button className="btn-primary" disabled={issuing} onClick={submitAmount} style={{ marginTop: 2 }}>{issuing ? 'Issuing…' : 'Issue Card'}</button>
           <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', lineHeight: 1.5 }}>
-            This is a real card issuance — there is no sandbox. If ID verification is required you&apos;ll be sent to it next.
+            You’ll pay with crypto — USDT, USDC, ETH, BTC and more — on LAX’s secure checkout page. This is a real card order — there is no sandbox.
           </div>
         </>
       )}
@@ -2266,9 +2239,9 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
           <div style={{ width: 48, height: 48, borderRadius: 24, background: 'rgba(59,122,247,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <KeyIcon size={20} color="var(--blue)"/>
           </div>
-          <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800 }}>Complete your verification</div>
+          <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800 }}>Finish on LAX’s checkout page</div>
           <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
-            Identity verification opened in Thanos. When it asks, allow the camera and location — only that page gets them, and only until you close it. Your card will appear here once it&apos;s ready.
+            LAX’s checkout opened in Thanos: pay for your card there, and verify your identity if it asks. When it asks, allow the camera and location — only that page gets them, and only until you close it. Your card will appear here once it&apos;s ready.
           </div>
           {redirectUrl && (
             <>

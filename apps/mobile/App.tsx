@@ -1353,6 +1353,8 @@ const LAX_KYC_STEPS = [
 ];
 
 const LAX_CREATE_QUICK = [50, 100, 200, 500];
+/** Smallest card order Zypto accepts (the API enforces it too). */
+const LAX_MIN_CARD_USD = 20;
 
 /** Multi-step: Account (email/password) → Amount (card funding, only when
  *  issuance is configured) → Verify (only if issue-card hands back a KYC
@@ -1369,23 +1371,8 @@ function LaxCreate({ C, styles, status, openBrowser, onDone }: any) {
   const [err, setErr]       = useState<string | null>(null);
 
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('USDT');
-  const [currencies, setCurrencies] = useState<string[]>(['USDT', 'LITHO', 'ETH', 'BNB']);
 
   const canIssue = !!status?.configuredForIssuance;
-
-  useEffect(() => {
-    if (step !== 'amount') return;
-    (async () => {
-      try {
-        const raw = await (require('./lib/lax') as typeof import('./lib/lax')).laxCurrencies();
-        const arr = Array.isArray(raw) ? raw : (raw as any)?.currencies ?? (raw as any)?.data;
-        if (Array.isArray(arr) && arr.length) {
-          setCurrencies(arr.map((x: any) => String(x?.symbol ?? x?.code ?? x)).filter(Boolean).slice(0, 12));
-        }
-      } catch { /* keep the fallback list */ }
-    })();
-  }, [step]);
 
   const submitAccount = async () => {
     setErr(null);
@@ -1406,11 +1393,12 @@ function LaxCreate({ C, styles, status, openBrowser, onDone }: any) {
   const submitAmount = async () => {
     setErr(null);
     const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter an amount.'); return; }
+    if (!Number.isFinite(amt) || amt < LAX_MIN_CARD_USD) { setErr(`The minimum is $${LAX_MIN_CARD_USD}.`); return; }
     setBusy(true);
     try {
       const lax = require('./lib/lax') as typeof import('./lib/lax');
-      const res = await lax.laxIssueCard({ amount: amt, currency, email: email.trim() });
+      // The card's own currency: the crypto is picked on LAX's checkout page.
+      const res = await lax.laxIssueCard({ amount: amt, currency: 'USD', email: email.trim() });
       const kycUrl = lax.findKycRedirectUrl(res);
       if (kycUrl) {
         openBrowser?.(kycUrl);
@@ -1485,18 +1473,7 @@ function LaxCreate({ C, styles, status, openBrowser, onDone }: any) {
 
       {step === 'amount' && (
         <>
-          <Text style={{ color: C.textSecondary, fontSize: 12 }}>Fund your new card with crypto</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {currencies.map(cur => (
-              <Pressable key={cur} onPress={() => setCurrency(cur)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: currency === cur ? C.blue : C.borderDefault, backgroundColor: currency === cur ? C.blueDim : 'transparent' }}>
-                <Avatar symbol={cur} color={ASSET_COLORS[cur.toUpperCase()] ?? C.blue} size={18}/>
-                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '700' }}>{cur}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>Card funding amount (USD)</Text>
+          <Text style={{ color: C.textSecondary, fontSize: 12, marginTop: 4 }}>Card funding amount (USD, minimum ${LAX_MIN_CARD_USD})</Text>
           <TextInput value={amount} onChangeText={setAmount} placeholder="0.00" placeholderTextColor={C.textMuted} keyboardType="decimal-pad"
             style={{ backgroundColor: C.bgElevated, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14, color: C.textPrimary, fontSize: 22, fontWeight: '800', textAlign: 'center' }}/>
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1506,6 +1483,8 @@ function LaxCreate({ C, styles, status, openBrowser, onDone }: any) {
               </Pressable>
             ))}
           </View>
+
+          <Text style={{ color: C.textMuted, fontSize: 12, lineHeight: 17 }}>You’ll pay with crypto — USDT, USDC, ETH, BTC and more — on LAX’s secure checkout page.</Text>
 
           {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
 
@@ -1521,9 +1500,9 @@ function LaxCreate({ C, styles, status, openBrowser, onDone }: any) {
           <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' }}>
             <Shield size={28} color={C.blue}/>
           </View>
-          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center' }}>Finish verification in your browser</Text>
+          <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center' }}>Finish on LAX’s checkout page</Text>
           <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center' }}>
-            Complete verification in your browser, then come back — your card will appear here once it&apos;s ready.
+            Pay for your card in your browser (and verify your identity if LAX asks), then come back — your card will appear here once it&apos;s ready.
           </Text>
           <Pressable onPress={() => onDone()} style={({ pressed }: any) => [{ height: 48, borderRadius: 14, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', marginTop: 8 }, pressed && { opacity: 0.85 }]}>
             <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Continue</Text>
