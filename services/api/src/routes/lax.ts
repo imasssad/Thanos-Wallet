@@ -13,9 +13,9 @@
  * white-labelled from):
  *   - Auth is CONFIRMED: `Authorization: Bearer <key>` (verified from the real
  *     spec — the earlier `x-api-key` guess was wrong).
- *   - LAX_API_BASE is our own dashboard-generated Project URL — the spec's
- *     example server (merchant.fcfpay.com) is a placeholder we replace with
- *     ours ("just replace zypto to yours for endpoints" — Robert, 2026-09-09).
+ *   - LAX_API_BASE is our own dashboard domain, https://dashboard.lax.money —
+ *     not dash.zypto.com or the spec's example merchant.fcfpay.com (Zypto,
+ *     2026-10-08).
  *   - Project 612 (LAX Card) has NO Virtual Cards dashboard section — ops
  *     confirmed 2026-09-18. Live card ops therefore use
  *     `/api/physical-cards/*` (balance/load/transactions/view/status), not
@@ -42,7 +42,9 @@
  *
  * ENV (set on the VPS `.env`, gitignored — NEVER commit the value):
  *   LAX_API_KEY     — partner secret from Project List → "Get api key"
- *   LAX_API_BASE    — dashboard root / project API base (https)
+ *   LAX_API_BASE    — https://dashboard.lax.money (our dashboard domain)
+ *   LAX_IFRAME_ID / LAX_PRODUCT_ID — widget + card product (OB03362)
+ *   LAX_PRODUCT_CURRENCY — the card product's own currency, default USD
  *   LAX_PROJECT_ID  — dashboard Project id (612 for LAX Card) — informational
  *                     / status flag; the Bearer key already scopes the merchant
  *   LAX_WEBHOOK_SECRET — shared secret for /lax-webhook
@@ -113,6 +115,14 @@ const productConfig = (value: string): string | null => /^[A-Za-z0-9_-]{1,64}$/.
 const laxIframeId  = (): number | null => integerConfig(process.env.LAX_IFRAME_ID ?? '');
 const laxProductId = (): string | null => productConfig(process.env.LAX_PRODUCT_ID ?? '');
 const configuredForIssuance = (): boolean => Boolean(configured() && laxIframeId() && laxProductId());
+/** The card product's own currency (USD for OB03362). create-card-order-api
+ *  takes this, not the crypto the user pays with — that's picked on Zypto's
+ *  checkout page. Sending USDT/USDC/ETH/BTC made Zypto answer "No products
+ *  are available" (Zypto, 2026-10-08). */
+const laxProductCurrency = (): string => {
+  const v = (process.env.LAX_PRODUCT_CURRENCY ?? '').trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(v) ? v : 'USD';
+};
 /** Whether the configured card product can be refilled. The current Zypto
  *  product (OB03362, Obsidian Global Gold Mastercard) is a non-reloadable
  *  prepaid card, so top-up stays off unless LAX_CARD_RELOADABLE=true. */
@@ -217,7 +227,9 @@ const TopupSchema = z.object({
 });
 const IssueSchema = z.object({
   amount:   laxAmount,
-  currency: z.string().trim().regex(/^[A-Za-z0-9_-]{1,16}$/).transform(v => v.toUpperCase()),
+  /** The crypto picked in the app. Accepted from older app builds but not
+   *  sent upstream: Zypto takes the product's currency (laxProductCurrency). */
+  currency: z.string().trim().regex(/^[A-Za-z0-9_-]{1,16}$/).transform(v => v.toUpperCase()).optional(),
   email:    z.string().trim().email().max(254),
 });
 const CardNumberSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{3,64}$/);
@@ -571,9 +583,10 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
     // The spec types product_id as an integer; Zypto's own ids are also
     // alphanumeric (e.g. 'OB03362'), which go as strings.
     const product = /^\d+$/.test(productId) ? Number(productId) : productId;
+    const currency = laxProductCurrency();
     const upstream = await laxFetch('/api/cards/create-card-order-api', {
       method: 'POST',
-      body: JSON.stringify({ iframe_id: iframeId, product_id: product, ...parse.data }),
+      body: JSON.stringify({ iframe_id: iframeId, product_id: product, amount: parse.data.amount, currency, email: parse.data.email }),
     });
     if (upstreamFailed(upstream)) return sendUpstreamError(res, 'card/issue', upstream, 'LAX card ordering is unavailable right now — please try again later.');
     const checkoutUrl = findCheckoutUrl(upstream.json);
@@ -583,7 +596,7 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
     if (orderId) {
       await query(
         `insert into lax_card_orders (user_id, order_id, kind, email, amount, currency) values ($1, $2, 'issue', $3, $4, $5) on conflict (order_id) do nothing`,
-        [userId, orderId, parse.data.email, parse.data.amount, parse.data.currency],
+        [userId, orderId, parse.data.email, parse.data.amount, currency],
       );
     }
     return res.status(200).json({ success: true, order_id: orderId ?? null, checkout_url: checkoutUrl, redirect_url: checkoutUrl });

@@ -2,28 +2,42 @@
  * LAX / Zypto readiness check, run where the API's env lives:
  *
  *   docker compose -f docker-compose.prod.yml exec api node dist/scripts/lax-check.js
- *   … lax-check.js --base https://merchant.fcfpay.com   # try another API host
+ *   … lax-check.js --base https://dashboard.lax.money   # try another API host
+ *   … lax-check.js --order you@example.com [--amount 25] [--iframe 13294]
  *
- * Read-only: calls get-products and available_currencies with the merchant
- * key from the environment. Never creates orders and never prints the key.
+ * By default read-only: calls get-products and available_currencies with the
+ * merchant key from the environment. --order additionally places ONE
+ * create-card-order-api order exactly as the apps do (iframe, product,
+ * product currency — USD — and the given email) and prints Zypto's full reply
+ * to share with them. That order is an unpaid checkout link: nothing is
+ * charged unless someone opens it and pays. Never prints the key.
  * Exit code 0 only when card ordering can work as configured.
  */
 /* eslint-disable no-console */
 
-const argAt = process.argv.indexOf('--base');
-const base = (argAt > -1 ? process.argv[argAt + 1] ?? '' : process.env.LAX_API_BASE ?? '').replace(/\/+$/, '');
+const arg = (name: string): string | undefined => {
+  const at = process.argv.indexOf(name);
+  return at > -1 ? process.argv[at + 1] ?? '' : undefined;
+};
+const base = (arg('--base') ?? process.env.LAX_API_BASE ?? '').replace(/\/+$/, '');
 const key = process.env.LAX_API_KEY ?? '';
-const iframeId = process.env.LAX_IFRAME_ID ?? '';
+const iframeId = arg('--iframe') ?? process.env.LAX_IFRAME_ID ?? '';
 const productId = process.env.LAX_PRODUCT_ID ?? '';
+// The product's own currency — what create-card-order-api takes (Zypto, 2026-10-08).
+const productCurrency = ((process.env.LAX_PRODUCT_CURRENCY ?? '').trim().toUpperCase().match(/^[A-Z]{3}$/)?.[0]) ?? 'USD';
+const orderEmail = arg('--order');
+const orderAmount = Number(arg('--amount') ?? '25');
 
 const mark = (ok: boolean | null) => (ok === null ? '·' : ok ? '✓' : '✗');
 const say = (ok: boolean | null, label: string, note = '') => console.log(`${mark(ok)} ${label}${note ? ` — ${note}` : ''}`);
 
-async function get(path: string): Promise<{ status: number; json: unknown; text: string } | { error: string }> {
+async function get(path: string, body?: unknown): Promise<{ status: number; json: unknown; text: string } | { error: string }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15_000);
   try {
     const res = await fetch(base + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       signal: ctrl.signal,
     });
@@ -77,6 +91,7 @@ async function main(): Promise<number> {
   say(Boolean(host) && base.startsWith('https://'), 'LAX_API_BASE', host ? `${host}${base.startsWith('https://') ? '' : ' (must be https)'}` : 'missing or invalid');
   say(/^\d+$/.test(iframeId), 'LAX_IFRAME_ID', iframeId || 'missing');
   say(Boolean(productId), 'LAX_PRODUCT_ID', productId || 'missing — card ordering stays off in the apps');
+  say(null, 'LAX_PRODUCT_CURRENCY', `${productCurrency} (sent as the order currency)`);
   say(Boolean(process.env.LAX_WEBHOOK_SECRET), 'LAX_WEBHOOK_SECRET', process.env.LAX_WEBHOOK_SECRET ? 'set' : 'missing — paid cards will not link to users automatically');
   if (!key || !host) { console.log('\nSet LAX_API_KEY and LAX_API_BASE in the .env first.'); return 1; }
 
@@ -97,9 +112,13 @@ async function main(): Promise<number> {
       const id = field(o, ['product_id', 'productId', 'id']);
       const name = field(o, ['name', 'title', 'product_name']);
       const net = field(o, ['network', 'card_network', 'brand', 'card_type', 'type']);
+      const cur = field(o, ['currency', 'product_currency', 'currency_code']);
       const here = id !== undefined && id === productId;
       if (here) productOk = true;
-      console.log(`  ${here ? '→' : ' '} product_id=${id ?? '?'}${name ? `  ${name}` : ''}${net ? `  (${net})` : ''}`);
+      console.log(`  ${here ? '→' : ' '} product_id=${id ?? '?'}${name ? `  ${name}` : ''}${net ? `  (${net})` : ''}${cur ? `  ${cur}` : ''}`);
+      if (here && cur && cur.toUpperCase() !== productCurrency) {
+        console.log(`    ✗ this product is in ${cur.toUpperCase()} — set LAX_PRODUCT_CURRENCY=${cur.toUpperCase()}`);
+      }
     }
     if (list.length === 0) {
       console.log(`  body: ${products.text.slice(0, 500)}`);
@@ -117,10 +136,38 @@ async function main(): Promise<number> {
   else if (cur.status < 200 || cur.status >= 300) say(false, `HTTP ${cur.status}`, explainHttp(cur.status));
   else say(true, `${(rows(cur.json) ?? []).length} currency entr${(rows(cur.json) ?? []).length === 1 ? 'y' : 'ies'}`);
 
+  if (orderEmail !== undefined) return placeOrder();
+
   console.log(productOk && /^\d+$/.test(iframeId)
     ? '\n✓ Card ordering is configured. If orders still fail, the reason is in the api logs ("[lax] upstream call failed").'
     : '\n✗ Card ordering will not work yet — see the ✗ lines above.');
   return productOk && /^\d+$/.test(iframeId) ? 0 : 1;
+}
+
+/** --order: one create-card-order-api call, the same body the API sends. */
+async function placeOrder(): Promise<number> {
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(orderEmail ?? '')) { console.log('\n--order needs an email address.'); return 1; }
+  if (!Number.isFinite(orderAmount) || orderAmount < 20) { console.log('\n--amount must be at least 20.'); return 1; }
+  if (!/^\d+$/.test(iframeId) || !productId) { console.log('\nSet LAX_IFRAME_ID and LAX_PRODUCT_ID first.'); return 1; }
+  const body = {
+    iframe_id: Number(iframeId),
+    product_id: /^\d+$/.test(productId) ? Number(productId) : productId,
+    amount: orderAmount,
+    currency: productCurrency,
+    email: orderEmail,
+  };
+  console.log(`\nPOST ${new URL(base).host}/api/cards/create-card-order-api`);
+  console.log(`  request:  ${JSON.stringify(body)}`);
+  const r = await get('/api/cards/create-card-order-api', body);
+  if ('error' in r) { say(false, 'unreachable', r.error); return 1; }
+  console.log(`  HTTP ${r.status}`);
+  console.log(`  response: ${typeof r.json === 'string' ? r.json : JSON.stringify(r.json, null, 2)}`);
+  const o = (r.json && typeof r.json === 'object') ? r.json as Record<string, unknown> : {};
+  const ok = r.status >= 200 && r.status < 300 && o.success !== false;
+  console.log(ok
+    ? '\n✓ Zypto accepted the order — the reply above holds the checkout link (unpaid until someone pays it).'
+    : `\n✗ Zypto refused the order${r.status >= 400 ? ` (${explainHttp(r.status)})` : ''}. Share the request and response above with Zypto.`);
+  return ok ? 0 : 1;
 }
 
 main().then((code) => process.exit(code), (e) => { console.error(e); process.exit(1); });

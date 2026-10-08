@@ -64,6 +64,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.LAX_IFRAME_ID;
   delete process.env.LAX_PRODUCT_ID;
+  delete process.env.LAX_PRODUCT_CURRENCY;
   delete process.env.LAX_CARD_RELOADABLE;
 });
 
@@ -106,8 +107,28 @@ describe('POST /lax/card/issue — success', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ success: true, order_id: 'Idjfr43', checkout_url: 'https://checkout.fcfpay.com/pay-cards/abc' });
     const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(sent).toMatchObject({ iframe_id: 13524, product_id: 9, amount: 25, currency: 'USDT', email: 'a@b.co' });
+    expect(sent).toMatchObject({ iframe_id: 13524, product_id: 9, amount: 25, email: 'a@b.co' });
     expect(String(dbQuery.mock.calls[0][0])).toContain('insert into lax_card_orders');
+  });
+
+  // Zypto, 2026-10-08: currency is the card product's own (USD for OB03362),
+  // not the crypto the user pays with — USDT got "No products are available".
+  it('sends the product currency (USD), never the payment crypto the app picked', async () => {
+    process.env.LAX_PRODUCT_ID = 'OB03362';
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: 'https://checkout.lax.money/pay-cards/x', order_id: 'O3' }));
+    const res = await request(app).post('/lax/card/issue').set('Authorization', auth()).send(order);
+    expect(res.status).toBe(200);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ iframe_id: 13524, product_id: 'OB03362', amount: 25, currency: 'USD', email: 'a@b.co' });
+    // The order is recorded in the card's currency.
+    expect(dbQuery.mock.calls[0][1]).toEqual(['user-u', 'O3', 'a@b.co', 25, 'USD']);
+  });
+
+  it('accepts an order without a currency, and honours LAX_PRODUCT_CURRENCY', async () => {
+    process.env.LAX_PRODUCT_CURRENCY = 'eur';
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: 'https://checkout.lax.money/pay-cards/y', order_id: 'O4' }));
+    const res = await request(app).post('/lax/card/issue').set('Authorization', auth()).send({ amount: 25, email: 'a@b.co' });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).currency).toBe('EUR');
   });
 
   it('keeps an alphanumeric product_id as a string', async () => {

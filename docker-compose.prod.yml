@@ -45,11 +45,12 @@ services:
       LAX_API_KEY:         ${LAX_API_KEY:-}
       LAX_API_BASE:        ${LAX_API_BASE:-}
       LAX_PROJECT_ID:      ${LAX_PROJECT_ID:-612}
-      # Native card issuance (issue-card-api). iFrame 13524 = global widget
-      # "LAX Card Main" (confirmed by Zypto 2026-09-27). PRODUCT_ID comes from
-      # GET /lax/products (Zypto get-products) — set it in the VPS .env.
+      # In-app card orders (create-card-order-api). iFrame 13524 = global
+      # widget "LAX Card Main"; OB03362 is the only card product and USD its
+      # currency (Zypto, 2026-10-08).
       LAX_IFRAME_ID:       ${LAX_IFRAME_ID:-13524}
-      LAX_PRODUCT_ID:      ${LAX_PRODUCT_ID:-}
+      LAX_PRODUCT_ID:      ${LAX_PRODUCT_ID:-OB03362}
+      LAX_PRODUCT_CURRENCY: ${LAX_PRODUCT_CURRENCY:-USD}
       LAX_WEBHOOK_SECRET:  ${LAX_WEBHOOK_SECRET:-}
       INDEXER_URL:         ${INDEXER_URL:-http://indexer:4010}
     # Remove dev volume mount — use built image only
