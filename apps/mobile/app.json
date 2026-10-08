@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "2.0.6",
+    "version": "2.0.7",
     "jsEngine": "hermes",
     "newArchEnabled": false,
     "orientation": "portrait",

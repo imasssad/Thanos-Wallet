@@ -195,14 +195,17 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    from app.json's expo.version (embedded in every build): the hand-bumped
    string it replaced had stayed at 2.0.1 through 2.0.4, so an up-to-date app
    would have been told to update. The fallback is only for a missing config. */
-const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.6'}`;
+const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.7'}`;
 
-/* EXCHANGE_ENABLED gates the whole Swap surface. Swap (same-chain) and
-   Cross-chain ship in release builds; only the Bridge tab is dev-build
-   only (see SWAP_MODE_TABS) — it moves funds between the Lithosphere
-   Makalu/Kamet TESTNETS, which the App Store won't take and which the
-   client called useless anyway. */
-const EXCHANGE_ENABLED = true;
+/* EXCHANGE_ENABLED gates the whole Swap surface (Home quick action, token
+   detail Swap button, the Swap screen, the Activity "Swap" filter). Off on
+   iOS: same-chain swaps and cross-chain routing both run on MultX, which
+   isn't live on Lithosphere Mainnet yet, and App Review rejects a feature
+   that can't complete (client 2026-10-08: "remove only swap" for iOS). It
+   stays on Android, where the screen explains it's unavailable. Within
+   Swap, only the Bridge tab is dev-build only (see SWAP_MODE_TABS) — it
+   moves funds between the Lithosphere Makalu/Kamet TESTNETS. */
+const EXCHANGE_ENABLED = Platform.OS !== 'ios';
 
 /* ─────────────────────────── Theme ─────────────────────────── */
 
@@ -5028,7 +5031,7 @@ function ActivityScreen() {
   // Hide the filter chip rather than offer a filter that can only ever
   // show "No swap transactions."
   const filterOptions: Array<'All' | 'Sent' | 'Received' | 'Swap'> =
-    ['All', 'Sent', 'Received', 'Swap'];
+    EXCHANGE_ENABLED ? ['All', 'Sent', 'Received', 'Swap'] : ['All', 'Sent', 'Received'];
 
   return (
     <>

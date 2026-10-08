@@ -26,14 +26,9 @@ WHAT YOU CAN DO
 • Send and receive on Lithosphere (LITHO + LEP-100 tokens), Bitcoin,
   Ethereum and every major EVM L2, Solana with SPL tokens, and Cosmos
   Hub with memo support.
-• Swap Lithosphere ecosystem tokens via the Ignite DEX, with bridge
-  transfers tracked end-to-end through MultX.
-• Manage your token approvals — see every smart contract that can
-  spend your funds and revoke any of them with one tap.
 • Pair with dApps via WalletConnect v2, in-app browser, or QR scan.
-• Use a Ledger or Trezor over BLE / WebUSB for cold-storage signing
-  (Ledger Live not required).
 • Resolve human-readable .litho names instead of pasting 0x addresses.
+• Run Quantts AI trading agents from your wallet.
 
 SECURITY
 
@@ -103,8 +98,8 @@ end-to-end requires creating a wallet inside the app:
   4. Tap "I've saved it" on the seed-display screen
   5. Re-enter the prompted words on the verify screen
   6. Set a password (any 8+ chars), confirm
-  7. Dashboard appears — Send / Receive / Swap are all live but
-     require token balances to broadcast a real tx. The Receive
+  7. Dashboard appears — Send and Receive are live but Send
+     requires a token balance to broadcast a real tx. The Receive
      screen + QR display work without any balance.
 
 There is no test account credential; every wallet is local-only.
@@ -118,17 +113,15 @@ https://thanos.fi/privacy is the canonical document.
 ## What's New in this version (release notes, 4,000 chars max)
 
 ```
-First public release.
-
-• Multi-chain support: Lithosphere (Makalu + LEP-100 tokens), Bitcoin,
-  Ethereum + EVM L2s, Solana with SPL tokens, Cosmos Hub.
-• Face ID / Touch ID unlock backed by the Secure Enclave.
-• WalletConnect v2 with persistent relay.
-• Ignite DEX swaps + MultX bridge-transfer tracking.
-• Hardware-wallet support: Ledger and Trezor over WebUSB / BLE.
-• .litho name resolution and on-chain registration.
-• Cross-device address-book sync (optional).
-• Open-source — github.com/imasssad/Thanos-Wallet
+• Lithosphere Mainnet is now your home network; every send goes out
+  on the network of the balance you pick.
+• New look: floating glass navigation, with your assets scrolling
+  beneath it.
+• Face ID unlock is more reliable after the app has been in the
+  background.
+• Quantts agents: stay signed in between app launches.
+• Settings → Advanced → Show hex data, for sending data with a
+  transaction.
 ```
 
 ## Screenshots (required sizes)
@@ -146,8 +139,8 @@ exact devices:
 Per-screen content (in this order):
 1. Dashboard with non-zero balances + portfolio chart
 2. Send modal with a typed recipient (.litho name or 0x)
-3. Swap modal mid-quote showing the live Ignite route
-4. Permissions screen showing two example token approvals
+3. Receive screen with the address QR code
+4. Quantts agents list
 5. WalletConnect approval sheet with a dApp's metadata
 6. Settings → Recovery phrase reveal warning sheet
 
