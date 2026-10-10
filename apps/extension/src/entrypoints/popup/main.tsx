@@ -5430,8 +5430,8 @@ function App() {
 
   /* ─── Rename / delete account ─────────────────────────────────────────
      Removal hides the HD index (lib/vault.ts hideAccount) so no address ever
-     shifts. Guarded: an account over $1 can't go, and if the balance can't be
-     VERIFIED we refuse rather than risk hiding funds. The popup has no modal
+     shifts. An account holding over $1 (or whose balance can't be checked)
+     can still go, after a reminder about the recovery phrase. The popup has no modal
      system for this, so rename uses a compact inline prompt row and delete
      surfaces its outcome in acctMsg. */
   const [acctMsg, setAcctMsg] = useState<string | null>(null);
@@ -5488,15 +5488,18 @@ function App() {
     setAcctMsg('Checking balance…');
     const m = await import('../../lib/account-balance');
     const usd = await m.accountUsdValue(addr);
-    if (usd == null) {
-      setAcctMsg("Couldn't verify this account's balance — it wasn't deleted.");
-      return;
-    }
-    if (usd > m.DELETE_MAX_USD) {
-      setAcctMsg(`That account holds about ${withCurrencyAffix(convertFromUsd(usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}. Move the funds out first.`);
-      return;
-    }
-    if (!window.confirm(`Delete ${getAccountName(idx)}? The same recovery phrase can restore it later.`)) {
+    // Funds don't block deleting (client, 2026-10-10) — the account only
+    // leaves this list; the user is reminded that the recovery phrase is
+    // what reaches the funds afterwards.
+    const held = usd == null
+      ? "We couldn't check what this account holds."
+      : usd > m.DELETE_MAX_USD
+        ? `It holds about ${withCurrencyAffix(convertFromUsd(usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}.`
+        : null;
+    const ask = held
+      ? `Delete ${getAccountName(idx)}?\n\n${held} Deleting only removes it from Thanos — any funds stay at its address on the blockchain, and only your recovery phrase can get them back.\n\nMake sure your recovery phrase is written down before you continue.`
+      : `Delete ${getAccountName(idx)}? The same recovery phrase can restore it later.`;
+    if (!window.confirm(ask)) {
       setAcctMsg(null);
       return;
     }

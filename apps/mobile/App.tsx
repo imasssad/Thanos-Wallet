@@ -9426,9 +9426,9 @@ function App() {
 
   /* ─── Delete account ──────────────────────────────────────────────────
      Removal hides the HD index (accounts.ts hideAccount) so no address ever
-     shifts. Guarded: an account holding more than DELETE_MAX_USD can't go,
-     and if the balance can't be VERIFIED we refuse rather than risk hiding
-     funds the user can't recover from the UI. */
+     shifts. An account holding more than DELETE_MAX_USD, or whose balance
+     can't be checked, can still go after a reminder about the recovery
+     phrase (client, 2026-10-10). */
   const [visibleAccounts, setVisibleAccounts] = useState<number[]>([0]);
   const [acctBusy, setAcctBusy] = useState(false);
   useEffect(() => { setVisibleAccounts(getVisibleAccountIndices()); }, [accountCount, activeIdx]);
@@ -9448,24 +9448,26 @@ function App() {
 
     setAcctBusy(true);
     let usd: number | null = null;
+    let threshold = 1;
     try {
       const m = await import('./lib/account-balance');
+      threshold = m.DELETE_MAX_USD;
       usd = await m.accountUsdValue(addr);
-      if (usd == null) {
-        Alert.alert('Can’t verify balance', 'We couldn’t check what this account holds, so it wasn’t deleted. Try again when you’re back online.');
-        return;
-      }
-      if (usd > 1) {
-        Alert.alert('Account not empty', `${getAccountName(idx)} holds about ${formatUsd(usd)}. Move the funds out before deleting it.`);
-        return;
-      }
     } finally {
       setAcctBusy(false);
     }
 
+    // Funds don't block deleting (client, 2026-10-10) — the account only
+    // leaves this list; the user is reminded that the recovery phrase is
+    // what reaches the funds afterwards.
+    const held = usd == null
+      ? 'We couldn’t check what this account holds.'
+      : usd > threshold ? `It holds about ${formatUsd(usd)}.` : null;
     Alert.alert(
       `Delete ${getAccountName(idx)}?`,
-      'This removes the account from your wallet. The same recovery phrase can restore it later.',
+      held
+        ? `${held} Deleting only removes it from Thanos — any funds stay at its address on the blockchain, and only your recovery phrase can get them back.\n\nMake sure your recovery phrase is written down before you continue.`
+        : 'This removes the account from your wallet. The same recovery phrase can restore it later.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
