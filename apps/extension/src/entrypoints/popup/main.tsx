@@ -62,7 +62,7 @@ import {
 } from '@thanos/sdk-core';
 import { WalletConnectModal } from './walletconnect';
 import { executeWcRequest, summariseRequest, WcSignerError, activeChain } from './wc-signer';
-import { dappChainByHex } from '../../lib/dapp-chains';
+import { dappChainByHex, dappChainById, toChainHex } from '../../lib/dapp-chains';
 import {
   loadContacts, addContact, deleteContact,
   syncContactsFromServer, onContactsChanged,
@@ -5548,6 +5548,27 @@ function App() {
     }
   };
 
+  // The request is for a chain other than the active one (e.g. a typed
+  // signature whose domain says BNB Chain). Switch the wallet there the way a
+  // dApp's wallet_switchEthereumChain does — saved, chainChanged to every tab —
+  // and the sheet reviews it again on that chain. Only on the user's click:
+  // signing for another chain silently is what the block is there to stop.
+  const switchRpcChain = async (chainId: number) => {
+    const chain = dappChainById(chainId);
+    if (!chain) return;
+    setRpcBusy(true); setRpcErr(null);
+    try {
+      const res = await browser.runtime.sendMessage({ type: 'thanos-set-chain', chainHex: toChainHex(chain.chainId) }) as { ok?: boolean } | undefined;
+      if (!res?.ok) throw new Error(`Couldn't switch to ${chain.name}`);
+      setRpcChainName(chain.name);
+      setRpcChainId(chain.chainId);
+    } catch (e) {
+      setRpcErr((e as Error)?.message || `Couldn't switch to ${chain.name}`);
+    } finally {
+      setRpcBusy(false);
+    }
+  };
+
   const rejectRpc = async () => {
     if (!pendingRpc) return;
     try {
@@ -5578,6 +5599,12 @@ function App() {
     const blocked = review?.risk === 'block';
     const simBlocked = simReport?.issues.some(i => i.level === 'critical') ?? false;
     const waitingForChain = signing && rpcChainId === undefined;
+    // Blocked only because it's for another chain the wallet supports: on that
+    // chain the same request would no longer be blocked.
+    const requiredChainId = blocked ? review?.requiredChainId : undefined;
+    const switchTarget = requiredChainId !== undefined
+      && reviewSigningRequest({ method: pendingRpc.method, params: pendingRpc.params, activeChainId: requiredChainId, account: pendingRpc.address }).risk !== 'block'
+      ? dappChainById(requiredChainId) : undefined;
     return (
       <div className="screen" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
         <div style={{ textAlign: 'center', marginTop: 4 }}>
@@ -5662,6 +5689,16 @@ function App() {
 
         <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
           <button onClick={rejectRpc}  disabled={rpcBusy} className="btn-secondary" style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}>Reject</button>
+          {switchTarget && (
+            <button
+              onClick={() => void switchRpcChain(switchTarget.chainId)}
+              disabled={rpcBusy}
+              className="btn-primary"
+              style={{ flex: 1, opacity: rpcBusy ? 0.6 : 1 }}
+            >
+              {rpcBusy ? 'Switching…' : `Switch to ${switchTarget.name}`}
+            </button>
+          )}
           {!blocked && (
             <button
               onClick={approveRpc}

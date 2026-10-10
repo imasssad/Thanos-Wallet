@@ -27,6 +27,10 @@ export interface SignReview {
   risk: SignRisk;
   /** Set when risk is 'block': why the wallet won't sign this. */
   blockReason: string | null;
+  /** Set when the request is for a chain other than the one the wallet is
+   *  on: the chain it needs. It stays blocked on the current chain; a sheet
+   *  can offer to switch the wallet to this chain and review it again. */
+  requiredChainId?: number;
 }
 
 export interface SignReviewInput {
@@ -70,6 +74,7 @@ class Review {
   warnings: string[] = [];
   risk: SignRisk = 'safe';
   blockReason: string | null = null;
+  requiredChainId: number | undefined = undefined;
   constructor(public title: string) {}
   row(label: string, value: string, tone?: SignReviewRow['tone']) { this.rows.push(tone ? { label, value, tone } : { label, value }); }
   warn(text: string, risk: SignRisk) {
@@ -82,7 +87,10 @@ class Review {
     this.risk = 'block';
   }
   done(): SignReview {
-    return { title: this.title, rows: this.rows, warnings: this.warnings, risk: this.risk, blockReason: this.blockReason };
+    return {
+      title: this.title, rows: this.rows, warnings: this.warnings, risk: this.risk, blockReason: this.blockReason,
+      ...(this.requiredChainId !== undefined ? { requiredChainId: this.requiredChainId } : {}),
+    };
   }
 }
 
@@ -238,7 +246,8 @@ function reviewTypedData(params: unknown[], input: SignReviewInput): SignReview 
   if (chainId !== null && Number.isNaN(chainId)) {
     r.block('The signature\'s chainId is unreadable.');
   } else if (chainId !== null && input.activeChainId !== undefined && chainId !== input.activeChainId) {
-    r.block(`This signature is for chain ${chainId}, but the wallet is on chain ${input.activeChainId}. A signature for another chain can be used there; switch networks in the dApp first.`);
+    r.block(`This signature is for chain ${chainId}, but the wallet is on chain ${input.activeChainId}. A signature for another chain can be used there, so switch the wallet to chain ${chainId} to sign it.`);
+    r.requiredChainId = chainId;
   }
 
   const pt = typed.primaryType;
@@ -418,6 +427,7 @@ function reviewTransaction(raw: unknown, input: SignReviewInput): SignReview {
   const txChain = parseChainId(tx.chainId);
   if (txChain !== null && !Number.isNaN(txChain) && input.activeChainId !== undefined && txChain !== input.activeChainId) {
     r.block(`The dApp built this transaction for chain ${txChain}, but the wallet is on chain ${input.activeChainId}.`);
+    r.requiredChainId = txChain;
   }
   const to = tx.to;
   const data = typeof tx.data === 'string' ? tx.data : typeof tx.input === 'string' ? tx.input : '0x';
