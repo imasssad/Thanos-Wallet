@@ -115,10 +115,11 @@ function Modal({ title, onClose, children, fullScreen }: { title: string; onClos
 type SendStage = 'compose' | 'broadcasting' | 'pending' | 'confirmed' | 'failed';
 
 /** Send-screen networks: Lithosphere Mainnet first (the primary chain), then
- *  Kamet, Bitcoin / Solana / Cosmos, then every other EVM chain we support
+ *  Bitcoin / Solana / Cosmos, then every other EVM chain we support
  *  (built-in + custom). Each carries an identifier the send branch uses to
- *  route. Makalu isn't built in any more (2026-09-29) — added back as a
- *  custom network it's an `evm:700777` entry like any other. */
+ *  route. Makalu isn't built in any more (2026-09-29) and the Kamet testnet
+ *  isn't offered (2026-10-10) — either, added as a custom network, is an
+ *  `evm:<chainId>` entry like any other. */
 type SendNet =
   | { id: 'kamet';   label: string }
   | { id: 'bitcoin'; label: 'Bitcoin' }
@@ -144,7 +145,6 @@ function getSendNetworks(): SendNet[] {
   const evm = allEvmChains().map(c => ({ id: `evm:${c.chainId}` as const, label: c.name }));
   return [
     ...evm.filter(n => n.id === 'evm:9005'),
-    { id: 'kamet',   label: 'Lithosphere Kamet · Testnet'  },
     { id: 'bitcoin', label: 'Bitcoin' },
     { id: 'solana',  label: 'Solana' },
     { id: 'cosmos',  label: 'Cosmos Hub' },
@@ -1551,35 +1551,22 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
      view exposes a toggle. Each Lithosphere chain is a SEPARATE selectable
      row (MetaMask / Trust Wallet pattern) so users explicitly pick which
      one they're receiving on — even though the address is identical.
-     (Makalu isn't built in any more — 2026-09-29.) Non-Lithosphere
-     networks (Bitcoin / Solana / Cosmos) each get one row. */
+     (Makalu isn't built in any more — 2026-09-29; the Kamet testnet row
+     went 2026-10-10.) Non-Lithosphere networks (Bitcoin / Solana / Cosmos)
+     each get one row. No "EVM" tag on rows: Lithosphere runs more than one
+     VM (client, 2026-10-10). */
   const networks: ReceiveNetwork[] = useMemo(() => {
     const out: ReceiveNetwork[] = [];
     if (litho || evm) {
       // Lithosphere MAINNET (9005) leads the list — the flagship/Web4 home
       // chain, same "always first" convention used on Home/Send across
       // every client (client requirement 2026-08-27, applied here
-      // 2026-09-18). Same dual-address treatment as Kamet below.
+      // 2026-09-18).
       out.push({
         id:           'lithosphere-mainnet',
         name:         'Lithosphere',
         symbol:       'LITHO',
         color:        '#22c55e',
-        address:      litho || evm,
-        altAddress:   litho && evm ? evm : undefined,
-        primaryLabel: 'Litho1',
-        altLabel:     'EVM',
-        badge:        'EVM',
-      });
-      // Kamet — Lithosphere sister chain (900523), where DNNS lives.
-      // Same keypair → same address strings as Mainnet. We surface a
-      // separate row anyway so users sending from a dApp on Kamet can
-      // confirm explicitly which chain they expect funds on.
-      out.push({
-        id:           'lithosphere-kamet',
-        name:         'Lithosphere Kamet · Testnet',
-        symbol:       'LITHO',
-        color:        '#6366f1',
         address:      litho || evm,
         altAddress:   litho && evm ? evm : undefined,
         primaryLabel: 'Litho1',
@@ -1601,7 +1588,6 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
           symbol:  c.nativeSymbol,
           color:   c.color,
           address: evm,
-          badge:   'EVM',
         });
       }
     }
@@ -1630,7 +1616,7 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
       // Lithosphere Mainnet → LITHO + the tokens tracked there.
       return [{ sym: 'LITHO', name: 'Lithosphere' }, ...allTokensForChain(9005).map(t => ({ sym: t.symbol, name: t.name }))];
     }
-    return [{ sym: 'LITHO', name: 'Lithosphere' }]; // Kamet: native LITHO
+    return [];
   };
 
   // Asset-entry: once the target network's row is available (some addresses

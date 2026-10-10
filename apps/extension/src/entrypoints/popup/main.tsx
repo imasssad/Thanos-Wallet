@@ -328,6 +328,9 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
   const [seed, setSeed] = useState<string[]>([]);
   const [wordCount, setWordCount] = useState<12 | 24>(12);
   const [importInput, setImportInput] = useState('');
+  /** Import screen: recovery phrase or a single account's private key — an
+   *  explicit choice, as on web and mobile (one shared box hid the key option). */
+  const [importMode, setImportMode] = useState<'phrase' | 'key'>('phrase');
   /* Verify-phrase: only N indices missing, user fills them from a pool */
   const VERIFY_MISSING = 4;
   const [missingIdxs,  setMissingIdxs] = useState<number[]>([]);
@@ -628,22 +631,44 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
 
         {step === 'import' && <>
           <h1 className="onb-title">Import wallet</h1>
-          <p className="onb-sub">Paste a 12-24 word recovery phrase, or a single account&apos;s private key.</p>
-          <textarea className="field field-textarea" placeholder="word1 word2…   or   0x…" value={importInput} onChange={e => setImportInput(e.target.value)}/>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {([['phrase', 'Recovery phrase'], ['key', 'Private key']] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                className={importMode === mode ? 'btn-primary' : 'btn-outline'}
+                style={{ flex: 1, padding: '8px 10px', fontSize: 12 }}
+                onClick={() => { setImportMode(mode); setImportInput(''); setFormErr(''); }}
+              >{label}</button>
+            ))}
+          </div>
+          <p className="onb-sub">
+            {importMode === 'phrase'
+              ? 'Paste your 12–24 word recovery phrase. It restores every account, plus Bitcoin, Solana and Cosmos.'
+              : 'Paste one account’s private key (64 hex characters, with or without 0x). It imports that single EVM account.'}
+          </p>
+          <textarea
+            className="field field-textarea"
+            placeholder={importMode === 'phrase' ? 'word1 word2 word3 …' : '0x…'}
+            value={importInput}
+            onChange={e => setImportInput(e.target.value)}
+            autoComplete="off" spellCheck={false}
+          />
           {(() => {
             const v = importInput.trim();
             const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(v);
             const wc = v.split(/\s+/).filter(Boolean).length;
+            const ok = importMode === 'key' ? isPk : [12, 15, 18, 21, 24].includes(wc);
             return (
               <>
                 <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-                  {isPk ? 'Private key — one EVM account' : `${wc} words`}
+                  {importMode === 'key'
+                    ? (v === '' ? '' : isPk ? 'Private key — one EVM account' : 'Not a private key (64 hex characters)')
+                    : `${wc} words`}
                 </div>
                 <div className="row-btns">
                   <button className="btn-outline" onClick={() => setStep('welcome')}>Back</button>
-                  <button className="btn-primary"
-                    disabled={!isPk && ![12,15,18,21,24].includes(wc)}
-                    onClick={() => setStep('import-pwd')}>Continue</button>
+                  <button className="btn-primary" disabled={!ok} onClick={() => setStep('import-pwd')}>Continue</button>
                 </div>
               </>
             );
