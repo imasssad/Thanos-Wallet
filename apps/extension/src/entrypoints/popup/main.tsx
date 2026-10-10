@@ -8,7 +8,7 @@ import {
   Home, Clock, Settings as SettingsIcon, ChevronLeft, ChevronRight,
   Copy, Check, Eye, EyeOff, Lock, Moon, Sun, User, Search, Pencil, Trash2,
   Fingerprint, Key, AlertTriangle, Globe, Zap, Bell, Shield,
-  Sparkles, CreditCard, Maximize2,
+  Sparkles, CreditCard, Maximize2, Wallet as WalletIcon,
 } from 'lucide-react';
 import {
   createVault, openVault, openVaultWithKey,
@@ -21,6 +21,8 @@ import {
   getAccountName, getCustomAccountName, setAccountName,
   getVisibleAccountIndices, hideAccount,
   MAX_ACCOUNTS, isPrivateKeyWallet, isPrivateKeyString,
+  parseWalletSet, selectWallet, currentWallet, listWallets, addWallet, switchWallet, removeWallet,
+  MAX_WALLETS, type WalletInfo,
 } from '../../lib/vault';
 import {
   persistSessionKey, loadPersistedSessionKey, clearPersistedSessionKey,
@@ -408,6 +410,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     try {
       const vault = await createVault(seed.join(' '), password);
       saveVault(vault);
+      selectWallet(parseWalletSet(seed.join(' '))); // a new vault holds one wallet
       setSeedBackedUp(true); // create flow includes seed verification
       const opened = await openVault(vault, password);
       if (opened) { cacheSessionKey(opened.key); void persistSessionKey(opened.key); }
@@ -435,6 +438,7 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
     try {
       const vault = await createVault(secret, password);
       saveVault(vault);
+      selectWallet(parseWalletSet(secret)); // a new vault holds one wallet
       setSeedBackedUp(true); // imported — user already holds the secret
       const opened = await openVault(vault, password);
       if (opened) { cacheSessionKey(opened.key); void persistSessionKey(opened.key); }
@@ -452,7 +456,8 @@ function Onboarding({ hasVault, onComplete }: { hasVault: boolean; onComplete: (
       if (!opened) { setUnlockErr('Incorrect password'); setUnlockPwd(''); return; }
       cacheSessionKey(opened.key);
       void persistSessionKey(opened.key);
-      onComplete(opened.mnemonic.split(' '));
+      // The vault can hold several wallets — open the one used last.
+      onComplete(selectWallet(parseWalletSet(opened.mnemonic)).secret.split(' '));
     } finally { setBusy(false); }
   };
   const resetWallet = () => {
@@ -2762,18 +2767,21 @@ function AIAssistant() {
 
 function HomeScreen({
   onAction, onLock, onOpenSettings, onOpenToken,
-  activeIdx, accountCount, singleAccount, onSwitch, onAddAccount, onRenameAccount, onDeleteAccount,
+  activeIdx, onSwitch, onAdd, onRenameAccount, onDeleteAccount,
+  wallets, activeWalletId, onSwitchWallet,
 }: {
   onAction:      (m: 'send'|'receive'|'swap') => void;
   onLock:        () => void;
   onOpenSettings: () => void;
   onOpenToken:   (sym: string, chainId?: number) => void;
   activeIdx:     number;
-  accountCount:  number;
-  /** true for a raw-key wallet — no derivation, so no add-account. */
-  singleAccount: boolean;
   onSwitch:      (idx: number) => void;
-  onAddAccount:  () => void;
+  /** "+ Add": new account from this wallet, or import another wallet. */
+  onAdd:         () => void;
+  /** Every wallet in the vault; the switcher shows when there's more than one. */
+  wallets:        WalletInfo[];
+  activeWalletId: string;
+  onSwitchWallet: (id: string) => void;
   onRenameAccount: (idx: number) => void;
   onDeleteAccount: (idx: number) => void;
 }) {
@@ -2801,7 +2809,9 @@ function HomeScreen({
             <div className="acct-avatar"><User size={13}/></div>
             <div>
               <div className="acct-name">Account {activeIdx + 1}</div>
-              <div className="acct-addr">{offline ? 'Offline' : 'Synced'}</div>
+              <div className="acct-addr">
+                {offline ? 'Offline' : wallets.length > 1 ? (wallets.find(w => w.id === activeWalletId)?.name ?? 'Synced') : 'Synced'}
+              </div>
             </div>
           </div>
           {acctMenu && (
@@ -2820,6 +2830,29 @@ function HomeScreen({
                   boxShadow: '0 10px 28px rgba(0,0,0,0.24)',
                 }}
               >
+                {wallets.length > 1 && (
+                  <div style={{ borderBottom: '1px solid var(--border-default)', marginBottom: 4, paddingBottom: 4 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-muted)', padding: '4px 10px 2px' }}>WALLETS</div>
+                    {wallets.map(w => (
+                      <button
+                        key={w.id}
+                        onClick={() => { if (w.id !== activeWalletId) onSwitchWallet(w.id); setAcctMenu(false); }}
+                        style={{
+                          display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                          padding: '7px 10px', border: 'none', borderRadius: 6,
+                          background: w.id === activeWalletId ? 'var(--bg-hover)' : 'transparent',
+                          color: 'var(--text-primary)', cursor: 'pointer', textAlign: 'left',
+                          fontSize: 12, fontWeight: w.id === activeWalletId ? 700 : 500,
+                        }}
+                      >
+                        <WalletIcon size={12}/>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.name}</span>
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{w.kind === 'key' ? 'key' : ''}</span>
+                        {w.id === activeWalletId && <span style={{ marginLeft: 'auto', color: 'var(--blue)' }}>●</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {getVisibleAccountIndices().map((i) => {
                   // A wallet must keep one account, so the last one can't go.
                   // Rendered disabled rather than hidden — hiding it made the
@@ -2874,23 +2907,21 @@ function HomeScreen({
                     </div>
                   );
                 })}
-                {!singleAccount && accountCount < MAX_ACCOUNTS && (
-                  <button
-                    onClick={() => { onAddAccount(); setAcctMenu(false); }}
-                    style={{
-                      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
-                      padding: '8px 10px', border: 'none', borderRadius: 6,
-                      background: 'transparent',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer', textAlign: 'left',
-                      fontSize: 12,
-                      borderTop: accountCount > 0 ? '1px solid var(--border-default)' : 'none',
-                      marginTop: 4, paddingTop: 10,
-                    }}
-                  >
-                    + Add account
-                  </button>
-                )}
+                <button
+                  onClick={() => { onAdd(); setAcctMenu(false); }}
+                  style={{
+                    display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', border: 'none', borderRadius: 6,
+                    background: 'transparent',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer', textAlign: 'left',
+                    fontSize: 12,
+                    borderTop: '1px solid var(--border-default)',
+                    marginTop: 4, paddingTop: 10,
+                  }}
+                >
+                  + Add account or wallet
+                </button>
                 <button
                   onClick={() => { onLock(); setAcctMenu(false); }}
                   style={{
@@ -4962,7 +4993,8 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
       if (!v) { setErr('No wallet found on this device.'); return; }
       const r = await openVault(v, pwd);
       if (!r) { setErr('Wrong password.'); return; }
-      const secret = r.mnemonic.trim();
+      // The open wallet's secret — the vault may hold several.
+      const secret = currentWallet(parseWalletSet(r.mnemonic)).secret.trim();
       if (isPrivateKeyString(secret)) { setPkOnly(true); setPk(secret); setTab('pk'); setWords([]); return; }
       setWords(secret.split(/\s+/));
       try {
@@ -5171,6 +5203,100 @@ interface PendingRpcRequest {
   address: string;
 }
 
+/** "+ Add" from the account menu: another account from the open wallet's
+ *  recovery phrase, or import a different wallet (phrase or private key) that
+ *  is kept alongside it in the same vault (lib/vault.ts addWallet). */
+function AddWalletModal({ walletName, accountBlock, walletsFull, onNewAccount, onImported, onClose }: {
+  walletName: string;
+  /** Why "New account" isn't possible, or null when it is. */
+  accountBlock: string | null;
+  walletsFull: boolean;
+  onNewAccount: () => void;
+  onImported: (secret: string) => void;
+  onClose: () => void;
+}) {
+  const [view, setView] = useState<'choose' | 'import'>('choose');
+  const [mode, setMode] = useState<'phrase' | 'key'>('phrase');
+  const [input, setInput] = useState('');
+  const [name, setName] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const v = input.trim();
+  const words = v.toLowerCase().split(/\s+/).filter(Boolean);
+  const isPk = /^(0x)?[0-9a-fA-F]{64}$/.test(v);
+  const ready = mode === 'key' ? isPk : [12, 15, 18, 21, 24].includes(words.length);
+
+  const submit = async () => {
+    if (!ready || busy) return;
+    if (mode === 'phrase' && !isValidMnemonic(words.join(' '))) { setErr('Invalid recovery phrase — check for typos.'); return; }
+    const key = getSessionKey();
+    if (!key) { setErr('The wallet is locked — unlock it and try again.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const r = await addWallet(key, mode === 'key' ? v : words.join(' '), name);
+      if ('error' in r) { setErr(r.error); return; }
+      onImported(r.wallet.secret);
+    } catch { setErr('Could not add the wallet.'); }
+    finally { setBusy(false); }
+  };
+
+  const option = (title: string, sub: string, onClick: () => void, disabled: boolean) => (
+    <button
+      type="button" onClick={onClick} disabled={disabled}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, width: '100%',
+        padding: '12px 14px', borderRadius: 12, textAlign: 'left',
+        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+        color: 'var(--text-primary)', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 700 }}>{title}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45 }}>{sub}</span>
+    </button>
+  );
+
+  return (
+    <Modal title={view === 'choose' ? 'Add' : 'Import a wallet'} onClose={view === 'choose' ? onClose : () => { setView('choose'); setErr(''); }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 16px 16px' }}>
+        {view === 'choose' ? <>
+          {option('New account', accountBlock ?? `Another account from ${walletName}’s recovery phrase — same backup, new address.`, onNewAccount, accountBlock !== null)}
+          {option('Import a wallet', walletsFull
+            ? `Thanos holds up to ${MAX_WALLETS} wallets.`
+            : 'Add a different recovery phrase or private key. Your current wallet stays — switch between them from this menu.',
+            () => setView('import'), walletsFull)}
+        </> : <>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {([['phrase', 'Recovery phrase'], ['key', 'Private key']] as const).map(([m, label]) => (
+              <button key={m} type="button"
+                className={mode === m ? 'btn-primary' : 'btn-outline'}
+                style={{ flex: 1, padding: '8px 10px', fontSize: 12 }}
+                onClick={() => { setMode(m); setInput(''); setErr(''); }}
+              >{label}</button>
+            ))}
+          </div>
+          <textarea
+            className="field field-textarea"
+            placeholder={mode === 'phrase' ? 'word1 word2 word3 …' : '0x…'}
+            value={input} onChange={e => setInput(e.target.value)}
+            autoComplete="off" spellCheck={false}
+          />
+          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            {mode === 'key'
+              ? (v === '' ? 'One EVM account (64 hex characters).' : isPk ? 'Private key — one EVM account' : 'Not a private key (64 hex characters)')
+              : `${words.length} words`}
+          </div>
+          <input className="field" placeholder="Wallet name (optional)" value={name} maxLength={24} onChange={e => setName(e.target.value)}/>
+          {err && <div style={{ color: '#f87171', fontSize: 12 }}>{err}</div>}
+          <button className="btn-primary" disabled={!ready || busy} onClick={() => void submit()}>
+            {busy ? 'Adding…' : 'Add wallet'}
+          </button>
+        </>}
+      </div>
+    </Modal>
+  );
+}
+
 /** Requests that produce a signature or a transaction — reviewed before Approve. */
 const SIGNING_METHODS: ReadonlySet<string> = new Set([
   'personal_sign', 'eth_sign', 'eth_signTypedData', 'eth_signTypedData_v3', 'eth_signTypedData_v4', 'eth_sendTransaction',
@@ -5273,6 +5399,35 @@ function App() {
     setActiveIdx(next);
   };
 
+  /* ─── Wallets — several secrets in the one vault (lib/vault.ts) ──────────
+     Each wallet keeps its own accounts; opening one makes its secret the
+     signing seed, and the evmAddr effect below tells the background (dApps
+     get accountsChanged). The session key re-encrypts the vault on add/remove. */
+  const [wallets, setWallets] = useState<WalletInfo[]>([]);
+  const [activeWalletId, setActiveWalletId] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const refreshWallets = async () => {
+    const key = getSessionKey();
+    const r = key ? await listWallets(key) : null;
+    if (r) { setWallets(r.wallets); setActiveWalletId(r.activeId); }
+  };
+  useEffect(() => { if (unlocked) void refreshWallets(); }, [unlocked]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openWalletSecret = (secret: string) => {
+    const words = secret.split(' ');
+    const pk = isPrivateKeyWallet(words);
+    setSeed(words);
+    setActiveIdx(pk ? 0 : getActiveAccountIndex());
+    setAccountCountState(pk ? 1 : getAccountCount());
+  };
+  const switchToWallet = async (id: string) => {
+    const key = getSessionKey();
+    const w = key ? await switchWallet(key, id) : null;
+    if (!w) return;
+    openWalletSecret(w.secret);
+    await refreshWallets();
+  };
+  const activeWallet = wallets.find(w => w.id === activeWalletId);
+
   /* ─── Rename / delete account ─────────────────────────────────────────
      Removal hides the HD index (lib/vault.ts hideAccount) so no address ever
      shifts. Guarded: an account over $1 can't go, and if the balance can't be
@@ -5295,13 +5450,24 @@ function App() {
      first states the actual consequence based on whether the recovery phrase
      was backed up: without a backup this is permanent loss, and the user
      deserves to know that BEFORE the destructive click. */
-  const deleteWallet = () => {
+  const deleteWallet = async () => {
     const backedUp = isSeedBackedUp();
+    const others = wallets.filter(w => w.id !== activeWalletId);
+    const label = others.length && activeWallet ? `“${activeWallet.name}”` : 'this wallet';
     const first = backedUp
-      ? 'Delete this wallet from this browser?\n\nYou can restore it later with your recovery phrase.'
-      : 'You have NOT backed up your recovery phrase.\n\nIf you delete this wallet now, these funds are gone permanently — nobody can recover them.';
+      ? `Delete ${label} from this browser?\n\nYou can restore it later with its recovery phrase${activeWallet?.kind === 'key' ? ' or private key' : ''}.`
+      : `You have NOT backed up ${label}'s recovery phrase.\n\nIf you delete it now, its funds are gone permanently — nobody can recover them.`;
     if (!window.confirm(first)) return;
     if (!window.confirm('Are you sure? This cannot be undone.')) return;
+    // Other wallets stay: remove only this one and open the next.
+    if (others.length) {
+      const key = getSessionKey();
+      const r = key ? await removeWallet(key, activeWalletId) : { error: 'The wallet is locked — unlock it and try again.' };
+      if ('error' in r) { setAcctMsg(r.error); return; }
+      openWalletSecret(r.next.secret);
+      await refreshWallets();
+      return;
+    }
     clearVault();
     clearSessionKey();
     void clearPersistedSessionKey();
@@ -5429,9 +5595,9 @@ function App() {
           let key = getSessionKey();
           if (!key) key = await loadPersistedSessionKey();
           if (key) {
-            const mnemonic = await openVaultWithKey(vault, key);
-            if (mnemonic) {
-              const words = mnemonic.split(' ');
+            const plaintext = await openVaultWithKey(vault, key);
+            if (plaintext) {
+              const words = selectWallet(parseWalletSet(plaintext)).secret.split(' ');
               setSeed(words); setUnlocked(true);
               autoUnlocked = true;
               cacheSessionKey(key); // reseed the fast in-page cache
@@ -5806,11 +5972,25 @@ function App() {
             key={nameTick}
             onAction={setModal} onLock={lock} onOpenSettings={() => setTab('settings')}
             onOpenToken={openToken}
-            activeIdx={activeIdx} accountCount={accountCount} singleAccount={pkWallet}
-            onSwitch={switchAccount} onAddAccount={addAccount}
+            activeIdx={activeIdx}
+            onSwitch={switchAccount} onAdd={() => setAddOpen(true)}
             onRenameAccount={renameAccount}
             onDeleteAccount={(i) => { void deleteAccount(i); }}
+            wallets={wallets} activeWalletId={activeWalletId}
+            onSwitchWallet={(id) => { void switchToWallet(id); }}
           />}
+          {addOpen && (
+            <AddWalletModal
+              walletName={activeWallet?.name ?? 'this wallet'}
+              accountBlock={pkWallet
+                ? 'This wallet was imported from a private key, so it has just the one account.'
+                : accountCount >= MAX_ACCOUNTS ? `A wallet holds up to ${MAX_ACCOUNTS} accounts.` : null}
+              walletsFull={wallets.length >= MAX_WALLETS}
+              onNewAccount={() => { addAccount(); setAddOpen(false); }}
+              onImported={(secret) => { openWalletSecret(secret); setAddOpen(false); void refreshWallets(); }}
+              onClose={() => setAddOpen(false)}
+            />
+          )}
           {tab === 'discover' && <DiscoverScreen/>}
           {tab === 'activity' && <ActivityScreen/>}
           {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={getAccountName(activeIdx)} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')} onDeleteWallet={deleteWallet} onOpenManageNetworks={() => setModal('manage-networks')}/>}

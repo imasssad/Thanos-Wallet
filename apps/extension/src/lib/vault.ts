@@ -18,7 +18,9 @@
  *   - Encryption:       AES-256-GCM (12-byte random IV)    — authenticated
  *   - Wrong password:   GCM tag mismatch -> decrypt throws -> we return null
  *
- * Storage size: vault is ~280 bytes encoded.
+ * Storage size: vault is ~280 bytes encoded per wallet. The plaintext is
+ * one secret, or a set of several wallets — see "Several wallets in one
+ * vault" below.
  */
 
 // hash-wasm's Argon2 is now lazy-loaded (only to open a LEGACY argon2id
@@ -208,19 +210,188 @@ export function loadVault(): EncryptedVault | null {
   try { return JSON.parse(raw) as EncryptedVault; } catch { return null; }
 }
 
+/* ─── Several wallets in one vault ──────────────────────────────────────
+ * The encrypted plaintext is either one secret (a phrase or a 0x key —
+ * every vault made before multi-wallet, and any vault that only ever held
+ * one wallet) or a wallet set: JSON { format, wallets: [{ id, name, secret }] }.
+ * One password and one AES key cover them all; adding or removing a wallet
+ * re-encrypts with the cached session key, so the password never changes.
+ *
+ * Per-wallet state (active account, account count, names, hidden accounts,
+ * backup flag) lives under the same localStorage keys as before for the
+ * first wallet ('w0' — so existing installs keep theirs) and under
+ * `<key>@<walletId>` for each wallet added after it. Which wallet is open
+ * is remembered in thanos.active_wallet (an id, not a secret). */
+export interface StoredWallet { id: string; name: string; secret: string }
+export interface WalletSet { wallets: StoredWallet[] }
+export interface WalletInfo { id: string; name: string; kind: 'phrase' | 'key' }
+
+const WALLET_SET_FORMAT = 'thanos.wallets/1';
+const FIRST_WALLET_ID = 'w0';
+const STORAGE_KEY_ACTIVE_WALLET = 'thanos.active_wallet';
+export const MAX_WALLETS = 10;
+export const MAX_WALLET_NAME_LEN = 24;
+
+function readActiveWalletId(): string {
+  if (typeof window === 'undefined') return FIRST_WALLET_ID;
+  return localStorage.getItem(STORAGE_KEY_ACTIVE_WALLET) || FIRST_WALLET_ID;
+}
+let currentWalletId = readActiveWalletId();
+
+/** localStorage key for the open wallet's copy of a per-wallet setting. */
+function nsKey(base: string, id = currentWalletId): string {
+  return id === FIRST_WALLET_ID ? base : `${base}@${id}`;
+}
+
+export function parseWalletSet(plaintext: string): WalletSet {
+  const t = plaintext.trim();
+  if (t.startsWith('{')) {
+    try {
+      const o = JSON.parse(t) as { format?: unknown; wallets?: unknown };
+      if (o.format === WALLET_SET_FORMAT && Array.isArray(o.wallets)) {
+        const wallets = o.wallets.filter((w): w is StoredWallet =>
+          !!w && typeof (w as StoredWallet).id === 'string' && typeof (w as StoredWallet).secret === 'string'
+          && (w as StoredWallet).secret.trim() !== '',
+        ).map(w => ({ id: w.id, name: typeof w.name === 'string' && w.name.trim() ? w.name.trim() : 'Wallet', secret: w.secret.trim() }));
+        if (wallets.length) return { wallets };
+      }
+    } catch { /* not a wallet set — a plain secret */ }
+  }
+  return { wallets: [{ id: FIRST_WALLET_ID, name: 'Wallet 1', secret: t }] };
+}
+
+/** A set holding only the first wallet is written as its bare secret, the
+ *  format every earlier version of the extension can still open. */
+export function serializeWalletSet(set: WalletSet): string {
+  if (set.wallets.length === 1 && set.wallets[0].id === FIRST_WALLET_ID) return set.wallets[0].secret;
+  return JSON.stringify({ format: WALLET_SET_FORMAT, wallets: set.wallets });
+}
+
+const walletKind = (secret: string): WalletInfo['kind'] => (isPrivateKeyString(secret) ? 'key' : 'phrase');
+export const walletInfo = (w: StoredWallet): WalletInfo => ({ id: w.id, name: w.name, kind: walletKind(w.secret) });
+
+/** The wallet that's open (the remembered one if it's still in the set). */
+export function currentWallet(set: WalletSet): StoredWallet {
+  return set.wallets.find(w => w.id === currentWalletId) ?? set.wallets[0];
+}
+
+/** Open a wallet: per-wallet settings follow it, and it's remembered. */
+export function selectWallet(set: WalletSet, id?: string): StoredWallet {
+  const w = set.wallets.find(x => x.id === (id ?? readActiveWalletId())) ?? set.wallets[0];
+  currentWalletId = w.id;
+  if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, w.id);
+  return w;
+}
+
+/** Normalise a secret so the same wallet imported twice compares equal. */
+export function normaliseSecret(raw: string): string {
+  const s = raw.trim();
+  if (/^(0x)?[0-9a-fA-F]{64}$/.test(s)) return (s.startsWith('0x') ? s : `0x${s}`).toLowerCase();
+  return s.toLowerCase().split(/\s+/).join(' ');
+}
+
+/** Re-encrypt new plaintext under the same password-derived key (same KDF
+ *  and salt, fresh IV) — what adding/removing a wallet needs while unlocked. */
+async function sealWithKey(vault: EncryptedVault, keyBytes: Uint8Array, plaintext: string): Promise<EncryptedVault> {
+  const iv = randomBytes(12);
+  const aes = await importAesKey(keyBytes);
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource }, aes, new TextEncoder().encode(plaintext) as BufferSource,
+  );
+  return { ...vault, iv: bytesToHex(iv), ciphertext: bytesToHex(new Uint8Array(ct)) };
+}
+
+async function openSet(keyBytes: Uint8Array): Promise<{ vault: EncryptedVault; set: WalletSet } | null> {
+  const vault = loadVault();
+  if (!vault) return null;
+  const pt = await openVaultWithKey(vault, keyBytes);
+  return pt === null ? null : { vault, set: parseWalletSet(pt) };
+}
+
+export async function listWallets(keyBytes: Uint8Array): Promise<{ wallets: WalletInfo[]; activeId: string } | null> {
+  const o = await openSet(keyBytes);
+  if (!o) return null;
+  return { wallets: o.set.wallets.map(walletInfo), activeId: currentWallet(o.set).id };
+}
+
+/** Add another wallet (phrase or private key) to the vault and open it. */
+export async function addWallet(
+  keyBytes: Uint8Array, rawSecret: string, name?: string,
+): Promise<{ wallet: StoredWallet } | { error: string }> {
+  const o = await openSet(keyBytes);
+  if (!o) return { error: 'The wallet is locked — unlock it and try again.' };
+  const secret = normaliseSecret(rawSecret);
+  const existing = o.set.wallets.find(w => normaliseSecret(w.secret) === secret);
+  if (existing) return { error: `This wallet is already in Thanos (“${existing.name}”).` };
+  if (o.set.wallets.length >= MAX_WALLETS) return { error: `Thanos holds up to ${MAX_WALLETS} wallets.` };
+  const taken = new Set(o.set.wallets.map(w => w.name));
+  let n = o.set.wallets.length + 1;
+  while (taken.has(`Wallet ${n}`)) n++;
+  const wallet: StoredWallet = {
+    id: `w${bytesToHex(randomBytes(4))}`,
+    name: name?.trim().slice(0, MAX_WALLET_NAME_LEN) || `Wallet ${n}`,
+    secret,
+  };
+  const set: WalletSet = { wallets: [...o.set.wallets, wallet] };
+  saveVault(await sealWithKey(o.vault, keyBytes, serializeWalletSet(set)));
+  selectWallet(set, wallet.id);
+  setSeedBackedUp(true); // imported — the user already holds this secret
+  return { wallet };
+}
+
+/** Open another wallet already in the vault. */
+export async function switchWallet(keyBytes: Uint8Array, id: string): Promise<StoredWallet | null> {
+  const o = await openSet(keyBytes);
+  if (!o || !o.set.wallets.some(w => w.id === id)) return null;
+  return selectWallet(o.set, id);
+}
+
+export async function renameWallet(keyBytes: Uint8Array, id: string, name: string): Promise<boolean> {
+  const o = await openSet(keyBytes);
+  const trimmed = name.trim().slice(0, MAX_WALLET_NAME_LEN);
+  if (!o || !trimmed) return false;
+  const set: WalletSet = { wallets: o.set.wallets.map(w => (w.id === id ? { ...w, name: trimmed } : w)) };
+  // A lone first wallet is stored as its bare secret (no name); naming it
+  // means keeping the set form.
+  const pt = set.wallets.length === 1
+    ? JSON.stringify({ format: WALLET_SET_FORMAT, wallets: set.wallets })
+    : serializeWalletSet(set);
+  saveVault(await sealWithKey(o.vault, keyBytes, pt));
+  return true;
+}
+
+/** Remove one wallet (never the last — deleting that is clearVault) and
+ *  open the first remaining one if it was open. */
+export async function removeWallet(keyBytes: Uint8Array, id: string): Promise<{ next: StoredWallet } | { error: string }> {
+  const o = await openSet(keyBytes);
+  if (!o) return { error: 'The wallet is locked — unlock it and try again.' };
+  if (o.set.wallets.length <= 1) return { error: 'This is the only wallet.' };
+  const set: WalletSet = { wallets: o.set.wallets.filter(w => w.id !== id) };
+  if (set.wallets.length === o.set.wallets.length) return { error: 'That wallet is not in Thanos.' };
+  saveVault(await sealWithKey(o.vault, keyBytes, serializeWalletSet(set)));
+  if (typeof window !== 'undefined') {
+    for (const base of [STORAGE_KEYS.seedBackedUp, STORAGE_KEY_ACTIVE_IDX, STORAGE_KEY_ACCT_COUNT, STORAGE_KEY_ACCT_NAMES, STORAGE_KEY_ACCT_HIDDEN]) {
+      if (id !== FIRST_WALLET_ID) localStorage.removeItem(nsKey(base, id));
+    }
+  }
+  const next = currentWalletId === id ? selectWallet(set, set.wallets[0].id) : currentWallet(set);
+  return { next };
+}
+
 export function isSeedBackedUp(): boolean {
   if (typeof window === 'undefined') return false;
-  return localStorage.getItem(STORAGE_KEYS.seedBackedUp) === '1';
+  return localStorage.getItem(nsKey(STORAGE_KEYS.seedBackedUp)) === '1';
 }
 export function setSeedBackedUp(backedUp: boolean): void {
   if (typeof window === 'undefined') return;
-  if (backedUp) localStorage.setItem(STORAGE_KEYS.seedBackedUp, '1');
-  else          localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
+  if (backedUp) localStorage.setItem(nsKey(STORAGE_KEYS.seedBackedUp), '1');
+  else          localStorage.removeItem(nsKey(STORAGE_KEYS.seedBackedUp));
 }
 
 /* ─── Multi-account derivation index ────────────────────────────────
-   All accounts share the same vault (one seed) — different accounts
-   are different HD-path indices: m/44'/60'/0'/0/{idx}. Storage tracks
+   A wallet's accounts share its seed — different accounts are different
+   HD-path indices: m/44'/60'/0'/0/{idx} — and each wallet in the vault
+   has its own copy of these settings (nsKey above). Storage tracks
    the *active* index (the one the popup signs from) and the user's
    accountCount (how many "Account N" rows to show in the switcher).
    On a fresh install both default to 0 / 1.
@@ -243,7 +414,7 @@ export const MAX_ACCOUNTS = 10;
 
 export function getActiveAccountIndex(): number {
   if (typeof window === 'undefined') return 0;
-  const raw = localStorage.getItem(STORAGE_KEY_ACTIVE_IDX);
+  const raw = localStorage.getItem(nsKey(STORAGE_KEY_ACTIVE_IDX));
   const n = Number.parseInt(raw ?? '0', 10);
   if (!Number.isFinite(n) || n < 0 || n >= MAX_ACCOUNTS) return 0;
   return n;
@@ -252,12 +423,12 @@ export function getActiveAccountIndex(): number {
 export function setActiveAccountIndex(idx: number): void {
   if (typeof window === 'undefined') return;
   if (!Number.isInteger(idx) || idx < 0 || idx >= MAX_ACCOUNTS) return;
-  localStorage.setItem(STORAGE_KEY_ACTIVE_IDX, String(idx));
+  localStorage.setItem(nsKey(STORAGE_KEY_ACTIVE_IDX), String(idx));
 }
 
 export function getAccountCount(): number {
   if (typeof window === 'undefined') return 1;
-  const raw = localStorage.getItem(STORAGE_KEY_ACCT_COUNT);
+  const raw = localStorage.getItem(nsKey(STORAGE_KEY_ACCT_COUNT));
   const n = Number.parseInt(raw ?? '1', 10);
   if (!Number.isFinite(n) || n < 1 || n > MAX_ACCOUNTS) return 1;
   return n;
@@ -266,7 +437,7 @@ export function getAccountCount(): number {
 export function setAccountCount(n: number): void {
   if (typeof window === 'undefined') return;
   if (!Number.isInteger(n) || n < 1 || n > MAX_ACCOUNTS) return;
-  localStorage.setItem(STORAGE_KEY_ACCT_COUNT, String(n));
+  localStorage.setItem(nsKey(STORAGE_KEY_ACCT_COUNT), String(n));
 }
 
 /* ─── Account names (rename) ─────────────────────────────────────────────
@@ -278,7 +449,7 @@ export const MAX_ACCOUNT_NAME_LEN = 24;
 function readNames(): Record<number, string> {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_ACCT_NAMES);
+    const raw = localStorage.getItem(nsKey(STORAGE_KEY_ACCT_NAMES));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const clean: Record<number, string> = {};
@@ -310,7 +481,7 @@ export function setAccountName(idx: number, name: string): void {
   const trimmed = name.trim().slice(0, MAX_ACCOUNT_NAME_LEN);
   if (trimmed) names[idx] = trimmed;
   else delete names[idx];
-  localStorage.setItem(STORAGE_KEY_ACCT_NAMES, JSON.stringify(names));
+  localStorage.setItem(nsKey(STORAGE_KEY_ACCT_NAMES), JSON.stringify(names));
 }
 
 /* ─── Account removal ────────────────────────────────────────────────────
@@ -324,7 +495,7 @@ const STORAGE_KEY_ACCT_HIDDEN = 'thanos.account_hidden';
 export function getHiddenAccounts(): number[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_ACCT_HIDDEN);
+    const raw = localStorage.getItem(nsKey(STORAGE_KEY_ACCT_HIDDEN));
     if (!raw) return [];
     const arr = JSON.parse(raw) as unknown[];
     return arr.filter((n): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < MAX_ACCOUNTS);
@@ -352,7 +523,7 @@ export function hideAccount(idx: number): boolean {
   if (visible.length <= 1 || !visible.includes(idx)) return false;
   const hidden = getHiddenAccounts();
   if (!hidden.includes(idx)) hidden.push(idx);
-  localStorage.setItem(STORAGE_KEY_ACCT_HIDDEN, JSON.stringify(hidden));
+  localStorage.setItem(nsKey(STORAGE_KEY_ACCT_HIDDEN), JSON.stringify(hidden));
   if (getActiveAccountIndex() === idx) {
     setActiveAccountIndex(getVisibleAccountIndices()[0] ?? 0);
   }
@@ -364,6 +535,8 @@ export function clearVault(): void {
   localStorage.removeItem(STORAGE_KEYS.vault);
   localStorage.removeItem(STORAGE_KEYS.hasVault);
   localStorage.removeItem(STORAGE_KEYS.seedBackedUp);
+  localStorage.removeItem(STORAGE_KEY_ACTIVE_WALLET);
+  currentWalletId = FIRST_WALLET_ID;
   localStorage.removeItem(STORAGE_KEYS.legacyMnemonic);
   localStorage.removeItem(STORAGE_KEYS.legacyPassword);
   localStorage.removeItem(STORAGE_KEYS.legacyUnlocked);
