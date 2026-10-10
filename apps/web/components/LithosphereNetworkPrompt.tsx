@@ -96,45 +96,66 @@ export function AddNetworkNudge() {
     }
   };
 
+  const walletName = getInjected()?.isMetaMask ? 'MetaMask' : 'your browser wallet';
+  // .btn-primary/.btn-outline are full-width form buttons; here they're sized
+  // to their labels so the text keeps the row (they squeezed it to one word
+  // per line before).
+  const actionBtn: React.CSSProperties = {
+    width: 'auto', height: 36, padding: '0 16px', fontSize: 13, fontWeight: 600,
+    borderRadius: 10, whiteSpace: 'nowrap',
+  };
+
   return (
-    <div style={{
-      position: 'fixed', left: 16, right: 16, bottom: 16, zIndex: 60,
-      maxWidth: 440, margin: '0 auto',
-      background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-      borderRadius: 14, padding: '14px 16px',
-      boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-      display: 'flex', alignItems: 'center', gap: 12,
-    }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/images/Thanos_Logo_Transparent.png" alt="Thanos" width={36} height={36}
-           style={{ flexShrink: 0, objectFit: 'contain' }}/>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 13 }}>Add Lithosphere</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-          {status === 'added'
-            ? 'Network added to your wallet ✓'
-            : status === 'error'
-              ? 'Could not add — open your wallet and try again.'
-              : 'One click to add the Lithosphere network to your wallet.'}
+    <div
+      role="dialog" aria-label="Add Lithosphere to your wallet"
+      style={{
+        position: 'fixed', left: 16, right: 16, bottom: 16, zIndex: 60,
+        maxWidth: 420, margin: '0 auto',
+        background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+        borderRadius: 16, padding: 16,
+        boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+        display: 'flex', flexDirection: 'column', gap: 14,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/apple-touch-icon.png" alt="" width={40} height={40}
+             style={{ flexShrink: 0, borderRadius: 10 }}/>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
+            {status === 'added' ? 'Lithosphere added' : 'Add Lithosphere to your wallet'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: 2 }}>
+            {status === 'added'
+              ? `${walletName === 'MetaMask' ? 'MetaMask' : 'Your wallet'} can now use Lithosphere Mainnet.`
+              : status === 'error'
+                ? `${walletName === 'MetaMask' ? 'MetaMask' : 'Your wallet'} didn’t add it. Open it and try again.`
+                : `Use Lithosphere Mainnet (LITHO) in ${walletName}. It takes one click.`}
+          </div>
         </div>
+        <button
+          type="button"
+          aria-label="Dismiss"
+          onClick={() => setVisible(false)}
+          style={{
+            flexShrink: 0, background: 'none', border: 'none', color: 'var(--text-muted)',
+            cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 4, marginTop: -2,
+          }}
+        >✕</button>
       </div>
       {status !== 'added' && (
-        <>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn-outline" style={actionBtn} onClick={() => setVisible(false)}>
+            Not now
+          </button>
           <button
-            type="button" className="btn-primary"
-            style={{ padding: '7px 12px', fontSize: 12 }}
+            type="button" className="btn-primary" style={actionBtn}
             disabled={status === 'adding'}
             onClick={addNetwork}
           >
             {status === 'adding' ? 'Adding…' : 'Add network'}
           </button>
-          <button
-            type="button"
-            aria-label="Dismiss"
-            onClick={() => setVisible(false)}
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4 }}
-          >✕</button>
-        </>
+        </div>
       )}
     </div>
   );
