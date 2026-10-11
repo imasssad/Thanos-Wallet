@@ -103,6 +103,7 @@ export function createMockChains(chainIds: number[]): MockChains {
 
   /** Runs a call/transaction against the chain's state. `commit` applies it. */
   function execute(c: MockChain, from: string, to: string, data: string, commit: boolean): { ret: string; lock?: Lock; revert?: string } {
+    if (!data || data === '0x') return { ret: '0x' }; // a plain native transfer
     const sel = data.slice(0, 10);
     const tokenFn = (() => { try { return ERC20.parseTransaction({ data }); } catch { return null; } })();
     const bridgeFn = (() => { try { return BRIDGE.parseTransaction({ data }); } catch { return null; } })();

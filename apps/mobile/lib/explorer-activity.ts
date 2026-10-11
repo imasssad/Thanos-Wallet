@@ -80,9 +80,10 @@ async function fetchExplorerNativeActivity(
         ts:           t.timestamp,
         status:       t.success === false ? 'failed' : 'confirmed',
         title:        `${isReceive ? 'Received' : 'Sent'} LITHO${labelSuffix}`,
+        chainId:      9005,
       });
     }
-    return out.slice(0, 50);
+    return out;
   } catch {
     return null; // explorer unreachable
   } finally {
@@ -99,4 +100,22 @@ export function mergeActivityFeeds(
   const seen = new Set(indexer.map((i) => i.txHash).filter(Boolean));
   const merged = [...indexer, ...native.filter((n) => !n.txHash || !seen.has(n.txHash))];
   return merged.sort((a, b) => (b.ts ? Date.parse(b.ts) : 0) - (a.ts ? Date.parse(a.ts) : 0));
+}
+
+/** Activity history kept on the device: the latest feed added to what was
+ *  saved before, so a transaction that drops off the explorer's latest page
+ *  stays in Activity. Deduped by tx hash (the fresh row wins), newest first,
+ *  at most `max` rows. */
+export function accumulateActivity(
+  saved: IndexerActivityItem[],
+  fresh: IndexerActivityItem[],
+  max = 500,
+): IndexerActivityItem[] {
+  const key = (i: IndexerActivityItem) => (i.txHash ? i.txHash.toLowerCase() : `id:${i.id}`);
+  const byKey = new Map<string, IndexerActivityItem>();
+  for (const i of saved) byKey.set(key(i), i);
+  for (const i of fresh) byKey.set(key(i), i);
+  return [...byKey.values()]
+    .sort((a, b) => (b.ts ? Date.parse(b.ts) : 0) - (a.ts ? Date.parse(a.ts) : 0))
+    .slice(0, max);
 }

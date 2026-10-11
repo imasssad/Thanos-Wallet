@@ -53,6 +53,25 @@ export interface OnchainTxDetails {
   status:        'success' | 'failed' | 'pending' | null;
   blockNumber:   number | null;
   explorerTxUrl: string;
+  /** An ERC-20 transfer's real recipient and amount — for a token send the
+   *  transaction's own `to` is the token contract. Null for anything else. */
+  tokenTransfer: Erc20Transfer | null;
+}
+
+export interface Erc20Transfer {
+  recipient: string;
+  /** The token contract (the transaction's `to`). */
+  contract:  string;
+  /** Amount in the token's base units. */
+  amountRaw: string;
+}
+
+/** Decode transfer(address,uint256) calldata; null for any other call. */
+export function decodeErc20Transfer(input: string | undefined | null, to: string | undefined | null): Erc20Transfer | null {
+  if (!input || !to || !/^0xa9059cbb[0-9a-fA-F]{128}/.test(input)) return null;
+  const word = (i: number) => input.slice(10 + i * 64, 10 + (i + 1) * 64);
+  if (!/^0{24}/.test(word(0))) return null;
+  return { recipient: `0x${word(0).slice(24)}`, contract: to, amountRaw: BigInt(`0x${word(1)}`).toString() };
 }
 
 const EVM_HASH = /^0x[0-9a-fA-F]{64}$/;
@@ -71,7 +90,7 @@ async function rpcCall(url: string, method: string, params: unknown[]): Promise<
   return j.result;
 }
 
-interface RawTx { from?: string; to?: string; nonce?: string; gasPrice?: string; blockNumber?: string }
+interface RawTx { from?: string; to?: string; nonce?: string; gasPrice?: string; blockNumber?: string; input?: string }
 interface RawReceipt { gasUsed?: string; effectiveGasPrice?: string; status?: string; blockNumber?: string }
 
 export async function fetchOnchainTxDetails(
@@ -144,6 +163,7 @@ export async function fetchOnchainTxDetails(
     status,
     blockNumber,
     explorerTxUrl: explorerTx(c, txHash),
+    tokenTransfer: decodeErc20Transfer(tx.input, tx.to),
   };
   cache.set(key, { at: Date.now(), d });
   return d;

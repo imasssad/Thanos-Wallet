@@ -135,7 +135,7 @@ initSentry();
 import { QrScannerModal } from './components/QrScannerModal';
 import { WalletConnectModal, WalletConnectRequestHost } from './components/WalletConnect';
 import { tokenIconSource, networkIconSource, chainBadgeSource, tokenIconPresentation } from './lib/token-icons';
-import { fetchMainnetNativeActivity } from './lib/explorer-activity';
+import { fetchMainnetNativeActivity, accumulateActivity } from './lib/explorer-activity';
 import {
   formatFiat, initDisplayCurrency, applyDisplayCurrency, persistDisplayCurrency,
   convertFromUsd, withCurrencyAffix,
@@ -796,8 +796,12 @@ function isValidRecipient(v: string): boolean {
   return false;
 }
 
+/** An Activity row: a feed item, plus what this device recorded when it
+ *  sent it (network, sender, token contract, memo). */
+type ActivityItem = IndexerActivityItem & Partial<Pick<LocalActivityItem, 'chain' | 'networkName' | 'fromAddress' | 'tokenAddress' | 'memo'>>;
+
 interface ActivityState {
-  items: IndexerActivityItem[]; loading: boolean; offline: boolean;
+  items: ActivityItem[]; loading: boolean; offline: boolean;
   /** true once a persisted snapshot has painted for this address. */
   hydrated: boolean;
   reload: () => void;
@@ -856,19 +860,20 @@ function useActivity(address: string): ActivityState {
     // chain. (The Thanos indexer and the Makalu/Kamet explorers used to be
     // merged in here — they only cover the testnets, no longer part of the
     // wallet, 2026-09-29.)
-    fetchMainnetNativeActivity(address)
-      .catch(() => null)
-      .then((main) => {
+    Promise.all([fetchMainnetNativeActivity(address).catch(() => null), getActivitySnapshot(address)])
+      .then(([main, snap]) => {
         if (cancelled) return;
         if (main === null) {
           // PRESERVE offline contract: keep whatever items we have, flag offline.
           setLoading(false); setOffline(true);
           return;
         }
-        setItems(main); setLoading(false); setOffline(false);
-        // Persist the successful fetch (guarded: empty lists are not written so a
-        // good snapshot is never clobbered by an empty/transient result).
-        if (main.length) void setActivitySnapshot(address, main);
+        // Add to the saved history rather than replace it, so a transaction
+        // past the explorer's latest page stays in Activity (client
+        // 2026-10-11: "keep all the history in the activity").
+        const all = accumulateActivity(snap?.items ?? [], main);
+        setItems(all); setLoading(false); setOffline(false);
+        if (all.length) void setActivitySnapshot(address, all);
       });
     return () => { cancelled = true; };
   }, [address, nonce]);
@@ -877,12 +882,22 @@ function useActivity(address: string): ActivityState {
   // hash. A local entry is kept only while the explorer hasn't reported its
   // hash; the moment it does, the local copy drops and the real confirmed
   // row shows — no double entry, no layout shift. Local (newest) sort on top.
-  const merged = useMemo(() => {
+  const merged = useMemo<ActivityItem[]>(() => {
     if (local.length === 0) return items;
+    const byHash = new Map(local.filter((l) => l.txHash).map((l) => [l.txHash!.toLowerCase(), l]));
+    // A send the explorer also reports keeps what was recorded at send time
+    // (network, sender, token, memo); the explorer's status and fields win.
+    const enriched = items.map((x) => {
+      const l = x.txHash ? byHash.get(x.txHash.toLowerCase()) : undefined;
+      return l ? { ...l, ...x } : x;
+    });
     const fresh = local.filter(
       (l) => !items.some((x) => (!!x.txHash && x.txHash === l.txHash) || x.id === l.id),
     );
-    return fresh.length === 0 ? items : [...fresh, ...items];
+    // Sends recorded here are kept for good now, so merge by time rather
+    // than putting every local row on top.
+    return fresh.length === 0 ? enriched : [...fresh, ...enriched]
+      .sort((a, b) => (b.ts ? Date.parse(b.ts) : 0) - (a.ts ? Date.parse(a.ts) : 0));
   }, [items, local]);
 
   return { items: merged, loading, offline, hydrated, reload: () => setNonce((n) => n + 1) };
@@ -4081,10 +4096,16 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
       const sym = chain === 'evm' && coin ? coin.sym : meta.sym;
       // Optimistic Activity row — recorded AFTER the broadcast returned a hash.
       // Never touches signing/broadcast; merged + deduped by the activity hook.
-      void addLocalActivity(addr, { hash, sym, amount: shownAmt, ts: Date.now(), type: 'send', chainId: net?.chainId });
+      const network = net ? sendNetworkName(net.chainId, net.name) : meta.label;
+      void addLocalActivity(addr, {
+        hash, sym, amount: shownAmt, ts: Date.now(), type: 'send', chainId: net?.chainId,
+        chain, networkName: network, to: recipient,
+        from: chain === 'evm' ? addr : undefined,
+        tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        memo: chain === 'cosmos' && memo.trim() ? memo.trim() : undefined,
+      });
       setSending(false);
       setAmt(''); setTo(''); setMemo(''); setHexData('');
-      const network = net ? sendNetworkName(net.chainId, net.name) : meta.label;
       // Fire a local notification (works without a push server) when enabled.
       isNotificationsEnabled().then(on => {
         if (on) notifyLocal('Transaction sent', `${shownAmt} ${sym} broadcast on ${network}.`);
@@ -4915,10 +4936,6 @@ function fmtTxDateTime(ts?: string): string {
   const m = d.getMinutes().toString().padStart(2, '0');
   return `${TX_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m} ${ampm}`;
 }
-function shortTxAddr(a?: string | null): string {
-  if (!a) return '—';
-  return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
-}
 function TxSheetRow({ C, label, children }: { C: ReturnType<typeof useColors>; label: string; children: React.ReactNode }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 12, gap: 12 }}>
@@ -4928,12 +4945,37 @@ function TxSheetRow({ C, label, children }: { C: ReturnType<typeof useColors>; l
   );
 }
 
-function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: () => void }) {
+/** A full address in the detail sheet — wraps rather than truncates, with copy. */
+function TxAddressRow({ C, label, value, copied, onCopy }: {
+  C: ReturnType<typeof useColors>; label: string; value: string; copied: boolean; onCopy: () => void;
+}) {
+  const mono = Platform.select({ ios: 'Menlo', android: 'monospace' }) as string;
+  return (
+    <View style={{ paddingVertical: 12, gap: 6 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ color: C.textMuted, fontSize: 13 }}>{label}</Text>
+        <Pressable onPress={onCopy} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Copy ${label.toLowerCase()}`}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          {copied ? <Check size={13} color={C.green}/> : <Copy size={13} color={C.textSecondary}/>}
+          <Text style={{ color: copied ? C.green : C.textSecondary, fontSize: 12, fontWeight: '600' }}>{copied ? 'Copied' : 'Copy'}</Text>
+        </Pressable>
+      </View>
+      <Text selectable style={{ color: C.textPrimary, fontSize: 12.5, fontFamily: mono, lineHeight: 18 }}>{value}</Text>
+    </View>
+  );
+}
+
+/* What the sheet shows for a row, from the row itself (recorded at send time
+   or reported by the explorer) and the chain lookup — whichever knows. For a
+   token send the transaction's own `to` is the token contract, so the
+   recipient comes from the row or from the decoded transfer(). */
+function TxDetailSheet({ item, onClose }: { item: ActivityItem; onClose: () => void }) {
   const C = useColors();
+  const me = useWalletAddr();
+  const { height } = useWindowDimensions();
   const d = txDisplay(item.type);
   const amountNum = parseFloat(String(item.amount ?? '').replace(/^[+-]/, '')) || 0;
-  const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
-  const mono = Platform.select({ ios: 'Menlo', android: 'monospace' }) as string;
+  const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 8 });
 
   const [prices, setPrices] = useState<Record<string, number>>({});
   useEffect(() => { fetchEcosystemPrices().then(setPrices).catch(() => {}); }, []);
@@ -4942,19 +4984,51 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
     ? withCurrencyAffix(convertFromUsd(amountNum * px).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     : null;
 
+  const nonEvm = !!item.chain && item.chain !== 'evm';
   const [det, setDet] = useState<OnchainTxDetails | null>(null);
-  const [detLoading, setDetLoading] = useState<boolean>(!!item.txHash);
+  const [detLoading, setDetLoading] = useState<boolean>(!!item.txHash && !nonEvm);
   useEffect(() => {
-    if (!item.txHash) { setDetLoading(false); return; }
+    if (!item.txHash || nonEvm) { setDetLoading(false); return; }
     let cancel = false;
-    fetchOnchainTxDetails(item.txHash)
+    fetchOnchainTxDetails(item.txHash, item.chainId != null ? { chainId: item.chainId } : undefined)
       .then(r => { if (!cancel) { setDet(r); setDetLoading(false); } })
       .catch(() => { if (!cancel) setDetLoading(false); });
     return () => { cancel = true; };
-  }, [item.txHash]);
+  }, [item.txHash, item.chainId, nonEvm]);
 
-  const statusText  = item.status === 'pending' ? 'Pending' : item.status === 'failed' ? 'Failed' : 'Completed';
-  const statusColor = item.status === 'pending' ? '#f59e0b' : item.status === 'failed' ? C.red : C.green;
+  // A custom network's explorer lives in the chain registry (lazy-loaded).
+  const [extExplorer, setExtExplorer] = useState<string | undefined>();
+  useEffect(() => {
+    if (item.chainId == null) return;
+    let cancel = false;
+    import('./lib/evm-external')
+      .then((m) => { if (!cancel) setExtExplorer(m.getExtEvmChain(item.chainId!)?.explorerUrl || undefined); })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, [item.chainId]);
+
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (key: string, value: string) => {
+    Clipboard.setStringAsync(value).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied((k) => (k === key ? null : k)), 1500);
+    }).catch(() => {});
+  };
+
+  const status = det?.status === 'success' ? 'confirmed' : det?.status === 'failed' ? 'failed' : item.status;
+  const statusText  = status === 'pending' ? 'Pending' : status === 'failed' ? 'Failed' : 'Completed';
+  const statusColor = status === 'pending' ? '#f59e0b' : status === 'failed' ? C.red : C.green;
+
+  const transfer = det?.tokenTransfer ?? null;
+  const counterparty = item.counterparty ?? (d.positive ? det?.from : (transfer?.recipient ?? det?.to)) ?? null;
+  const fromAddr = d.positive ? counterparty : (item.fromAddress ?? det?.from ?? (nonEvm ? null : me || null));
+  const toAddr = d.positive ? (nonEvm ? null : me || null) : counterparty;
+  const tokenContract = item.tokenAddress ?? transfer?.contract ?? null;
+  const network = item.networkName ?? det?.networkName
+    ?? (item.chainId != null ? sendNetworkName(item.chainId) : nonEvm ? CHAIN_META[item.chain as SendChainOption].label : null);
+  const explorer = det?.explorerTxUrl
+    ?? (item.txHash ? txExplorerUrl((item.chain ?? 'evm') as SendChainOption, item.txHash, extExplorer) : null);
+
   const feeText = det?.feeNative != null
     ? `${det.feeNative.toLocaleString('en-US', { maximumFractionDigits: 8 })} ${det.nativeSymbol}`
     : (detLoading ? '…' : '—');
@@ -4962,59 +5036,76 @@ function TxDetailSheet({ item, onClose }: { item: IndexerActivityItem; onClose: 
     ? '≈ ' + withCurrencyAffix(convertFromUsd(det.feeUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }))
     : null;
   const nonceText = det?.nonce != null ? String(det.nonce) : (detLoading ? '…' : '—');
-  const counterparty = item.counterparty ?? (d.positive ? det?.from : det?.to) ?? null;
-  const cpLabel = d.positive ? 'From' : 'Recipient';
-  // No lookup result → no link (never another network's explorer).
-  const explorer = det?.explorerTxUrl ?? null;
+  const blockText = det?.blockNumber != null ? det.blockNumber.toLocaleString('en-US') : item.blockNumber != null ? item.blockNumber.toLocaleString('en-US') : (detLoading ? '…' : '—');
+  const card = { backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginBottom: 12 } as const;
+  const valueText = { color: C.textPrimary, fontSize: 13, fontWeight: '600' as const };
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} onPress={onClose}>
         <Pressable
-          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 34 }}
+          style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 12, maxHeight: height * 0.88 }}
           onPress={() => { /* swallow taps inside the sheet */ }}
         >
           <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderSubtle, marginBottom: 14 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <Pressable hitSlop={8} onPress={() => { if (explorer) Share.share({ message: explorer }).catch(() => {}); }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingHorizontal: 20 }}>
+            <Pressable hitSlop={8} accessibilityLabel="Share" onPress={() => { const v = explorer ?? item.txHash; if (v) Share.share({ message: v }).catch(() => {}); }}>
               <Share2 size={20} color={C.textSecondary} />
             </Pressable>
-            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>{d.label}</Text>
-            <Pressable hitSlop={8} onPress={onClose}>
+            <Text style={{ color: C.textPrimary, fontSize: 16, fontWeight: '800' }}>{item.title || `${d.label} ${item.symbol}`}</Text>
+            <Pressable hitSlop={8} accessibilityLabel="Close" onPress={onClose}>
               <Text style={{ color: C.textSecondary, fontSize: 20, fontWeight: '600' }}>✕</Text>
             </Pressable>
           </View>
 
-          <View style={{ alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ color: C.textPrimary, fontSize: 30, fontWeight: '800' }}>
-              {fiat ? `≈ ${fiat}` : `${d.positive ? '+' : '-'}${amountStr} ${item.symbol}`}
-            </Text>
-            <Text style={{ color: C.textMuted, fontSize: 14, marginTop: 4 }}>{d.positive ? '+' : '-'}{amountStr} {item.symbol}</Text>
-          </View>
-
-          <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginBottom: 12 }}>
-            <TxSheetRow C={C} label="Date"><Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{fmtTxDateTime(item.ts)}</Text></TxSheetRow>
-            <TxSheetRow C={C} label="Status"><Text style={{ color: statusColor, fontSize: 13, fontWeight: '700' }}>{statusText}</Text></TxSheetRow>
-            {counterparty && <TxSheetRow C={C} label={cpLabel}><Text style={{ color: C.textPrimary, fontSize: 13, fontFamily: mono }}>{shortTxAddr(counterparty)}</Text></TxSheetRow>}
-            {det?.networkName ? <TxSheetRow C={C} label="Network"><Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{det.networkName}</Text></TxSheetRow> : null}
-          </View>
-
-          {!!item.txHash && (
-            <View style={{ backgroundColor: C.bgElevated, borderRadius: 14, paddingHorizontal: 14, marginBottom: 18 }}>
-              <TxSheetRow C={C} label="Network fee">
-                <Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{feeText}</Text>
-                {feeUsdText ? <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>{feeUsdText}</Text> : null}
-              </TxSheetRow>
-              <TxSheetRow C={C} label="Nonce"><Text style={{ color: C.textPrimary, fontSize: 13, fontWeight: '600' }}>{nonceText}</Text></TxSheetRow>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 34 }} showsVerticalScrollIndicator={false}>
+            <View style={{ alignItems: 'center', marginBottom: 18 }}>
+              <Text style={{ color: C.textPrimary, fontSize: 30, fontWeight: '800' }}>
+                {d.positive ? '+' : '-'}{amountStr} {item.symbol}
+              </Text>
+              {fiat ? <Text style={{ color: C.textMuted, fontSize: 14, marginTop: 4 }}>≈ {fiat}</Text> : null}
+              {status === 'pending' ? <Text style={{ color: '#f59e0b', fontSize: 12, marginTop: 6 }}>Waiting for the network to confirm it</Text> : null}
             </View>
-          )}
 
-          {explorer ? (
-            <Pressable onPress={() => { Linking.openURL(explorer).catch(() => {}); }}
-              style={{ paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
-              <Text style={{ color: C.green, fontSize: 14, fontWeight: '700' }}>View on block explorer</Text>
-            </Pressable>
-          ) : null}
+            <View style={card}>
+              <TxSheetRow C={C} label="Date"><Text style={valueText}>{fmtTxDateTime(item.ts)}</Text></TxSheetRow>
+              <TxSheetRow C={C} label="Status"><Text style={{ color: statusColor, fontSize: 13, fontWeight: '700' }}>{statusText}</Text></TxSheetRow>
+              {network ? <TxSheetRow C={C} label="Network"><Text style={valueText}>{network}</Text></TxSheetRow> : null}
+              <TxSheetRow C={C} label="Amount"><Text style={valueText}>{amountStr} {item.symbol}</Text></TxSheetRow>
+            </View>
+
+            {(fromAddr || toAddr || tokenContract || item.memo) ? (
+              <View style={card}>
+                {fromAddr ? <TxAddressRow C={C} label={d.positive ? 'From' : 'From (you)'} value={fromAddr} copied={copied === 'from'} onCopy={() => copy('from', fromAddr)}/> : null}
+                {toAddr ? <TxAddressRow C={C} label={d.positive ? 'To (you)' : 'Sent to'} value={toAddr} copied={copied === 'to'} onCopy={() => copy('to', toAddr)}/> : null}
+                {tokenContract ? <TxAddressRow C={C} label={`${item.symbol} contract`} value={tokenContract} copied={copied === 'contract'} onCopy={() => copy('contract', tokenContract)}/> : null}
+                {item.memo ? <TxSheetRow C={C} label="Memo"><Text selectable style={valueText}>{item.memo}</Text></TxSheetRow> : null}
+              </View>
+            ) : null}
+
+            {!!item.txHash && (
+              <View style={card}>
+                {!nonEvm ? (
+                  <>
+                    <TxSheetRow C={C} label="Network fee">
+                      <Text style={valueText}>{feeText}</Text>
+                      {feeUsdText ? <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>{feeUsdText}</Text> : null}
+                    </TxSheetRow>
+                    <TxSheetRow C={C} label="Nonce"><Text style={valueText}>{nonceText}</Text></TxSheetRow>
+                    <TxSheetRow C={C} label="Block"><Text style={valueText}>{blockText}</Text></TxSheetRow>
+                  </>
+                ) : null}
+                <TxAddressRow C={C} label="Transaction hash" value={item.txHash} copied={copied === 'hash'} onCopy={() => copy('hash', item.txHash!)}/>
+              </View>
+            )}
+
+            {explorer ? (
+              <Pressable onPress={() => { Linking.openURL(explorer).catch(() => {}); }} accessibilityRole="link"
+                style={{ paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center', marginTop: 4 }}>
+                <Text style={{ color: C.green, fontSize: 14, fontWeight: '700' }}>View on block explorer</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -5027,7 +5118,7 @@ function ActivityScreen() {
   const addr = useWalletAddr();
   const { items, loading, offline, hydrated, reload } = useActivity(addr);
   const [filter, setFilter] = useState<'All' | 'Sent' | 'Received' | 'Swap'>('All');
-  const [detail, setDetail] = useState<IndexerActivityItem | null>(null);
+  const [detail, setDetail] = useState<ActivityItem | null>(null);
   const shown = filter === 'All' ? items : items.filter(t => txDisplay(t.type).label === filter);
   // Cold first load only: nothing cached/painted yet.
   const showSkeleton = loading && !hydrated && items.length === 0;
@@ -5049,7 +5140,7 @@ function ActivityScreen() {
       }
     >
       <Text style={styles.pageTitleLarge}>Activity</Text>
-      <Text style={styles.pageSubtitle}>Recent transactions across all your wallets</Text>
+      <Text style={styles.pageSubtitle}>Every transaction from this wallet. Tap one for its details.</Text>
 
       {/* Filter pills — tap to filter the list by direction. */}
       <View style={styles.filterRow}>
@@ -5063,7 +5154,7 @@ function ActivityScreen() {
         })}
       </View>
 
-      <Text style={styles.dateHeader}>Recent</Text>
+      <Text style={styles.dateHeader}>History</Text>
       {showSkeleton ? <RowSkeleton count={5}/> : (
       <View style={styles.card}>
         {loading && items.length === 0 && (
@@ -5093,7 +5184,7 @@ function ActivityScreen() {
           const cpLine = cp ? `${d.label === 'Received' ? 'From' : 'To'} ${cpShort}` : '';
           const when = relativeTime(t.ts) || (t.status ?? '');
           return (
-            <Pressable key={t.id || `${i}`} onPress={() => setDetail(t)} style={[styles.row, i < items.length - 1 && styles.rowBorder]}>
+            <Pressable key={t.id || `${i}`} onPress={() => setDetail(t)} accessibilityRole="button" accessibilityHint="Shows the transaction details" style={[styles.row, i < shown.length - 1 && styles.rowBorder]}>
               <View style={[styles.txIcon, { backgroundColor: d.positive ? C.greenDim : C.blueDim }]}>
                 <TxIcon size={16} color={d.positive ? C.green : C.blue} strokeWidth={2.4}/>
               </View>

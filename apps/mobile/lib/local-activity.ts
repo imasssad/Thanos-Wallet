@@ -1,72 +1,73 @@
 /**
- * Optimistic local activity log (mobile).
+ * The wallet's own send history (mobile).
  *
  * Only native LITHO on Lithosphere Mainnet has a feed (the explorer), so most
- * sends would never appear in the Activity feed at all. We record every
- * successful send locally (keyed by the wallet's EVM address, backed by
- * AsyncStorage) the instant the broadcast returns a hash, and the activity
- * hook merges it into the feed, deduped against the explorer by tx hash. Once
- * the explorer reports the tx the local copy drops out, so the real
- * (confirmed) row replaces the optimistic "Pending" one with no double entry.
+ * sends — tokens on 9005, the external EVM chains, custom networks, BTC, SOL,
+ * ATOM — would never appear in Activity at all. Every successful send is
+ * recorded here (keyed by the wallet's EVM address, in AsyncStorage) the
+ * moment the broadcast returns a hash, with what the detail sheet needs:
+ * recipient, sender, network, token contract and memo. The activity hook
+ * merges it into the feed, deduped against the explorer by tx hash.
  *
- * Entries are shaped like IndexerActivityItem so they render through the same
- * row code. status starts 'pending'. The list is capped at 50 entries and
- * entries older than 24h are dropped on read, so a dropped or failed tx never
- * lingers forever.
- *
- * RESOLUTION (added 2026-09-16, client-reported "some txns show pending yet
- * sent already"): Mainnet native LITHO gets promoted out of "Pending" by the
- * explorer feed (explorer-activity.ts). Every other send — tokens on 9005,
- * the external EVM chains (Ethereum/BNB/Polygon/Base/Arbitrum/Linea/
- * Optimism/Avalanche) and custom networks — has no explorer coverage, and
- * those rows stayed "Pending" forever. resolvePendingActivity() below closes
- * that gap directly: it polls the tx's OWN chain RPC for a receipt and flips
- * the stored status in place.
+ * History is kept (client 2026-10-11: "keep all the history in the
+ * activity") — entries are no longer dropped after 24h, only past the newest
+ * MAX. A send that never confirms doesn't stay "Pending" for ever:
+ * resolvePendingActivity() checks each pending row on its own chain and
+ * marks it confirmed or failed — failed also when, a day on, the chain has no
+ * record of it at all (dropped from the mempool).
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { IndexerActivityItem } from './indexer';
 
 const PREFIX = 'local_activity:';
-const MAX = 50;
-const TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const MAX = 500;
+/** After this long, a send its chain has never heard of counts as dropped. */
+const DROPPED_AFTER_MS = 24 * 60 * 60 * 1000;
 // Cap per resolve pass — this runs on every Activity screen mount + pull-to-
-// refresh; unbounded RPC fan-out on a large local backlog would be wasteful
-// and slow to paint. 50 stored rows max anyway, but pending ones are rare.
+// refresh; pending rows are rare, but don't fan out unbounded.
 const MAX_RESOLVE_PER_PASS = 12;
-const RECEIPT_TIMEOUT_MS = 6_000;
+const LOOKUP_TIMEOUT_MS = 6_000;
 
-/** A locally-recorded, not-yet-indexed send. Shaped to render as an
- *  IndexerActivityItem; `type` is always 'send'. The human-readable `amount`
- *  (what the user typed) is stored — pending rows are rendered without
- *  formatUnits, unlike indexer rows. `tsMs` is kept for the 24h expiry-on-
- *  read; `ts` is the ISO string the UI already understands. `chainId` is
- *  what lets resolvePendingActivity find the right RPC to check — absent on
- *  rows recorded before this field existed, which just stay unresolved by
- *  this path (they still resolve via the explorer feeds if on a Litho chain). */
+export type SendChainKind = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
+
+/** A send recorded on this device. Shaped to render as an IndexerActivityItem;
+ *  `type` is always 'send' and `counterparty` is the recipient. */
 export interface LocalActivityItem extends IndexerActivityItem {
-  type:     'send';
-  status:   'pending' | 'confirmed' | 'failed';
-  /** epoch ms — used only for expiry, never rendered. */
-  tsMs:     number;
-  chainId?: number;
+  type:          'send';
+  status:        'pending' | 'confirmed' | 'failed';
+  /** epoch ms of the broadcast. */
+  tsMs:          number;
+  /** EVM chain the send was broadcast on (absent for BTC/SOL/ATOM). */
+  chainId?:      number;
+  chain?:        SendChainKind;
+  networkName?:  string;
+  fromAddress?:  string;
+  /** ERC-20 contract, for a token send. */
+  tokenAddress?: string;
+  memo?:         string;
 }
 
-/** Minimal input at the call site: everything else is derived. */
+/** What the send screen knows at broadcast time. */
 export interface LocalActivityInput {
-  hash:     string;
-  sym:      string;
-  amount:   string;   // human-readable, e.g. "1.5"
-  ts:       number;   // epoch ms
-  type?:    'send';
+  hash:          string;
+  sym:           string;
+  amount:        string;   // human-readable, e.g. "1.5"
+  ts:            number;   // epoch ms
+  type?:         'send';
   /** The chain this was actually broadcast on — what lets
    *  resolvePendingActivity check its receipt. */
-  chainId?: number;
+  chainId?:      number;
+  chain?:        SendChainKind;
+  networkName?:  string;
+  to?:           string;
+  from?:         string;
+  tokenAddress?: string;
+  memo?:         string;
 }
 
 const keyFor = (addr: string) => PREFIX + (addr || '').toLowerCase();
 
-/** Read the wallet's local (unconfirmed) sends, freshest first. Entries older
- *  than 24h are filtered out here so a stuck/failed tx self-heals. */
+/** The wallet's recorded sends, newest first. */
 export async function getLocalActivity(addr: string): Promise<LocalActivityItem[]> {
   if (!addr) return [];
   try {
@@ -75,17 +76,18 @@ export async function getLocalActivity(addr: string): Promise<LocalActivityItem[
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
     const now = Date.now();
-    return (arr as LocalActivityItem[]).filter(
-      (t) => t && typeof t.tsMs === 'number' && now - t.tsMs < TTL_MS,
-    );
+    return (arr as LocalActivityItem[]).filter((t) => t && typeof t.tsMs === 'number' && !!t.txHash
+      // Rows saved before sends recorded their chain can never be checked;
+      // those still pending go after a day, as they always did.
+      && !(t.status === 'pending' && t.chainId == null && !t.chain && now - t.tsMs > DROPPED_AFTER_MS));
   } catch {
     return [];
   }
 }
 
 /** Record a just-broadcast send. Called AFTER a tx hash is returned — never
- *  touches signing/broadcast. Deduped by hash; capped at 50; best-effort (a
- *  storage failure just skips the optimistic row, it never breaks the send). */
+ *  touches signing/broadcast. Deduped by hash; best-effort (a storage
+ *  failure just skips the row, it never breaks the send). */
 export async function addLocalActivity(addr: string, tx: LocalActivityInput): Promise<void> {
   if (!addr || !tx.hash) return;
   try {
@@ -101,46 +103,118 @@ export async function addLocalActivity(addr: string, tx: LocalActivityInput): Pr
       tsMs:    tx.ts,
       status:  'pending',
       chainId: tx.chainId,
+      chain:   tx.chain ?? (tx.chainId != null ? 'evm' : undefined),
+      ...(tx.to ? { counterparty: tx.to } : {}),
+      ...(tx.from ? { fromAddress: tx.from } : {}),
+      ...(tx.networkName ? { networkName: tx.networkName } : {}),
+      ...(tx.tokenAddress ? { tokenAddress: tx.tokenAddress } : {}),
+      ...(tx.memo ? { memo: tx.memo } : {}),
     };
     const next = [item, ...arr].slice(0, MAX);
     await AsyncStorage.setItem(keyFor(addr), JSON.stringify(next));
   } catch {
-    /* storage full / disabled — non-fatal, just skip the optimistic entry */
+    /* storage full / disabled — non-fatal, just skip the row */
   }
 }
 
-/** Poll each still-pending row's OWN chain for a receipt and flip its status
- *  in place — see the module doc for why this exists (external EVM chains +
- *  non-native Mainnet assets have no indexer/explorer coverage at all, so
- *  nothing else was ever going to un-stick them). Rows with no chainId (rows
- *  from before this field, or BTC/SOL/ATOM sends) are left untouched. Best-effort —
- *  a chain that can't be reached just stays pending and gets retried on the
- *  next call (screen mount / pull-to-refresh). Returns the up-to-date list
- *  (same list getLocalActivity would return) so callers don't need a second
- *  read. */
+/** confirmed / failed once the chain has settled it, 'unknown' while the
+ *  chain has no record of it, null when it couldn't be asked (or is still
+ *  pending). */
+type Lookup = 'confirmed' | 'failed' | 'unknown' | null;
+
+async function fetchJson(url: string, init?: RequestInit): Promise<{ status: number; body: unknown } | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LOOKUP_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    const body = await res.json().catch(() => null);
+    return { status: res.status, body };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function lookupEvm(t: LocalActivityItem): Promise<Lookup> {
+  let evm: typeof import('./evm-external');
+  try { evm = await import('./evm-external'); } catch { return null; }
+  if (!evm.getExtEvmChain(t.chainId!)) return null; // no RPC for this chain
+  const provider = evm.getExtEvmProvider(t.chainId!);
+  const timed = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), LOOKUP_TIMEOUT_MS))]);
+  try {
+    const receipt = await timed(provider.getTransactionReceipt(t.txHash!));
+    if (receipt === 'timeout') return null;
+    if (receipt) return receipt.status === 1 ? 'confirmed' : 'failed';
+    const tx = await timed(provider.getTransaction(t.txHash!));
+    if (tx === 'timeout') return null;
+    return tx ? null : 'unknown';
+  } catch {
+    return null;
+  }
+}
+
+async function lookupBitcoin(hash: string): Promise<Lookup> {
+  const r = await fetchJson(`https://mempool.space/api/tx/${encodeURIComponent(hash)}/status`);
+  if (!r) return null;
+  if (r.status === 404) return 'unknown';
+  return (r.body as { confirmed?: boolean } | null)?.confirmed ? 'confirmed' : null;
+}
+
+async function lookupSolana(sig: string): Promise<Lookup> {
+  for (const url of ['https://solana-rpc.publicnode.com', 'https://api.mainnet-beta.solana.com']) {
+    const r = await fetchJson(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getSignatureStatuses', params: [[sig], { searchTransactionHistory: true }] }),
+    });
+    const value = (r?.body as { result?: { value?: Array<{ err: unknown; confirmationStatus?: string } | null> } } | null)?.result?.value;
+    if (!Array.isArray(value)) continue;
+    const s = value[0];
+    if (!s) return 'unknown';
+    if (s.err) return 'failed';
+    return s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized' ? 'confirmed' : null;
+  }
+  return null;
+}
+
+async function lookupCosmos(hash: string): Promise<Lookup> {
+  const r = await fetchJson(`https://cosmos-rest.publicnode.com/cosmos/tx/v1beta1/txs/${encodeURIComponent(hash)}`);
+  if (!r) return null;
+  const code = (r.body as { tx_response?: { code?: number } } | null)?.tx_response?.code;
+  if (r.status === 200 && typeof code === 'number') return code === 0 ? 'confirmed' : 'failed';
+  return r.status === 404 || r.status === 400 ? 'unknown' : null;
+}
+
+function lookup(t: LocalActivityItem): Promise<Lookup> {
+  if (t.chainId != null) return lookupEvm(t);
+  if (t.chain === 'bitcoin') return lookupBitcoin(t.txHash!);
+  if (t.chain === 'solana') return lookupSolana(t.txHash!);
+  if (t.chain === 'cosmos') return lookupCosmos(t.txHash!);
+  return Promise.resolve(null);
+}
+
+/** Check each still-pending row on its OWN chain and settle it in place:
+ *  confirmed, failed (reverted), or failed because a day on the chain has
+ *  no record of it. A chain that can't be reached leaves the row pending for
+ *  the next call (screen mount / pull-to-refresh). Returns the up-to-date
+ *  list, newest first. */
 export async function resolvePendingActivity(addr: string): Promise<LocalActivityItem[]> {
   const arr = await getLocalActivity(addr);
   if (!addr) return arr;
-  const pending = arr.filter((t) => t.status === 'pending' && t.chainId != null).slice(0, MAX_RESOLVE_PER_PASS);
+  const pending = arr.filter((t) => t.status === 'pending').slice(0, MAX_RESOLVE_PER_PASS);
   if (pending.length === 0) return arr;
 
-  let evm: typeof import('./evm-external') | null = null;
-  try { evm = await import('./evm-external'); } catch { return arr; }
-
-  const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
-    Promise.race([p, new Promise<null>((res) => setTimeout(() => res(null), ms))]);
-
-  const resolutions = await Promise.allSettled(pending.map(async (t) => {
-    const chain = evm!.getExtEvmChain(t.chainId!);
-    if (!chain) return null; // not a chain this module knows an RPC for
-    const receipt = await withTimeout(evm!.getExtEvmProvider(t.chainId!).getTransactionReceipt(t.txHash!), RECEIPT_TIMEOUT_MS);
-    if (!receipt) return null; // still pending, or unreachable — leave as-is
-    const status: 'confirmed' | 'failed' = receipt.status === 1 ? 'confirmed' : 'failed';
-    return { hash: t.txHash!, status };
+  const now = Date.now();
+  const results = await Promise.allSettled(pending.map(async (t) => {
+    const r = await lookup(t);
+    if (r === 'confirmed' || r === 'failed') return { hash: t.txHash!, status: r };
+    if (r === 'unknown' && now - t.tsMs > DROPPED_AFTER_MS) return { hash: t.txHash!, status: 'failed' as const };
+    return null;
   }));
 
   const updates = new Map<string, 'confirmed' | 'failed'>();
-  for (const r of resolutions) {
+  for (const r of results) {
     if (r.status === 'fulfilled' && r.value) updates.set(r.value.hash, r.value.status);
   }
   if (updates.size === 0) return arr;

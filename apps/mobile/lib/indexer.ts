@@ -43,6 +43,8 @@ export interface IndexerActivityItem {
   status?:       'pending' | 'confirmed' | 'failed' | string;
   /** Indexer-authored display label, e.g. "Received MUSA" (optional). */
   title?:        string;
+  /** EVM chain the transaction is on, when the feed knows it. */
+  chainId?:      number;
 }
 
 /** The indexer's live rows are shaped slightly differently from this client
