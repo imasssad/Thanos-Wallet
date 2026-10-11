@@ -50,8 +50,11 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
       const other = review(...typed('Permit', { owner: ME, spender: SPENDER, value: '1', nonce: 0, deadline: 1 }, { name: 'USD Coin', chainId: 137, verifyingContract: TOKEN }));
       expect(other.risk).toBe('block');
       expect(other.blockReason).toMatch(/chain 137.*chain 1/);
+      // …and names the chain it needs, so a sheet can offer the switch.
+      expect(other.requiredChainId).toBe(137);
       const hex = review(...typed('Permit', { owner: ME, spender: SPENDER, value: '1', nonce: 0, deadline: 1 }, { name: 'USD Coin', chainId: '0x89', verifyingContract: TOKEN }), 137);
       expect(hex.blockReason).toBeNull();
+      expect(hex.requiredChainId).toBeUndefined();
     });
 
     it('decodes a DAI-style permit', () => {
@@ -169,6 +172,7 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
 
     it('blocks another chain, another account, and scam recipients', () => {
       expect(tx({ to: SPENDER, value: '0x1', chainId: '0x89' }).blockReason).toMatch(/chain 137/);
+      expect(tx({ to: SPENDER, value: '0x1', chainId: '0x89' }).requiredChainId).toBe(137);
       expect(review('eth_sendTransaction', [{ from: SPENDER, to: SPENDER, value: '0x1' }]).blockReason).toMatch(/for account/);
       expect(tx({ to: SCAM, value: '0x1' }).risk).toBe('block');
       expect(tx({ to: TOKEN, data: erc20.encodeFunctionData('approve', [SCAM, 1n]) }).risk).toBe('block');

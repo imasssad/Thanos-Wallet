@@ -136,9 +136,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   /* ─── Rename / delete account ─────────────────────────────────────────
      Rename is a small inline dialog (no native prompt — it'd break the dark
-     UI). Delete is guarded: an account holding more than DELETE_MAX_USD
-     can't be removed, and if the balance can't be VERIFIED we refuse too
-     rather than risk hiding funds. Removal hides the HD index (see
+     UI). Delete always confirms; an account holding more than
+     DELETE_MAX_USD, or whose balance can't be checked, can still go after a
+     reminder about the recovery phrase (client, 2026-10-10) — a native
+     confirm, as befits a rare destructive step. Removal hides the HD index (see
      lib/vault.ts hideAccount) — indices never shift, so no address moves. */
   const [renameIdx, setRenameIdx]   = useState<number | null>(null);
   const [renameVal, setRenameVal]   = useState('');
@@ -166,14 +167,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setAcctBusy(true);
     try {
       const usd = await accountUsdValue(addr, prices ?? {});
-      if (usd == null) {
-        setAcctError("Couldn't verify this account's balance — it wasn't deleted. Try again when you're back online.");
-        return;
-      }
-      if (usd > DELETE_MAX_USD) {
-        setAcctError(`This account holds ${formatFiat(usd)}. Move the funds out before deleting it.`);
-        return;
-      }
+      // Funds don't block deleting (client, 2026-10-10) — the account only
+      // leaves this list; the user is reminded that the recovery phrase is
+      // what reaches the funds afterwards.
+      const name = getAccountName(idx);
+      const held = usd == null
+        ? "We couldn't check what this account holds."
+        : usd > DELETE_MAX_USD ? `It holds about ${formatFiat(usd)}.` : null;
+      const ask = held
+        ? `Delete ${name}?\n\n${held} Deleting only removes it from Thanos — any funds stay at its address on the blockchain, and only your recovery phrase can get them back.\n\nMake sure your recovery phrase is written down before you continue.`
+        : `Delete ${name}? The same recovery phrase can restore it later.`;
+      if (!window.confirm(ask)) return;
       if (!hideAccount(idx)) {
         setAcctError('That account can\'t be removed — a wallet must keep at least one.');
         return;
