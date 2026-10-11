@@ -44,12 +44,15 @@ const SUPPORTED_EVENTS = ['chainChanged', 'accountsChanged'];
    callers during boot await the same init. */
 let kitPromise: Promise<import('@reown/walletkit').IWalletKit> | null = null;
 
+/** The public Reown project id the other Thanos clients fall back to. */
+const FALLBACK_PROJECT_ID = '6d05d9a84112ca2f7c1bb77a76a18c81';
+
 async function getProjectId(): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const env = (typeof process !== 'undefined' && (process as any).env) || {};
-  const id = env.NEXT_PUBLIC_REOWN_PROJECT_ID || env.REOWN_PROJECT_ID || env.WALLETCONNECT_PROJECT_ID;
-  if (!id) throw new Error('NEXT_PUBLIC_REOWN_PROJECT_ID is not set');
-  return id;
+  // Written out in full so Next inlines it into the browser bundle: a
+  // lookup through a variable (`const env = process.env; env.X`) isn't
+  // inlined, and the browser's process.env is empty — Permissions showed
+  // "NEXT_PUBLIC_REOWN_PROJECT_ID is not set" even when the build had it.
+  return process.env.NEXT_PUBLIC_REOWN_PROJECT_ID || FALLBACK_PROJECT_ID;
 }
 
 export async function getWalletKit(): Promise<import('@reown/walletkit').IWalletKit> {
