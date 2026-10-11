@@ -17,7 +17,7 @@ const MAKALU_WALLET = {
 };
 const MAINNET_WALLET = { ...MAKALU_WALLET, chainName: 'Lithosphere Mainnet', chainId: 9005, chainIsTestnet: false };
 
-for (const [impl, { agentFundingOptions, agentWalletNetwork, agentFundingBlock }] of [['sdk-core', core], ['mobile mirror', mobile]] as const) {
+for (const [impl, { agentFundingOptions, agentWalletNetwork, agentFundingBlock, withdrawalResumable }] of [['sdk-core', core], ['mobile mirror', mobile]] as const) {
 describe(`agentFundingOptions (${impl})`, () => {
   it('offers the quote asset on each chain the agent trades, in its order', () => {
     expect(agentFundingOptions({ chains: ['base', 'arbitrum'], quoteAsset: 'USDT' })).toEqual([
@@ -96,6 +96,24 @@ describe(`agentFundingBlock (${impl})`, () => {
     expect(agentFundingBlock(lax, { address: '0xabc' })).toBeNull();
     expect(agentFundingBlock(lax, null)).toBeNull();
     expect(agentFundingBlock(undefined, MAKALU_WALLET)).toBeNull();
+  });
+});
+
+describe(`withdrawalResumable (${impl})`, () => {
+  it('offers Resume for a payout stuck after the vault leg, whatever Quantts calls it', () => {
+    for (const status of ['vault_withdrawn', 'transfer_failed', 'pending', 'processing', 'stuck', 'failed', '']) {
+      expect(withdrawalResumable({ id: 'wd_1', status })).toBe(true);
+    }
+    expect(withdrawalResumable({ attemptId: 7, state: 'awaiting_transfer' })).toBe(true);
+  });
+
+  it('not once it is paid, finished, or has no id', () => {
+    for (const status of ['completed', 'COMPLETE', 'succeeded', 'success', 'done', 'paid', 'settled', 'confirmed', 'cancelled', 'canceled', 'rejected']) {
+      expect(withdrawalResumable({ id: 'wd_1', status })).toBe(false);
+    }
+    expect(withdrawalResumable({ id: 'wd_1', status: 'vault_withdrawn', transferTxHash: '0xabc' })).toBe(false);
+    expect(withdrawalResumable({ status: 'pending' })).toBe(false);
+    expect(withdrawalResumable(null)).toBe(false);
   });
 });
 }

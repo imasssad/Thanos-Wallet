@@ -19,7 +19,7 @@
  */
 import * as SecureStore from 'expo-secure-store';
 import { fetch as expoFetch } from 'expo/fetch';
-import { HDNodeWallet } from 'ethers';
+import { HDNodeWallet, Wallet } from 'ethers';
 import { assertQuanttChallenge } from './quantt-challenge';
 import { validateAgentUpdate } from './quantt-agent-config';
 import { SseParser } from './quantt-sse';
@@ -628,10 +628,19 @@ export async function forgetQuanttSession(): Promise<void> {
   return quantt.signOut();
 }
 
+const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
+
+/** The active account's signer: a wallet imported by private key is that one
+ *  key (the seed is ['0x…']); otherwise the seed's key at the active index. */
+function quanttWallet(seed: string[], accountIdx: number): Wallet | HDNodeWallet {
+  if (!seed?.length) throw new Error('Wallet is locked');
+  if (seed.length === 1 && PRIVATE_KEY_RE.test(seed[0].trim())) return new Wallet(seed[0].trim());
+  return HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${accountIdx}`);
+}
+
 /** Sign in to Quantt with the unlocked wallet seed (inline EIP-712). */
 export async function quanttSignIn(seed: string[], accountIdx: number): Promise<QuanttSession> {
-  if (!seed?.length) throw new Error('Wallet is locked');
-  const wallet = HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${accountIdx}`);
+  const wallet = quanttWallet(seed, accountIdx);
   const sign = (typed: Eip712TypedData): Promise<string> => {
     const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
     void _omit;
@@ -651,8 +660,7 @@ export async function quanttSignIn(seed: string[], accountIdx: number): Promise<
  *  quanttSignIn above. Withdrawals only ever go to this verified address,
  *  never an arbitrary one passed at withdraw time. */
 export async function quanttBindWithdrawalAddress(seed: string[], accountIdx: number, address: string): Promise<unknown> {
-  if (!seed?.length) throw new Error('Wallet is locked');
-  const wallet = HDNodeWallet.fromPhrase(seed.join(' '), undefined, `m/44'/60'/0'/0/${accountIdx}`);
+  const wallet = quanttWallet(seed, accountIdx);
   const typed = await quantt.withdrawalAddressChallenge(address);
   const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
   void _omit;

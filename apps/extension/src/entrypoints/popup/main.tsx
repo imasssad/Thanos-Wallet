@@ -45,7 +45,7 @@ import type {
   QuanttStrategy, QuanttChain, QuanttDexPreference, CreateAgentInput,
   QuanttKillSwitch, QuanttStreamStatus, QuanttAgentConfig, QuanttTimeframe, UpdateAgentInput, QuanttFundingOption,
 } from '@thanos/sdk-core';
-import { toAgentConfig, agentFundingOptions, agentFundingBlock, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
+import { toAgentConfig, agentFundingOptions, agentFundingBlock, withdrawalResumable, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, startIdleLock, reviewSigningRequest, checkRecipient, copySecretToClipboard, passwordProblem } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import {
   evmToLitho, ECOSYSTEM_APPS, ECOSYSTEM_HUB, type EcosystemApp,
@@ -2330,8 +2330,7 @@ function QuanttWithdrawTab({ agentId, seed, myAddress }: { agentId: string; seed
         {history && history.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>No withdrawals yet.</div>}
         {history && history.map((it, i) => {
           const id = quanttRowId(it);
-          const st = quanttRowStatus(it);
-          const pending = !!st && /pending|processing|awaiting/i.test(st);
+          const pending = withdrawalResumable(it);
           return (
             <div key={id ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 8, marginBottom: 6 }}>
               {quanttObjRows(it, ['id', '_id']).map(([k, v]) => (

@@ -33,7 +33,7 @@ import { quantt, quanttSignIn, quanttBindWithdrawalAddress } from '../lib/quantt
 import { useWallet } from './shell/AppShell';
 import { SendModal } from './modals';
 import {
-  toAgentConfig, agentFundingOptions, agentFundingBlock, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES,
+  toAgentConfig, agentFundingOptions, agentFundingBlock, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, withdrawalResumable,
   type QuanttFundingOption, type QuanttSession, type QuanttOverview, type QuanttAgent, type QuanttRuntimeState,
   type CreateAgentInput, type WithdrawInput, type QuanttStrategy, type QuanttChain, type QuanttDexPreference,
   type QuanttAgentConfig, type QuanttKillSwitch, type QuanttStreamStatus, type QuanttTimeframe, type UpdateAgentInput,
@@ -166,10 +166,6 @@ function coerceCursorList(raw: unknown): { items: Record<string, unknown>[]; nex
 }
 function withdrawalId(o: Record<string, unknown>): string | undefined {
   return pickStr(o, 'id', 'attemptId', 'attempt_id', 'withdrawalId', 'withdrawal_id');
-}
-function isResumable(o: Record<string, unknown>): boolean {
-  const status = (pickStr(o, 'status', 'state') ?? '').toLowerCase();
-  return /pending|processing|queued|retry|incomplete/.test(status);
 }
 
 /* ── strategy / chain catalogs ─────────────────────────────────────────── */
@@ -562,7 +558,7 @@ function WithdrawTab({ agent }: { agent: AgentRow }) {
                 <RecordCard
                   key={id ?? i}
                   obj={h}
-                  action={id && isResumable(h) ? (
+                  action={withdrawalResumable(h) && id ? (
                     <button className="btn-outline" style={{ marginTop: 4, fontSize: 12, padding: '6px 10px' }} onClick={() => resume(id)} disabled={resumingId === id}>
                       {resumingId === id ? 'Resuming…' : 'Resume'}
                     </button>

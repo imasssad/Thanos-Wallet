@@ -13,9 +13,9 @@
  * offscreen signer signs it, and Quantt returns a bearer session. Keys never
  * leave the wallet — Quantt only ever sees a signature.
  */
-import { HDNodeWallet, Mnemonic } from 'ethers';
+import { HDNodeWallet, Mnemonic, Wallet } from 'ethers';
 import { QuanttClient, type QuanttSession, type Eip712TypedData } from '@thanos/sdk-core';
-import { getActiveAccountIndex } from '../../lib/vault';
+import { getActiveAccountIndex, isPrivateKeyWallet } from '../../lib/vault';
 import { signTypedData as offscreenSignTypedData } from './offscreen-sign';
 
 const STORE_KEY = 'quantt_session';
@@ -54,8 +54,11 @@ function hdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
 
-/** The active account's EVM address (no private key materialised). */
+/** The active account's EVM address — a private-key wallet's own (the
+ *  offscreen signer signs with that key too), else the seed's at the active
+ *  index. */
 export function quanttAddress(seed: string[]): string {
+  if (isPrivateKeyWallet(seed)) return new Wallet(seed[0].trim()).address;
   return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath()).address;
 }
 

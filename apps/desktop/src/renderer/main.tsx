@@ -27,11 +27,11 @@ import {
 } from './custom-assets';
 import { useMarket, formatMarketPrice, formatCompact } from './market';
 import { WalletSeedContext, useWalletSeed, resolveRecipient, sendAsset } from './send';
-import { quantt, quanttSignIn, forgetQuanttSession } from './quantt';
+import { quantt, quanttSignIn, quanttWallet, quanttBindWithdrawalAddress, forgetQuanttSession } from './quantt';
 import { isCoinVisible, getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from './asset-visibility';
 import type { QuanttSession, QuanttOverview, QuanttAgent, QuanttRuntimeState, QuanttStrategy, QuanttChain, QuanttFundingOption } from '@thanos/sdk-core';
 import {
-  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, agentFundingOptions, agentFundingBlock,
+  toAgentConfig, diffAgentConfig, validateAgentUpdate, killSwitchMessage, QUANTT_TIMEFRAMES, agentFundingOptions, agentFundingBlock, withdrawalResumable,
   type QuanttKillSwitch, type QuanttStreamStatus, type QuanttAgentConfig, type QuanttTimeframe, type UpdateAgentInput,
   startIdleLock, idleExpired, readAutoLockMinutes, writeAutoLockMinutes, AUTO_LOCK_CHOICES, AUTO_LOCK_OFF_NOTE,
   checkRecipient, copySecretToClipboard, passwordProblem,
@@ -1319,10 +1319,7 @@ function QuanttWithdrawTab({ agentId, agentName }: { agentId: string; agentName:
   useEffect(() => { void loadWithdrawalAddr(); void loadWithdrawals(); }, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ownAddress = useMemo(() => {
-    if (!seed?.length) return '';
-    try {
-      return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${getActiveAccountIndex()}`).address;
-    } catch { return ''; }
+    try { return seed?.length ? quanttWallet(seed).address : ''; } catch { return ''; }
   }, [seed]);
 
   const bindMyAddress = async () => {
@@ -1330,13 +1327,7 @@ function QuanttWithdrawTab({ agentId, agentName }: { agentId: string; agentName:
     if (!window.confirm(`Bind ${ownAddress} as your verified Quantt withdrawal address? Withdrawals can only be sent here.`)) return;
     setBinding(true); setBindErr(null);
     try {
-      const wallet = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${getActiveAccountIndex()}`);
-      const typed = await quantt.withdrawalAddressChallenge(ownAddress);
-      const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
-      void _omit;
-      const signature = await wallet.signTypedData(typed.domain, types as Record<string, Array<{ name: string; type: string }>>, typed.message);
-      await quantt.bindWithdrawalAddress({ address: ownAddress, signature });
-      setBoundAddr(ownAddress);
+      setBoundAddr(await quanttBindWithdrawalAddress(seed));
     } catch (e) {
       setBindErr((e as Error)?.message || 'Could not bind the withdrawal address — try again.');
     } finally { setBinding(false); }
@@ -1412,7 +1403,7 @@ function QuanttWithdrawTab({ agentId, agentName }: { agentId: string; agentName:
             const wid = qStr(o, 'id', 'attemptId');
             const amt = qNum(o, 'amount');
             const st = qStr(o, 'status', 'state') ?? '—';
-            const pending = /pending|processing|await/i.test(st);
+            const pending = withdrawalResumable(o);
             return (
               <div key={wid ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, padding: '7px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                 <div>

@@ -13,9 +13,9 @@
  * locks or is reset. Older builds kept them in localStorage; that copy is
  * purged on load.
  */
-import { HDNodeWallet, Mnemonic } from 'ethers';
+import { HDNodeWallet, Mnemonic, Wallet } from 'ethers';
 import { QuanttClient, type QuanttSession, type Eip712TypedData } from '@thanos/sdk-core';
-import { getActiveAccountIndex } from './vault';
+import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
 
 const STORE_KEY = 'quantt_session';
 
@@ -57,11 +57,16 @@ function hdPath(): string {
   return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
 }
 
-/** Sign in to Quantt with the unlocked wallet seed (inline EIP-712). */
-export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
+/** The active account's signer: a private-key wallet's own key, else the
+ *  seed's key at the active index. */
+export function quanttWallet(seed: string[]): Wallet | HDNodeWallet {
   if (!seed?.length) throw new Error('Wallet is locked');
-  const wallet = HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath());
-  const sign = (typed: Eip712TypedData): Promise<string> => {
+  if (isPrivateKeyWallet(seed)) return new Wallet(seed[0].trim());
+  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath());
+}
+
+function signerFor(wallet: Wallet | HDNodeWallet) {
+  return (typed: Eip712TypedData): Promise<string> => {
     // ethers wants types without the EIP712Domain entry (derived from domain).
     const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
     void _omit;
@@ -71,5 +76,20 @@ export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
       typed.message,
     );
   };
-  return quantt.signIn(wallet.address, sign);
+}
+
+/** Sign in to Quantt with the unlocked wallet seed (inline EIP-712). */
+export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
+  const wallet = quanttWallet(seed);
+  return quantt.signIn(wallet.address, signerFor(wallet));
+}
+
+/** Bind the active account's address as the verified withdrawal address
+ *  (challenge → EIP-712 signature → submit). Withdrawals only ever pay out
+ *  to this address. */
+export async function quanttBindWithdrawalAddress(seed: string[]): Promise<string> {
+  const wallet = quanttWallet(seed);
+  const typed = await quantt.withdrawalAddressChallenge(wallet.address);
+  await quantt.bindWithdrawalAddress({ address: wallet.address, signature: await signerFor(wallet)(typed) });
+  return wallet.address;
 }

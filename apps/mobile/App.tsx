@@ -90,7 +90,7 @@ import {
 } from './lib/quantt';
 import {
   toAgentConfig, diffAgentConfig, validateAgentUpdate, QUANTT_TIMEFRAMES, type QuanttAgentConfig,
-  agentFundingBlock, agentWalletNetwork, QUANTT_CHAIN_LABELS as QUANTT_FUNDING_LABELS,
+  agentFundingBlock, agentWalletNetwork, withdrawalResumable, QUANTT_CHAIN_LABELS as QUANTT_FUNDING_LABELS,
 } from './lib/quantt-agent-config';
 import {
   createVault, openVault, openVaultWithKey,
@@ -3644,7 +3644,7 @@ function QuanttWithdrawModal({ agentId, agentName, onClose }: {
               return (
                 <View key={attemptId ?? i} style={{ marginTop: 8 }}>
                   <QuanttFieldsCard C={C} raw={h} empty=""/>
-                  {attemptId && (
+                  {attemptId && withdrawalResumable(h) && (
                     <Pressable
                       disabled={resuming === attemptId} onPress={() => resume(attemptId)}
                       style={({ pressed }) => [{ alignItems: 'center', paddingVertical: 10, marginTop: 4, opacity: resuming === attemptId ? 0.6 : 1 }, pressed && { opacity: 0.7 }]}

@@ -235,3 +235,21 @@ export function diffAgentConfig(current: QuanttAgentConfig, edited: QuanttAgentC
   }
   return out as UpdateAgentInput;
 }
+
+const WITHDRAWAL_DONE = /^(completed?|succeeded|success(ful)?|done|paid|settled|confirmed|cancell?ed|rejected)$/i;
+
+/** Whether a withdrawal attempt can be resumed (POST …/withdrawals/{id}/resume
+ *  — "retry the final transfer for a withdrawal stuck after the vault leg").
+ *  The spec names no statuses, so anything that isn't plainly finished and
+ *  has no payout transaction yet offers Resume; Quantts refuses a resume it
+ *  can't do, and the app shows its reason. */
+export function withdrawalResumable(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const o = raw as Record<string, unknown>;
+  const id = o.id ?? o.attemptId ?? o.attempt_id;
+  if (typeof id !== 'string' && typeof id !== 'number') return false;
+  const paid = o.transferTxHash ?? o.transfer_tx_hash ?? o.payoutTxHash ?? o.payout_tx_hash;
+  if (typeof paid === 'string' && paid) return false;
+  const status = String(o.status ?? o.state ?? '').trim();
+  return !WITHDRAWAL_DONE.test(status);
+}
