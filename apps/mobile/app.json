@@ -3,7 +3,7 @@
     "name": "Thanos Wallet",
     "slug": "thanos-wallet",
     "scheme": "thanoswallet",
-    "version": "2.0.7",
+    "version": "2.0.8",
     "jsEngine": "hermes",
     "newArchEnabled": false,
     "orientation": "portrait",
@@ -17,7 +17,7 @@
     "ios": {
       "bundleIdentifier": "litho.thanos.wallet",
       "supportsTablet": true,
-      "buildNumber": "42",
+      "buildNumber": "43",
       "infoPlist": {
         "CFBundleDisplayName": "Thanos",
         "NSCameraUsageDescription": "Thanos uses the camera to scan QR codes for wallet addresses and WalletConnect pairing.",
@@ -41,7 +41,7 @@
     "android": {
       "package": "ai.thanos.wallet",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 42,
+      "versionCode": 43,
       "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/Thanos_Logo_Transparent.png",

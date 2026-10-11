@@ -113,6 +113,10 @@ https://thanos.fi/privacy is the canonical document.
 ## What's New in this version (release notes, 4,000 chars max)
 
 ```
+• Activity keeps your whole history, on every network. Tap a
+  transaction to see where it went, the network fee, block and hash.
+• Quantts agents now work with wallets imported by private key, and a
+  withdrawal that stalls can be resumed from its history.
 • Lithosphere Mainnet is now your home network; every send goes out
   on the network of the balance you pick.
 • New look: floating glass navigation, with your assets scrolling
