@@ -2679,15 +2679,15 @@ function SecurityPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   );
 }
 
-function DashboardView({ onAction, liveEth, onOpenSettings }: { onAction: (a: 'send'|'receive'|'swap') => void; liveEth: string | null; onOpenSettings: () => void }) {
+function DashboardView({ onAction, liveLitho, onOpenSettings }: { onAction: (a: 'send'|'receive'|'swap') => void; liveLitho: string | null; onOpenSettings: () => void }) {
   const openDapp = useOpenDapp();
   const { coins, activity, totalUsd, loading } = usePortfolioCtx();
   const [txDetail, setTxDetail] = useState<DisplayTx | null>(null);
   // Cold first-load (no cached data) → shimmer; otherwise show real/cached total
   // immediately (cached-first) even while a background refresh runs.
   const coldLoad = loading && coins.length === 0;
-  const liveLine = liveEth !== null
-    ? `Live LITHO: ${parseFloat(liveEth).toFixed(3)} LITHO`
+  const liveLine = liveLitho !== null
+    ? `Live LITHO: ${parseFloat(liveLitho).toFixed(3)} LITHO`
     : null;
   const holdings: Holding[] = useMemo(
     () => coins.filter(c => c.balance > 0 && c.usdValue > 0)
@@ -5243,14 +5243,20 @@ function deriveAddressFromSeed(seed: string[]): string {
   return deriveAddressesFromSeed(seed).evm;
 }
 
-async function fetchEthBalance(addr: string): Promise<string | null> {
+/** LITHO on Lithosphere Mainnet (9005), for the Home "Live LITHO" line. It
+ *  read the Ethereum ETH balance before and labelled it LITHO; the network
+ *  is fixed so an unreachable RPC isn't re-probed in a loop. */
+async function fetchLithoBalance(addr: string): Promise<string | null> {
+  const chain = getExtEvmChain(9005);
+  if (!chain) return null;
+  const provider = new JsonRpcProvider(chain.rpcUrl, 9005, { staticNetwork: true });
   try {
-    const provider = new JsonRpcProvider('https://ethereum.publicnode.com');
-    const wei = await provider.getBalance(addr);
-    return formatEther(wei);
+    return formatEther(await provider.getBalance(addr));
   } catch (e) {
-    console.warn('ETH balance fetch failed:', e);
+    console.warn('LITHO balance fetch failed:', e);
     return null;
+  } finally {
+    provider.destroy();
   }
 }
 
@@ -5997,7 +6003,7 @@ function App() {
   // vault. Starting from `false` opened every cold start on the "Create a new
   // wallet" screen instead of Unlock — one click from overwriting the vault.
   const [hasVault, setHasVault] = useState(() => { try { return !!loadVault() || hasLegacyPlaintext(); } catch { return false; } });
-  const [liveEth, setLiveEth] = useState<string | null>(null);
+  const [liveLitho, setLiveLitho] = useState<string | null>(null);
   const [accountMenu, setAccountMenu] = useState(false);
   // Multi-account state — mirrors web. Storage helpers live in vault.ts.
   const [activeIdx, setActiveIdx]            = useState(0);
@@ -6100,7 +6106,7 @@ function App() {
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;
     let cancelled = false;
-    fetchEthBalance(walletAddr).then(b => { if (!cancelled) setLiveEth(b); });
+    fetchLithoBalance(walletAddr).then(b => { if (!cancelled) setLiveLitho(b); });
     return () => { cancelled = true; };
   }, [unlocked, walletAddr, walletSeed.length]);
 
@@ -6440,7 +6446,7 @@ function App() {
       {/* Workspace */}
       <div className="workspace">
         <div className="main-area">
-          {view === 'dashboard'    && <DashboardView onAction={setModal} liveEth={liveEth} onOpenSettings={() => setView('settings')}/>}
+          {view === 'dashboard'    && <DashboardView onAction={setModal} liveLitho={liveLitho} onOpenSettings={() => setView('settings')}/>}
           {view === 'market'       && <MarketView/>}
           {view === 'portfolio'    && <PortfolioView/>}
           {view === 'transactions' && <TransactionsView/>}
