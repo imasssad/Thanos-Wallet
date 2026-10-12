@@ -7,6 +7,10 @@ copyright: Copyright © 2026 Thanos Wallet
 # binaries that work with Electron 33 out of the box.
 npmRebuild: false
 
+# Fails the build if the packaged app would load ethers v5 as node_modules/ethers
+# (0.3.5 shipped that and crashed on launch). See the script for details.
+afterPack: scripts/after-pack.cjs
+
 # CRITICAL: installers must NOT land in dist/ — `files` below packages
 # dist/**, so with the default output dir every build swallowed the
 # PREVIOUS build's installers (0.2.14 = 465 MB → 0.2.15 = 700 MB → 0.2.17's

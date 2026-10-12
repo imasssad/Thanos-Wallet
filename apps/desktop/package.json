@@ -1,6 +1,6 @@
 {
   "name": "@thanos/desktop",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "description": "Thanos Wallet — Lithosphere-first desktop wallet with Bitcoin, Solana, MultX bridge, Ignite DEX and hardware-wallet support.",
   "homepage": "https://thanos.fi",
@@ -26,7 +26,6 @@
     "@cosmjs/encoding": "^0.32.4",
     "@cosmjs/proto-signing": "^0.32.4",
     "@cosmjs/stargate": "^0.32.4",
-    "@litho/multx-sdk": "file:../../vendor/litho-multx-sdk-0.2.0.tgz",
     "@ledgerhq/hw-app-btc": "^10.4.4",
     "@ledgerhq/hw-app-eth": "^6.46.0",
     "@ledgerhq/hw-app-solana": "^7.2.4",
@@ -46,7 +45,6 @@
     "electron-log": "^5.2.4",
     "electron-updater": "^6.3.9",
     "ethers": "^6.13.4",
-    "ethers5": "npm:ethers@5.8.0",
     "hash-wasm": "^4.12.0",
     "keytar": "^7.9.0",
     "qrcode": "^1.5.4",
