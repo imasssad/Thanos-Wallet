@@ -113,17 +113,25 @@ https://thanos.fi/privacy is the canonical document.
 ## What's New in this version (release notes, 4,000 chars max)
 
 ```
+• Received funds now show up: you get a notification ("You received
+  2.5 USDT on BNB Chain") and the deposit stays in Activity, on every
+  network — Lithosphere, Ethereum, BNB Chain, Base, Bitcoin, Solana and
+  more.
+• Send shows your available balance under the amount, for every coin.
 • Activity keeps your whole history, on every network. Tap a
   transaction to see where it went, the network fee, block and hash.
-• Quantts agents now work with wallets imported by private key, and a
-  withdrawal that stalls can be resumed from its history.
-• Lithosphere Mainnet is now your home network; every send goes out
-  on the network of the balance you pick.
+• Lithosphere Mainnet is your home network; every send goes out on the
+  network of the balance you pick.
 • New look: floating glass navigation, with your assets scrolling
   beneath it.
 • Face ID unlock is more reliable after the app has been in the
   background.
-• Quantts agents: stay signed in between app launches.
+• Quantts agents work with wallets imported by private key, stay signed
+  in between app launches, and a stalled withdrawal can be resumed.
+• Full-screen views such as token details now sit correctly below the
+  status bar.
+• You can delete an account even if it still holds funds, after a
+  reminder to keep your recovery phrase safe.
 • Settings → Advanced → Show hex data, for sending data with a
   transaction.
 ```

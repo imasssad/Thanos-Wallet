@@ -200,7 +200,7 @@ import { isNotificationsEnabled, setNotificationsEnabled, registerPush, unregist
    from app.json's expo.version (embedded in every build): the hand-bumped
    string it replaced had stayed at 2.0.1 through 2.0.4, so an up-to-date app
    would have been told to update. The fallback is only for a missing config. */
-const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.8'}`;
+const APP_VERSION = `thanos-v${Constants.expoConfig?.version ?? '2.0.9'}`;
 
 /* EXCHANGE_ENABLED gates the whole Swap surface (Home quick action, token
    detail Swap button, the Swap screen, the Activity "Swap" filter). Off on
