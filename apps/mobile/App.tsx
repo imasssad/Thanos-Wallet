@@ -143,7 +143,8 @@ import {
 } from './lib/fx';
 import type { ImageSourcePropType } from 'react-native';
 import type { IndexerActivityItem } from './lib/indexer';
-import { addLocalActivity, resolvePendingActivity, type LocalActivityItem } from './lib/local-activity';
+import { addLocalActivity, addLocalReceive, resolvePendingActivity, type LocalActivityItem } from './lib/local-activity';
+import { detectIncoming, watchKeyEvm, watchKeyNative, type WatchedBalance } from './lib/incoming';
 import {
   getPortfolioSnapshot, setPortfolioSnapshot,
   getActivitySnapshot, setActivitySnapshot,
@@ -516,6 +517,26 @@ interface PortfolioState {
 // a permanent wrong number.
 const HOME_LOAD_NATIVE_CHAINS = true;
 
+/** Funds received (lib/incoming.ts): an increase in a freshly read balance is
+ *  kept in Activity and, with notifications on, announced. Native LITHO on
+ *  Lithosphere Mainnet already reaches Activity from the explorer (with its
+ *  hash), so it's only announced. */
+function reportIncoming(address: string, reads: WatchedBalance[]): void {
+  void detectIncoming(address, reads).then(async (list) => {
+    for (const rx of list) {
+      const amount = formatAmount(rx.amount);
+      const now = Date.now();
+      if (!(rx.chainId === 9005 && !rx.tokenAddress)) {
+        await addLocalReceive(address, {
+          id: `recv:${rx.key}:${now}`, sym: rx.sym, amount, ts: now,
+          chainId: rx.chainId, chain: rx.chain, networkName: rx.networkName, tokenAddress: rx.tokenAddress,
+        });
+      }
+      void notifyIfEnabled('Funds received', `You received ${amount} ${rx.sym} on ${rx.networkName}.`);
+    }
+  }).catch(() => { /* best-effort */ });
+}
+
 function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce]   = useState(0);
   const [assets, setAssets] = useState<DisplayAsset[]>([]);
@@ -583,6 +604,20 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
 
         const nativesRead = evm ? evm.natives.filter((n) => n.balance != null).length : 0;
         if (evm) {
+          // Only balances actually read this time (a failed network keeps its
+          // last-known number and must not look like a deposit).
+          const reads: WatchedBalance[] = [
+            ...evm.natives.filter((n) => n.balance != null).map(({ chain, balance }) => ({
+              key: watchKeyEvm(chain.chainId), sym: chain.nativeSymbol, balance: balance as number,
+              decimals: 18, networkName: chain.name, chainId: chain.chainId, chain: 'evm' as const,
+            })),
+            ...evm.tokens.filter((t) => t.balance != null).map(({ token, balance }) => ({
+              key: watchKeyEvm(token.chainId, token.address), sym: token.symbol, balance: balance as number,
+              decimals: token.decimals, networkName: evm.chainName(token.chainId), chainId: token.chainId,
+              chain: 'evm' as const, tokenAddress: token.address,
+            })),
+          ];
+          reportIncoming(address, reads);
           setAssets(prev => {
             const prevRow = (chainId: number, tokenAddress?: string) => prev.find((p) =>
               p.chainId === chainId
@@ -673,6 +708,12 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
               }
               if (cancelled) return;
               if (bal === null) continue;
+              if (n.fetchBal) {
+                reportIncoming(address, [{
+                  key: watchKeyNative(n.sym), sym: n.sym, balance: bal, decimals: n.decimals, networkName: n.name,
+                  chain: n.sym === 'BTC' ? 'bitcoin' : n.sym === 'SOL' ? 'solana' : 'cosmos',
+                }]);
+              }
               const priceUsd = prices[n.sym] ?? 0;
               const row: DisplayAsset = {
                 sym: n.sym, name: n.name, chainId: 0,
@@ -1955,6 +1996,14 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
   const showSkeleton = loading && !hydrated && allAssets.length === 0;
   const [backedUp, setBackedUp] = useState<boolean | null>(null);
   useEffect(() => { isSeedBackedUp().then(setBackedUp).catch(() => {}); }, []);
+  // Keep balances current while Home is open — every minute and on return to
+  // the foreground — so funds received show (and notify, lib/incoming.ts)
+  // without a pull-to-refresh.
+  useEffect(() => {
+    const id = setInterval(reload, 60_000);
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') reload(); });
+    return () => { clearInterval(id); sub.remove(); };
+  }, []);
   const [laxCreate, setLaxCreate] = useState(false);
   const holdings: Holding[] = useMemo(
     () => assets.filter(a => a.balance > 0 && a.usdValue > 0).map(a => ({ sym: a.sym, qty: a.balance, usd: a.usdValue })),
@@ -3998,8 +4047,13 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const hexBytes = hexOk && hexInput.length > 2 ? (hexInput.length - 2) / 2 : 0;
   // A call with data may send 0; anything else needs an amount.
   const shownAmt = amt.trim() === '' && hexBytes > 0 ? '0' : amt;
-  const usd = chain === 'evm' && coin ? amtNum * coin.priceUsd : 0;
-  const overBalance = chain === 'evm' && !!coin && amtNum > coin.balance;
+  // The balance being spent: the picked EVM asset, or the BTC/SOL/ATOM row the
+  // portfolio carries (chainId 0) — shown as "Available" under the amount.
+  const fromBal = chain === 'evm'
+    ? coin
+    : assets.find((a) => a.chainId === 0 && a.sym === CHAIN_META[chain].sym) ?? null;
+  const usd = fromBal ? amtNum * fromBal.priceUsd : 0;
+  const overBalance = !!fromBal && amtNum > fromBal.balance;
   const reviewSym = chain === 'evm' && coin ? coin.sym : CHAIN_META[chain].sym;
   const reviewNetwork = chain === 'evm' ? sendNetworkName(coin?.chainId, evmNet?.name) : CHAIN_META[chain].label;
 
@@ -4015,7 +4069,7 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   const canReview =
     chain === 'evm'
       ? !!coin && !!evmNet && (amtNum > 0 || (hexBytes > 0 && amtNum === 0)) && hexOk && !overBalance && !!to && recipientOk && !sending && !simHasCritical
-      : amtNum > 0 && !!to && recipientOk && !sending;
+      : amtNum > 0 && !overBalance && !!to && recipientOk && !sending;
 
   /* Debounced pre-send simulation. Only EVM chains for now — Bitcoin +
      Solana have their own checks elsewhere. */
@@ -4236,16 +4290,21 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         <SendAmountPad
           visible={padOpen}
           sym={reviewSym}
-          available={chain === 'evm' && coin ? coin.balance : undefined}
-          priceUsd={chain === 'evm' && coin ? coin.priceUsd : undefined}
+          available={fromBal ? fromBal.balance : undefined}
+          priceUsd={fromBal ? fromBal.priceUsd : undefined}
           initial={amt}
           onClose={() => setPadOpen(false)}
           onDone={(a) => { setAmt(a); setPadOpen(false); }}
         />
         <Text style={[styles.amountUsdSub, overBalance && { color: C.red }]}>
-          {chain === 'evm'
-            ? (overBalance ? 'Amount exceeds balance' : `≈ ${formatUsd(usd)}`)
-            : `${CHAIN_META[chain].sym}`}
+          {overBalance
+            ? 'Amount exceeds balance'
+            : fromBal ? `${reviewSym} · ≈ ${formatUsd(usd)}` : reviewSym}
+        </Text>
+        <Text style={[styles.amountUsdSub, { marginTop: 2 }]}>
+          {fromBal
+            ? `Available: ${fromBal.balanceText} ${reviewSym}`
+            : `Available: ${loading ? 'loading…' : '—'}`}
         </Text>
       </View>
 

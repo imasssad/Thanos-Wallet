@@ -9,6 +9,10 @@
  * recipient, sender, network, token contract and memo. The activity hook
  * merges it into the feed, deduped against the explorer by tx hash.
  *
+ * Funds the wallet RECEIVES on those same networks are recorded here too
+ * (type 'receive', no tx hash — see lib/incoming.ts), so they stay in
+ * Activity alongside the sends.
+ *
  * History is kept (client 2026-10-11: "keep all the history in the
  * activity") — entries are no longer dropped after 24h, only past the newest
  * MAX. A send that never confirms doesn't stay "Pending" for ever:
@@ -30,10 +34,11 @@ const LOOKUP_TIMEOUT_MS = 6_000;
 
 export type SendChainKind = 'evm' | 'bitcoin' | 'solana' | 'cosmos';
 
-/** A send recorded on this device. Shaped to render as an IndexerActivityItem;
- *  `type` is always 'send' and `counterparty` is the recipient. */
+/** A send or receive recorded on this device. Shaped to render as an
+ *  IndexerActivityItem; for a send `counterparty` is the recipient. A receive
+ *  is detected from a balance increase, so it has no hash or counterparty. */
 export interface LocalActivityItem extends IndexerActivityItem {
-  type:          'send';
+  type:          'send' | 'receive';
   status:        'pending' | 'confirmed' | 'failed';
   /** epoch ms of the broadcast. */
   tsMs:          number;
@@ -76,7 +81,7 @@ export async function getLocalActivity(addr: string): Promise<LocalActivityItem[
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
     const now = Date.now();
-    return (arr as LocalActivityItem[]).filter((t) => t && typeof t.tsMs === 'number' && !!t.txHash
+    return (arr as LocalActivityItem[]).filter((t) => t && typeof t.tsMs === 'number' && (!!t.txHash || t.type === 'receive')
       // Rows saved before sends recorded their chain can never be checked;
       // those still pending go after a day, as they always did.
       && !(t.status === 'pending' && t.chainId == null && !t.chain && now - t.tsMs > DROPPED_AFTER_MS));
@@ -114,6 +119,45 @@ export async function addLocalActivity(addr: string, tx: LocalActivityInput): Pr
     await AsyncStorage.setItem(keyFor(addr), JSON.stringify(next));
   } catch {
     /* storage full / disabled — non-fatal, just skip the row */
+  }
+}
+
+/** What a balance increase tells us about funds received (lib/incoming.ts). */
+export interface LocalReceiveInput {
+  /** Stable per receive, e.g. "recv:<asset key>:<ms>". */
+  id:            string;
+  sym:           string;
+  amount:        string;   // human-readable
+  ts:            number;   // epoch ms it was noticed
+  chainId?:      number;
+  chain?:        SendChainKind;
+  networkName?:  string;
+  tokenAddress?: string;
+}
+
+/** Record funds received — kept like a send (newest MAX). Best-effort. */
+export async function addLocalReceive(addr: string, rx: LocalReceiveInput): Promise<void> {
+  if (!addr || !rx.id) return;
+  try {
+    const arr = await getLocalActivity(addr);
+    if (arr.some((t) => t.id === rx.id)) return;
+    const item: LocalActivityItem = {
+      id:      rx.id,
+      type:    'receive',
+      symbol:  rx.sym,
+      amount:  rx.amount,
+      ts:      new Date(rx.ts).toISOString(),
+      tsMs:    rx.ts,
+      status:  'confirmed',
+      chainId: rx.chainId,
+      chain:   rx.chain ?? (rx.chainId != null ? 'evm' : undefined),
+      title:   `Received ${rx.sym}`,
+      ...(rx.networkName ? { networkName: rx.networkName } : {}),
+      ...(rx.tokenAddress ? { tokenAddress: rx.tokenAddress } : {}),
+    };
+    await AsyncStorage.setItem(keyFor(addr), JSON.stringify([item, ...arr].slice(0, MAX)));
+  } catch {
+    /* storage full / disabled — non-fatal */
   }
 }
 
