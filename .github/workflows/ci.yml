@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -47,7 +47,7 @@ jobs:
     # ratchet down as the codebase converges, not up.
     continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -148,7 +148,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -182,7 +182,7 @@ jobs:
     # consciously added there.
     continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -204,7 +204,7 @@ jobs:
     # billing layer. Drop the action and run the CLI directly: it's the
     # same scanner, MIT-licensed, no license check.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }  # full history so the scan covers every commit on a PR
       - name: Install gitleaks CLI
         run: |
@@ -242,7 +242,7 @@ jobs:
     # gives us the second monitoring layer + a paper trail per commit.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Probe thanos.fi production endpoints
         # --category prod isolates the check to /api/health, /privacy,
         # icons, etc. — the user-facing surface a commit could break.
@@ -263,7 +263,7 @@ jobs:
     # the operator if a real outage persists.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Probe Lithosphere + external chain RPCs
         run: bash ops/link-probe.sh --category litho
       - name: Probe external chain RPCs (BTC / SOL / Cosmos / ETH / BSC)
