@@ -112,6 +112,11 @@ jobs:
       # destination-receipt verification, even when the bridge API itself
       # says "completed".
       - run: pnpm --filter multx-adapter test
+      # Thanos MultiSig — the multisig core every client uses, against the real
+      # Litho Vault contracts on a local chain (test/chain installs Hardhat with
+      # npm on first run). Then: mobile's copy of that core is up to date.
+      - run: pnpm --filter @thanos/multisig test
+      - run: node scripts/sync-multisig.mjs --check
 
   integration-pg:
     name: integration (api ↔ real Postgres)

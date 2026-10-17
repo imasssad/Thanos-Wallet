@@ -1,0 +1,3 @@
+test/chain/node_modules/
+test/chain/.hardhat-cache/
+test/chain/.hardhat-artifacts/

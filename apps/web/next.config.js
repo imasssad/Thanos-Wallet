@@ -15,7 +15,7 @@ const SECURITY_HEADERS = [
 const nextConfig = {
   // Output a self-contained server in .next/standalone — used by the Docker image
   output: 'standalone',
-  transpilePackages: ['@thanos/sdk-core', '@thanos/sdk-react', '@thanos/ui'],
+  transpilePackages: ['@thanos/sdk-core', '@thanos/sdk-react', '@thanos/ui', '@thanos/multisig'],
   // Loaded from node_modules at runtime, not bundled: tiny-secp256k1's Node
   // entry reads secp256k1.wasm next to itself, and bundling bakes in the
   // build machine's absolute path (/repo/node_modules/…), which doesn't exist

@@ -29,6 +29,7 @@
     "@cosmjs/proto-signing": "^0.32.4",
     "@cosmjs/stargate": "^0.32.4",
     "@expo/metro-runtime": "~5.0.5",
+    "@litho-vault/sdk": "file:./vendor/litho-vault-sdk-1.0.0.tgz",
     "@litho/multx-sdk": "file:./vendor/litho-multx-sdk-0.2.0.tgz",
     "@noble/ciphers": "^2.2.0",
     "@noble/hashes": "^2.2.0",

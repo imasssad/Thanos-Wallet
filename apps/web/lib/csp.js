@@ -37,6 +37,23 @@ function multxOrigin() {
   }
 }
 
+/** Thanos MultiSig's RPC and indexer, when the build points it somewhere other than mainnet
+ *  (rpc-mainnet.litho.ai is listed below): https, or http on this machine for a local chain in
+ *  development and the e2e test (the signing worker broadcasts under this policy too). */
+function multisigOrigins() {
+  return [process.env.NEXT_PUBLIC_MULTISIG_RPC_URL, process.env.NEXT_PUBLIC_MULTISIG_INDEXER_URL]
+    .map((value) => {
+      try {
+        const u = new URL(value || '');
+        const local = u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost');
+        return u.protocol === 'https:' || local ? ` ${u.origin}` : '';
+      } catch {
+        return '';
+      }
+    })
+    .join('');
+}
+
 /** @param {string} [nonce] per-request script nonce (the wallet); omit for the static policy */
 function buildCsp(nonce) {
   return [
@@ -81,7 +98,7 @@ function buildCsp(nonce) {
       + " https://eth.blockscout.com https://base.blockscout.com https://arbitrum.blockscout.com"
       + " https://polygon.blockscout.com https://explorer.optimism.io"
       + " https://api.routescan.io https://api.etherscan.io"
-      + " https://bridge.litho.ai" + multxOrigin()
+      + " https://bridge.litho.ai" + multxOrigin() + multisigOrigins()
       + " https://ignite.trade"
       // Quantt AI agents — native wallet sign-in + /v1/mobile BFF. api.quantts.ai
       // returns CORS for https://thanos.fi, so the browser calls it directly.

@@ -116,6 +116,9 @@ importers:
       '@thanos/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@thanos/multisig':
+        specifier: workspace:*
+        version: link:../../packages/multisig
       '@thanos/sdk-core':
         specifier: workspace:*
         version: link:../../packages/sdk-core
@@ -237,6 +240,9 @@ importers:
       '@thanos/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@thanos/multisig':
+        specifier: workspace:*
+        version: link:../../packages/multisig
       '@thanos/sdk-core':
         specifier: workspace:^
         version: link:../../packages/sdk-core
@@ -361,6 +367,9 @@ importers:
       '@thanos/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@thanos/multisig':
+        specifier: workspace:*
+        version: link:../../packages/multisig
       '@thanos/sdk-core':
         specifier: workspace:*
         version: link:../../packages/sdk-core
@@ -463,6 +472,28 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+
+  packages/multisig:
+    dependencies:
+      '@litho-vault/sdk':
+        specifier: file:../../vendor/litho-vault-sdk-1.0.0.tgz
+        version: file:vendor/litho-vault-sdk-1.0.0.tgz(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.19.17
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.28
+      ethers:
+        specifier: ^6.13.4
+        version: 6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      react:
+        specifier: 18.3.1
+        version: 18.3.1
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.19.17)(lightningcss@1.27.0)(terser@5.46.2)
 
   packages/multx-adapter:
     devDependencies:
@@ -2627,6 +2658,12 @@ packages:
 
   '@ledgerhq/types-live@6.106.0':
     resolution: {integrity: sha512-v63cWm7wUGiLkyKaD36u6st5lK4LqxIdOk+uzCImIq52D547kZpkFWfaPE5rQz/h3ObXmBjxO/piwxFLITcXIA==}
+
+  '@litho-vault/sdk@file:vendor/litho-vault-sdk-1.0.0.tgz':
+    resolution: {integrity: sha512-FazLnjvhSGdoCgt17SLW3EDLfQ/Mb06IOVSjlRQV7iBXwuqYl97TR0NKLKlUWJA6PuAjW/7swBuqaM8greCbtQ==, tarball: file:vendor/litho-vault-sdk-1.0.0.tgz}
+    version: 1.0.0
+    peerDependencies:
+      ethers: ^6.13.0
 
   '@litho/multx-sdk@file:vendor/litho-multx-sdk-0.2.0.tgz':
     resolution: {integrity: sha512-pimDwbTSyLYKCrXG94QiWrue0B6sqnS9GpzFzdfFP2HYXo3xKJeMPj/KaJlgNFGHRJRnGuc9iaihdDmSfm4coQ==, tarball: file:vendor/litho-multx-sdk-0.2.0.tgz}
@@ -13699,6 +13736,10 @@ snapshots:
     transitivePeerDependencies:
       - react
       - react-redux
+
+  '@litho-vault/sdk@file:vendor/litho-vault-sdk-1.0.0.tgz(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
+    dependencies:
+      ethers: 6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
   '@litho/multx-sdk@file:vendor/litho-multx-sdk-0.2.0.tgz(bufferutil@4.1.0)(react@18.3.1)':
     dependencies:

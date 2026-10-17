@@ -1,0 +1,35 @@
+{
+  "name": "@thanos/multisig",
+  "version": "0.1.0",
+  "description": "Thanos MultiSig: Litho Vault (LEP100-15) multisig accounts inside Thanos Wallet",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react/index.ts",
+    "./styles.css": "./src/react/styles.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo 'no lint configured'",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@litho-vault/sdk": "file:../../vendor/litho-vault-sdk-1.0.0.tgz"
+  },
+  "peerDependencies": {
+    "ethers": "^6.13.4",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^18.3.12",
+    "ethers": "^6.13.4",
+    "react": "18.3.1",
+    "vitest": "^2.1.4"
+  }
+}

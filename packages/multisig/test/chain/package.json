@@ -1,0 +1,8 @@
+{
+  "name": "thanos-multisig-test-chain",
+  "private": true,
+  "description": "Local EVM for the @thanos/multisig tests. Kept out of the pnpm workspace so Hardhat's dependency tree stays out of the app lockfile; test/chain.ts installs it with npm ci on first run.",
+  "devDependencies": {
+    "hardhat": "2.29.1"
+  }
+}

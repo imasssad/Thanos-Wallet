@@ -27,6 +27,8 @@ export interface TxParams {
   data?:  string;
   from?:  string;
   gas?:   string;
+  /** Gas limit (decimal); ethers estimates when it is absent. */
+  gasLimit?: string;
   gasPrice?: string;
   nonce?: number;
   chainId?: number;

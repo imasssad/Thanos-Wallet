@@ -88,3 +88,6 @@ apps/mobile/pnpm-lock.yaml
 
 # Local extension release packages (built artifacts)
 apps/extension/release/
+
+# Audit packages (scripts/multisig-audit-package.sh)
+audit-package/

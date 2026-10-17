@@ -56,4 +56,19 @@ describe('buildCsp', () => {
     ];
     expect(explorers.filter((o) => !connect.includes(o))).toEqual([]);
   });
+  it('lists a MultiSig RPC or indexer the build sets: https, or http only on this machine', () => {
+    const saved = { rpc: process.env.NEXT_PUBLIC_MULTISIG_RPC_URL, idx: process.env.NEXT_PUBLIC_MULTISIG_INDEXER_URL };
+    try {
+      process.env.NEXT_PUBLIC_MULTISIG_RPC_URL = 'http://127.0.0.1:18546';
+      process.env.NEXT_PUBLIC_MULTISIG_INDEXER_URL = 'https://multisig-indexer.example/v1';
+      const connect = directives(buildCsp('n')).get('connect-src') ?? '';
+      expect(connect).toContain(' http://127.0.0.1:18546');
+      expect(connect).toContain(' https://multisig-indexer.example');
+      process.env.NEXT_PUBLIC_MULTISIG_RPC_URL = 'http://rpc.example';
+      expect(directives(buildCsp('n')).get('connect-src')).not.toContain('rpc.example');
+    } finally {
+      if (saved.rpc === undefined) delete process.env.NEXT_PUBLIC_MULTISIG_RPC_URL; else process.env.NEXT_PUBLIC_MULTISIG_RPC_URL = saved.rpc;
+      if (saved.idx === undefined) delete process.env.NEXT_PUBLIC_MULTISIG_INDEXER_URL; else process.env.NEXT_PUBLIC_MULTISIG_INDEXER_URL = saved.idx;
+    }
+  });
 });

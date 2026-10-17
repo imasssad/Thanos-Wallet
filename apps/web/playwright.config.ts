@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { MULTISIG_E2E_ENV } from './e2e/multisig-chain';
 
 /**
  * Playwright E2E config for the web wallet.
@@ -48,6 +49,8 @@ export default defineConfig({
     // have up be reused locally; CI always builds fresh.
     command: 'npm run build && npm run start',
     url:     'http://localhost:3000',
+    // Thanos MultiSig points at the local chain e2e/multisig.spec.ts starts.
+    env:     { ...process.env, ...MULTISIG_E2E_ENV } as Record<string, string>,
     reuseExistingServer: !process.env.CI,
     timeout: 360_000,
   },

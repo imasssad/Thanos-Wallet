@@ -177,6 +177,7 @@ import { sendAsset, executeWcRequest, WcSignerError, rpcProxy } from './lib/wc-s
 import { injectedProviderJs, STORE_BADGE_SCRUBBER_JS, resolveJs, rejectJs, APPROVAL_METHODS } from './lib/dapp-provider';
 import { reviewSigningRequest, checkRecipient } from './lib/sign-review';
 import { SignReviewPanel } from './components/SignReviewPanel';
+import { MultiSigScreen } from './components/MultiSig';
 import { loadDappConnections, getGrant, grantConnection } from './lib/dapp-connections';
 import {
   loadBrowserHistory, getRecents, getFavorites, isFavorited,
@@ -2492,6 +2493,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
         <QuickAction Icon={ArrowDownLeft} label="Receive" onPress={() => navigate('receive')}/>
         {EXCHANGE_ENABLED && <QuickAction Icon={Repeat} label="Swap" onPress={() => navigate('swap')}/>}
         {MULTX_CONFIG.enabled && <QuickAction Icon={ArrowLeftRight} label="Bridge" onPress={() => navigate('bridge')}/>}
+        <QuickAction Icon={Users} label="MultiSig" onPress={() => navigate('multisig')}/>
       </View>
 
       {/* Update-available nudge — above the security nudge since acting on
@@ -8240,7 +8242,7 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
 
 /* ─────────────────────────── Shell ─────────────────────────── */
 
-type Screen = 'home' | 'send' | 'receive' | 'swap' | 'bridge' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'quantt' | 'assets' | 'nfts';
+type Screen = 'home' | 'send' | 'receive' | 'swap' | 'bridge' | 'discover' | 'activity' | 'settings' | 'earn' | 'market' | 'quantt' | 'assets' | 'nfts' | 'multisig';
 
 /** Bottom-nav Quantts icon — the brand mark (full colour, not tinted) so it
  *  matches the Quantts app's own menu. Sized up because the PNG has padding. */
@@ -11234,6 +11236,7 @@ function App() {
                 {screen === 'market'   && <MarketScreen goBack={() => setScreen('discover')} onOpenToken={openToken}/>}
                 {screen === 'assets'   && <AssetsScreen goBack={() => setScreen('home')} onOpenToken={openToken}/>}
                 {screen === 'nfts'     && <NFTsScreen goBack={() => setScreen('home')}/>}
+                {screen === 'multisig' && <MultiSigScreen address={walletSeed.length > 0 ? walletAddr : null} accountIndex={activeIdx} colors={colors} goBack={() => setScreen('home')}/>}
                 {screen === 'activity' && <ActivityScreen/>}
                 {screen === 'settings' && <SettingsScreen/>}
               </AnimatedSwitch>
