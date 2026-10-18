@@ -40,7 +40,7 @@
     "@scure/bip32": "^1.5.0",
     "@scure/bip39": "^1.4.0",
     "@scure/btc-signer": "^1.5.0",
-    "@sentry/react-native": "6.14.0",
+    "@sentry/react-native": "8.30.0",
     "@solana/spl-token": "^0.4.8",
     "@solana/web3.js": "^1.98.0",
     "@walletconnect/core": "^2.23.9",
