@@ -151,7 +151,7 @@ jobs:
       # fails identically on Linux/macOS/Windows with "No module named
       # 'distutils'" — not a platform-specific issue, a runner-default
       # issue. Pin 3.11 (last version with distutils in the stdlib).
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: '3.11' }
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
