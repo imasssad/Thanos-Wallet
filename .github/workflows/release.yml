@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -142,7 +142,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # node-gyp (used to compile keccak/blake-hash/tiny-secp256k1/
       # bigint-buffer from source when no prebuilt binary matches this
       # Electron ABI) needs Python's distutils, which was removed in
@@ -231,7 +231,7 @@ jobs:
     # Expo + Apple + Google accounts are wired (see SIGNING.md §3).
     if: ${{ vars.EAS_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: corepack enable
@@ -253,7 +253,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }   # full history so changelog auto-gen works
       - uses: actions/download-artifact@v4
         with:
