@@ -78,9 +78,9 @@ test.describe('Send / Receive', () => {
     expect(sends).toBe(1);
     expect(receiptChecks).toBeGreaterThan(0);
     await expect(page.getByRole('link', { name: /View on LithoScan/ })).toHaveAttribute('href', `https://lithoscan.ai/txs/${submittedHash}`);
-    await testInfo.attach('confirmation unavailable', {
-      body: await page.screenshot(), contentType: 'image/png',
-    });
+    const screenshot = testInfo.outputPath('confirmation-unavailable.png');
+    await page.screenshot({ path: screenshot });
+    await testInfo.attach('confirmation unavailable', { path: screenshot, contentType: 'image/png' });
   });
 
   test('Receive modal shows a network list with copyable addresses', async ({ page }) => {
