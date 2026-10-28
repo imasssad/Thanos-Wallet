@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createWallet } from './helpers';
+import { keccak256 } from 'ethers';
 
 /**
  * Key-flow E2E: the Send and Receive modals.
@@ -14,6 +15,74 @@ import { createWallet } from './helpers';
  */
 
 test.describe('Send / Receive', () => {
+  test('confirmation lookup errors keep a broadcast submitted without offering another send', async ({ page }, testInfo) => {
+    // No request can reach a live RPC: only localhost and this mocked mainnet
+    // transport are permitted. The wallet created below is an unfunded fixture.
+    await page.route('**/*', route => {
+      const host = new URL(route.request().url()).hostname;
+      return host === 'localhost' || host === '127.0.0.1' ? route.continue() : route.abort();
+    });
+    let submittedHash = '';
+    let sends = 0;
+    let receiptChecks = 0;
+    const block = {
+      number: '0x100', hash: `0x${'1'.repeat(64)}`, parentHash: `0x${'2'.repeat(64)}`,
+      nonce: '0x0000000000000000', difficulty: '0x0', extraData: '0x',
+      gasLimit: '0xffffffff', gasUsed: '0x0', timestamp: `0x${Math.floor(Date.now() / 1000).toString(16)}`,
+      miner: '0x0000000000000000000000000000000000000001',
+      baseFeePerGas: '0x3b9aca00', transactions: [],
+    };
+    await page.route(/^https:\/\/rpc-mainnet\.litho\.ai\/?$/, async route => {
+      const payload = route.request().postDataJSON();
+      const reply = (request: { id: number; method: string; params: string[] }) => {
+        const response = { jsonrpc: '2.0', id: request.id };
+        if (request.method === 'eth_getTransactionReceipt') {
+          receiptChecks++;
+          return { ...response, error: { code: -32000, message: 'Confirmation lookup unavailable' } };
+        }
+        let result: unknown = null;
+        switch (request.method) {
+          case 'eth_chainId': result = '0x232d'; break;
+          case 'eth_blockNumber': result = '0x100'; break;
+          case 'eth_getBlockByNumber': result = block; break;
+          case 'eth_getBalance': result = '0x56bc75e2d63100000'; break; // 100 fixture LITHO
+          case 'eth_getTransactionCount': result = '0x0'; break;
+          case 'eth_gasPrice': result = '0x77359400'; break;
+          case 'eth_maxPriorityFeePerGas': result = '0x3b9aca00'; break;
+          case 'eth_estimateGas': result = '0x5208'; break;
+          case 'eth_getCode': result = '0x'; break;
+          case 'eth_sendRawTransaction':
+            sends++;
+            submittedHash = keccak256(request.params[0]);
+            result = submittedHash;
+            break;
+        }
+        return { ...response, result };
+      };
+      await route.fulfill({
+        contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify(Array.isArray(payload) ? payload.map(reply) : reply(payload)),
+      });
+    });
+
+    await createWallet(page);
+    await page.getByRole('button', { name: 'Send', exact: true }).first().click();
+    await page.getByPlaceholder('0', { exact: true }).fill('1');
+    await page.getByPlaceholder(/litho1.*0x/).fill('0x742d35cc6634c0532925a3b844bc454e4438f44e');
+    await page.getByRole('button', { name: 'Send LITHO', exact: true }).click();
+
+    await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
+    await expect(page.getByText(/confirmation is temporarily unavailable/)).toBeVisible();
+    await expect(page.getByText('Transaction failed', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+    expect(sends).toBe(1);
+    expect(receiptChecks).toBeGreaterThan(0);
+    await expect(page.getByRole('link', { name: /View on LithoScan/ })).toHaveAttribute('href', `https://lithoscan.ai/txs/${submittedHash}`);
+    await testInfo.attach('confirmation unavailable', {
+      body: await page.screenshot(), contentType: 'image/png',
+    });
+  });
+
   test('Receive modal shows a network list with copyable addresses', async ({ page }) => {
     await createWallet(page);
     await page.getByRole('button', { name: 'Receive' }).first().click();

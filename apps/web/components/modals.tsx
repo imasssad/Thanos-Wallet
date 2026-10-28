@@ -58,6 +58,7 @@ import { getActiveAccountIndex } from '../lib/vault';
 import { MultXBridge } from './MultXBridge';
 import { MULTX_CONFIG } from '../lib/multx-thanos';
 import { recordPendingTx } from '../lib/tx-store';
+import { confirmSubmittedTransaction } from '../lib/transaction-confirmation';
 import { useLiveBalances, invalidateLiveBalances } from '../lib/useLiveBalances';
 import { allEvmChains, allTokensForChain, allEvmTokens, getEvmChainMerged } from '../lib/custom-assets';
 import { classifyRecipient } from '../lib/phishing';
@@ -853,13 +854,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
           recordPendingSend(hash);
           setTxHash(hash);
           setStage('pending');
-          provider.waitForTransaction(hash)
-            .then(r => {
-              if (!r) { setStage('failed'); return; }
-              setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
-              if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
-            })
-            .catch(() => setStage('failed'));
+          void confirmSubmittedTransaction(hash,
+            () => provider.waitForTransaction(hash),
+            () => provider.getTransactionReceipt(hash),
+          ).then(({ stage, message }) => { setStage(stage); setError(message); });
         } catch (e) {
           const msg = humanSendError(e);
           setError(msg);
@@ -878,13 +876,11 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
           recordPendingSend(hash);
           setTxHash(hash);
           setStage('pending');
-          getEvmProvider(evmChainId).waitForTransaction(hash)
-            .then(r => {
-              if (!r) { setStage('failed'); return; }
-              setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
-              if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
-            })
-            .catch(() => setStage('failed'));
+          const provider = getEvmProvider(evmChainId);
+          void confirmSubmittedTransaction(hash,
+            () => provider.waitForTransaction(hash),
+            () => provider.getTransactionReceipt(hash),
+          ).then(({ stage, message }) => { setStage(stage); setError(message); });
         } catch (e) {
           const msg = e instanceof TrezorError ? e.message : humanSendError(e);
           setError(msg);
@@ -911,12 +907,11 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         recordPendingSend(result.hash);
         setTxHash(result.hash);
         setStage('pending');
-        result.wait()
-          .then(r => {
-            setStage(r.status === 1 ? 'confirmed' : 'failed');
-            if (r.status !== 1) setError('Transaction reverted on-chain');
-          })
-          .catch(() => setStage('failed'));
+        const provider = getEvmProvider(evmChainId);
+        void confirmSubmittedTransaction(result.hash,
+          () => result.wait(),
+          () => provider.getTransactionReceipt(result.hash),
+        ).then(({ stage, message }) => { setStage(stage); setError(message); });
       } catch (e) {
         const msg = e instanceof SendError ? e.message : humanSendError(e);
         setError(msg);
@@ -960,13 +955,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         recordPendingSend(hash);
         setTxHash(hash);
         setStage('pending');
-        lithoProvider.waitForTransaction(hash)
-          .then(r => {
-            if (!r) { setStage('failed'); return; }
-            setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
-            if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
-          })
-          .catch(() => setStage('failed'));
+        void confirmSubmittedTransaction(hash,
+          () => lithoProvider.waitForTransaction(hash),
+          () => lithoProvider.getTransactionReceipt(hash),
+        ).then(({ stage, message }) => { setStage(stage); setError(message); });
       } catch (e) {
         const msg = humanSendError(e);
         setError(msg);
@@ -991,13 +983,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         recordPendingSend(hash);
         setTxHash(hash);
         setStage('pending');
-        lithoProvider.waitForTransaction(hash)
-          .then(r => {
-            if (!r) { setStage('failed'); return; }
-            setStage(Number(r.status) === 1 ? 'confirmed' : 'failed');
-            if (Number(r.status) !== 1) setError('Transaction reverted on-chain');
-          })
-          .catch(() => setStage('failed'));
+        void confirmSubmittedTransaction(hash,
+          () => lithoProvider.waitForTransaction(hash),
+          () => lithoProvider.getTransactionReceipt(hash),
+        ).then(({ stage, message }) => { setStage(stage); setError(message); });
       } catch (e) {
         const msg = e instanceof TrezorError ? e.message : humanSendError(e);
         setError(msg);
@@ -1022,12 +1011,10 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       recordPendingSend(result.hash);
       setTxHash(result.hash);
       setStage('pending');
-      result.wait()
-        .then(r => {
-          setStage(r.status === 1 ? 'confirmed' : 'failed');
-          if (r.status !== 1) setError('Transaction reverted on-chain');
-        })
-        .catch(() => setStage('failed'));
+      void confirmSubmittedTransaction(result.hash,
+        () => result.wait(),
+        () => lithoProvider.getTransactionReceipt(result.hash),
+      ).then(({ stage, message }) => { setStage(stage); setError(message); });
     } catch (e) {
       // SendError carries pre-cleaned copy. Anything else is a raw chain /
       // provider error — run it through the humanizer so dev shorthand
@@ -1066,7 +1053,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
           {stage === 'pending' && <>
             <div className="success-icon">✓</div>
             <div className="success-title">Submitted</div>
-            <div className="success-sub">Waiting for confirmation…</div>
+            <div className="success-sub">{error ?? 'Waiting for confirmation…'}</div>
             {/* Lithosphere goes by its native hash, which LithoScan only has
                 once the tx is indexed — so a link, never the 0x hash. */}
             {txHash && <a href={explorer ?? '#'} target="_blank" rel="noreferrer"
