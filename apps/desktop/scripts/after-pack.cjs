@@ -4,7 +4,18 @@
 // 5.8.0 at node_modules/ethers while unused v5 dependencies were installed,
 // and that build crashed on launch with "ethers_1.Interface is not a
 // constructor". Runs for every target (dmg, mas, nsis, AppImage, dir).
+//
+// Also flips Electron's build-time fuses (THN-04b): electron-builder 25.1.8
+// has no native `electronFuses` config (verified — no @electron/fuses
+// reference anywhere in the installed app-builder-lib/electron-builder
+// trees), so this hook calls flipFuses() directly on the packaged binary.
+// Without this, a packaged release still ships Node's RunAsNode /
+// NODE_OPTIONS / --inspect entry points live, letting anyone who can set an
+// env var or pass a flag to the signed executable re-enter it as plain
+// Node — full access to the unlocked seed and signer IPC, outside any of
+// the renderer/IPC sandboxing above.
 const path = require('path');
+const { flipFuses, FuseVersion, FuseV1Options } = require('@electron/fuses');
 
 /** @electron/asar ships with electron-builder (via app-builder-lib); pnpm
  *  doesn't hoist it, so resolve it through that chain. */
@@ -35,4 +46,28 @@ exports.default = async function afterPack(context) {
       'A dependency that pulls in ethers v5 was probably added to apps/desktop/package.json.');
   }
   console.log(`  • afterPack: node_modules/ethers ${version}`);
+
+  // electronPlatformName is electron-builder's own name for the target
+  // ('darwin' | 'mas' | 'win32' | 'linux'), not Node's process.platform.
+  // flipFuses() accepts the .app bundle itself on macOS and resolves the
+  // real binary inside Contents/MacOS/ on its own; win32/linux need the
+  // actual executable path.
+  const binaryPath = electronPlatformName === 'darwin' || electronPlatformName === 'mas'
+    ? path.join(appOutDir, `${packager.appInfo.productFilename}.app`)
+    : electronPlatformName === 'win32'
+      ? path.join(appOutDir, `${packager.appInfo.productFilename}.exe`)
+      // linux's packaged binary is named from `executableName`
+      // (lowercased product name by default), not productFilename.
+      : path.join(appOutDir, packager.executableName);
+  await flipFuses(binaryPath, {
+    version: FuseVersion.V1,
+    resetAdHocDarwinSignature: electronPlatformName === 'darwin' || electronPlatformName === 'mas',
+    [FuseV1Options.RunAsNode]: false,
+    [FuseV1Options.EnableCookieEncryption]: true,
+    [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+    [FuseV1Options.EnableNodeCliInspectArguments]: false,
+    [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+    [FuseV1Options.OnlyLoadAppFromAsar]: true,
+  });
+  console.log(`  • afterPack: fuses flipped on ${binaryPath}`);
 };

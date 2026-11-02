@@ -145,7 +145,12 @@ const createWindow = () => {
     callback(dev ? dev.deviceId : undefined);
   });
 
-  if (process.env.NODE_ENV === 'development') win.loadURL('http://localhost:5173');
+  // app.isPackaged, not NODE_ENV: the latter is a plain environment variable
+  // readable (and settable) in the signed, packaged binary, which would let
+  // anyone with a shell on the machine point the wallet window — and the
+  // IPC trust it carries (see ipc-guard.ts isAppUrl) — at a local dev server
+  // they control (THN-04).
+  if (!app.isPackaged) win.loadURL('http://localhost:5173');
   else win.loadFile(path.join(__dirname, 'index.html'));
 
   // Keep the 1.1 UI scale-up at the Chromium level (correct click hit-testing,

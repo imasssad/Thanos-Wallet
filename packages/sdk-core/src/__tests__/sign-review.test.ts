@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Interface, MaxUint256, parseEther, hexlify, toUtf8Bytes } from 'ethers';
+import { Interface, MaxUint256, parseEther, hexlify, toUtf8Bytes, TypedDataEncoder } from 'ethers';
 import * as core from '../security/sign-review';
 
 // The mobile app carries a detached twin (EAS can't resolve this workspace
@@ -20,8 +20,77 @@ const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const SEAPORT = '0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC';
 const MAX160 = (1n << 160n) - 1n;
 
-const typed = (primaryType: string, message: Record<string, unknown>, domain: Record<string, unknown> = { name: 'USD Coin', version: '2', chainId: 1, verifyingContract: TOKEN }) =>
-  ['eth_signTypedData_v4', [ME, JSON.stringify({ domain, primaryType, types: { EIP712Domain: [] }, message })]] as const;
+// Real EIP-712 `types` maps for each decoder (THN-01): the reviewer now derives the struct it
+// will actually sign from `types` — the same way ethers v6's signTypedData() does — and blocks
+// if that disagrees with the declared `primaryType`. Earlier revisions of this suite built every
+// case with `types: { EIP712Domain: [] }` alone, so the decoder was never run against the types
+// map it depends on, and a dApp spoofing `primaryType` was invisible to it. `typed()` below now
+// carries the real struct(s) for each primaryType it's called with, keyed here; call sites that
+// reuse a primaryType name under a different shape (Dai's `Permit` below) pass their own override.
+const TYPES_FOR: Record<string, Record<string, Array<{ name: string; type: string }>>> = {
+  Permit: {
+    Permit: [
+      { name: 'owner', type: 'address' }, { name: 'spender', type: 'address' },
+      { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' },
+    ],
+  },
+  PermitSingle: {
+    PermitDetails: [
+      { name: 'token', type: 'address' }, { name: 'amount', type: 'uint160' },
+      { name: 'expiration', type: 'uint48' }, { name: 'nonce', type: 'uint48' },
+    ],
+    PermitSingle: [
+      { name: 'details', type: 'PermitDetails' }, { name: 'spender', type: 'address' }, { name: 'sigDeadline', type: 'uint256' },
+    ],
+  },
+  PermitBatch: {
+    PermitDetails: [
+      { name: 'token', type: 'address' }, { name: 'amount', type: 'uint160' },
+      { name: 'expiration', type: 'uint48' }, { name: 'nonce', type: 'uint48' },
+    ],
+    PermitBatch: [
+      { name: 'details', type: 'PermitDetails[]' }, { name: 'spender', type: 'address' }, { name: 'sigDeadline', type: 'uint256' },
+    ],
+  },
+  PermitWitnessTransferFrom: {
+    TokenPermissions: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    Witness: [{ name: 'foo', type: 'uint256' }],
+    PermitWitnessTransferFrom: [
+      { name: 'permitted', type: 'TokenPermissions' }, { name: 'spender', type: 'address' },
+      { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }, { name: 'witness', type: 'Witness' },
+    ],
+  },
+  OrderComponents: {
+    OfferItem: [
+      { name: 'itemType', type: 'uint8' }, { name: 'token', type: 'address' }, { name: 'identifierOrCriteria', type: 'uint256' },
+      { name: 'startAmount', type: 'uint256' }, { name: 'endAmount', type: 'uint256' },
+    ],
+    ConsiderationItem: [
+      { name: 'itemType', type: 'uint8' }, { name: 'token', type: 'address' }, { name: 'identifierOrCriteria', type: 'uint256' },
+      { name: 'startAmount', type: 'uint256' }, { name: 'endAmount', type: 'uint256' }, { name: 'recipient', type: 'address' },
+    ],
+    OrderComponents: [
+      { name: 'offerer', type: 'address' }, { name: 'zone', type: 'address' }, { name: 'offer', type: 'OfferItem[]' },
+      { name: 'consideration', type: 'ConsiderationItem[]' }, { name: 'orderType', type: 'uint8' }, { name: 'startTime', type: 'uint256' },
+      { name: 'endTime', type: 'uint256' }, { name: 'zoneHash', type: 'bytes32' }, { name: 'salt', type: 'uint256' },
+      { name: 'conduitKey', type: 'bytes32' }, { name: 'counter', type: 'uint256' },
+    ],
+  },
+  Login: { Login: [{ name: 'wallet', type: 'address' }, { name: 'nonce', type: 'string' }, { name: 'issuedAt', type: 'string' }] },
+  Grant: { Grant: [{ name: 'spender', type: 'address' }, { name: 'until', type: 'uint256' }] },
+};
+// BulkOrder shares OrderComponents' struct family, plus the root `tree` type — Seaport's bulk
+// signature is a binary Merkle tree of orders; the fixed-array dimensions below match the
+// `{ tree: [[listing, listing]] }` shape used in the bulk-order test.
+TYPES_FOR.BulkOrder = { ...TYPES_FOR.OrderComponents, BulkOrder: [{ name: 'tree', type: 'OrderComponents[2][1]' }] };
+
+const typed = (
+  primaryType: string,
+  message: Record<string, unknown>,
+  domain: Record<string, unknown> = { name: 'USD Coin', version: '2', chainId: 1, verifyingContract: TOKEN },
+  types: Record<string, unknown> = TYPES_FOR[primaryType] ?? {},
+) =>
+  ['eth_signTypedData_v4', [ME, JSON.stringify({ domain, primaryType, types: { EIP712Domain: [], ...types }, message })]] as const;
 
 for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop main twin', desktop]] as const) {
   const review = (method: string, params: unknown, activeChainId = 1) =>
@@ -58,7 +127,11 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
     });
 
     it('decodes a DAI-style permit', () => {
-      const r = review(...typed('Permit', { holder: ME, spender: SPENDER, nonce: 0, expiry: 0, allowed: true }, { name: 'Dai Stablecoin', chainId: 1, verifyingContract: TOKEN }));
+      const daiTypes = { Permit: [
+        { name: 'holder', type: 'address' }, { name: 'spender', type: 'address' },
+        { name: 'nonce', type: 'uint256' }, { name: 'expiry', type: 'uint256' }, { name: 'allowed', type: 'bool' },
+      ] };
+      const r = review(...typed('Permit', { holder: ME, spender: SPENDER, nonce: 0, expiry: 0, allowed: true }, { name: 'Dai Stablecoin', chainId: 1, verifyingContract: TOKEN }, daiTypes));
       expect(r.risk).toBe('review');
       expect(rowOf(r, 'Amount')).toBe('Unlimited');
       expect(rowOf(r, 'Valid until')).toBe('Never');
@@ -114,6 +187,53 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
       const otherAcct = m.reviewSigningRequest({ method: 'eth_signTypedData_v4', params: [SPENDER, typed('Permit', { owner: ME, spender: SPENDER, value: '1', nonce: 0, deadline: 1 })[1][1]], activeChainId: 1, account: ME });
       expect(otherAcct.blockReason).toMatch(/for account/);
       expect(review('eth_signTypedData_v4', [ME, '{not json']).risk).toBe('block');
+    });
+
+    // THN-01: the signer (ethers v6 signTypedData) derives what it signs from `types` alone and
+    // never reads `primaryType` — so a dApp that ships the real struct in `types` under any other
+    // name in `primaryType` must be blocked, not reviewed under the label it claims. Each case
+    // pairs an attack (real struct, spoofed label) with its honest counterpart, and the
+    // signature ethers would actually produce must be identical in both — proving the label
+    // never changes what gets signed, only whether the sheet notices.
+    it('THN-01: blocks when the declared primaryType disagrees with what `types` describes', () => {
+      const spoofed = review(...typed('Mail', { owner: ME, spender: SPENDER, value: MaxUint256.toString(), nonce: 0, deadline: 1_900_000_000 }, undefined, TYPES_FOR.Permit));
+      expect(spoofed.risk).toBe('block');
+      expect(spoofed.blockReason).toMatch(/labelled "Mail"/);
+      expect(spoofed.blockReason).toMatch(/"Permit"/);
+      // The honest version of the exact same struct reviews as the dangerous unlimited permit
+      // it is — proving the attack payload truly is a Permit, not a harmless "Mail".
+      const honest = review(...typed('Permit', { owner: ME, spender: SPENDER, value: MaxUint256.toString(), nonce: 0, deadline: 1_900_000_000 }));
+      expect(honest.risk).toBe('review');
+      expect(rowOf(honest, 'Amount')).toBe('Unlimited');
+
+      const payload = (primaryType: string) => JSON.parse(typed(primaryType, { owner: ME, spender: SPENDER, value: '1', nonce: 0, deadline: 1 }, undefined, TYPES_FOR.Permit)[1][1]);
+      expect(TypedDataEncoder.hash(payload('Mail').domain, { Permit: TYPES_FOR.Permit.Permit }, payload('Mail').message))
+        .toBe(TypedDataEncoder.hash(payload('Permit').domain, { Permit: TYPES_FOR.Permit.Permit }, payload('Permit').message));
+    });
+
+    it('THN-01: blocks a spoofed Seaport drainer listing disguised as an unrelated struct', () => {
+      const order = { offerer: ME, zone: '0x0000000000000000000000000000000000000000',
+        offer: [{ itemType: 2, token: TOKEN2, identifierOrCriteria: '42', startAmount: '1', endAmount: '1' }],
+        consideration: [], orderType: 0, startTime: 0, endTime: 1_900_000_000, zoneHash: '0x', salt: '1', conduitKey: '0x', counter: 0 };
+      const spoofed = review(...typed('TokenApproval', order, { name: 'Seaport', version: '1.5', chainId: 1, verifyingContract: SEAPORT }, TYPES_FOR.OrderComponents));
+      expect(spoofed.risk).toBe('block');
+      expect(spoofed.blockReason).toMatch(/"OrderComponents"/);
+    });
+
+    it('THN-01: blocks Permit2 transfers and allowances with a spoofed primaryType', () => {
+      const d = { name: 'Permit2', chainId: 1, verifyingContract: PERMIT2 };
+      const spoofedSingle = review(...typed('Message', { details: { token: TOKEN, amount: MAX160.toString(), expiration: 0, nonce: 0 }, spender: SPENDER, sigDeadline: 1_900_000_000 }, d, TYPES_FOR.PermitSingle));
+      expect(spoofedSingle.risk).toBe('block');
+      const spoofedTransfer = review(...typed('Message', { permitted: { token: TOKEN, amount: '1000' }, spender: SPENDER, nonce: 1, deadline: 1_900_000_000 }, d, TYPES_FOR.PermitWitnessTransferFrom));
+      expect(spoofedTransfer.risk).toBe('block');
+    });
+
+    it('THN-01: blocks types that cannot be resolved to one unambiguous struct', () => {
+      // No struct besides EIP712Domain: nothing to derive at all.
+      expect(review(...typed('Anything', { x: 1 }, undefined, {})).risk).toBe('block');
+      // Two root structs, neither referencing the other: ethers itself calls this ambiguous.
+      const ambiguous = { A: [{ name: 'x', type: 'uint256' }], B: [{ name: 'y', type: 'uint256' }] };
+      expect(review(...typed('A', { x: 1 }, undefined, ambiguous)).risk).toBe('block');
     });
 
     it('shows unknown typed data field by field', () => {

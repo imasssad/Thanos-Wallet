@@ -13,7 +13,9 @@ describe('scoreWcRequest (delegates the decoding to reviewSigningRequest)', () =
   });
 
   it('blocks a signature for another chain and still weighs the origin', () => {
-    const typed = JSON.stringify({ domain: { name: 'X', chainId: 137 }, types: {}, primaryType: 'Mail', message: {} });
+    // A real, derivable struct (THN-01: an empty/absent `types` map can no longer reach a
+    // field-by-field review at all — the reviewer blocks on an undeterminable struct first).
+    const typed = JSON.stringify({ domain: { name: 'X', chainId: 137 }, types: { Mail: [{ name: 'contents', type: 'string' }] }, primaryType: 'Mail', message: { contents: 'hi' } });
     const r = scoreWcRequest({ method: 'eth_signTypedData_v4', params: [ME, typed], chainId: 1 });
     expect(r.verdict).toBe('block');
     expect(r.reasons[0]).toMatch(/chain 137/);

@@ -171,6 +171,9 @@ importers:
         specifier: ^2.2.3
         version: 2.2.4
     devDependencies:
+      '@electron/fuses':
+        specifier: ^1.8.0
+        version: 1.8.0
       '@types/node':
         specifier: ^22.10.1
         version: 22.19.17
@@ -1576,6 +1579,10 @@ packages:
     engines: {node: '>=10.12.0'}
     hasBin: true
 
+  '@electron/fuses@1.8.0':
+    resolution: {integrity: sha512-zx0EIq78WlY/lBb1uXlziZmDZI4ubcCXIMJ4uGjXzZW0nS19TjSPeXPAjzzTmKQlJUZm0SbmZhPKP7tuQ1SsEw==}
+    hasBin: true
+
   '@electron/get@2.0.3':
     resolution: {integrity: sha512-Qkzpg2s9GnVV2I2BjRksUi43U5e6+zaQMcjoJy0C+C5oxaKl+fmckGDQFtRpZpZV0NQekuZZ+tGz7EA9TVnQtQ==}
     engines: {node: '>=12'}
@@ -2589,6 +2596,7 @@ packages:
 
   '@ledgerhq/client-ids@0.8.3':
     resolution: {integrity: sha512-+0lR1JPxlV7ln2CForSLRj1jritH0+s6D4sP8RJysgv5aDFVdxZl0Wo4mpvxvnudqISqgN3Y3eyXnMNjJ7/1yA==}
+    deprecated: This package is no longer maintained and will not receive updates. Published versions remain available.
 
   '@ledgerhq/cryptoassets-evm-signatures@13.7.1':
     resolution: {integrity: sha512-ehLn62L15fOlTH6u5D1eV1d4/QIju6aaUKWy7CpVLSiRmkWEBaORhOL/l9TvBrRIvNLHVBQEhiBaJcJ4hGrlEw==}
@@ -2607,9 +2615,11 @@ packages:
 
   '@ledgerhq/errors@6.34.0':
     resolution: {integrity: sha512-l16K56FzPoXBMT5J4EpnIBmRLTYkpSyYj3z4er+rmbwq0t9dDG/UaRvFeBpwB2gqGcYWcue14qF9Wkuos/43eA==}
+    deprecated: This package is no longer maintained and will not receive updates. Published versions remain available.
 
   '@ledgerhq/errors@6.34.1':
     resolution: {integrity: sha512-Atkim7yM9bbfWN7OikiE1vbtRLABRz6rDayTHkX0rkPTs6EkMVZSgoNNDGhcYQRlUXrTz9Eko+5ixCLpJQpEWg==}
+    deprecated: This package is no longer maintained and will not receive updates. Published versions remain available.
 
   '@ledgerhq/evm-tools@1.12.4':
     resolution: {integrity: sha512-Dh1XnWFFqnFK3bADX+/eHhFSmjkMGj4CRuvFQXCwhrYkiPTuFtMBdNj6BIE41LQaSfCtYn+6PEMuzjCQHeK92A==}
@@ -2631,12 +2641,15 @@ packages:
 
   '@ledgerhq/hw-transport-node-hid-noevents@6.35.2':
     resolution: {integrity: sha512-TzFSPHJ5Sa0pUuaoYtKWsvvZwfqpkmnEqEl6GXDbwS2Rrc0n6O+GQPRYOyUfed13T1UDAl7GPXIryAnHfttQog==}
+    deprecated: This package is no longer maintained. Use @ledgerhq/device-transport-kit-node-hid instead.
 
   '@ledgerhq/hw-transport-webhid@6.35.1':
     resolution: {integrity: sha512-94/2AfTnYLW9nvddSfy6PXLdx5tQHpCL5necdgKSg5BMzq8+d9Hv3uH1qo6jSeC98M20GJpll8rRrn1n5336hg==}
+    deprecated: This package is no longer maintained. Use @ledgerhq/device-transport-kit-web-hid instead.
 
   '@ledgerhq/hw-transport-webusb@6.34.1':
     resolution: {integrity: sha512-mH/j7y15lub2bwijudyaogUsQhWcaKDKzVljyP2i+UXOnK3Ft/NAqddD/zBWGgxfOx1pGTtnupTT4dHdg5+BrQ==}
+    deprecated: This package is no longer maintained. Use @ledgerhq/device-transport-kit-web-hid instead.
 
   '@ledgerhq/hw-transport@6.31.13':
     resolution: {integrity: sha512-MrJRDk74wY980ofiFPRpTHQBbRw1wDuKbdag1zqlO1xtJglymwwY03K2kvBNvkm1RTSCPUp/nAoNG+WThZuuew==}
@@ -3201,12 +3214,14 @@ packages:
   '@opentelemetry/sdk-trace-base@1.30.1':
     resolution: {integrity: sha512-jVPgBbH1gCy2Lb7X0AVQ8XAfgg0pJ4nvl8/IiQA6nxOsPvS+0zMJaFSs2ltXe0J6C8dqjcnpyqINDJmU30+uOg==}
     engines: {node: '>=14'}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
 
   '@opentelemetry/sdk-trace-base@2.7.1':
     resolution: {integrity: sha512-NAYIlsF8MPUsKqJMiDQJTMPOmlbawC1Iz/omMLygZ1C9am8fTKYjTaI+OZM+WTY3t3Glo0wnOg/6/pac6RGPPw==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
@@ -12208,6 +12223,12 @@ snapshots:
       commander: 5.1.0
       glob: 7.2.3
       minimatch: 3.1.5
+
+  '@electron/fuses@1.8.0':
+    dependencies:
+      chalk: 4.1.2
+      fs-extra: 9.1.0
+      minimist: 1.2.8
 
   '@electron/get@2.0.3':
     dependencies:
