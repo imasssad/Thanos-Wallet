@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   device_id       UUID REFERENCES devices(id) ON DELETE SET NULL,
   refresh_token   TEXT NOT NULL UNIQUE,        -- hashed before storage
+  -- THN-06: the hash each rotation just superseded — lets /auth/refresh
+  -- tell "never valid" apart from "reused after rotation" and revoke on
+  -- the latter instead of answering both with the same plain 401.
+  previous_refresh_token TEXT,
   ip_address      TEXT,
   user_agent      TEXT,
   expires_at      TIMESTAMPTZ NOT NULL,
@@ -58,6 +62,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx  ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_idx  ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS sessions_previous_refresh_token_idx ON sessions(previous_refresh_token);
 
 -- Auth audit trail
 CREATE TABLE IF NOT EXISTS auth_events (
