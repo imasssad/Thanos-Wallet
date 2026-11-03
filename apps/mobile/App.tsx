@@ -6845,11 +6845,11 @@ function SettingsScreen() {
   const onToggleNotif = async () => {
     if (notifOn) {
       await setNotificationsEnabled(false);
-      await unregisterPush(walletAddr).catch(() => {});
+      await unregisterPush(walletAddr, seed).catch(() => {});
       setNotifOn(false);
       return;
     }
-    const ok = await registerPush(walletAddr);
+    const ok = await registerPush(walletAddr, seed);
     if (!ok) {
       Alert.alert('Notifications unavailable', 'Enable notifications for Thanos in your device settings, then try again. (Push delivery also requires the app to be a real device build.)');
       return;
@@ -10642,7 +10642,7 @@ function App() {
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;
     isNotificationsEnabled().then(on => {
-      if (on) registerPush(walletAddr).catch(() => {});
+      if (on) registerPush(walletAddr, walletSeed).catch(() => {});
     });
   }, [unlocked, walletSeed, walletAddr]);
 

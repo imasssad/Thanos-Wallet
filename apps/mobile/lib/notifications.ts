@@ -18,6 +18,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { executeWcRequest } from './wc-signer';
 
 const ENABLED_KEY = 'thanos.notifications_enabled';
 /* Matches lib/auth-client.ts. The push endpoints are address-keyed and
@@ -81,20 +82,42 @@ export async function getPushToken(): Promise<string | null> {
   }
 }
 
+/** Fetch a proof-of-ownership nonce for `address` and sign it with the
+ *  unlocked seed (THN-R1 M-01) — register/unregister require this so the
+ *  backend knows the caller actually controls the address it's pushing to
+ *  before storing/dropping a device token against it. Silent: this is the
+ *  app proving its own wallet's address, not a dApp request, so it never
+ *  shows the signing-approval sheet. Returns null on any failure (offline,
+ *  locked wallet, backend not live yet) — callers treat that as "skip". */
+async function signOwnershipProof(seed: string[], address: string): Promise<{ nonceToken: string; signature: string } | null> {
+  if (!seed.length) return null;
+  try {
+    const nonceRes = await fetch(`${API_BASE}/push/nonce?address=${encodeURIComponent(address)}`);
+    if (!nonceRes.ok) return null;
+    const { nonceToken, message } = await nonceRes.json() as { nonceToken: string; message: string };
+    const signature = await executeWcRequest(seed, { request: { method: 'personal_sign', params: [message, address] } }) as string;
+    return { nonceToken, signature };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Enable push for this wallet: get a token and register it with the
  * backend against the wallet address so the server can target it.
  * Returns true when a token was obtained (local notifications work
  * regardless). Network/registration failures are swallowed.
  */
-export async function registerPush(address: string): Promise<boolean> {
+export async function registerPush(address: string, seed: string[]): Promise<boolean> {
   const token = await getPushToken();
   if (!token) return false;
   try {
+    const proof = await signOwnershipProof(seed, address);
+    if (!proof) return true; // local notifications still work; remote registration skipped
     await fetch(`${API_BASE}/push/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token, address, platform: Platform.OS }),
+      body: JSON.stringify({ token, address, platform: Platform.OS, ...proof }),
     });
   } catch {
     /* backend endpoint not live yet — token still valid for next try */
@@ -103,14 +126,15 @@ export async function registerPush(address: string): Promise<boolean> {
 }
 
 /** Tell the backend to stop pushing to this device. */
-export async function unregisterPush(address: string): Promise<void> {
+export async function unregisterPush(address: string, seed: string[]): Promise<void> {
   try {
     const token = await getPushToken();
-    if (token) {
+    const proof = token ? await signOwnershipProof(seed, address) : null;
+    if (token && proof) {
       await fetch(`${API_BASE}/push/unregister`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token, address }),
+        body: JSON.stringify({ token, address, ...proof }),
       });
     }
   } catch { /* best-effort */ }
