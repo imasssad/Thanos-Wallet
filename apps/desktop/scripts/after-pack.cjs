@@ -68,6 +68,14 @@ exports.default = async function afterPack(context) {
     [FuseV1Options.EnableNodeCliInspectArguments]: false,
     [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
     [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    // Defaults to ON in the prebuilt Electron binary (verified: `electron
+    // --no-sandbox` + getCurrentFuseWire shows it enabled before this call);
+    // it lets file:// use fetch/File System API/buffer-backed iframes. The
+    // packaged renderer only needs file:// to load its own bundled
+    // index.html — nothing it does needs those extra privileges, and the
+    // wallet window's own file:// origin is exactly the trust boundary
+    // ipc-guard.ts's isAppUrl()/isTrustedSender() keys on.
+    [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
   });
   console.log(`  • afterPack: fuses flipped on ${binaryPath}`);
 };

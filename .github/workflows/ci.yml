@@ -198,6 +198,34 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm audit --audit-level=high --prod
+      - name: pnpm audit — Electron specifically (THN-05)
+        # Electron ships as a devDependency (electron-builder requires this —
+        # it's bundled into the packaged app, not installed alongside it), so
+        # the --prod gate above never sees its advisories at all: THN-R1 found
+        # 12 open high-severity Electron CVEs that this gate had been blind to
+        # for weeks. Running the full (non---prod) audit as a blocking gate is
+        # not an option — the monorepo's full devDependency tree (build
+        # tooling, @walletconnect's react-native transitives, …) carries over a
+        # hundred advisories that are test/build-time-only noise, which would
+        # make this gate permanently red for reasons unrelated to what ships.
+        # So: run the full audit, but fail ONLY on an advisory whose vulnerable
+        # package is literally `electron` — the one devDependency that ships
+        # inside the shipped app and so is squarely a "prod" risk despite the
+        # package.json classification.
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+        run: |
+          pnpm audit --audit-level=high --json > /tmp/full-audit.json || true
+          node -e "
+            const data = JSON.parse(require('fs').readFileSync('/tmp/full-audit.json', 'utf8'));
+            const advisories = Object.values(data.advisories || {});
+            const electron = advisories.filter(a => (a.module_name || '').toLowerCase() === 'electron');
+            if (electron.length === 0) { console.log('No open high+ Electron advisories.'); process.exit(0); }
+            console.error(electron.length + ' open high+ Electron advisor' + (electron.length === 1 ? 'y' : 'ies') + ':');
+            for (const a of electron) console.error('  [' + a.severity + '] ' + a.title + ' — fixed in ' + a.patched_versions + ' — ' + a.url);
+            console.error('Bump apps/desktop/package.json\'s electron devDependency to a patched version.');
+            process.exit(1);
+          "
 
   gitleaks:
     name: secret scan (gitleaks)
