@@ -21,6 +21,7 @@ vi.hoisted(() => {
   process.env.LAX_API_KEY   = 'test-lax-key';
   process.env.LAX_API_BASE  = 'https://lax.test.invalid';
   process.env.LAX_PROJECT_ID = '612';
+  process.env.LAX_WEBHOOK_SECRET = 'test-webhook-secret';
 });
 
 const { dbQuery, dbQueryOne } = vi.hoisted(() => ({
@@ -304,5 +305,33 @@ describe('physical card upstream paths', () => {
     const res = await request(app).get('/lax/card/not-mine/pin').set('Authorization', auth());
     expect(res.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('LAX webhook (THN-R1 M-05: redaction)', () => {
+  it('masks card_number and fully redacts a PIN-like field before persisting the raw payload', async () => {
+    dbQuery.mockResolvedValueOnce([]); // insert into lax_webhook_events
+    const res = await request(app)
+      .post('/lax-webhook')
+      .set('x-lax-webhook-secret', 'test-webhook-secret')
+      .send({ event: 'card.issued', card_number: '4111111111111234', pin: '1234', nested: { cvv: '999' } });
+    expect(res.status).toBe(200);
+    const [sql, values] = dbQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/insert into lax_webhook_events/);
+    const stored = JSON.parse(values[2] as string);
+    expect(stored.card_number).toBe('••••••••••••1234');
+    expect(stored.pin).toBe('[redacted]');
+    expect(stored.nested.cvv).toBe('[redacted]');
+    // The extracted column (used for reconciliation) is the real number, unredacted.
+    expect(values[1]).toBe('4111111111111234');
+  });
+
+  it('rejects a wrong webhook secret', async () => {
+    const res = await request(app)
+      .post('/lax-webhook')
+      .set('x-lax-webhook-secret', 'wrong-secret')
+      .send({ event: 'card.issued' });
+    expect(res.status).toBe(401);
+    expect(dbQuery).not.toHaveBeenCalled();
   });
 });

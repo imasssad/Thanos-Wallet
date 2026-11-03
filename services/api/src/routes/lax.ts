@@ -387,6 +387,30 @@ function findCardNumber(value: unknown): string | undefined {
   return undefined;
 }
 
+// THN-R1 M-05: lax_webhook_events.payload stores the webhook body verbatim,
+// forever, with no documented retention policy — and Zypto's payload shape
+// is unconfirmed, so it may carry card_number (confirmed, findCardNumber
+// above) or other cardholder-sensitive fields under keys we haven't seen
+// yet. Mask the known-sensitive ones before persisting; the short extracted
+// card_number column (already redacted-free, needed for reconciliation)
+// is unaffected — this only changes what's embedded in the raw JSONB copy.
+const FULLY_REDACTED_KEYS = new Set(['pin', 'PIN', 'cvv', 'cvv2', 'cvc', 'securityCode', 'security_code']);
+const PARTIALLY_REDACTED_KEYS = new Set(['card_number', 'cardNumber', 'number']);
+function redactWebhookPayload(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactWebhookPayload);
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (FULLY_REDACTED_KEYS.has(k)) { out[k] = '[redacted]'; continue; }
+    if (PARTIALLY_REDACTED_KEYS.has(k) && typeof v === 'string') {
+      out[k] = v.length > 4 ? `${'•'.repeat(v.length - 4)}${v.slice(-4)}` : '[redacted]';
+      continue;
+    }
+    out[k] = redactWebhookPayload(v);
+  }
+  return out;
+}
+
 async function ownedHolder(userId: string, holderId: string): Promise<boolean> {
   return Boolean(await queryOne<LaxHolderRow>(
     `select id from lax_card_holders where user_id = $1 and holder_id = $2`, [userId, holderId],
@@ -753,7 +777,7 @@ laxWebhookRouter.post('/', async (req, res: Response) => {
   try {
     await query(
       `insert into lax_webhook_events (event_type, card_number, payload) values ($1, $2, $3)`,
-      [eventType, cardNumber, JSON.stringify(body)],
+      [eventType, cardNumber, JSON.stringify(redactWebhookPayload(body))],
     );
     // A paid card order → link the issued card to the user who ordered it, so
     // it appears in their in-app dashboard (balance/transactions/details).
