@@ -9311,8 +9311,14 @@ function providerNonce(): string {
  *  RPC. (Makalu isn't built in any more, 2026-09-29.) */
 const BROWSER_DEFAULT_CHAIN_ID = 9005;
 
-function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
+function InAppBrowser({ url, minimized, onMinimize, onClose, seed, activeAccountIndex }: {
   url: string; minimized: boolean; onMinimize: () => void; onClose: () => void; seed: string[];
+  /** The account the wallet is CURRENTLY signing with (H-03) — must come from
+   *  the caller's own reactive state, never re-read via getActiveAccountIndex()
+   *  here: that getter is a plain synchronous read, not reactive, so a memo
+   *  keyed only on `seed` kept showing/connecting the PREVIOUS account after
+   *  switchAccount() changed the index without changing the seed itself. */
+  activeAccountIndex: number;
 }) {
   const C = useColors();
   const ref = useRef<WebView>(null);
@@ -9343,8 +9349,34 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   // MUST derive at the ACTIVE account index — executeWcRequest signs with the
   // active hdPath, so an index-0 address here would make eth_accounts / the
   // already-connected reply disagree with the signer (a multi-account user's
-  // Quantt /typed-verify would then reject the recovered address).
-  const address = useMemo(() => (seed.length ? deriveEvmAddress(seed, getActiveAccountIndex()) : ''), [seed]);
+  // Quantt /typed-verify would then reject the recovered address). Depends on
+  // the caller's reactive activeAccountIndex, not a re-read of the module
+  // getter (H-03) — see the prop's doc comment above.
+  const address = useMemo(
+    () => (seed.length ? deriveEvmAddress(seed, activeAccountIndex) : ''),
+    [seed, activeAccountIndex],
+  );
+
+  // H-03: a connect grant is only valid for the account it was given to. If
+  // the active account changes WHILE connected (switchAccount, a wallet
+  // switch, or a lock/unlock into a different wallet), the grant must not
+  // silently carry over to the new address — any pending request is rejected
+  // closed, the dApp is told it disconnected, and it has to re-request.
+  const grantedAddressRef = useRef<string>('');
+  useEffect(() => {
+    if (grantedAddressRef.current && grantedAddressRef.current !== address) {
+      setConnected(false);
+      setConnectedOrigin('');
+      if (pendingRef.current) {
+        send(rejectJs(pendingRef.current.id, 4001, 'Active account changed — request cancelled'));
+        pendingRef.current = null;
+        setPending(null);
+      }
+      send(`(function(){try{window.__thanos_emit&&window.__thanos_emit('accountsChanged',[]);}catch(e){}})();true;`);
+    }
+    grantedAddressRef.current = address;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
   let host = current;
   try { host = new URL(current).host; } catch { /* keep raw */ }
   let topOrigin = current;
@@ -9450,10 +9482,11 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       return;
     }
     // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
-    // read — proxy to the RPC of the chain the dApp is on.
+    // read — proxy to the RPC of the chain the dApp is on, if the method is
+    // on the read-only allowlist (M-02); rpcProxy itself refuses the rest.
     rpcProxy(req.method, req.params, currentChainId)
       .then(r => send(resolveJs(req.id, r)))
-      .catch(e => send(rejectJs(req.id, -32603, (e as Error)?.message || 'RPC error')));
+      .catch(e => send(rejectJs(req.id, e instanceof WcSignerError ? e.code : -32603, (e as Error)?.message || 'RPC error')));
   };
 
   const isConnect = pending?.method === 'eth_requestAccounts';
@@ -10753,6 +10786,7 @@ function App() {
                   onMinimize={() => setBrowserTab(t => (t ? { ...t, minimized: true } : t))}
                   onClose={() => setBrowserTab(null)}
                   seed={[]}
+                  activeAccountIndex={0}
                 />
               )}
               {browserTab?.minimized && (
@@ -10962,6 +10996,7 @@ function App() {
                 onMinimize={() => setBrowserTab(t => (t ? { ...t, minimized: true } : t))}
                 onClose={() => setBrowserTab(null)}
                 seed={walletSeed}
+                activeAccountIndex={curAcctIdx}
               />
             )}
             {/* Discover tab only: everywhere else the pill sat on top of the
