@@ -16,7 +16,7 @@ import type { IWalletKit } from '@reown/walletkit';
 import type { SessionTypes } from '@walletconnect/types';
 import { useWalletSeed } from './send';
 import { executeWcRequest, WcSignerError, chainIdFromCaip } from './wc-signer';
-import { reviewSigningRequest } from '@thanos/sdk-core';
+import { reviewSigningRequest, applyWcVerifyContext, type WcVerifyContext } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import { EXT_EVM_CHAINS } from './evm-external-meta';
 
@@ -29,6 +29,8 @@ interface PendingRequest {
   /** CAIP-2 chain the dApp sent the request on ("eip155:9005") — the chain
    *  it's reviewed against and signed / broadcast on. */
   chainId?: string;
+  /** WalletConnect's own Verify result for this request (THN-03). */
+  verifyContext?: WcVerifyContext;
 }
 
 // SAFETY: advertise ONLY the chains the signing path actually honours. The
@@ -95,7 +97,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const [busy, setBusy]             = useState(false);
   const [err,  setErr]              = useState<string | null>(null);
   const [sessions, setSessions]     = useState<SessionRow[]>([]);
-  const [proposal, setProposal]     = useState<{ id: number; name: string } | null>(null);
+  const [proposal, setProposal]     = useState<{ id: number; name: string; origin: string; validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean } | null>(null);
   const [pending, setPending]       = useState<PendingRequest | null>(null);
   /* Requests queue: a new one never replaces the sheet on screen (a dApp
      could otherwise swap it just before Approve, and the first request
@@ -103,7 +105,10 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   const queueRef = useRef<PendingRequest[]>([]);
   const nextRequest = () => { queueRef.current.shift(); setPending(queueRef.current[0] ?? null); };
   const review = pending
-    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: chainIdFromCaip(pending.chainId) ?? undefined, account: evmAddress })
+    ? applyWcVerifyContext(
+        reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: chainIdFromCaip(pending.chainId) ?? undefined, account: evmAddress }),
+        pending.verifyContext,
+      )
     : null;
   const blocked = review?.risk === 'block';
 
@@ -122,7 +127,12 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
       if (cancel) return;
       kit.on('session_proposal', (p) => {
         const name = p.params.proposer.metadata?.name ?? 'dApp';
-        setProposal({ id: p.id, name });
+        // THN-03: the dApp's own metadata.url asserts nothing about where
+        // the request actually came from — show and gate on WalletConnect's
+        // verified origin/validation/isScam instead.
+        const verified = p.verifyContext?.verified;
+        const origin = verified?.origin || p.params.proposer.metadata?.url || '';
+        setProposal({ id: p.id, name, origin, validation: verified?.validation, isScam: verified?.isScam });
         void window.thanosDesktop?.notify?.('Connection request', `${name} wants to connect to your wallet.`);
       });
       kit.on('session_delete', () => void refresh());
@@ -137,6 +147,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           params: (event.params.request.params as unknown[]) ?? [],
           name,
           chainId: event.params.chainId,
+          verifyContext: event.verifyContext,
         });
         if (queueRef.current.length === 1) setPending(queueRef.current[0]);
         const title = method === 'eth_sendTransaction' || method === 'eth_signTransaction'
@@ -203,7 +214,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   };
 
   const approve = async () => {
-    if (!proposal || !evmAddress) return;
+    if (!proposal || !evmAddress || proposal.isScam) return;
     setBusy(true); setErr(null);
     try {
       const kit = await getKit();
@@ -264,14 +275,35 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           </>
         ) : proposal ? (
           <>
-            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>
+            <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 4 }}>
               <b>{proposal.name}</b> wants to connect to your wallet on Lithosphere + 8 EVM chains.
             </div>
+            {proposal.origin && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all', marginBottom: 4 }}>
+                {proposal.origin}
+              </div>
+            )}
+            {proposal.isScam ? (
+              <div style={{ ...errBox, marginTop: 4, marginBottom: 14 }}>
+                WalletConnect's Verify API flags this origin as a known scam. This wallet refuses to connect to it.
+              </div>
+            ) : proposal.validation === 'INVALID' ? (
+              <div style={{ ...errBox, marginTop: 4, marginBottom: 14 }}>
+                WalletConnect could not verify this origin — it does NOT match the domain the dApp claims. Likely spoofed.
+              </div>
+            ) : proposal.validation === 'UNKNOWN' ? (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 10 }}>
+                WalletConnect could not verify this dApp's origin. Treat its identity as unconfirmed.
+              </div>
+            ) : null}
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={reject}  style={{ ...btn, background: 'transparent', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}>Reject</button>
-              <button onClick={approve} disabled={busy} style={{ ...btn, background: 'var(--blue, #3b7af7)', color: '#fff', opacity: busy ? 0.6 : 1 }}>
-                {busy ? 'Connecting…' : 'Approve'}
-              </button>
+              {/* isScam has no override — nothing to "connect anyway" to. */}
+              {!proposal.isScam && (
+                <button onClick={approve} disabled={busy} style={{ ...btn, background: proposal.validation === 'INVALID' ? '#ef4444' : 'var(--blue, #3b7af7)', color: '#fff', opacity: busy ? 0.6 : 1 }}>
+                  {busy ? 'Connecting…' : proposal.validation === 'INVALID' ? 'Connect anyway' : 'Approve'}
+                </button>
+              )}
             </div>
           </>
         ) : (

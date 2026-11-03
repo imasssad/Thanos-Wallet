@@ -45,7 +45,11 @@ const METHODS = [
 ];
 const EVENTS = ['chainChanged', 'accountsChanged'];
 
-interface PendingProposal { id: number; name: string; url: string }
+/** WalletConnect's own Verify result (THN-03) — never the dApp's own
+ *  self-declared metadata.url, which proves nothing about where the
+ *  request actually came from. */
+interface WcVerified { origin?: string; validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean }
+interface PendingProposal { id: number; name: string; url: string; verified?: WcVerified }
 interface PendingRequest {
   id:     number;
   topic:  string;
@@ -55,6 +59,7 @@ interface PendingRequest {
   /** CAIP-2 chain the dApp sent the request on ("eip155:9005") — the popup
    *  reviews and signs it on exactly this chain. */
   chainId?: string;
+  verified?: WcVerified;
 }
 let kit: IWalletKit | null = null;
 let kitPromise: Promise<IWalletKit> | null = null;
@@ -111,10 +116,14 @@ async function getKit(): Promise<IWalletKit> {
       },
     });
     k.on('session_proposal', (p) => {
+      const verified = (p as unknown as { verifyContext?: { verified?: WcVerified } }).verifyContext?.verified;
       const proposal: PendingProposal = {
         id:   p.id,
         name: p.params.proposer.metadata?.name ?? 'dApp',
-        url:  p.params.proposer.metadata?.url  ?? '',
+        // THN-03: prefer the WalletConnect-verified origin over the dApp's
+        // own self-declared metadata.url.
+        url:  verified?.origin || p.params.proposer.metadata?.url || '',
+        verified,
       };
       pendingProposal = proposal;
       // Stash so a popup that opens AFTER the proposal arrives can see it.
@@ -130,6 +139,7 @@ async function getKit(): Promise<IWalletKit> {
     });
     k.on('session_request', (event) => {
       const session = k.getActiveSessions()[event.topic];
+      const verified = (event as unknown as { verifyContext?: { verified?: WcVerified } }).verifyContext?.verified;
       const req: PendingRequest = {
         id:     event.id,
         topic:  event.topic,
@@ -137,6 +147,7 @@ async function getKit(): Promise<IWalletKit> {
         params: (event.params.request.params as unknown[]) ?? [],
         name:   session?.peer?.metadata?.name ?? 'dApp',
         chainId: typeof event.params.chainId === 'string' ? event.params.chainId : undefined,
+        verified,
       };
       requestQueue.push(req);
       // Badge the toolbar so the user notices when the popup is closed; only

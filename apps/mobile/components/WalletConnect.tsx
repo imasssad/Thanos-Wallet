@@ -52,6 +52,40 @@ const P = {
   green:   '#10b981',
 };
 
+const WC_VERDICT_RANK = { safe: 0, caution: 1, review: 2, block: 3 } as const;
+
+/** THN-03: fold WalletConnect's own Verify result into a signing review —
+ *  mirrors sdk-core's applyWcVerifyContext (mobile keeps its own copy of
+ *  the signing-review logic rather than depending on the workspace
+ *  package; see lib/sign-review.ts's header). `isScam` escalates to
+ *  `block`, `INVALID` to at least `review`, `UNKNOWN` to at least
+ *  `caution`; never downgrades, and a missing verify result is a no-op. */
+function applyVerifyContext<T extends { risk: keyof typeof WC_VERDICT_RANK; warnings: string[]; blockReason?: string | null }>(
+  review: T,
+  verified: { validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean } | undefined,
+): T {
+  if (!verified) return review;
+  let floor: keyof typeof WC_VERDICT_RANK | null = null;
+  let reason = '';
+  if (verified.isScam) {
+    floor = 'block';
+    reason = "WalletConnect's Verify API flags this dApp's origin as a known scam. Refusing.";
+  } else if (verified.validation === 'INVALID') {
+    floor = 'review';
+    reason = "WalletConnect could not verify this dApp's origin — it does NOT match the domain the dApp claims. Likely spoofed.";
+  } else if (verified.validation === 'UNKNOWN') {
+    floor = 'caution';
+    reason = "WalletConnect could not verify this dApp's origin. Treat its identity as unconfirmed.";
+  }
+  if (!floor || WC_VERDICT_RANK[review.risk] >= WC_VERDICT_RANK[floor]) return review;
+  return {
+    ...review,
+    risk: floor,
+    warnings: [reason, ...review.warnings],
+    ...(floor === 'block' ? { blockReason: review.blockReason ?? reason } : {}),
+  } as T;
+}
+
 /* ════════════════════════════════════════════════════════════════════
    WalletConnectModal — pairing + sessions
    ════════════════════════════════════════════════════════════════════ */
@@ -129,7 +163,8 @@ export function WalletConnectModal({
   }, [visible, initialUri]);
 
   const onApprove = async () => {
-    if (!proposal || !evmAddress) return;
+    const isScamProposal = (proposal as unknown as { verifyContext?: { verified?: { isScam?: boolean } } } | null)?.verifyContext?.verified?.isScam;
+    if (!proposal || !evmAddress || isScamProposal) return;
     setBusy(true);
     try {
       await approveSession(proposal.id, evmAddress);
@@ -237,13 +272,40 @@ export function WalletConnectModal({
           )}
 
           {/* ── Proposal ── */}
-          {view === 'proposal' && proposal && (
+          {view === 'proposal' && proposal && (() => {
+            // THN-03: proposal.params.proposer.metadata.url is a string the
+            // dApp supplies about itself and proves nothing. WalletConnect's
+            // own Verify check (proposal.verifyContext) says whether the
+            // origin shown below actually matches that claim. Cast the same
+            // way the request-side verifyContext read below does — the
+            // installed WalletKitTypes don't declare the field even though
+            // the relay always sends it.
+            const verified = (proposal as unknown as { verifyContext?: { verified?: { origin?: string; validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean } } })
+              .verifyContext?.verified;
+            const origin = verified?.origin || proposal.params.proposer.metadata.url || '';
+            const isScam = verified?.isScam === true;
+            const invalid = verified?.validation === 'INVALID';
+            const unverified = verified?.validation === 'UNKNOWN';
+            return (
             <View>
               <View style={s.proposalHead}>
                 <View style={s.rowIcon}><Globe size={24} color={P.blue}/></View>
                 <Text style={s.proposalName}>{proposal.params.proposer.metadata.name}</Text>
-                <Text style={s.rowSub}>{proposal.params.proposer.metadata.url}</Text>
+                <Text style={s.rowSub}>{origin}</Text>
               </View>
+              {isScam ? (
+                <View style={[s.permCard, { borderColor: P.red }]}>
+                  <Text style={[s.permTitle, { color: P.red }]}>KNOWN SCAM</Text>
+                  <Text style={s.permBody}>WalletConnect's Verify API flags this origin as a known scam. This wallet refuses to connect to it.</Text>
+                </View>
+              ) : invalid ? (
+                <View style={[s.permCard, { borderColor: P.red }]}>
+                  <Text style={[s.permTitle, { color: P.red }]}>ORIGIN NOT VERIFIED</Text>
+                  <Text style={s.permBody}>WalletConnect could not verify this origin — it does NOT match the domain the dApp claims. Likely spoofed.</Text>
+                </View>
+              ) : unverified ? (
+                <Text style={[s.rowSub, { marginTop: 4 }]}>WalletConnect could not verify this dApp's origin. Treat its identity as unconfirmed.</Text>
+              ) : null}
               <View style={s.permCard}>
                 <Text style={s.permTitle}>THIS APP WILL BE ABLE TO</Text>
                 <Text style={s.permBody}>
@@ -257,12 +319,16 @@ export function WalletConnectModal({
                 <Pressable style={[s.secondaryBtn, { flex: 1 }]} onPress={onReject} disabled={busy}>
                   <Text style={s.secondaryBtnText}>Reject</Text>
                 </Pressable>
-                <Pressable style={[s.primaryBtn, { flex: 1, marginTop: 0 }]} onPress={onApprove} disabled={busy}>
-                  {busy ? <ActivityIndicator color="#fff"/> : <Text style={s.primaryBtnText}>Connect</Text>}
-                </Pressable>
+                {/* isScam has no override — nothing to "connect anyway" to. */}
+                {!isScam && (
+                  <Pressable style={[s.primaryBtn, { flex: 1, marginTop: 0, backgroundColor: invalid ? P.red : undefined }]} onPress={onApprove} disabled={busy}>
+                    {busy ? <ActivityIndicator color="#fff"/> : <Text style={s.primaryBtnText}>{invalid ? 'Connect anyway' : 'Connect'}</Text>}
+                  </Pressable>
+                )}
               </View>
             </View>
-          )}
+            );
+          })()}
         </View>
       </View>
 
@@ -289,6 +355,8 @@ interface PendingReq {
   /** The chain the request is for — WalletConnect's CAIP-2 "eip155:<id>".
    *  It's reviewed against, simulated on and signed on exactly this chain. */
   chainId?: string;
+  /** WalletConnect's own Verify result for this request (THN-03). */
+  verified?: { origin?: string; validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean };
 }
 
 export function WalletConnectRequestHost({ seed, account }: { seed: string[]; account?: string }) {
@@ -308,9 +376,10 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
     onSessionRequest((req) => {
       const method = req.params.request.method;
       const params = req.params.request.params;
-      const dApp = (req as unknown as { verifyContext?: { verified?: { origin?: string } } })
-                     .verifyContext?.verified?.origin ?? 'A connected dApp';
-      queueRef.current.push({ topic: req.topic, id: req.id, method, params, dApp, chainId: req.params.chainId });
+      const verified = (req as unknown as { verifyContext?: { verified?: { origin?: string; validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean } } })
+                     .verifyContext?.verified;
+      const dApp = verified?.origin ?? 'A connected dApp';
+      queueRef.current.push({ topic: req.topic, id: req.id, method, params, dApp, chainId: req.params.chainId, verified });
       if (queueRef.current.length === 1) setPending(queueRef.current[0]);
       // Alert the user even if the app is backgrounded — this host is always
       // mounted, so the notification fires for every incoming dApp request.
@@ -355,10 +424,13 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
   // Decoded request + verdict (lib/sign-review), checked against the chain
   // the request names; a block offers Reject only.
   const review = pending
-    ? reviewSigningRequest({
-        method: pending.method, params: pending.params, account,
-        activeChainId: chainIdFromCaip(pending.chainId) ?? DEFAULT_WC_CHAIN_ID,
-      })
+    ? applyVerifyContext(
+        reviewSigningRequest({
+          method: pending.method, params: pending.params, account,
+          activeChainId: chainIdFromCaip(pending.chainId) ?? DEFAULT_WC_CHAIN_ID,
+        }),
+        pending.verified,
+      )
     : null;
   const blocked = review?.risk === 'block';
 
