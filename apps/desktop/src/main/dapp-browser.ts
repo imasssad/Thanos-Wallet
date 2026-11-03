@@ -116,7 +116,19 @@ function execViaRenderer(method: string, params: unknown[], chainId: number): Pr
 }
 
 // Read-only JSON-RPC (eth_call, eth_getBalance, …) is answered straight from
-// the current chain's RPC — no seed, no approval needed.
+// the current chain's RPC — no seed, no approval needed. Only methods on
+// this allowlist ever reach the node (M-02); mirrors the extension's
+// RPC_PASSTHROUGH (background.ts).
+const RPC_PASSTHROUGH = new Set<string>([
+  'eth_call', 'eth_estimateGas', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+  'eth_blockNumber', 'eth_getBalance', 'eth_getCode', 'eth_getStorageAt', 'eth_getProof',
+  'eth_getTransactionCount', 'eth_getTransactionReceipt', 'eth_getTransactionByHash',
+  'eth_getTransactionByBlockHashAndIndex', 'eth_getTransactionByBlockNumberAndIndex',
+  'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getBlockReceipts',
+  'eth_getBlockTransactionCountByNumber', 'eth_getBlockTransactionCountByHash',
+  'eth_getLogs', 'eth_getUncleCountByBlockHash', 'eth_getUncleCountByBlockNumber',
+  'eth_createAccessList', 'eth_syncing', 'web3_clientVersion', 'net_listening',
+]);
 const readProviders = new Map<number, import('ethers').JsonRpcProvider>();
 function chainRead(chainId: number): import('ethers').JsonRpcProvider {
   let p = readProviders.get(chainId);
@@ -544,7 +556,12 @@ function attachIpc(): void {
       return out.result;
     }
 
-    // Anything else is a read — proxy to the current chain's RPC.
+    // Anything else must be on the read-only allowlist (M-02) — a write-
+    // oriented or admin RPC name the selected node happens to support never
+    // reaches it, same gate the extension's background.ts already has.
+    if (!RPC_PASSTHROUGH.has(method)) {
+      return { __thanosError: true, code: 4200, message: `Method not supported: ${method}` };
+    }
     try {
       return await chainRead(currentChainId).send(method, params);
     } catch (err) {

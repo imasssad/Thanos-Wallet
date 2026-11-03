@@ -53,10 +53,27 @@ async function requestChain(reqParams: { chainId?: string }): Promise<ExtEvmChai
   return getExtEvmChain(id);
 }
 
+/** Read-only JSON-RPC methods the in-app browser's WebView may proxy
+ *  straight to the chain node (M-02). Anything not on this list — a
+ *  write-oriented or admin RPC name a malicious/compromised page asks for,
+ *  if the selected node happens to support it — never reaches the node at
+ *  all. Mirrors the extension's RPC_PASSTHROUGH (background.ts). */
+const RPC_PASSTHROUGH = new Set<string>([
+  'eth_call', 'eth_estimateGas', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+  'eth_blockNumber', 'eth_getBalance', 'eth_getCode', 'eth_getStorageAt', 'eth_getProof',
+  'eth_getTransactionCount', 'eth_getTransactionReceipt', 'eth_getTransactionByHash',
+  'eth_getTransactionByBlockHashAndIndex', 'eth_getTransactionByBlockNumberAndIndex',
+  'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getBlockReceipts',
+  'eth_getBlockTransactionCountByNumber', 'eth_getBlockTransactionCountByHash',
+  'eth_getLogs', 'eth_getUncleCountByBlockHash', 'eth_getUncleCountByBlockNumber',
+  'eth_createAccessList', 'eth_syncing', 'web3_clientVersion', 'net_listening',
+]);
+
 /** Proxy a read-only JSON-RPC call (eth_call, eth_getBalance,
  *  eth_estimateGas, eth_blockNumber, …) to the chain the in-app browser is
  *  on — a dApp on BNB/ETH/etc. reads that chain's state. */
 export async function rpcProxy(method: string, params: unknown[], chainId: number): Promise<unknown> {
+  if (!RPC_PASSTHROUGH.has(method)) throw new WcSignerError(4200, `Method not supported: ${method}`);
   const { getExtEvmChain, getExtEvmProvider } = await import('./evm-external');
   if (!getExtEvmChain(chainId)) throw new WcSignerError(4901, 'This network is not available in the wallet.');
   // getExtEvmProvider returns a JsonRpcProvider (typed as the base Provider).
