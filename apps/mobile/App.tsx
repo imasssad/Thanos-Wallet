@@ -9282,7 +9282,13 @@ function OnboardingScreen({
 /** `host` is the page that sent the request (from the message's URL), not
  *  whatever the browser shows by the time the user looks at the sheet. */
 interface DappRequest {
-  id: number; method: string; params: unknown[]; host: string;
+  id: number; method: string; params: unknown[];
+  /** Display only (shown in the approval sheet / chrome bar). */
+  host: string;
+  /** Scheme + host + port — what grants are actually keyed and compared on
+   *  (THN-07): two different ports, or http vs https, on the same host are
+   *  two different origins and must not share one grant. */
+  origin: string;
   /** The chain the dApp was on when it asked — the request is reviewed
    *  against and signed on this chain, even if the dApp switches chains
    *  while the approval sheet is open. */
@@ -9315,12 +9321,13 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [connected, setConnected] = useState(false);
-  // Host the connect grant was given on. The WebView can navigate anywhere
-  // (no origin whitelist) and re-injects the provider on every document, so a
-  // redirect from an allowlisted site to attacker.com would otherwise inherit
-  // the grant — scope eth_accounts / silent re-connect to this host only
-  // (mirrors the desktop connectedOrigin gate).
-  const [connectedHost, setConnectedHost] = useState('');
+  // Origin (scheme+host+port) the connect grant was given on. The WebView
+  // can navigate anywhere (no origin whitelist) and re-injects the provider
+  // on every document, so a redirect from an allowlisted site to
+  // attacker.com — or even to the same host over plain http — would
+  // otherwise inherit the grant; scope eth_accounts / silent re-connect to
+  // this exact origin only (THN-07, mirrors the desktop connectedOrigin gate).
+  const [connectedOrigin, setConnectedOrigin] = useState('');
   const [pending, setPending] = useState<DappRequest | null>(null);
   // One approval at a time, tracked synchronously: two requests in the same
   // tick must not both pass, and a new one never replaces the sheet shown.
@@ -9340,18 +9347,20 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   const address = useMemo(() => (seed.length ? deriveEvmAddress(seed, getActiveAccountIndex()) : ''), [seed]);
   let host = current;
   try { host = new URL(current).host; } catch { /* keep raw */ }
+  let topOrigin = current;
+  try { topOrigin = new URL(current).origin; } catch { /* keep raw */ }
 
-  // Silent reconnect: if this host was already approved (for the CURRENT
+  // Silent reconnect: if this origin was already approved (for the CURRENT
   // active account — a grant for a different account never auto-applies),
   // restore the connected state without showing the approval sheet again.
   // Without this, every fresh visit to a previously-connected dApp required
-  // re-approving from scratch, since `connected`/`connectedHost` are plain
+  // re-approving from scratch, since `connected`/`connectedOrigin` are plain
   // component state that resets whenever the browser tab is closed/reopened.
   useEffect(() => {
-    if (!host || !address) return;
-    const grant = getGrant(host, address);
-    if (grant) { setConnected(true); setConnectedHost(host); }
-  }, [host, address]);
+    if (!topOrigin || !address) return;
+    const grant = getGrant(topOrigin, address);
+    if (grant) { setConnected(true); setConnectedOrigin(topOrigin); }
+  }, [topOrigin, address]);
 
   const send = (js: string) => ref.current?.injectJavaScript(js);
 
@@ -9365,8 +9374,8 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
         chainId: `eip155:${req.chainId}`,
       });
       if (req.method === 'eth_requestAccounts') {
-        setConnected(true); setConnectedHost(req.host);
-        grantConnection(req.host, address, req.chainId);
+        setConnected(true); setConnectedOrigin(req.origin);
+        grantConnection(req.origin, address, req.chainId);
       }
       send(resolveJs(req.id, result));
     } catch (e) {
@@ -9382,14 +9391,27 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
     if (msg.nonce !== nonce) return; // not our provider (e.g. a cross-origin iframe)
     let reqHost = host;
     try { reqHost = new URL(frameUrl).host || host; } catch { /* keep the shown host */ }
-    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost, chainId: currentChainId };
+    let reqOrigin = topOrigin;
+    let reqIsHttps = false;
+    try { const u = new URL(frameUrl); reqOrigin = u.origin; reqIsHttps = u.protocol === 'https:'; } catch { /* keep the shown origin */ }
+    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost, origin: reqOrigin, chainId: currentChainId };
+
+    // THN-07: the provider is withheld from a non-HTTPS top frame outright,
+    // same as the desktop in-app browser — the WebView re-injects it on every
+    // document regardless of scheme, so without this a same-site redirect (or
+    // link) to plain http would keep answering requests from a document an
+    // on-path attacker can tamper with freely.
+    if (!reqIsHttps) {
+      send(rejectJs(req.id, 4900, 'Wallet disconnected'));
+      return;
+    }
 
     // Read-only / already-authorised methods resolve immediately.
     if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${currentChainId.toString(16)}`)); return; }
     if (req.method === 'net_version')  { send(resolveJs(req.id, String(currentChainId))); return; }
-    // Address is disclosed ONLY to the host that was granted the connection —
-    // a page the WebView later navigated to (redirect/link) must re-prompt.
-    const grantedHere = connected && !!address && !!connectedHost && connectedHost === req.host;
+    // Address is disclosed ONLY to the origin that was granted the connection
+    // — a page the WebView later navigated to (redirect/link) must re-prompt.
+    const grantedHere = connected && !!address && !!connectedOrigin && connectedOrigin === req.origin;
     if (req.method === 'eth_accounts') {
       send(resolveJs(req.id, grantedHere ? [address] : []));
       return;
