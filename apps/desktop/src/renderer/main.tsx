@@ -3185,7 +3185,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       const nv = await createVault(r.mnemonic, nw);
       saveVault(nv);
       const re = await openVault(nv, nw);
-      if (re) cacheSessionKey(re.key);
+      if (re) await cacheSessionKey(re.key);
       setDone(true);
     } catch { setErr('Could not change the password.'); }
     finally { setBusy(false); }
@@ -5689,7 +5689,7 @@ function OnboardingFlow({ onComplete, hasVault, addMode }: { onComplete: (seed: 
       const vault = await createVault(seed.join(' '), password);
       saveVault(vault);
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       await openWallet(seed.join(' ')); // the new vault's one wallet
       setWalletOrigin(currentWalletId(), 'created'); // labels it in Wallets & accounts
       setSeedBackedUp(true); // create flow includes seed verification
@@ -5715,7 +5715,7 @@ function OnboardingFlow({ onComplete, hasVault, addMode }: { onComplete: (seed: 
       const vault = await createVault(secret, password);
       saveVault(vault);
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       await openWallet(secret); // the new vault's one wallet
       setWalletOrigin(currentWalletId(), 'imported'); // labels it in Wallets & accounts
       setSeedBackedUp(true); // imported — user already holds the secret
@@ -5778,7 +5778,7 @@ function OnboardingFlow({ onComplete, hasVault, addMode }: { onComplete: (seed: 
         setUnlockPwd('');
         return;
       }
-      cacheSessionKey(opened.key);
+      await cacheSessionKey(opened.key);
       // The vault may hold several wallets: open the one in use last time.
       const w = await openWallet(opened.mnemonic);
       onComplete(seedWords(w.secret), unlockPwd);
@@ -6609,7 +6609,7 @@ function App() {
     if (!window.confirm(first)) return;
     if (!window.confirm('Are you sure? This cannot be undone.')) return;
     clearVault();
-    clearSessionKey();
+    void clearSessionKey().catch(() => {});
     void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     setWalletSeed([]);
@@ -6694,16 +6694,16 @@ function App() {
     (async () => {
       if (hasLegacyPlaintext()) {
         const mig = await migrateLegacyPlaintext();
-        if (mig.ok && mig.key) cacheSessionKey(mig.key);
+        if (mig.ok && mig.key) await cacheSessionKey(mig.key);
       }
       const vault = loadVault();
       setHasVault(!!vault);
       if (!vault) return;
-      const key = getSessionKey();
+      const key = await getSessionKey();
       if (!key) return;
       // ...unless the window sat idle past the auto-lock timeout before this
       // load: the idle watcher couldn't lock a renderer that was reloading.
-      if (idleExpired(sessionStorage, readAutoLockMinutes(localStorage))) { clearSessionKey(); return; }
+      if (idleExpired(sessionStorage, readAutoLockMinutes(localStorage))) { await clearSessionKey(); return; }
       const plaintext = await openVaultWithKey(vault, key);
       if (plaintext) {
         // The vault may hold several wallets: open the one in use before the reload.
@@ -6717,7 +6717,7 @@ function App() {
         // without the bridge just keep using the renderer signer.
         try { await window.thanosDesktop?.signer?.setSeed(words.join(' ')); } catch { /* no bridge */ }
       } else {
-        clearSessionKey();
+        await clearSessionKey();
       }
     })().catch(() => { /* fall through to onboarding */ });
   }, []);
@@ -6745,7 +6745,7 @@ function App() {
   const lock = () => {
     setUnlocked(false);
     setWalletSeed([]);
-    clearSessionKey();
+    void clearSessionKey().catch(() => {});
     void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
     // A locked wallet keeps no live Quantt login either (quantt.ts).
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });

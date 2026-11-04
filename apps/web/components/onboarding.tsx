@@ -188,7 +188,7 @@ export function OnboardingFlow({ hasVault, onComplete, addMode }: {
       openFirstWallet(source, 'created');
       // Session-cache the derived key so a refresh skips the password prompt.
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       onComplete(source);
     } finally {
       setBusy(false);
@@ -209,7 +209,7 @@ export function OnboardingFlow({ hasVault, onComplete, addMode }: {
       // Imported — the user already holds this recovery phrase.
       openFirstWallet(source, 'imported');
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       onComplete(source);
     } finally {
       setBusy(false);
@@ -230,7 +230,7 @@ export function OnboardingFlow({ hasVault, onComplete, addMode }: {
       // Imported via private key — nothing to back up beyond what the user holds.
       openFirstWallet(source, 'imported');
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       onComplete(source);
     } finally {
       setBusy(false);
@@ -255,7 +255,7 @@ export function OnboardingFlow({ hasVault, onComplete, addMode }: {
         setUnlockPwd('');
         return;
       }
-      cacheSessionKey(opened.key);
+      await cacheSessionKey(opened.key);
       // One wallet or several: open the remembered one (lib/vault.ts).
       onComplete(walletSourceOf(openWallet(opened.mnemonic).secret));
     } finally {
@@ -737,7 +737,7 @@ export function useWalletGate() {
       //    per browser; afterwards the plaintext keys are gone.
       if (hasLegacyPlaintext()) {
         const mig = await migrateLegacyPlaintext();
-        if (mig.ok && mig.key) cacheSessionKey(mig.key);
+        if (mig.ok && mig.key) await cacheSessionKey(mig.key);
       }
 
       // 1) Determine vault presence from the new storage shape.
@@ -748,12 +748,12 @@ export function useWalletGate() {
       // 2) Refresh-survival: if a session-cached AES key is available,
       //    decrypt the vault without prompting. Cold open (no
       //    sessionStorage) -> user must enter password.
-      const key = getSessionKey();
+      const key = await getSessionKey();
       if (!key) return;
       // ...unless the tab sat idle past the auto-lock timeout before this
       // load: the idle watcher couldn't lock a page that was being reloaded.
       if (idleExpired(storageOrNull(() => sessionStorage), readAutoLockMinutes(storageOrNull(() => localStorage)))) {
-        clearSessionKey();
+        await clearSessionKey();
         return;
       }
       const plaintext = await openVaultWithKey(vault, key);
@@ -762,7 +762,7 @@ export function useWalletGate() {
         setUnlocked(true);
       } else {
         // Stale / mismatched session key — wipe it so the unlock screen shows.
-        clearSessionKey();
+        await clearSessionKey();
       }
     })().catch(() => { /* fail closed = show unlock screen */ });
   }, []);
@@ -772,7 +772,10 @@ export function useWalletGate() {
     setWalletSeed([]);
     setWalletPrivateKey(undefined);
     setWalletAddress('');
-    clearSessionKey();
+    // The sessionStorage marker is dropped synchronously (before this async
+    // call's first await runs); not awaiting the IndexedDB delete behind it
+    // keeps lock() itself synchronous for its caller (the idle-lock hook).
+    void clearSessionKey().catch(() => {});
     // Wipe the secret from the signing worker too — otherwise it'd keep
     // signing on behalf of the locked wallet.
     void lockSigner().catch(() => { /* worker may already be torn down */ });

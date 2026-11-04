@@ -8,6 +8,7 @@
  * Run with: pnpm --filter @thanos/web test
  */
 import { describe, expect, it, beforeAll, vi } from 'vitest';
+import 'fake-indexeddb/auto'; // cacheSessionKey/getSessionKey now cache a CryptoKey in IndexedDB (hardening-audit H-2)
 
 // Polyfill localStorage / sessionStorage for the Node test env, since vault.ts
 // reaches for them in saveVault/loadVault/cacheSessionKey paths.
@@ -153,15 +154,27 @@ describe('vault — storage layer', () => {
     expect(sessionStorage.getItem(VAULT_STORAGE_KEYS.sessionKey)).toBeNull();
   }, SLOW);
 
-  it('cacheSessionKey / getSessionKey / clearSessionKey round-trip', () => {
+  it('cacheSessionKey / getSessionKey / clearSessionKey round-trip', async () => {
+    // Hardening-audit H-2: the cache now holds a non-extractable CryptoKey
+    // (IndexedDB), not the raw bytes (sessionStorage) — so instead of
+    // comparing bytes, verify the cached key is the SAME key material by
+    // using it to decrypt something the raw key encrypted.
     const key = new Uint8Array(32);
     crypto.getRandomValues(key);
-    cacheSessionKey(key);
-    const got = getSessionKey();
+    await cacheSessionKey(key);
+    const got = await getSessionKey();
     expect(got).not.toBeNull();
-    expect(Array.from(got!)).toEqual(Array.from(key));
-    clearSessionKey();
-    expect(getSessionKey()).toBeNull();
+    expect(got).toBeInstanceOf(CryptoKey);
+
+    const iv = new Uint8Array(12);
+    crypto.getRandomValues(iv);
+    const rawKey = await crypto.subtle.importKey('raw', key as BufferSource, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, rawKey, new TextEncoder().encode('round trip') as BufferSource);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, got!, ct);
+    expect(new TextDecoder().decode(pt)).toBe('round trip');
+
+    await clearSessionKey();
+    expect(await getSessionKey()).toBeNull();
   });
 });
 
