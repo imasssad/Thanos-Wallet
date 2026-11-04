@@ -91,6 +91,14 @@ authRouter.post('/register', authLimiter, async (req: Request, res: Response) =>
   // Check existing user
   const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
   if (existing) {
+    // Hardening-audit L-2: a registered email answering 409 immediately is
+    // an account-enumeration oracle. Closing it fully needs an
+    // email-verification gate (so success ALSO doesn't hand back tokens
+    // immediately) — infrastructure this deployment doesn't have. Short of
+    // that, at least don't let response latency add a second oracle: pay
+    // the same Argon2id cost a real registration would, so this path and
+    // the success path below take comparably long.
+    await burnVerifyTime(password);
     res.status(409).json({ error: 'Email already registered' });
     return;
   }
