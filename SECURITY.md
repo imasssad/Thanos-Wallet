@@ -252,22 +252,9 @@ residual risk after review:
   file in the repository's own assets. No client parses untrusted images
   with it.
 
-### `node-forge ≤1.4.0` — RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements ([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv))
-
-- **No patch published** (advisory lists no fixed version; 1.4.0 is the
-  latest on npm).
-- **Where it's used:** only by developer tooling — React Native's dev
-  server (`@react-native/dev-middleware → selfsigned`, reached through
-  WalletConnect's optional React Native peers), `@expo/cli`,
-  `@expo/code-signing-certificates` and `@devicefarmer/adbkit`. Overriding
-  `selfsigned` to 5.x (which dropped node-forge) would not remove it.
-- **Exploit surface:** none in shipped code. No workspace source imports
-  node-forge, and the built web app, extension and desktop (renderer and
-  main) bundles contain none of it (checked 2026-10-02). Forged-signature
-  acceptance would matter only where node-forge verifies untrusted
-  signatures at runtime, which no client does.
-- **Mitigation:** none needed beyond keeping it out of runtime code. When a
-  patched node-forge ships, add an override and drop this entry.
+`node-forge ≤1.4.0` ([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv))
+is no longer in this list: a `1.4.1` fix has since been published upstream,
+and the override `node-forge@<=1.4.0: ^1.4.1` now pins to it directly.
 
 ### `braces ≤3.0.3` — stack-exhaustion denial of service through deeply nested patterns ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm))
 
@@ -286,6 +273,37 @@ residual risk after review:
   user input.
 - **Mitigation:** none needed beyond keeping it out of runtime code. When a
   patched braces ships, add an override and drop this entry.
+
+### `zod` 3.25.76 — memory exhaustion in v4's array decoder ([GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5))
+
+- **Why the override pattern doesn't apply:** `services/api` and
+  `services/worker` depend directly on `zod@^3.23.8` (resolved: 3.25.76) for
+  their own request-validation schemas — a path-scoped override can't touch
+  a direct dependency's own resolution, and a blanket `zod: ^4.6.6` override
+  would force a breaking v3→v4 migration onto two live backend services to
+  silence a finding that doesn't apply to them (see below). The one
+  transitive instance that *was* genuinely exposed — `apps/web`'s
+  `@reown/walletkit → … → ox → abitype → zod@4.4.2` chain — is already fixed
+  via the path-scoped `abitype>zod: ^4.6.6` override above.
+- **Why 3.25.76 isn't actually vulnerable here:** the advisory's vulnerable
+  code (`$ZodArray` / `handleArrayResult`) lives only in zod's v4 internals.
+  zod 3.25.76 is a transitional release that bundles both: the classic v3
+  API (default export) and a preview of v4 (reachable only via the
+  `zod/v4` subpath). Confirmed via the package's own
+  `src/index.ts`:
+  ```ts
+  import * as z from "./v3/external.js";
+  export * from "./v3/external.js";
+  export { z };
+  export default z;
+  ```
+  The default/classic import — what `import { z } from 'zod'` resolves to,
+  and the only way either service imports it — routes to `./v3/external.js`,
+  never touching the vulnerable v4 code. `grep -rln "zod/v4" services/`
+  confirms neither service ever opts into that subpath.
+- **Mitigation:** none needed; the vulnerable code path is unreachable
+  through this codebase's usage. Re-check this entry if either service ever
+  migrates to zod v4 or imports the `zod/v4` subpath.
 
 ## Secrets, CI and the deployed environment
 
