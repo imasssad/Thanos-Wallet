@@ -77,6 +77,8 @@ check "Web unit tests" test-web.txt pnpm --filter @thanos/web test
 check "API tests (Postgres-backed ones skip without a database)" test-api.txt pnpm --filter @thanos/api test
 check "MultX adapter tests" test-multx-adapter.txt pnpm --filter multx-adapter test
 check "MultiSig core against Litho Vault contracts (local Hardhat chain)" test-multisig.txt pnpm --filter @thanos/multisig test
+check "Extension tests (vault, THN-02, O-01 sender gates)" test-extension.txt pnpm --filter @thanos/extension test
+check "Desktop tests (ipc-guard.ts trust boundary, O-01/M20-M21)" test-desktop.txt pnpm --filter @thanos/desktop test
 check "Mobile copies of shared code match their sources" sync-checks.txt \
   bash -c 'node scripts/sync-multisig.mjs --check && node scripts/sync-multx-thanos.mjs --check && echo "multisig and multx-thanos: mobile copies match"'
 check "Web production build" build-web.txt pnpm --filter @thanos/web build

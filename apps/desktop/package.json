@@ -19,7 +19,8 @@
     "build": "tsc -p tsconfig.main.json && vite build",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "lint": "echo 'no lint configured'",
-    "dist": "pnpm build && electron-builder"
+    "dist": "pnpm build && electron-builder",
+    "test": "tsx --experimental-test-module-mocks --test test/ipc-guard.test.ts"
   },
   "dependencies": {
     "@cosmjs/crypto": "^0.32.4",

@@ -117,6 +117,15 @@ jobs:
       # npm on first run). Then: mobile's copy of that core is up to date.
       - run: pnpm --filter @thanos/multisig test
       - run: node scripts/sync-multisig.mjs --check
+      # Extension — vault round-trip, THN-02 connection-approval slot, and
+      # the O-01 sender-gate regression tests (background.ts + the
+      # offscreen signer's own gate). Was build-only (build-extension
+      # above); this suite existed but never actually ran in CI.
+      - run: pnpm --filter @thanos/extension test
+      # Desktop — ipc-guard.ts's trust boundary (O-01/M20-M21): the
+      # window-navigation lock and the top-frame-only IPC gate. apps/desktop
+      # had no test suite at all until this one.
+      - run: pnpm --filter @thanos/desktop test
 
   integration-pg:
     name: integration (api ↔ real Postgres)
