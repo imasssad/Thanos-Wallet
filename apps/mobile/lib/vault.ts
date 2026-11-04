@@ -65,7 +65,18 @@ const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 // this pure-JS adaptive path is reliable with no new module.) Legacy Argon2id /
 // fixed-600k vaults still decrypt via their own stored kdf block.
 const PBKDF2_TARGET_MS = 600;      // aim derivation at ~0.6s on the creating device (hardware keystore backstops; NIST floor still applies)
-const PBKDF2_MIN_ITERS = 10_000;   // NIST SP 800-132 floor (hardware keystore backstops)
+// THN-R1 M-06: the old floor (10,000) was NIST SP 800-132's 2016-era
+// minimum, well under OWASP's current PBKDF2-HMAC-SHA256 recommendation
+// (600,000 — this file's own MAX). Raised 5x rather than all the way to
+// that ceiling: the documented real-device report (a fixed 600k taking
+// 2-4 minutes on a low-end phone) was with NO per-device calibration at
+// all, so it doesn't tell us what THIS floor costs a calibrated slow
+// device — that needs testing on actual low-end hardware this
+// environment doesn't have. 50,000 is a real, verifiable improvement
+// (5x the offline-brute-force cost) without guessing how far a slow
+// phone's calibrated ~600ms budget can be pushed before unlock itself
+// becomes the UX problem the calibration exists to avoid.
+const PBKDF2_MIN_ITERS = 50_000;
 const PBKDF2_MAX_ITERS = 600_000;  // OWASP target ceiling
 const KEY_BYTES = 32;              // AES-256
 
