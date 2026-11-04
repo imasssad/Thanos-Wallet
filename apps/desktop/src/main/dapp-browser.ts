@@ -17,8 +17,17 @@
  *
  * Security stance:
  *   - contextIsolation:true, nodeIntegration:false, sandbox:true
- *   - No preload script means dApps see no `window.thanosDesktop` —
- *     wallet connection must go through WalletConnect.
+ *   - dApps see no `window.thanosDesktop`: the wallet's own bridge is never
+ *     exposed to a dApp view. They DO get a provider — this view installs
+ *     dapp-provider-preload.js (see createDappView below), which injects
+ *     window.ethereum / window.thanos and forwards requests over the
+ *     `dapp:rpc` channel, gated to this view's top frame. An earlier version
+ *     of this heading claimed there was no preload at all (Autha THN-R1
+ *     O-04); that was wrong, and the preload is the main attack surface
+ *     here, so it is stated plainly: requests arrive attributed to the
+ *     frame's own URL and are reviewed before anything is signed.
+ *     The LAX identity-verification view is the one case with no provider
+ *     preload (`kyc` below) — that page genuinely cannot reach the wallet.
  *   - Permission requests blanket-denied — except in a LAX identity
  *     verification view, which may use the camera and location once the
  *     user allows it (see "LAX identity verification" below).

@@ -83,6 +83,12 @@ export interface WcRequestParams {
   /** CAIP-2 chain a WalletConnect request names ("eip155:9005"). When set,
    *  the request is signed on exactly that chain, never the active one. */
   chainId?: string;
+  /** The account the approval sheet reviewed and displayed as "Signing as"
+   *  (O-06). When set, the signature MUST come from this address: the HD
+   *  index is read at sign time, so without this an account switch between
+   *  approval and signing silently signs from a different account than the
+   *  one the user reviewed. Mismatch fails closed. */
+  account?: string;
 }
 
 /** "eip155:9005" → 9005; anything else → null. */
@@ -108,6 +114,24 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
   const path = hdPath();
+
+  // O-06: hdPath() above reads the ACTIVE account index, which the user can
+  // change while an approval sheet is open (the popup re-reads it on
+  // storage.onChanged). The sheet showed one address as "Signing as"; refuse
+  // unless that is the address this path actually derives, so a signature can
+  // never come from an account the user didn't review. Same intent as the
+  // chain pinning in requestChain() above.
+  if (reqParams.account) {
+    const signingAs = isPrivateKeyWallet(seed)
+      ? new Wallet(seed[0].trim()).address
+      : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), path).address;
+    if (signingAs.toLowerCase() !== reqParams.account.toLowerCase()) {
+      throw new WcSignerError(
+        -32000,
+        'The active account changed while this request was open. Nothing was signed — reopen the request to review it against the account now selected.',
+      );
+    }
+  }
 
   switch (method) {
     case 'eth_accounts':

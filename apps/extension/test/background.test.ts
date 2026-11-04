@@ -91,6 +91,85 @@ test('THN-02: a second connection request while one is pending is refused, not s
   assert.ok(!connections?.[EVIL], 'EVIL must never be connected — its request was refused as busy');
 });
 
+/* ── O-01: the gates Autha's mutation run left unprotected ──────────────
+ * Mutants M10–M13 each removed one of these checks and no shipped test
+ * noticed. Autha's own THN-H3 harness killed M10, M12 and M13, but it lives
+ * outside the repository, so nothing here stopped a regression. These four
+ * tests pin the gates to the behaviour that harness asserted. */
+
+test('O-01/M10: a privileged message from a web page is ignored (isExtensionSender)', async () => {
+  // GOOD legitimately claims the approval slot.
+  const resultA = onMessage({ type: 'thanos-rpc', method: 'eth_requestAccounts', params: [], pageId: 'pA' }, senderFor(GOOD, 1), () => {});
+  await new Promise((r) => setTimeout(r, 0));
+  const approvalId = (session.get('pending_approval') as { id: string }).id;
+
+  // A content script forges the approval. It carries this extension's id —
+  // what distinguishes it from the popup is the tab + web URL, which is
+  // exactly what isExtensionSender() checks and what M10 deleted.
+  onMessage(
+    { type: 'thanos-approval-result', approvalId, approved: true, address: '0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC' },
+    senderFor(EVIL, 2),
+    () => {},
+  );
+  await new Promise((r) => setTimeout(r, 0));
+
+  const connections = (await local.get('connections')) as Record<string, unknown> | undefined;
+  assert.ok(!connections || Object.keys(connections).length === 0, 'a page-originated approval must connect nothing');
+  assert.ok(session.get('pending_approval'), 'the real pending approval must survive a forged result');
+
+  // Resolve GOOD's request properly so it does not dangle.
+  onMessage({ type: 'thanos-approval-result', approvalId, approved: false }, popupSender, () => {});
+  await resultA.catch(() => {});
+});
+
+test('O-01/M11: a non-http(s) sender cannot drive the wallet (contentScriptOrigin filter)', async () => {
+  const fileSender = { id: 'thanos-ext-id', url: 'file:///tmp/evil.html', tab: { id: 9 } };
+  const res = await onMessage({ type: 'thanos-rpc', method: 'eth_requestAccounts', params: [], pageId: 'pF' }, fileSender, () => {});
+  const err = res as { __thanosRpcError?: { code: number } };
+  assert.equal(err.__thanosRpcError?.code, 4100, 'a file:// sender has no web origin and must be refused');
+  assert.ok(!session.get('pending_approval'), 'and it must not claim the approval slot');
+});
+
+test('O-01/M12: an unconnected site cannot raise a signing request (connect-before-sign)', async () => {
+  const res = await onMessage(
+    { type: 'thanos-rpc', method: 'personal_sign', params: ['0xdeadbeef', '0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'], pageId: 'pS' },
+    senderFor(EVIL, 3),
+    () => {},
+  );
+  const err = res as { __thanosRpcError?: { code: number; message?: string } };
+  // Must be the deliberate 4100, not the incidental TypeError on conn.address
+  // that Autha noted still "fails closed" with M12 removed (O-01).
+  assert.equal(err.__thanosRpcError?.code, 4100, 'signing from an unconnected origin must be refused with 4100');
+  assert.ok(!session.get('pending_rpc_request'), 'and must never reach the approval sheet');
+});
+
+test('O-01/M13: a connected site gets one signing request at a time', async () => {
+  const ADDR = '0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  local.set('connections', { [GOOD]: { address: ADDR, connectedAt: Date.now() } });
+
+  const first = onMessage(
+    { type: 'thanos-rpc', method: 'personal_sign', params: ['0xdeadbeef', ADDR], pageId: 'pA' },
+    senderFor(GOOD, 1),
+    () => {},
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(session.get('pending_rpc_request'), 'the first signing request should hold the slot');
+
+  const second = await onMessage(
+    { type: 'thanos-rpc', method: 'personal_sign', params: ['0xfeedface', ADDR], pageId: 'pB' },
+    senderFor(GOOD, 1),
+    () => {},
+  );
+  const err = second as { __thanosRpcError?: { code: number } };
+  assert.equal(err.__thanosRpcError?.code, -32002, 'a second signing request must get busy (-32002)');
+
+  const held = session.get('pending_rpc_request') as { params?: unknown[] } | undefined;
+  assert.equal((held?.params as string[])?.[0], '0xdeadbeef', 'the slot must still hold the FIRST request');
+
+  onMessage({ type: 'thanos-rpc-result', requestId: (session.get('pending_rpc_request') as { id: string }).id, error: { code: 4001, message: 'rejected' } }, popupSender, () => {});
+  await first.catch(() => {});
+});
+
 test('THN-02: an approval result only trusts pending_approval when the ids match', async () => {
   // GOOD's request claims the slot normally.
   const resultA = onMessage({ type: 'thanos-rpc', method: 'eth_requestAccounts', params: [], pageId: 'pA' }, senderFor(GOOD, 1), () => {});

@@ -6302,6 +6302,8 @@ function App() {
         request: { method: pendingRpc.method, params: pendingRpc.params },
         // Sign on the chain this sheet reviewed, not whatever is active by now.
         chainId: rpcChainId !== undefined ? `eip155:${rpcChainId}` : undefined,
+        // ...and as the account it reviewed, shown above as "Signing as" (O-06).
+        account: pendingRpc.address,
       });
       // Contract guard: signing/tx methods MUST resolve to a 0x-prefixed
       // string (personal_sign/eth_sign/eth_signTypedData_v4 → 65-byte

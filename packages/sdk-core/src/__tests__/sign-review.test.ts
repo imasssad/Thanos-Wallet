@@ -126,6 +126,20 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
       expect(hex.requiredChainId).toBeUndefined();
     });
 
+    // O-01/M06: the unreadable-chainId block survived Autha's mutation run —
+    // no shipped test covered it. A domain that carries a chainId the wallet
+    // cannot parse must be refused outright: it can't be compared against the
+    // active chain, so it can't be shown to the user as pinned to one.
+    it('blocks a chainId that is present but unreadable', () => {
+      const r = review(...typed('Permit', { owner: ME, spender: SPENDER, value: '1', nonce: 0, deadline: 1 }, { name: 'USD Coin', chainId: 'banana', verifyingContract: TOKEN }));
+      expect(r.risk).toBe('block');
+      expect(r.blockReason).toMatch(/chainId is unreadable/i);
+      // An ABSENT chainId is a different case — it stays reviewable, so the
+      // block above must be about unreadability, not merely a missing field.
+      const absent = review(...typed('Permit', { owner: ME, spender: SPENDER, value: '1', nonce: 0, deadline: 1 }, { name: 'USD Coin', verifyingContract: TOKEN }));
+      expect(absent.risk).not.toBe('block');
+    });
+
     it('decodes a DAI-style permit', () => {
       const daiTypes = { Permit: [
         { name: 'holder', type: 'address' }, { name: 'spender', type: 'address' },

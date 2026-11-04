@@ -150,7 +150,10 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     if (!cur || blocked || chainId === undefined) return;
     setBusy(true); setErr(null);
     try {
-      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params }, chainId: cur.chainId });
+      // `account` pins the signature to the address this sheet reviewed
+      // against (line ~90 passes the same evmAddress to reviewSigningRequest),
+      // so an account switch while the sheet is open can't redirect it (O-06).
+      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params }, chainId: cur.chainId, account: evmAddress });
       setPending(null);
       await send({ type: 'wc.respond', topic: cur.topic, id: cur.id, result });
     } catch (e) {

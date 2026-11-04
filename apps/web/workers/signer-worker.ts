@@ -22,6 +22,9 @@ import {
   HDNodeWallet, Mnemonic, Wallet, JsonRpcProvider,
   type Provider,
 } from 'ethers';
+// Pure module (ethers primitives only), so it doesn't delay the ready
+// handshake below the way an sdk-core barrel import would.
+import { messageBytesFor } from '../lib/message-bytes';
 // Deep import, NOT the @thanos/sdk-core barrel: this worker's entry must stay
 // synchronous (see the ready handshake at the bottom). The Bitcoin client is
 // loaded on demand in handleSendBitcoin — it pulls tiny-secp256k1's async
@@ -133,12 +136,11 @@ async function handleSetAccountIndex(p: SetIdxPayload): Promise<SetIdxReply> {
   return { address: cachedAddress };
 }
 
+/** Signs exactly the bytes the approval sheet displayed — see
+ *  lib/message-bytes.ts for why the decode lives there (O-05). */
 async function handleSignMessage(p: SignMsgPayload): Promise<SignMsgReply> {
   const signer = getSigner();
-  const messageBytes = p.message.startsWith('0x')
-    ? new Uint8Array(p.message.slice(2).match(/.{1,2}/g)!.map(h => parseInt(h, 16)))
-    : new TextEncoder().encode(p.message);
-  const signature = await signer.signMessage(messageBytes);
+  const signature = await signer.signMessage(messageBytesFor(p.message));
   return { signature };
 }
 

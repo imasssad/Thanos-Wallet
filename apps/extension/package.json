@@ -24,7 +24,7 @@
     "safari:convert": "bash safari/convert.sh",
     "safari:archive": "bash safari/archive.sh",
     "typecheck": "wxt prepare && tsc --noEmit",
-    "test": "tsx --test test/vault.test.ts test/dapp-connections.test.ts test/background.test.ts",
+    "test": "tsx --test test/vault.test.ts test/dapp-connections.test.ts test/background.test.ts test/wc-signer-account.test.ts",
     "lint": "echo 'no lint configured'"
   },
   "dependencies": {
