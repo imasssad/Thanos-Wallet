@@ -161,9 +161,11 @@ export interface LaxCardDetails {
 }
 
 /** GET /lax/card/:n/details — expiry + CVC (+ maybe PAN). Sensitive:
- *  never persist the result, clear it from state on unmount. */
-export async function laxCardDetails(cardNumber: string): Promise<LaxCardDetails> {
-  const raw = await apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/details`);
+ *  never persist the result, clear it from state on unmount.
+ *  stepUpToken: from apiClient.stepUp(password) (THN-R1 M-04) — the
+ *  server requires a fresh step-up grant for this route. */
+export async function laxCardDetails(cardNumber: string, stepUpToken: string): Promise<LaxCardDetails> {
+  const raw = await apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/details`, undefined, { 'x-step-up-token': stepUpToken });
   return coerceDetails(raw);
 }
 
@@ -190,9 +192,10 @@ export async function laxCreatePhysicalHolder(input: LaxHolderInput): Promise<un
 export async function laxGetPhysicalHolder(): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', '/lax/physical/holder'); }
 export async function laxStartPhysicalKyc(holderId: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/kyc/start', { holderId }); }
 export async function laxSubmitPhysicalHolder(holderId: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/submit', { holderId }); }
-export async function laxGetPin(cardNumber: string): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/pin`); }
-export async function laxSetPin(cardNumber: string, PIN: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/pin`, { PIN }); }
-export async function laxActivateCard(cardNumber: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/activate`); }
+// stepUpToken: from apiClient.stepUp(password) (THN-R1 M-04) — the server requires a fresh step-up grant.
+export async function laxGetPin(cardNumber: string, stepUpToken: string): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/pin`, undefined, { 'x-step-up-token': stepUpToken }); }
+export async function laxSetPin(cardNumber: string, PIN: string, stepUpToken: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/pin`, { PIN }, { 'x-step-up-token': stepUpToken }); }
+export async function laxActivateCard(cardNumber: string, stepUpToken: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/activate`, undefined, { 'x-step-up-token': stepUpToken }); }
 
 /** issue-card's response shape is genuinely unconfirmed upstream (no
  *  sandbox to test against) — some accounts may come back needing a KYC /

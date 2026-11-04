@@ -81,7 +81,7 @@ import { Router, type Response } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { query, queryOne } from '../lib/db.js';
-import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireAuth, requireStepUp, type AuthRequest } from '../middleware/auth.js';
 import { laxOpLimiter } from '../middleware/rate-limit.js';
 import { log } from '../lib/log.js';
 
@@ -648,7 +648,7 @@ laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
 
 /** GET /lax/card/:cardNumber/details — physical view-card. Ownership-gated
  *  + laxOpLimiter'd. Never logged here. */
-laxRouter.get('/card/:cardNumber/details', laxOpLimiter, async (req, res: Response) => {
+laxRouter.get('/card/:cardNumber/details', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
   const cardNumber = String(req.params.cardNumber);
@@ -691,7 +691,7 @@ laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Respon
 });
 
 /** Physical-card PIN operations are provider-backed and never persisted by Thanos. */
-laxRouter.get('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response) => {
+laxRouter.get('/card/:cardNumber/pin', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const cardNumber = String(req.params.cardNumber);
   const userId = (req as unknown as AuthRequest).userId;
@@ -702,7 +702,7 @@ laxRouter.get('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response) 
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
-laxRouter.post('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response) => {
+laxRouter.post('/card/:cardNumber/pin', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const cardNumber = String(req.params.cardNumber);
   const userId = (req as unknown as AuthRequest).userId;
@@ -715,7 +715,7 @@ laxRouter.post('/card/:cardNumber/pin', laxOpLimiter, async (req, res: Response)
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
-laxRouter.post('/card/:cardNumber/activate', laxOpLimiter, async (req, res: Response) => {
+laxRouter.post('/card/:cardNumber/activate', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const cardNumber = String(req.params.cardNumber);
   const userId = (req as unknown as AuthRequest).userId;

@@ -249,6 +249,34 @@ describe('GET /auth/me', () => {
   });
 });
 
+describe('POST /auth/step-up (THN-R1 M-04)', () => {
+  it('rejects without a session token', async () => {
+    const res = await request(app).post('/auth/step-up').send({ password: 'whatever' });
+    expect(res.status).toBe(401);
+  });
+
+  it('issues a step-up token on the correct password, rejects the wrong one', async () => {
+    const { signAccessToken } = await import('../lib/jwt.js');
+    const token = await signAccessToken({ sub: 'user-su', sessionId: 'sess-su', deviceId: 'dev-su' });
+    const argon2 = (await import('argon2')).default;
+    const goodHash = await argon2.hash('the_correct_password', { type: argon2.argon2id });
+
+    dbQueryOne.mockResolvedValueOnce({ password_hash: goodHash });
+    const wrong = await request(app).post('/auth/step-up').set('Authorization', `Bearer ${token}`).send({ password: 'nope' });
+    expect(wrong.status).toBe(401);
+
+    dbQueryOne.mockResolvedValueOnce({ password_hash: goodHash });
+    const right = await request(app).post('/auth/step-up').set('Authorization', `Bearer ${token}`).send({ password: 'the_correct_password' });
+    expect(right.status).toBe(200);
+    expect(right.body.stepUpToken).toEqual(expect.any(String));
+
+    // The issued token is scoped to this exact session.
+    const { verifyStepUpToken } = await import('../lib/step-up.js');
+    expect(verifyStepUpToken(right.body.stepUpToken, 'user-su', 'sess-su')).toBe(true);
+    expect(verifyStepUpToken(right.body.stepUpToken, 'user-su', 'a-different-session')).toBe(false);
+  }, 15_000);
+});
+
 describe('POST /auth/refresh', () => {
   it('rejects a missing refresh token with 400', async () => {
     const res = await request(app).post('/auth/refresh').send({});

@@ -12,6 +12,7 @@ import {
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { authLimiter, sensitiveOpLimiter } from '../middleware/rate-limit.js';
 import { recordAuthEvent } from '../lib/metrics.js';
+import { issueStepUpToken } from '../lib/step-up.js';
 
 export const authRouter = Router();
 
@@ -316,6 +317,33 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
     mfaEnabled: user.mfa_enabled,
     createdAt: user.created_at,
   });
+});
+
+// ─── POST /auth/step-up ─────────────────────────────────────────────────────
+
+const StepUpSchema = z.object({ password: z.string().min(1) });
+
+/** THN-R1 M-04: re-confirm the account password to get a short-lived grant
+ *  (see middleware/auth.ts's requireStepUp) for the handful of routes where
+ *  a stolen-but-valid access token alone isn't enough — card PIN
+ *  view/change, full card details, card activation. Rate-limited the same
+ *  as other password-bearing endpoints; a wrong password burns the same
+ *  Argon2id-verify time as login so it isn't a faster oracle than login is. */
+authRouter.post('/step-up', requireAuth, sensitiveOpLimiter, async (req: Request, res: Response) => {
+  const parse = StepUpSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: 'password required' }); return; }
+  const { userId, sessionId } = req as AuthRequest;
+  const user = await queryOne<{ password_hash: string }>(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+  const valid = await argon2.verify(user.password_hash, parse.data.password);
+  if (!valid) {
+    recordAuthEvent('step_up', 'failure');
+    res.status(401).json({ error: 'Incorrect password' });
+    return;
+  }
+  recordAuthEvent('step_up', 'success');
+  const { token, expiresAt } = issueStepUpToken(userId, sessionId);
+  res.json({ stepUpToken: token, expiresAt });
 });
 
 // ─── GET /auth/sessions ─────────────────────────────────────────────────────

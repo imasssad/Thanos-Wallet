@@ -2084,34 +2084,98 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
  *  Financial secret data: fetched fresh each open, never persisted past
  *  this sheet's lifetime, and hidden behind a tap-to-reveal gate (mirrors
  *  RevealPhraseModal's reveal button) instead of shown plaintext on open. */
+/** THN-R1 M-04: GET .../details requires a fresh step-up grant (re-entered
+ *  account password) on top of the normal session. Cached in-memory on the
+ *  api-client singleton (apiClient.getCachedStepUp()), so repeat opens
+ *  within a few minutes skip the prompt. */
+function StepUpPasswordPrompt({ onCancel, onConfirm }: {
+  onCancel: () => void;
+  onConfirm: (password: string) => Promise<string | null>;
+}) {
+  const C = useColors();
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setErr(null);
+    const error = await onConfirm(password);
+    setBusy(false);
+    if (error) setErr(error);
+  };
+  return (
+    <View style={{ gap: 12 }}>
+      <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 18 }}>
+        For your security, re-enter your Thanos account password to continue.
+      </Text>
+      <TextInput
+        secureTextEntry autoFocus value={password} onChangeText={setPassword}
+        placeholder="Password" placeholderTextColor={C.textMuted}
+        onSubmitEditing={() => void submit()}
+        style={{ borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12, color: C.textPrimary, fontSize: 14, backgroundColor: C.bgElevated }}
+      />
+      {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Pressable onPress={onCancel} disabled={busy} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Cancel</Text>
+        </Pressable>
+        <Pressable onPress={submit} disabled={busy || !password} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: busy || !password ? 0.6 : 1 }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Confirming…' : 'Confirm'}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolean; onClose: () => void; cardNumber?: string }) {
   const C = useColors();
   const [details, setDetails] = useState<import('./lib/lax').LaxCardDetails | null>(null);
   const [shown, setShown]     = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr]         = useState<string | null>(null);
+  const [needsStepUp, setNeedsStepUp] = useState(false);
 
   useScreenProtect(visible && shown);
 
-  useEffect(() => {
-    if (!visible) { setDetails(null); setShown(false); setErr(null); return; }
-    if (!cardNumber) return;
+  const fetchDetails = async (stepUpToken: string) => {
     setLoading(true); setErr(null);
-    (async () => {
-      try {
-        const lax = require('./lib/lax') as typeof import('./lib/lax');
-        const d = await lax.laxCardDetails(cardNumber);
-        setDetails(d);
-      } catch (e: any) {
-        setErr(e?.message || 'Could not load card details — try again.');
-      } finally { setLoading(false); }
-    })();
+    try {
+      const lax = require('./lib/lax') as typeof import('./lib/lax');
+      const d = await lax.laxCardDetails(cardNumber!, stepUpToken);
+      setDetails(d);
+    } catch (e: any) {
+      setErr(e?.message || 'Could not load card details — try again.');
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    if (!visible) { setDetails(null); setShown(false); setErr(null); setNeedsStepUp(false); return; }
+    if (!cardNumber) return;
+    const apiClient = require('./lib/auth-client').apiClient as { getCachedStepUp(): string | null };
+    const cached = apiClient.getCachedStepUp();
+    if (cached) void fetchDetails(cached);
+    else setNeedsStepUp(true);
   }, [visible, cardNumber]);
 
   if (!visible) return null;
   return (
     <SheetShell title="Card Details" onClose={onClose}>
-      {loading ? (
+      {needsStepUp ? (
+        <StepUpPasswordPrompt
+          onCancel={onClose}
+          onConfirm={async (password) => {
+            try {
+              const apiClient = require('./lib/auth-client').apiClient as { stepUp(p: string): Promise<{ stepUpToken: string }> };
+              const { stepUpToken } = await apiClient.stepUp(password);
+              setNeedsStepUp(false);
+              await fetchDetails(stepUpToken);
+              return null;
+            } catch (e: any) {
+              return e?.message || 'Incorrect password';
+            }
+          }}
+        />
+      ) : loading ? (
         <ActivityIndicator color={C.blue}/>
       ) : err ? (
         <Text style={{ color: '#ef4444', fontSize: 13 }}>{err}</Text>

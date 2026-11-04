@@ -35,6 +35,17 @@ vi.mock('../lib/db.js', () => ({
   checkDbConnection: () => Promise.resolve(true),
   db: { query: dbQuery },
 }));
+// Real rate limiting is tested once, in isolation, in security.test.ts — a
+// shared express-rate-limit counter keyed on the test runner's one IP would
+// otherwise accumulate across every test in this file (and now across the
+// step-up tests added for THN-R1 M-04 too) and start 429ing unrelated
+// assertions. Pass-through no-ops here, same idea as the db/redis mocks above.
+vi.mock('../middleware/rate-limit.js', () => ({
+  laxOpLimiter:      (_req: unknown, _res: unknown, next: () => void) => next(),
+  sensitiveOpLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  authLimiter:        (_req: unknown, _res: unknown, next: () => void) => next(),
+  generalLimiter:     (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
 vi.mock('../lib/redis.js', () => ({
   checkRedisConnection: () => Promise.resolve(true),
   redis: { get: vi.fn(), set: vi.fn() },
@@ -46,6 +57,7 @@ vi.mock('../lib/sessions.js', () => ({ isSessionLive: () => Promise.resolve(true
 import request from 'supertest';
 import { createApp } from '../app.js';
 import { signAccessToken } from '../lib/jwt.js';
+import { issueStepUpToken } from '../lib/step-up.js';
 
 let app: ReturnType<typeof createApp>;
 let token: string;
@@ -64,6 +76,7 @@ beforeEach(() => {
 });
 
 const auth = () => `Bearer ${token}`;
+const stepUp = () => issueStepUpToken('user-l', 'sess-l').token;
 function jsonRes(status: number, body: unknown) {
   return { status, json: () => Promise.resolve(body) };
 }
@@ -302,9 +315,37 @@ describe('physical card upstream paths', () => {
 
   it('ownership-gates PIN reads', async () => {
     dbQueryOne.mockResolvedValueOnce(null);
-    const res = await request(app).get('/lax/card/not-mine/pin').set('Authorization', auth());
+    const res = await request(app).get('/lax/card/not-mine/pin').set('Authorization', auth()).set('x-step-up-token', stepUp());
     expect(res.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('step-up auth on card PIN/details/activate (THN-R1 M-04)', () => {
+  it('refuses PIN/details/activate without a step-up token, even with a valid session', async () => {
+    const noStepUp = await request(app).get('/lax/card/card-1/pin').set('Authorization', auth());
+    expect(noStepUp.status).toBe(403);
+    expect(noStepUp.body.code).toBe('step_up_required');
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const details = await request(app).get('/lax/card/card-1/details').set('Authorization', auth());
+    expect(details.status).toBe(403);
+
+    const activate = await request(app).post('/lax/card/card-1/activate').set('Authorization', auth());
+    expect(activate.status).toBe(403);
+  });
+
+  it('refuses a step-up token minted for a different session', async () => {
+    const wrongSession = issueStepUpToken('user-l', 'some-other-session').token;
+    const res = await request(app).get('/lax/card/card-1/pin').set('Authorization', auth()).set('x-step-up-token', wrongSession);
+    expect(res.status).toBe(403);
+  });
+
+  it('succeeds with a valid step-up token', async () => {
+    dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
+    fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: '1234' }));
+    const res = await request(app).get('/lax/card/card-1/pin').set('Authorization', auth()).set('x-step-up-token', stepUp());
+    expect(res.status).toBe(200);
   });
 });
 

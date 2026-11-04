@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Check, ChevronLeft, Plus, CreditCard, Shield, ShieldOff, MoreHorizontal, AlertTriangle,
   Eye, EyeOff, ExternalLink,
@@ -525,6 +525,80 @@ function LaxDashboard({
   );
 }
 
+/* ── step-up auth (THN-R1 M-04) ───────────────────────────────────────
+   Card PIN view/change and full card details now require a fresh step-up
+   grant from the server (POST /auth/step-up) on top of the normal
+   session. ensure() returns a cached token if one's still valid, else
+   shows a password prompt and resolves once the user confirms (or null if
+   they cancel). */
+function StepUpPasswordModal({ onCancel, onSubmit }: {
+  onCancel: () => void;
+  onSubmit: (password: string) => Promise<string | null>;
+}) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setErr(null);
+    const error = await onSubmit(password);
+    setBusy(false);
+    if (error) setErr(error);
+  };
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: 340 }}>
+        <div className="modal-body" style={{ gap: 14 }}>
+          <div style={{ color: 'var(--text-primary)', fontSize: 16, fontWeight: 800 }}>Confirm your password</div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+            For your security, re-enter your Thanos account password to continue.
+          </p>
+          <input
+            className="field-input" type="password" autoComplete="current-password" placeholder="Password"
+            value={password} onChange={e => setPassword(e.target.value)} autoFocus
+            onKeyDown={e => { if (e.key === 'Enter') void submit(); }}
+          />
+          {err && <span style={{ color: '#ef4444', fontSize: 12 }}>{err}</span>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button className="btn-outline" style={{ flex: 1 }} onClick={onCancel} disabled={busy}>Cancel</button>
+            <button className="btn-primary" style={{ flex: 1 }} onClick={submit} disabled={busy || !password}>
+              {busy ? 'Confirming…' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Returns `ensure()` — resolves a valid step-up token, prompting for the
+ *  password if there's no cached one — and `modal`, which the caller must
+ *  render (it's null unless a prompt is currently open). */
+function useStepUp(): { ensure: () => Promise<string | null>; modal: React.ReactNode } {
+  const [pending, setPending] = useState<{ resolve: (token: string | null) => void } | null>(null);
+  const ensure = useCallback((): Promise<string | null> => {
+    const cached = apiClient.getCachedStepUp();
+    if (cached) return Promise.resolve(cached);
+    return new Promise<string | null>((resolve) => setPending({ resolve }));
+  }, []);
+  const modal = pending ? (
+    <StepUpPasswordModal
+      onCancel={() => { pending.resolve(null); setPending(null); }}
+      onSubmit={async (password) => {
+        try {
+          const { stepUpToken } = await apiClient.stepUp(password);
+          pending.resolve(stepUpToken);
+          setPending(null);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : 'Incorrect password';
+        }
+      }}
+    />
+  ) : null;
+  return { ensure, modal };
+}
+
 /* ── card details modal (sensitive — never persisted outside this box) ── */
 
 function maskTail(v: string | undefined, keep = 4): string {
@@ -538,12 +612,18 @@ function CardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => 
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const { ensure: ensureStepUp, modal: stepUpModal } = useStepUp();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // THN-R1 M-04: GET .../details itself now requires a step-up grant —
+      // a cancelled prompt closes the modal rather than leaving it stuck loading.
+      const stepUpToken = await ensureStepUp();
+      if (cancelled) return;
+      if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNo);
+        const d = await laxCardDetails(cardNo, stepUpToken);
         if (!cancelled) setDetails(d);
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load card details.');
@@ -558,6 +638,7 @@ function CardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => 
   const close = () => { setDetails(null); onClose(); };
 
   return (
+    <>
     <div className="modal-backdrop" onClick={close}>
       <div className="modal-box modal-popup" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -619,6 +700,8 @@ function CardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => 
         </div>
       </div>
     </div>
+    {stepUpModal}
+    </>
   );
 }
 
@@ -772,17 +855,24 @@ function PinPanel({ cardNo }: { cardNo: string }) {
   const [current, setCurrent] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { ensure: ensureStepUp, modal: stepUpModal } = useStepUp();
   const save = async () => {
     if (!/^\d{4,6}$/.test(pin)) { setErr('PIN must contain 4 to 6 digits.'); return; }
     setBusy(true); setErr(null);
-    try { await laxSetPin(cardNo, pin); setPin(''); setCurrent('PIN updated successfully.'); }
+    try {
+      const stepUpToken = await ensureStepUp();
+      if (!stepUpToken) return;
+      await laxSetPin(cardNo, pin, stepUpToken); setPin(''); setCurrent('PIN updated successfully.');
+    }
     catch (e) { setErr(e instanceof Error ? e.message : 'Could not update PIN.'); }
     finally { setBusy(false); }
   };
   const reveal = async () => {
     setBusy(true); setErr(null);
     try {
-      const raw = await laxGetPin(cardNo);
+      const stepUpToken = await ensureStepUp();
+      if (!stepUpToken) return;
+      const raw = await laxGetPin(cardNo, stepUpToken);
       const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
       setCurrent(String(o.pin ?? o.PIN ?? o.message ?? 'PIN unavailable'));
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not load PIN.'); }
@@ -795,6 +885,7 @@ function PinPanel({ cardNo }: { cardNo: string }) {
     {current && <span style={{ color: '#22c55e', fontSize: 12 }}>{current}</span>}
     <button className="btn-primary" onClick={save} disabled={busy} style={{ width: '100%' }}>{busy ? 'Working…' : 'Save PIN'}</button>
     <button className="btn-outline" onClick={reveal} disabled={busy} style={{ width: '100%' }}>View Current PIN</button>
+    {stepUpModal}
   </div>;
 }
 

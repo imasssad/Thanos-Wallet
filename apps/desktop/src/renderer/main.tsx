@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HDNodeWallet, Mnemonic, Wallet, JsonRpcProvider, formatEther, getAddress } from 'ethers';
 import './styles.css';
@@ -75,6 +75,7 @@ import {
   laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractKycUrl,
   type LaxStatus, type LaxCard as LaxCardData, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from './lax';
+import { apiClient } from './auth-client';
 
 type SignerChoice = 'seed' | 'ledger' | 'trezor';
 
@@ -2436,6 +2437,73 @@ function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cu
   );
 }
 
+/* ── step-up auth (THN-R1 M-04) ───────────────────────────────────────
+   Card details now requires a fresh step-up grant from the server
+   (POST /auth/step-up) on top of the normal session — see
+   apps/web/components/LaxCard.tsx for the same pattern. */
+function StepUpPasswordModal({ onCancel, onSubmit }: {
+  onCancel: () => void;
+  onSubmit: (password: string) => Promise<string | null>;
+}) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setErr(null);
+    const error = await onSubmit(password);
+    setBusy(false);
+    if (error) setErr(error);
+  };
+  return (
+    <Modal title="Confirm your password" onClose={onCancel}>
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+          For your security, re-enter your Thanos account password to continue.
+        </p>
+        <input
+          type="password" autoComplete="current-password" placeholder="Password" value={password} autoFocus
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+          style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: 13 }}
+        />
+        {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <button onClick={onCancel} disabled={busy} style={{ flex: 1, padding: '11px 16px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-primary)' }}>Cancel</button>
+          <button onClick={submit} disabled={busy || !password} style={{ flex: 1, padding: '11px 16px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', border: 'none', background: 'var(--blue, #3b7af7)', color: '#fff', opacity: busy || !password ? 0.6 : 1 }}>
+            {busy ? 'Confirming…' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function useStepUp(): { ensure: () => Promise<string | null>; modal: React.ReactNode } {
+  const [pending, setPending] = useState<{ resolve: (token: string | null) => void } | null>(null);
+  const ensure = useCallback((): Promise<string | null> => {
+    const cached = apiClient.getCachedStepUp();
+    if (cached) return Promise.resolve(cached);
+    return new Promise<string | null>((resolve) => setPending({ resolve }));
+  }, []);
+  const modal = pending ? (
+    <StepUpPasswordModal
+      onCancel={() => { pending.resolve(null); setPending(null); }}
+      onSubmit={async (password) => {
+        try {
+          const { stepUpToken } = await apiClient.stepUp(password);
+          pending.resolve(stepUpToken);
+          setPending(null);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : 'Incorrect password';
+        }
+      }}
+    />
+  ) : null;
+  return { ensure, modal };
+}
+
 /** PAN / expiry / CVC — genuinely sensitive. Never persisted outside this
  *  modal's own state, cleared the moment it closes; blurred-by-default with
  *  a click-to-reveal gate (same pattern as ExportSeedModal's phrase/key). */
@@ -2444,12 +2512,16 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
   const [hidden, setHidden]   = useState(true);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState<string | null>(null);
+  const { ensure: ensureStepUp, modal: stepUpModal } = useStepUp();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const stepUpToken = await ensureStepUp();
+      if (cancelled) return;
+      if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNumber);
+        const d = await laxCardDetails(cardNumber, stepUpToken);
         if (!cancelled) setDetails(d);
       } catch (e) {
         if (!cancelled) setErr((e as Error)?.message || 'Could not load card details — try again.');
@@ -2473,6 +2545,7 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
   );
 
   return (
+    <>
     <Modal title="Card Details" onClose={close}>
       <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {loading ? (
@@ -2495,6 +2568,8 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
         <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>Never stored on this device — cleared as soon as you close this window.</p>
       </div>
     </Modal>
+    {stepUpModal}
+    </>
   );
 }
 
