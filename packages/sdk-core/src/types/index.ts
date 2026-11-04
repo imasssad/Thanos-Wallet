@@ -77,6 +77,11 @@ export interface SendAssetRequest {
    *  human amount without an extra decimals() RPC. Mind the outliers:
    *  BSC-peg USDT/USDC are 18 while most other deployments are 6. */
   tokenDecimals?: number;
+  /** Arbitrary calldata — either the wallet's own "Show hex data" field on a
+   *  native send, or (O-03) a dApp eth_sendTransaction's own `data`/`input`,
+   *  which can carry a contract call dressed up as a plain transfer. Native
+   *  sends only: a token send's calldata is built by the simulator itself. */
+  data?: string;
 }
 
 export interface BitcoinSendRequest {

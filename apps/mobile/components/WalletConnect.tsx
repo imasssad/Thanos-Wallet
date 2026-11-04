@@ -395,9 +395,14 @@ export function WalletConnectRequestHost({ account }: { account?: string }) {
     if (!pending || pending.method !== 'eth_sendTransaction') {
       setSimReport(null); return;
     }
-    const tx = (pending.params as unknown[] | undefined)?.[0] as { to?: string; value?: string; from?: string } | undefined;
+    const tx = (pending.params as unknown[] | undefined)?.[0] as { to?: string; value?: string; from?: string; data?: string; input?: string } | undefined;
     if (!tx?.to) { setSimReport(null); return; }
     const toAddr = tx.to;   // narrow for the async closure
+    // O-03: a dApp's eth_sendTransaction can carry arbitrary calldata — a
+    // contract call dressed up as a plain transfer. Without this, the
+    // simulator estimated gas as a bare native send, silently missing a
+    // call that will actually revert (or cost far more than 21k gas).
+    const txData = (tx.data && tx.data !== '0x') ? tx.data : (tx.input && tx.input !== '0x') ? tx.input : undefined;
     const simChain = chainIdFromCaip(pending.chainId);
     if (simChain == null) { setSimReport(null); return; }
     let cancelled = false;
@@ -412,6 +417,7 @@ export function WalletConnectRequestHost({ account }: { account?: string }) {
           from:    tx.from || '',
           to:      toAddr,
           amount:  amountEth,
+          data:    txData,
         });
         if (!cancelled) setSimReport(report);
       } catch { if (!cancelled) setSimReport(null); }

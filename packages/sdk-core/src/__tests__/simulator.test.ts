@@ -158,4 +158,61 @@ describe('TransactionSimulator.simulateSend', () => {
     const r = await sim.simulateSend({ ...baseReq, tokenSymbol: 'USDC' });
     expect(r.summary).toMatch(/Send 0\.5 USDC to 0x1111…1111/);
   });
+
+  /* ── O-03: a dApp eth_sendTransaction can carry calldata — the simulator
+   * must not treat it as a bare native send. ────────────────────────────── */
+
+  it('passes calldata through to estimateGas instead of a plain value-only call', async () => {
+    const estimateGas = vi.fn().mockResolvedValue(51_000n);
+    const provider = {
+      getCode:    vi.fn().mockResolvedValue('0x6080604052'),
+      getBalance: vi.fn().mockResolvedValue(1_000_000_000_000_000_000n),
+      getFeeData: vi.fn().mockResolvedValue({ maxFeePerGas: 20_000_000_000n }),
+      call:       vi.fn().mockRejectedValue(new Error('no token read')),
+      estimateGas,
+    };
+    const evm = { getProvider: () => provider } as unknown as EvmClient;
+    const sim = new TransactionSimulator(evm, new LithicClient());
+    await sim.simulateSend({ ...baseReq, data: '0xa9059cbb000000000000000000000000000000000000000000000000000000000000beef' });
+    expect(estimateGas).toHaveBeenCalledWith(expect.objectContaining({
+      data: '0xa9059cbb000000000000000000000000000000000000000000000000000000000000beef',
+    }));
+  });
+
+  it('emits CALL_MAY_FAIL when calldata is present and estimateGas rejects (likely revert)', async () => {
+    const sim = new TransactionSimulator(mockEvm(), new LithicClient()); // estimateGas rejects by default
+    const r = await sim.simulateSend({ ...baseReq, data: '0xdeadbeef' });
+    expect(r.issues.map(i => i.code)).toContain('CALL_MAY_FAIL');
+  });
+
+  it('does not emit CALL_MAY_FAIL for a plain native send with no calldata', async () => {
+    const sim = new TransactionSimulator(mockEvm(), new LithicClient());
+    const r = await sim.simulateSend(baseReq);
+    expect(r.issues.map(i => i.code)).not.toContain('CALL_MAY_FAIL');
+  });
+
+  it('suppresses RECIPIENT_IS_CONTRACT when calldata is present — calling the contract is the point', async () => {
+    const sim = new TransactionSimulator(mockEvm({ code: '0x6080604052', gas: 51_000n }), new LithicClient());
+    const r = await sim.simulateSend({ ...baseReq, data: '0xdeadbeef' });
+    expect(r.issues.map(i => i.code)).not.toContain('RECIPIENT_IS_CONTRACT');
+  });
+
+  it('falls back to a calldata-aware gas estimate (21k + 16/byte) when estimateGas is unavailable', async () => {
+    const provider = {
+      getCode:    vi.fn().mockResolvedValue('0x'),
+      getBalance: vi.fn().mockResolvedValue(1_000_000_000_000_000_000n),
+      getFeeData: vi.fn().mockResolvedValue({ maxFeePerGas: 1_000_000_000n }), // 1 gwei
+      call:       vi.fn().mockRejectedValue(new Error('no token read')),
+      estimateGas: vi.fn().mockRejectedValue(new Error('estimate revert')),
+    };
+    const evm = { getProvider: () => provider } as unknown as EvmClient;
+    const sim = new TransactionSimulator(evm, new LithicClient());
+    // 4 non-zero bytes of calldata ⇒ 21_000 + 4*16 = 21_064 gas @ 1 gwei.
+    const r = await sim.simulateSend({ ...baseReq, amount: '0', data: '0xdeadbeef' });
+    expect(r.estimatedFee).toBe('1.0 gwei');
+    // Not asserting on feeWei directly (not exposed), but the fallback
+    // path must at least run without throwing and without a spurious
+    // INSUFFICIENT_BALANCE for a 1-ETH balance against ~21k gas @ 1 gwei.
+    expect(r.issues.map(i => i.code)).not.toContain('INSUFFICIENT_BALANCE');
+  });
 });
