@@ -58,28 +58,47 @@ function hdPath(): string {
 }
 
 /** The active account's signer: a private-key wallet's own key, else the
- *  seed's key at the active index. */
+ *  seed's key at the active index.
+ *
+ *  Hardening-audit H-1 (desktop, slice 2): FALLBACK only, for the same
+ *  "older shell / dev hot-reload" case send.ts documents. The main
+ *  process already caches the seed from unlock, so quanttSignIn and
+ *  quanttBindWithdrawalAddress below try window.thanosDesktop.signer
+ *  first and only derive a wallet here when that bridge isn't available. */
 export function quanttWallet(seed: string[]): Wallet | HDNodeWallet {
   if (!seed?.length) throw new Error('Wallet is locked');
   if (isPrivateKeyWallet(seed)) return new Wallet(seed[0].trim());
   return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath());
 }
 
-function signerFor(wallet: Wallet | HDNodeWallet) {
-  return (typed: Eip712TypedData): Promise<string> => {
-    // ethers wants types without the EIP712Domain entry (derived from domain).
-    const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
-    void _omit;
-    return wallet.signTypedData(
-      typed.domain,
-      types as Record<string, Array<{ name: string; type: string }>>,
-      typed.message,
-    );
-  };
+function stripDomain(typed: Eip712TypedData) {
+  const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
+  void _omit;
+  return types as Record<string, Array<{ name: string; type: string }>>;
 }
 
-/** Sign in to Quantt with the unlocked wallet seed (inline EIP-712). */
+function signerFor(wallet: Wallet | HDNodeWallet) {
+  return (typed: Eip712TypedData): Promise<string> =>
+    // ethers wants types without the EIP712Domain entry (derived from domain).
+    wallet.signTypedData(typed.domain, stripDomain(typed), typed.message);
+}
+
+/** The main-process signer bridge, if wired and unlocked — same guard
+ *  wc-signer.ts and send.ts use before trusting it over the fallback. */
+async function signerBridge() {
+  const bridge = typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined;
+  return bridge && (await bridge.hasSeed()) ? bridge : null;
+}
+
+/** Sign in to Quantt with the unlocked wallet (inline EIP-712 via the
+ *  main-process bridge; falls back to deriving the key in-renderer). */
 export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
+  const bridge = await signerBridge();
+  if (bridge) {
+    const path = hdPath();
+    const address = await bridge.address(path);
+    return quantt.signIn(address, (typed) => bridge.typedData(path, { domain: typed.domain, types: stripDomain(typed), value: typed.message }));
+  }
   const wallet = quanttWallet(seed);
   return quantt.signIn(wallet.address, signerFor(wallet));
 }
@@ -88,6 +107,15 @@ export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
  *  (challenge → EIP-712 signature → submit). Withdrawals only ever pay out
  *  to this address. */
 export async function quanttBindWithdrawalAddress(seed: string[]): Promise<string> {
+  const bridge = await signerBridge();
+  if (bridge) {
+    const path = hdPath();
+    const address = await bridge.address(path);
+    const typed = await quantt.withdrawalAddressChallenge(address);
+    const signature = await bridge.typedData(path, { domain: typed.domain, types: stripDomain(typed), value: typed.message });
+    await quantt.bindWithdrawalAddress({ address, signature });
+    return address;
+  }
   const wallet = quanttWallet(seed);
   const typed = await quantt.withdrawalAddressChallenge(wallet.address);
   await quantt.bindWithdrawalAddress({ address: wallet.address, signature: await signerFor(wallet)(typed) });
