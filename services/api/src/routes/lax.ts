@@ -191,16 +191,18 @@ interface FetchOpts { method?: string; body?: string; headers?: Record<string, s
 interface LaxCardRow { id: string; user_id: string; card_number: string }
 interface LaxHolderRow { id?: string; user_id?: string; holder_id: string; status?: string | null; created_at?: string; updated_at?: string }
 
-/** True iff `cardNumber` is recorded as this user's in lax_cards. Every
- *  card-scoped route below gates on this — LAX's own API has no per-end-user
- *  scoping, so the mapping we record at issue time is the only thing that
- *  stops one Thanos user reading/topping-up another's card. */
-async function ownsCard(userId: string, cardNumber: string): Promise<boolean> {
-  const row = await queryOne<LaxCardRow>(
-    `select id from lax_cards where user_id = $1 and card_number = $2`,
-    [userId, cardNumber],
+/** Resolves our own opaque lax_cards.id (THN-R1-adjacent / hardening-audit
+ *  M-7: "move card identifiers out of paths") to the real card_number, iff
+ *  it's recorded as this user's — the same ownership gate as ownsCard, but
+ *  keyed on an id that means nothing outside this API instead of the real
+ *  card number, which otherwise sat in every URL path (and so in access
+ *  logs, proxies, browser history) for every card-scoped route. Null on
+ *  any mismatch — callers treat that as 404, same as before. */
+async function resolveOwnedCard(userId: string, cardId: string): Promise<LaxCardRow | null> {
+  return queryOne<LaxCardRow>(
+    `select id, user_id, card_number from lax_cards where user_id = $1 and id = $2`,
+    [userId, cardId],
   );
-  return Boolean(row);
 }
 
 const AccountSchema = z.object({
@@ -232,7 +234,7 @@ const IssueSchema = z.object({
   currency: z.string().trim().regex(/^[A-Za-z0-9_-]{1,16}$/).transform(v => v.toUpperCase()).optional(),
   email:    z.string().trim().email().max(254),
 });
-const CardNumberSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{3,64}$/);
+const CardIdSchema = z.string().uuid();
 const CardStatusSchema = z.object({ status: z.enum(['active', 'frozen']) });
 const HolderSchema = z.object({
   name: z.string().trim().min(3).max(22),
@@ -508,12 +510,17 @@ laxRouter.get('/cards', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
   try {
-    const ownedRows = await query<{ card_number: string; currency: string | null }>(
-      `select card_number, currency from lax_cards where user_id = $1 order by created_at desc`,
+    const ownedRows = await query<{ id: string; card_number: string; currency: string | null }>(
+      `select id, card_number, currency from lax_cards where user_id = $1 order by created_at desc`,
       [userId],
     );
     return res.status(200).json({
       cards: ownedRows.map((r) => ({
+        // id: the opaque identifier every other card route now takes
+        // instead of card_number (M-7) — clients use this to build
+        // /card/:id/... URLs; card_number stays here only for display
+        // (masking to last4 etc.), never re-sent in a path.
+        id: r.id,
         card_number: r.card_number,
         currency: r.currency ?? undefined,
       })),
@@ -523,21 +530,19 @@ laxRouter.get('/cards', async (req, res: Response) => {
   }
 });
 
-/** GET /lax/card/:cardNumber/balance — physical get-balance. */
-laxRouter.get('/card/:cardNumber/balance', async (req, res: Response) => {
+/** GET /lax/card/:cardId/balance — physical get-balance. cardId is our own
+ *  opaque lax_cards.id, not the real card number (M-7). */
+laxRouter.get('/card/:cardId/balance', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
-  const cardParse = CardNumberSchema.safeParse(req.params.cardNumber);
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
   if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
   const userId = (req as unknown as AuthRequest).userId;
-  const owned = await queryOne<LaxCardRow>(
-    `select id, user_id, card_number from lax_cards where user_id = $1 and card_number = $2`,
-    [userId, cardParse.data],
-  );
+  const owned = await resolveOwnedCard(userId, cardParse.data);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     // Virtual-card balance (the cards Thanos issues are Zypto virtual cards).
     const upstream = await laxFetch('/api/cards/get-card-balance', {
-      method: 'POST', body: JSON.stringify({ card_number: cardParse.data }),
+      method: 'POST', body: JSON.stringify({ card_number: owned.card_number }),
     });
     return sendUpstream(res, 'card/balance', upstream, 'Card balance unavailable right now.');
   } catch {
@@ -630,15 +635,16 @@ laxRouter.post('/card/issue', laxOpLimiter, async (req, res: Response) => {
 /** GET /lax/card/:cardNumber/transactions — POST /api/cards/get-card-transactions.
  *  Upstream returns a stringified-JSON blob (text/plain), forwarded as-is;
  *  the client parses. Ownership-gated like the rest. */
-laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
+laxRouter.get('/card/:cardId/transactions', async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
-  const cardNumber = String(req.params.cardNumber);
-  if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
-  if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
+  const owned = await resolveOwnedCard(userId, cardParse.data);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     const upstream = await laxFetch('/api/cards/get-card-transactions', {
-      method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
+      method: 'POST', body: JSON.stringify({ card_number: owned.card_number }),
     });
     return sendUpstream(res, 'card/transactions', upstream, 'Card transactions unavailable right now.');
   } catch {
@@ -648,15 +654,16 @@ laxRouter.get('/card/:cardNumber/transactions', async (req, res: Response) => {
 
 /** GET /lax/card/:cardNumber/details — physical view-card. Ownership-gated
  *  + laxOpLimiter'd. Never logged here. */
-laxRouter.get('/card/:cardNumber/details', laxOpLimiter, requireStepUp, async (req, res: Response) => {
+laxRouter.get('/card/:cardId/details', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
-  const cardNumber = String(req.params.cardNumber);
-  if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
-  if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
+  const owned = await resolveOwnedCard(userId, cardParse.data);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
     const upstream = await laxFetch('/api/cards/get-card-details', {
-      method: 'POST', body: JSON.stringify({ card_number: cardNumber }),
+      method: 'POST', body: JSON.stringify({ card_number: owned.card_number }),
     });
     return sendUpstream(res, 'card/details', upstream, 'Card details unavailable right now.');
   } catch {
@@ -669,16 +676,17 @@ laxRouter.get('/card/:cardNumber/details', laxOpLimiter, requireStepUp, async (r
  *  `card_number` in the body (no explicit state field), so this forwards
  *  an optional `status` too if the client sends one — to be confirmed
  *  against the live API ("errors we can correct together" — Robert). */
-laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Response) => {
+laxRouter.post('/card/:cardId/status', laxOpLimiter, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
   const userId = (req as unknown as AuthRequest).userId;
-  const cardNumber = String(req.params.cardNumber);
-  if (!CardNumberSchema.safeParse(cardNumber).success) return res.status(404).json({ error: 'Card not found' });
-  if (!(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
+  const owned = await resolveOwnedCard(userId, cardParse.data);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   const parsed = CardStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'status must be active or frozen' });
   const desired = parsed.data.status;
-  const body: Record<string, unknown> = { card_number: cardNumber };
+  const body: Record<string, unknown> = { card_number: owned.card_number };
   if (typeof desired === 'string' && desired) body.status = desired;
   try {
     const upstream = await laxFetch('/api/physical-cards/change-card-status', {
@@ -691,37 +699,43 @@ laxRouter.post('/card/:cardNumber/status', laxOpLimiter, async (req, res: Respon
 });
 
 /** Physical-card PIN operations are provider-backed and never persisted by Thanos. */
-laxRouter.get('/card/:cardNumber/pin', laxOpLimiter, requireStepUp, async (req, res: Response) => {
+laxRouter.get('/card/:cardId/pin', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
-  const cardNumber = String(req.params.cardNumber);
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
   const userId = (req as unknown as AuthRequest).userId;
-  if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
+  const owned = await resolveOwnedCard(userId, cardParse.data);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
-    const upstream = await laxFetch('/api/physical-cards/get-pin', { method: 'POST', body: JSON.stringify({ card_number: cardNumber }) });
+    const upstream = await laxFetch('/api/physical-cards/get-pin', { method: 'POST', body: JSON.stringify({ card_number: owned.card_number }) });
     return sendUpstream(res, 'card/pin', upstream, 'LAX could not retrieve the PIN.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
-laxRouter.post('/card/:cardNumber/pin', laxOpLimiter, requireStepUp, async (req, res: Response) => {
+laxRouter.post('/card/:cardId/pin', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
-  const cardNumber = String(req.params.cardNumber);
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
   const userId = (req as unknown as AuthRequest).userId;
   const parsed = PinSchema.safeParse(req.body ?? {});
-  if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
+  const owned = await resolveOwnedCard(userId, cardParse.data);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   if (!parsed.success) return res.status(400).json({ error: 'PIN must contain 4 to 6 digits' });
   try {
-    const upstream = await laxFetch('/api/physical-cards/set-pin', { method: 'POST', body: JSON.stringify({ card_number: cardNumber, PIN: parsed.data.PIN }) });
+    const upstream = await laxFetch('/api/physical-cards/set-pin', { method: 'POST', body: JSON.stringify({ card_number: owned.card_number, PIN: parsed.data.PIN }) });
     return sendUpstream(res, 'card/pin', upstream, 'LAX could not set the PIN.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });
 
-laxRouter.post('/card/:cardNumber/activate', laxOpLimiter, requireStepUp, async (req, res: Response) => {
+laxRouter.post('/card/:cardId/activate', laxOpLimiter, requireStepUp, async (req, res: Response) => {
   if (!configured()) return res.status(503).json({ error: 'LAX not configured yet' });
-  const cardNumber = String(req.params.cardNumber);
+  const cardParse = CardIdSchema.safeParse(req.params.cardId);
   const userId = (req as unknown as AuthRequest).userId;
-  if (!CardNumberSchema.safeParse(cardNumber).success || !(await ownsCard(userId, cardNumber))) return res.status(404).json({ error: 'Card not found' });
+  if (!cardParse.success) return res.status(404).json({ error: 'Card not found' });
+  const owned = await resolveOwnedCard(userId, cardParse.data);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
   try {
-    const upstream = await laxFetch('/api/physical-cards/activate-card', { method: 'POST', body: JSON.stringify({ card_number: cardNumber }) });
+    const upstream = await laxFetch('/api/physical-cards/activate-card', { method: 'POST', body: JSON.stringify({ card_number: owned.card_number }) });
     return sendUpstream(res, 'card/activate', upstream, 'LAX could not activate the card.');
   } catch { return res.status(502).json({ error: 'LAX upstream unreachable' }); }
 });

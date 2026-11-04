@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
-  laxRegisterThanosAccount, hasThanosAccount, cardNumberOf,
+  laxRegisterThanosAccount, hasThanosAccount, cardNumberOf, cardIdOf,
   laxIssueCard, laxCardDetails, laxSetCardStatus, laxGetPin, laxSetPin, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, findKycUrl,
   type LaxStatus, type LaxCard as LaxCardT, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from '../lib/lax';
@@ -607,7 +607,7 @@ function maskTail(v: string | undefined, keep = 4): string {
   return clean.length <= keep ? clean : '•'.repeat(clean.length - keep) + clean.slice(-keep);
 }
 
-function CardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+function CardDetailsModal({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const [details, setDetails]   = useState<LaxCardDetails | null>(null);
   const [loading, setLoading]   = useState(true);
   const [err, setErr]           = useState<string | null>(null);
@@ -623,7 +623,7 @@ function CardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => 
       if (cancelled) return;
       if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNo, stepUpToken);
+        const d = await laxCardDetails(cardId, stepUpToken);
         if (!cancelled) setDetails(d);
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load card details.');
@@ -632,7 +632,7 @@ function CardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => 
       }
     })();
     return () => { cancelled = true; };
-  }, [cardNo]);
+  }, [cardId]);
 
   // Never leaves sensitive data behind — cleared before the modal unmounts.
   const close = () => { setDetails(null); onClose(); };
@@ -733,7 +733,7 @@ function ConfirmDialog({
 
 /* ── "More" action sheet ───────────────────────────────────────────────── */
 
-function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+function MoreModal({ cardNo, cardId, onClose }: { cardNo: string; cardId: string; onClose: () => void }) {
   const [showHistory, setShowHistory] = useState(false);
   const [showManage, setShowManage] = useState(false);
   const [showPhysical, setShowPhysical] = useState(false);
@@ -749,7 +749,7 @@ function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void })
     setLoading(true);
     setErr(null);
     try {
-      setTxns(await laxCardTransactions(cardNo));
+      setTxns(await laxCardTransactions(cardId));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not load transactions.');
     } finally { setLoading(false); }
@@ -795,7 +795,7 @@ function MoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void })
             ) : showPhysical ? (
               <PhysicalCardPanel onNotice={providerNotice} />
             ) : showPin ? (
-              <PinPanel cardNo={cardNo} />
+              <PinPanel cardId={cardId} />
             ) : loading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
                 <div style={{
@@ -850,7 +850,7 @@ function ManageCardPanel({ cardNo, onNotice, onPin }: { cardNo: string; onNotice
   </div>;
 }
 
-function PinPanel({ cardNo }: { cardNo: string }) {
+function PinPanel({ cardId }: { cardId: string }) {
   const [pin, setPin] = useState('');
   const [current, setCurrent] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -862,7 +862,7 @@ function PinPanel({ cardNo }: { cardNo: string }) {
     try {
       const stepUpToken = await ensureStepUp();
       if (!stepUpToken) return;
-      await laxSetPin(cardNo, pin, stepUpToken); setPin(''); setCurrent('PIN updated successfully.');
+      await laxSetPin(cardId, pin, stepUpToken); setPin(''); setCurrent('PIN updated successfully.');
     }
     catch (e) { setErr(e instanceof Error ? e.message : 'Could not update PIN.'); }
     finally { setBusy(false); }
@@ -872,7 +872,7 @@ function PinPanel({ cardNo }: { cardNo: string }) {
     try {
       const stepUpToken = await ensureStepUp();
       if (!stepUpToken) return;
-      const raw = await laxGetPin(cardNo, stepUpToken);
+      const raw = await laxGetPin(cardId, stepUpToken);
       const o = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
       setCurrent(String(o.pin ?? o.PIN ?? o.message ?? 'PIN unavailable'));
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not load PIN.'); }
@@ -1072,15 +1072,16 @@ export function LaxCardModal({ onClose }: { onClose: () => void }) {
   const [actionErr, setActionErr]         = useState<string | null>(null);
 
   const cardNo = card ? cardNumberOf(card) : undefined;
+  const cardId = card ? cardIdOf(card) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
   const frozen = String(card?.status || '').toLowerCase() === 'frozen';
 
   const doFreezeToggle = async () => {
-    if (!cardNo) return;
+    if (!cardId) return;
     setFreezeBusy(true);
     setActionErr(null);
     try {
-      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await laxSetCardStatus(cardId, frozen ? 'active' : 'frozen');
       await refresh();
     } catch (e) {
       setActionErr(e instanceof Error ? e.message : 'Could not update card status — try again.');
@@ -1099,8 +1100,8 @@ export function LaxCardModal({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = cardNumberOf(list[0]);
-          if (cn) { laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = cardIdOf(list[0]);
+          if (ci) { laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
     } catch { /* leave status null — treated as not-live */ }
@@ -1171,8 +1172,8 @@ export function LaxCardModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {showDetails && cardNo && (
-        <CardDetailsModal cardNo={cardNo} onClose={() => setShowDetails(false)} />
+      {showDetails && cardId && (
+        <CardDetailsModal cardId={cardId} onClose={() => setShowDetails(false)} />
       )}
 
       {confirmFreeze && cardNo && (
@@ -1188,8 +1189,8 @@ export function LaxCardModal({ onClose }: { onClose: () => void }) {
         />
       )}
 
-      {showMore && cardNo && (
-        <MoreModal cardNo={cardNo} onClose={() => setShowMore(false)} />
+      {showMore && cardNo && cardId && (
+        <MoreModal cardNo={cardNo} cardId={cardId} onClose={() => setShowMore(false)} />
       )}
     </div>
   );

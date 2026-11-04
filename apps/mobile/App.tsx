@@ -1619,6 +1619,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
 
   const cardNo = card ? (require('./lib/lax').cardNumberOf(card) as string | undefined) : undefined;
+  const cardId = card ? (require('./lib/lax').cardIdOf(card) as string | undefined) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
   const refresh = async (): Promise<import('./lib/lax').LaxStatus | null> => {
@@ -1631,8 +1632,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = lax.cardNumberOf(list[0]);
-          if (cn) { lax.laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = lax.cardIdOf(list[0]);
+          if (ci) { lax.laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
       return st;
@@ -1690,7 +1691,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
                 }}
               />
             )}
-            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
+            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} cardId={cardId} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
             {view === 'topup'    && cardNo && <LaxTopUp C={C} styles={styles} cardNo={cardNo} onDone={(amt: number, cur: string) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
             {view === 'success'  && <LaxSuccess C={C} styles={styles} last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
           </ScrollView>
@@ -1979,7 +1980,7 @@ function LaxTxnRow({ t, C, last }: { t: import('./lib/lax').LaxTxn; C: any; last
   );
 }
 
-function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, onSoon, onRefresh }: any) {
+function LaxDashboard({ C, styles, card, cardId, last4, txns, notLive, onTopUp, onSoon, onRefresh }: any) {
   const balance = card?.balance != null ? Number(card.balance) : null;
   const isFrozen = String(card?.status || '').toLowerCase() === 'frozen';
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1989,7 +1990,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
   const [freezeBusy, setFreezeBusy]   = useState(false);
 
   const toggleFreeze = () => {
-    if (!cardNo || freezeBusy) return;
+    if (!cardId || freezeBusy) return;
     const next = isFrozen ? 'active' : 'frozen';
     Alert.alert(
       isFrozen ? 'Unfreeze card?' : 'Freeze card?',
@@ -2004,7 +2005,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
             setFreezeBusy(true);
             try {
               const lax = require('./lib/lax') as typeof import('./lib/lax');
-              await lax.laxSetCardStatus(cardNo, next);
+              await lax.laxSetCardStatus(cardId, next);
               await onRefresh?.();
             } catch (e: any) {
               Alert.alert('Could not update card', e?.message || 'Try again.');
@@ -2015,7 +2016,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
     );
   };
 
-  const hasCard = Boolean(cardNo);
+  const hasCard = Boolean(cardId);
   const actions = [
     { icon: Plus,       label: 'Top Up',       onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : onTopUp },
     { icon: CreditCard, label: 'Card Details', onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : () => setDetailsOpen(true) },
@@ -2072,7 +2073,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
         <LaxTxnRow key={t.id || i} t={t} C={C} last={i === Math.min(txns.length, 6) - 1}/>
       ))}
 
-      <LaxCardDetailsSheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} cardNumber={cardNo}/>
+      <LaxCardDetailsSheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} cardNumber={cardId}/>
       <LaxMoreSheet visible={moreOpen} onClose={() => setMoreOpen(false)} onHistory={() => setHistoryOpen(true)} onPhysical={() => { setMoreOpen(false); setPhysicalOpen(true); }}/>
       <LaxTxnHistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} txns={txns}/>
       <LaxPhysicalCardSheet visible={physicalOpen} onClose={() => setPhysicalOpen(false)}/>
@@ -2127,7 +2128,7 @@ function StepUpPasswordPrompt({ onCancel, onConfirm }: {
   );
 }
 
-function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolean; onClose: () => void; cardNumber?: string }) {
+function LaxCardDetailsSheet({ visible, onClose, cardNumber: cardId }: { visible: boolean; onClose: () => void; cardNumber?: string }) {
   const C = useColors();
   const [details, setDetails] = useState<import('./lib/lax').LaxCardDetails | null>(null);
   const [shown, setShown]     = useState(false);
@@ -2141,7 +2142,7 @@ function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolea
     setLoading(true); setErr(null);
     try {
       const lax = require('./lib/lax') as typeof import('./lib/lax');
-      const d = await lax.laxCardDetails(cardNumber!, stepUpToken);
+      const d = await lax.laxCardDetails(cardId!, stepUpToken);
       setDetails(d);
     } catch (e: any) {
       setErr(e?.message || 'Could not load card details — try again.');
@@ -2150,12 +2151,12 @@ function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolea
 
   useEffect(() => {
     if (!visible) { setDetails(null); setShown(false); setErr(null); setNeedsStepUp(false); return; }
-    if (!cardNumber) return;
+    if (!cardId) return;
     const apiClient = require('./lib/auth-client').apiClient as { getCachedStepUp(): string | null };
     const cached = apiClient.getCachedStepUp();
     if (cached) void fetchDetails(cached);
     else setNeedsStepUp(true);
-  }, [visible, cardNumber]);
+  }, [visible, cardId]);
 
   if (!visible) return null;
   return (

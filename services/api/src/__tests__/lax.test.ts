@@ -77,6 +77,11 @@ beforeEach(() => {
 
 const auth = () => `Bearer ${token}`;
 const stepUp = () => issueStepUpToken('user-l', 'sess-l').token;
+// Card-scoped routes now take our own opaque lax_cards.id in the path, not
+// the real card number (M-7) — any syntactically valid UUID works here,
+// since ownership is entirely decided by what dbQueryOne is mocked to
+// return for it, not by the UUID's value itself.
+const CARD_ID = '11111111-1111-1111-1111-111111111111';
 function jsonRes(status: number, body: unknown) {
   return { status, json: () => Promise.resolve(body) };
 }
@@ -141,10 +146,10 @@ describe('GET /lax/products', () => {
   });
 });
 
-describe('GET /lax/card/:cardNumber/balance', () => {
+describe('GET /lax/card/:cardId/balance', () => {
   it('404s a card the caller does not own, without calling upstream', async () => {
     dbQueryOne.mockResolvedValueOnce(null); // not found in lax_cards for this user
-    const res = await request(app).get('/lax/card/not-mine/balance').set('Authorization', auth());
+    const res = await request(app).get(`/lax/card/${CARD_ID}/balance`).set('Authorization', auth());
     expect(res.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -152,10 +157,12 @@ describe('GET /lax/card/:cardNumber/balance', () => {
   it('proxies to LAX for a card the caller does own', async () => {
     dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
     fetchMock.mockResolvedValueOnce(jsonRes(200, { balance: 42 }));
-    const res = await request(app).get('/lax/card/card-1/balance').set('Authorization', auth());
+    const res = await request(app).get(`/lax/card/${CARD_ID}/balance`).set('Authorization', auth());
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ balance: 42 });
-    expect(dbQueryOne).toHaveBeenCalledWith(expect.stringContaining('from lax_cards'), ['user-l', 'card-1']);
+    expect(dbQueryOne).toHaveBeenCalledWith(expect.stringContaining('from lax_cards'), ['user-l', CARD_ID]);
+    // card_number travels to the upstream LAX call, never the opaque id (M-7).
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('card-1');
   });
 });
 
@@ -292,7 +299,7 @@ describe('physical card upstream paths', () => {
   it('proxies balance to the virtual-card /api/cards/get-card-balance', async () => {
     dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
     fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: '10.00' }));
-    const res = await request(app).get('/lax/card/card-1/balance').set('Authorization', auth());
+    const res = await request(app).get(`/lax/card/${CARD_ID}/balance`).set('Authorization', auth());
     expect(res.status).toBe(200);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/cards/get-card-balance');
   });
@@ -315,7 +322,7 @@ describe('physical card upstream paths', () => {
 
   it('ownership-gates PIN reads', async () => {
     dbQueryOne.mockResolvedValueOnce(null);
-    const res = await request(app).get('/lax/card/not-mine/pin').set('Authorization', auth()).set('x-step-up-token', stepUp());
+    const res = await request(app).get(`/lax/card/${CARD_ID}/pin`).set('Authorization', auth()).set('x-step-up-token', stepUp());
     expect(res.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -323,28 +330,28 @@ describe('physical card upstream paths', () => {
 
 describe('step-up auth on card PIN/details/activate (THN-R1 M-04)', () => {
   it('refuses PIN/details/activate without a step-up token, even with a valid session', async () => {
-    const noStepUp = await request(app).get('/lax/card/card-1/pin').set('Authorization', auth());
+    const noStepUp = await request(app).get(`/lax/card/${CARD_ID}/pin`).set('Authorization', auth());
     expect(noStepUp.status).toBe(403);
     expect(noStepUp.body.code).toBe('step_up_required');
     expect(fetchMock).not.toHaveBeenCalled();
 
-    const details = await request(app).get('/lax/card/card-1/details').set('Authorization', auth());
+    const details = await request(app).get(`/lax/card/${CARD_ID}/details`).set('Authorization', auth());
     expect(details.status).toBe(403);
 
-    const activate = await request(app).post('/lax/card/card-1/activate').set('Authorization', auth());
+    const activate = await request(app).post(`/lax/card/${CARD_ID}/activate`).set('Authorization', auth());
     expect(activate.status).toBe(403);
   });
 
   it('refuses a step-up token minted for a different session', async () => {
     const wrongSession = issueStepUpToken('user-l', 'some-other-session').token;
-    const res = await request(app).get('/lax/card/card-1/pin').set('Authorization', auth()).set('x-step-up-token', wrongSession);
+    const res = await request(app).get(`/lax/card/${CARD_ID}/pin`).set('Authorization', auth()).set('x-step-up-token', wrongSession);
     expect(res.status).toBe(403);
   });
 
   it('succeeds with a valid step-up token', async () => {
     dbQueryOne.mockResolvedValueOnce({ id: 'lc-1', user_id: 'user-l', card_number: 'card-1' });
     fetchMock.mockResolvedValueOnce(jsonRes(200, { success: true, message: '1234' }));
-    const res = await request(app).get('/lax/card/card-1/pin').set('Authorization', auth()).set('x-step-up-token', stepUp());
+    const res = await request(app).get(`/lax/card/${CARD_ID}/pin`).set('Authorization', auth()).set('x-step-up-token', stepUp());
     expect(res.status).toBe(200);
   });
 });

@@ -72,7 +72,7 @@ import { MultiSigView } from './multisig';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
   laxRegisterThanosAccount, hasThanosAccount, laxAccountEmail, cardNumberOf,
-  laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractKycUrl,
+  laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractKycUrl, cardIdOf,
   type LaxStatus, type LaxCard as LaxCardData, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from './lax';
 import { apiClient } from './auth-client';
@@ -1965,6 +1965,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const [moreOpen, setMoreOpen]       = useState(false);
 
   const cardNo = card ? cardNumberOf(card) : undefined;
+  const cardId = card ? cardIdOf(card) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
   const refresh = async () => {
@@ -1976,8 +1977,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = cardNumberOf(list[0]);
-          if (cn) { laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = cardIdOf(list[0]);
+          if (ci) { laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
     } catch { /* leave status null — treated as not-live */ }
@@ -1997,7 +1998,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const openLearn = () => openDapp(LAX_LEARN_URL, 'LAX Card');
 
   const toggleFreeze = async () => {
-    if (!cardNo) return;
+    if (!cardId) return;
     const frozen = String(card?.status || '').toLowerCase() === 'frozen';
     const confirmMsg = frozen
       ? `Unfreeze card •••• ${last4}? It will be usable for new transactions again immediately.`
@@ -2006,7 +2007,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
     setFreezeErr(null);
     setFreezing(true);
     try {
-      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await laxSetCardStatus(cardId, frozen ? 'active' : 'frozen');
       await refresh();
     } catch (e) {
       setFreezeErr((e as Error)?.message || `Could not ${frozen ? 'unfreeze' : 'freeze'} the card — try again.`);
@@ -2058,8 +2059,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
-    {detailsOpen && cardNo && <LaxCardDetailsModal cardNumber={cardNo} onClose={() => setDetailsOpen(false)}/>}
-    {moreOpen && cardNo && <LaxMoreModal cardNumber={cardNo} last4={last4} onClose={() => setMoreOpen(false)}/>}
+    {detailsOpen && cardId && <LaxCardDetailsModal cardNumber={cardId} onClose={() => setDetailsOpen(false)}/>}
+    {moreOpen && cardId && <LaxMoreModal cardNumber={cardId} last4={last4} onClose={() => setMoreOpen(false)}/>}
     </ModalPortal>
   );
 }
@@ -2507,7 +2508,7 @@ function useStepUp(): { ensure: () => Promise<string | null>; modal: React.React
 /** PAN / expiry / CVC — genuinely sensitive. Never persisted outside this
  *  modal's own state, cleared the moment it closes; blurred-by-default with
  *  a click-to-reveal gate (same pattern as ExportSeedModal's phrase/key). */
-function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onClose: () => void }) {
+function LaxCardDetailsModal({ cardNumber: cardId, onClose }: { cardNumber: string; onClose: () => void }) {
   const [details, setDetails] = useState<LaxCardDetails | null>(null);
   const [hidden, setHidden]   = useState(true);
   const [loading, setLoading] = useState(true);
@@ -2521,7 +2522,7 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
       if (cancelled) return;
       if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNumber, stepUpToken);
+        const d = await laxCardDetails(cardId, stepUpToken);
         if (!cancelled) setDetails(d);
       } catch (e) {
         if (!cancelled) setErr((e as Error)?.message || 'Could not load card details — try again.');
@@ -2530,7 +2531,7 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
       }
     })();
     return () => { cancelled = true; };
-  }, [cardNumber]);
+  }, [cardId]);
 
   const close = () => { setDetails(null); onClose(); };
 
@@ -2578,7 +2579,7 @@ const LAX_MORE_SOON = ['Replace card', 'Report lost', 'Close card'];
 /** "More" actions — full (untruncated) transaction history is real and
  *  reuses laxCardTransactions(); replace/lost/close have no confirmed
  *  backend support yet, so they stay clearly-labeled coming-soon rows. */
-function LaxMoreModal({ cardNumber, last4, onClose }: { cardNumber: string; last4: string; onClose: () => void }) {
+function LaxMoreModal({ cardNumber: cardId, last4, onClose }: { cardNumber: string; last4: string; onClose: () => void }) {
   const [view, setView]       = useState<'menu' | 'history' | 'physical'>('menu');
   const [txns, setTxns]       = useState<LaxTxn[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2589,7 +2590,7 @@ function LaxMoreModal({ cardNumber, last4, onClose }: { cardNumber: string; last
     if (txns) return;
     setLoading(true); setErr(null);
     try {
-      setTxns(await laxCardTransactions(cardNumber));
+      setTxns(await laxCardTransactions(cardId));
     } catch (e) {
       setErr((e as Error)?.message || 'Could not load transactions.');
     } finally { setLoading(false); }

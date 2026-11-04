@@ -78,7 +78,7 @@ import { setContactEncryptionKey } from '../../lib/contact-crypto';
 import { addLocalActivity, getLocalNativeHash, setLocalNativeHash } from '../../lib/local-activity';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
-  hasThanosAccount, laxRegisterThanosAccount, laxAccountEmail, cardNumberOf,
+  hasThanosAccount, laxRegisterThanosAccount, laxAccountEmail, cardNumberOf, cardIdOf,
   laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractLaxRedirectUrl,
   type LaxStatus, type LaxCard as LaxCard_, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from '../../lib/lax';
@@ -980,6 +980,7 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
   const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
 
   const cardNo = card ? cardNumberOf(card) : undefined;
+  const cardId = card ? cardIdOf(card) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
   const refresh = async () => {
@@ -991,8 +992,8 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = cardNumberOf(list[0]);
-          if (cn) { laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = cardIdOf(list[0]);
+          if (ci) { laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
     } catch { /* leave status null — treated as not-live */ }
@@ -1030,7 +1031,7 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
               {view === 'intro'     && <LaxIntro notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
               {view === 'soon'      && <LaxComingSoon onClose={onClose} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
               {view === 'create'    && <LaxCreate status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
-              {view === 'dashboard' && <LaxDashboard card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
+              {view === 'dashboard' && <LaxDashboard card={card} cardId={cardId} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
               {view === 'topup'     && cardNo && <LaxTopUp cardNo={cardNo} onDone={(amt, cur) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
               {view === 'success'   && <LaxSuccess last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
             </>
@@ -1312,8 +1313,8 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   return null;
 }
 
-function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onRefresh }: {
-  card: LaxCard_ | null; cardNo?: string; last4: string; txns: LaxTxn[]; notLive: boolean;
+function LaxDashboard({ card, cardId, last4, txns, notLive, onTopUp, onSoon, onRefresh }: {
+  card: LaxCard_ | null; cardId?: string; last4: string; txns: LaxTxn[]; notLive: boolean;
   onTopUp: () => void; onSoon: () => void; onRefresh: () => Promise<void> | void;
 }) {
   const [modal, setModal] = useState<'details' | 'more' | null>(null);
@@ -1324,7 +1325,7 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
   const frozen = String(card?.status ?? '').toLowerCase().includes('froz');
 
   const toggleFreeze = async () => {
-    if (!cardNo || freezeBusy) return;
+    if (!cardId || freezeBusy) return;
     const msg = frozen
       ? 'Unfreeze this card? It will be usable for purchases again.'
       : "Freeze this card? You won't be able to use it for purchases until you unfreeze it.";
@@ -1333,7 +1334,7 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
     setFreezeErr(null);
     setFreezeBusy(true);
     try {
-      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await laxSetCardStatus(cardId, frozen ? 'active' : 'frozen');
       await onRefresh();
     } catch (e) {
       setFreezeErr(e instanceof Error ? e.message : 'Could not update card status — try again.');
@@ -1342,9 +1343,9 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
 
   const actions: Array<{ icon: typeof Plus; label: string; onPress: () => void }> = [
     { icon: Plus,       label: 'Top Up',                    onPress: notLive ? onSoon : onTopUp },
-    { icon: CreditCard, label: 'Card Details',               onPress: (notLive || !cardNo) ? onSoon : () => setModal('details') },
-    { icon: Shield,     label: frozen ? 'Unfreeze' : 'Freeze', onPress: (notLive || !cardNo) ? onSoon : () => { void toggleFreeze(); } },
-    { icon: Maximize2,  label: 'More',                       onPress: (notLive || !cardNo) ? onSoon : () => setModal('more') },
+    { icon: CreditCard, label: 'Card Details',               onPress: (notLive || !cardId) ? onSoon : () => setModal('details') },
+    { icon: Shield,     label: frozen ? 'Unfreeze' : 'Freeze', onPress: (notLive || !cardId) ? onSoon : () => { void toggleFreeze(); } },
+    { icon: Maximize2,  label: 'More',                       onPress: (notLive || !cardId) ? onSoon : () => setModal('more') },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1387,8 +1388,8 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
         <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
       ) : txns.slice(0, 6).map((t, i) => <LaxTxnRow key={t.id || i} t={t} last={i === Math.min(txns.length, 6) - 1}/>)}
 
-      {modal === 'details' && cardNo && <LaxCardDetailsModal cardNo={cardNo} onClose={() => setModal(null)}/>}
-      {modal === 'more' && cardNo && <LaxMoreModal cardNo={cardNo} onClose={() => setModal(null)}/>}
+      {modal === 'details' && cardId && <LaxCardDetailsModal cardId={cardId} onClose={() => setModal(null)}/>}
+      {modal === 'more' && cardId && <LaxMoreModal cardId={cardId} onClose={() => setModal(null)}/>}
     </div>
   );
 }
@@ -1483,7 +1484,7 @@ function useStepUp(): { ensure: () => Promise<string | null>; modal: React.React
   return { ensure, modal };
 }
 
-function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+function LaxCardDetailsModal({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const [details, setDetails] = useState<LaxCardDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState<string | null>(null);
@@ -1497,7 +1498,7 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
       if (!live) return;
       if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNo, stepUpToken);
+        const d = await laxCardDetails(cardId, stepUpToken);
         if (live) setDetails(d);
       } catch (e) {
         if (live) setErr(e instanceof Error ? e.message : 'Could not load card details.');
@@ -1508,7 +1509,7 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
     // Clear sensitive data the instant this modal goes away, regardless of
     // how — close button, backdrop click, or unmount.
     return () => { live = false; setDetails(null); };
-  }, [cardNo]);
+  }, [cardId]);
 
   const close = () => { setDetails(null); onClose(); };
 
@@ -1534,7 +1535,7 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
                   color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: 14, letterSpacing: 0.5, filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s', userSelect: 'text',
                 }}>
-                  {details?.pan || cardNo}
+                  {details?.pan || '—'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 24 }}>
@@ -1575,7 +1576,7 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
 
 /** "More" action — full transaction history (real) plus clearly-labeled
  *  coming-soon items for actions with no confirmed backend support. */
-function LaxMoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+function LaxMoreModal({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const [view, setView] = useState<'menu' | 'history' | 'physical'>('menu');
   const [txns, setTxns]   = useState<LaxTxn[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1586,7 +1587,7 @@ function LaxMoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void
     setLoading(true);
     setErr(null);
     try {
-      setTxns(await laxCardTransactions(cardNo));
+      setTxns(await laxCardTransactions(cardId));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not load transactions.');
     } finally { setLoading(false); }
