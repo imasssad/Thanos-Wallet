@@ -156,11 +156,18 @@ describe('other routes never pass on Zypto\'s 401', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('GET /lax/card/:n/balance', async () => {
-    dbQueryOne.mockResolvedValueOnce({ id: '1', user_id: 'user-u', card_number: '251290559709857' });
+  it('GET /lax/card/:cardId/balance', async () => {
+    // Card-scoped routes take our own opaque lax_cards.id in the path, never
+    // the real card number (hardening-audit M-7). Ownership is decided by what
+    // dbQueryOne returns for that id; the row carries the card_number that
+    // then travels to the upstream LAX call.
+    const CARD_ID = '11111111-1111-1111-1111-111111111111';
+    dbQueryOne.mockResolvedValueOnce({ id: CARD_ID, user_id: 'user-u', card_number: '251290559709857' });
     fetchMock.mockResolvedValueOnce(jsonRes(403, { message: 'Forbidden' }));
-    const res = await request(app).get('/lax/card/251290559709857/balance').set('Authorization', auth());
+    const res = await request(app).get(`/lax/card/${CARD_ID}/balance`).set('Authorization', auth());
     expect(res.status).toBe(502);
     expect(res.body.detail).toBe('Forbidden');
+    // The opaque id must not be what reaches LAX — the real number does.
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toContain('251290559709857');
   });
 });
