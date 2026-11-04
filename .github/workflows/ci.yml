@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -47,8 +47,8 @@ jobs:
     # ratchet down as the codebase converges, not up.
     continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -59,8 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -75,8 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -91,8 +91,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -162,8 +162,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -196,8 +196,8 @@ jobs:
     # consciously added there.
     continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -246,7 +246,7 @@ jobs:
     # billing layer. Drop the action and run the CLI directly: it's the
     # same scanner, MIT-licensed, no license check.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }  # full history so the scan covers every commit on a PR
       - name: Install gitleaks CLI
         run: |
@@ -264,7 +264,7 @@ jobs:
         run: gitleaks detect --config=.gitleaks.toml --redact --verbose --report-format json --report-path gitleaks-report.json
       - name: Upload gitleaks report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gitleaks-report
           path: gitleaks-report.json
@@ -284,7 +284,7 @@ jobs:
     # gives us the second monitoring layer + a paper trail per commit.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Probe thanos.fi production endpoints
         # --category prod isolates the check to /api/health, /privacy,
         # icons, etc. — the user-facing surface a commit could break.
@@ -305,7 +305,7 @@ jobs:
     # the operator if a real outage persists.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Probe Lithosphere + external chain RPCs
         run: bash ops/link-probe.sh --category litho
       - name: Probe external chain RPCs (BTC / SOL / Cosmos / ETH / BSC)

@@ -305,6 +305,67 @@ and the override `node-forge@<=1.4.0: ^1.4.1` now pins to it directly.
   through this codebase's usage. Re-check this entry if either service ever
   migrates to zod v4 or imports the `zod/v4` subpath.
 
+## Release & deploy hygiene (O-08)
+
+- **SSH host-key verification (deploy.yml / deploy-staging.yml).** Both
+  workflows used to run `ssh-keyscan` fresh on every deploy with nothing to
+  check it against — trust-on-first-use on every single run, not just the
+  first one, so a MITM positioned on any one deploy's network path could
+  hand the runner a forged host key with the runner never noticing. Fixed:
+  both now prefer a pinned `VPS_SSH_HOST_KEY` / `STAGING_SSH_HOST_KEY`
+  secret (a known_hosts line, obtained once through a channel other than
+  the SSH connection itself) and only fall back to `ssh-keyscan` — with an
+  explicit `::warning::` — while that secret isn't set yet. Set the secret
+  to close the gap entirely; see the comment at the top of each workflow.
+- **GitHub Actions pinned by tag, not commit SHA.** Every `uses:` across
+  `.github/workflows/*.yml` named a mutable tag (`@v4`, `@v2`, …) — the tag
+  can be moved to point at different code by the action's maintainer (or
+  anyone who compromises that maintainer's account) without this repo's
+  review ever seeing it, and the next run just picks it up. All of them now
+  pin the resolved commit SHA with the tag kept as a trailing comment
+  (`actions/checkout@11d5960a… # v4`) for readability — update the SHA
+  deliberately when bumping, not silently on every run.
+- **macOS notarization (`electron-builder.yml`'s `mac.notarize: false`).**
+  The comment above it claimed CI "sets it to true via env vars when
+  APPLE_ID / … are configured" — that was never true. electron-builder only
+  auto-notarizes when `notarize` is left *unset*; a literal `false` in the
+  config forces it off regardless of what credentials the environment
+  carries. Every macOS build this project ever shipped with all five
+  signing secrets configured would have been Developer-ID-signed but never
+  notarized — Gatekeeper still blocks a signed-but-unnotarized app on a
+  fresh machine ("Apple could not verify ... is free of malware"), training
+  users to right-click-Open past a warning that exists specifically to
+  catch a tampered build. Fixed: `desktop-macos.yml` and `release.yml`'s
+  macOS build steps now pass `-c.mac.notarize=true` on the electron-builder
+  CLI explicitly, but only when `APPLE_ID` is actually present — an
+  unsigned or signed-only build still skips it, same as before.
+- **Linux AppImage updates verified by hash only.** Unlike the Windows/
+  macOS targets, there is no OS-level code-signing framework for AppImage —
+  electron-updater's own auto-update channel checks nothing beyond a
+  sha512 hash shipped in the same GitHub Release as the binary it hashes,
+  which proves nothing if that release itself were ever compromised (it
+  only catches corruption or a mismatched download). This is an upstream
+  electron-updater limitation, not something this repo's config can change
+  for the *auto-update* path. What's in this repo's control:
+  `release.yml` now GPG-signs the AppImage (`*.AppImage.sig`) when
+  `RELEASE_GPG_PRIVATE_KEY` is configured, giving a user who verifies
+  manually (`gpg --verify`) a check independent of the release's own hash.
+  It does not and cannot make electron-updater itself check that signature
+  during an in-app auto-update — document this limitation rather than
+  imply otherwise. See SIGNING.md's Linux section.
+- **Unreferenced duplicate vendor tarball.** `thanos-update/
+  litho-multx-sdk-0.2.0.tgz` sat at the repo root, matched by no build,
+  install, or doc reference anywhere in the tree (`vendor/` and
+  `apps/mobile/vendor/` hold the copies actually used, both verified
+  identical to each other). Worse than just dead weight: its hash differed
+  from the real `vendor/` copy under the identical package name and
+  version — `package.json` inside it declared `ethers` as a peer dependency
+  only, where the real build's copy pins `"dependencies": { "ethers":
+  "5.8.0" }` to match the root `pnpm.overrides` entry for this exact
+  package. Removed the whole `thanos-update/` directory (the guide it also
+  held a copy of already lives properly at
+  `docs/integrations/MULTX_SDK_GUIDE.md`).
+
 ## Secrets, CI and the deployed environment
 
 - `.env` is in `.gitignore`. Only `.env.example` is committed.
