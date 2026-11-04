@@ -2,25 +2,23 @@
  * WalletConnect request signer for the extension popup.
  *
  * Routes every cryptographic operation through the offscreen document
- * (`./offscreen-sign`) so the popup process never holds derived private
- * keys. The only data this module touches is the BIP-39 seed words
- * (already in WalletSeedContext for unlock UX) plus the request params
- * supplied by the dApp.
+ * (`./offscreen-sign`), which has held the unlocked secret since the
+ * initSigner() call at unlock (hardening-audit H-1, slice 3 of 4) — no
+ * request below carries the seed any more, only the already-cached
+ * signer's own query/sign ops. `seed.length` is still read here as a fast
+ * local "is probably unlocked" check before bothering the offscreen
+ * document; the popup holding `seed` at all is a separate, still-open
+ * residual (non-signing address derivation elsewhere in the popup).
  *
- * The pure-display helpers (summariseRequest, account / chain-id
- * lookups) stay local — they don't need to sign anything.
+ * The pure-display helpers (summariseRequest, chain-id lookups) stay
+ * local — they don't need to sign anything.
  */
-import { hexlify, toUtf8Bytes, isHexString, HDNodeWallet, Mnemonic, Wallet } from 'ethers';
+import { hexlify, toUtf8Bytes, isHexString } from 'ethers';
 import { bytesLikeToHex } from '../../lib/bytes-normalize';
-import { getActiveAccountIndex, isPrivateKeyWallet } from '../../lib/vault';
 import { dappChainByHex, dappChainById, toChainHex, DEFAULT_DAPP_CHAIN_ID, type DappChain } from '../../lib/dapp-chains';
 import {
-  signAndBroadcastTx, signPersonalMessage, signTypedData,
+  signAndBroadcastTx, signPersonalMessage, signTypedData, getSignerAddress,
 } from './offscreen-sign';
-
-function hdPath(): string {
-  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
-}
 
 /** The wallet's currently-selected dApp chain (default Lithosphere Mainnet). */
 export async function activeChain(): Promise<DappChain> {
@@ -36,14 +34,6 @@ export class WcSignerError extends Error {
   constructor(public readonly code: number, message: string) {
     super(message); this.name = 'WcSignerError';
   }
-}
-
-/** Derive only the address — no private key materialised, no signing.
- *  Used for eth_accounts / eth_requestAccounts. */
-function deriveAddress(seed: string[]): string {
-  return isPrivateKeyWallet(seed)
-    ? new Wallet(seed[0].trim()).address
-    : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath()).address;
 }
 
 export function summariseRequest(method: string, params: unknown): string {
@@ -113,18 +103,16 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
   if (!seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
-  const path = hdPath();
 
-  // O-06: hdPath() above reads the ACTIVE account index, which the user can
-  // change while an approval sheet is open (the popup re-reads it on
-  // storage.onChanged). The sheet showed one address as "Signing as"; refuse
-  // unless that is the address this path actually derives, so a signature can
-  // never come from an account the user didn't review. Same intent as the
-  // chain pinning in requestChain() above.
+  // O-06: the active account can change while an approval sheet is open (the
+  // popup re-reads it on storage.onChanged, and pushes the switch into the
+  // offscreen cache via setSignerAccountIndex). The sheet showed one address
+  // as "Signing as"; refuse unless that is the address the offscreen signer
+  // will actually sign with NOW, so a signature can never come from an
+  // account the user didn't review. Same intent as the chain pinning in
+  // requestChain() above.
   if (reqParams.account) {
-    const signingAs = isPrivateKeyWallet(seed)
-      ? new Wallet(seed[0].trim()).address
-      : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), path).address;
+    const signingAs = await getSignerAddress();
     if (signingAs.toLowerCase() !== reqParams.account.toLowerCase()) {
       throw new WcSignerError(
         -32000,
@@ -136,7 +124,7 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
   switch (method) {
     case 'eth_accounts':
     case 'eth_requestAccounts':
-      return [deriveAddress(seed)];
+      return [await getSignerAddress()];
 
     case 'eth_chainId':
       // The request's chain (else the ACTIVE one), not a hardcoded default —
@@ -154,14 +142,14 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       const messageHex = typeof raw === 'string' && isHexString(raw)
         ? raw
         : bytesLikeToHex(raw) ?? hexlify(toUtf8Bytes(String(raw)));
-      return signPersonalMessage({ seed, hdPath: path, messageHex });
+      return signPersonalMessage({ messageHex });
     }
     case 'eth_sign': {
       const raw = params[1];
       const messageHex = typeof raw === 'string' && isHexString(raw)
         ? raw
         : bytesLikeToHex(raw) ?? hexlify(toUtf8Bytes(String(raw)));
-      return signPersonalMessage({ seed, hdPath: path, messageHex });
+      return signPersonalMessage({ messageHex });
     }
     case 'eth_signTypedData_v4': {
       const typed = JSON.parse(params[1] as string) as {
@@ -170,7 +158,6 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
         message: Record<string, unknown>;
       };
       return signTypedData({
-        seed, hdPath: path,
         payload: { domain: typed.domain, types: typed.types, value: typed.message },
       });
     }
@@ -187,7 +174,6 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       const chain = await requestChain(reqParams);
       try {
         return await signAndBroadcastTx({
-          seed, hdPath: path,
           tx: {
             to:       tx.to,
             value:    tx.value,

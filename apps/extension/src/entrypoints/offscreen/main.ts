@@ -171,23 +171,48 @@ function projectSession(s: SessionTypes.Struct) {
 }
 
 /* ───────────── Isolated signer ─────────────────────────────────────────
- * The popup posts `{seed, ...params}` over the message bridge; we build
- * an ethers wallet here, sign, and return the result. The derived
- * private key never lives in the popup process — it's instantiated,
- * used, and immediately released inside this offscreen document.
+ * Hardening-audit H-1 (extension, slice 3 of 4): this used to take
+ * `{seed, hdPath, ...}` on every call — the popup held the seed in React
+ * state (WalletSeedContext) for the whole unlocked session and posted it
+ * fresh each time, which the audit calls out by name: "popup seed crosses
+ * to the offscreen signer per call" — a copy, not a boundary, since the
+ * seed still had to live somewhere the popup could read it from.
  *
- * Threat-model improvement: the popup's JS heap can still be inspected
- * (the seed is briefly serialized into postMessage). What changes is
- * that the *signing operation itself* — the cryptographic primitive
- * + the derived key — happens in a sibling document that the popup
- * can't observe via React DevTools or any same-context introspection.
+ * Now the secret is pushed ONCE, at unlock (sign.init), and cached here —
+ * in this offscreen document, which Chrome keeps alive independently of
+ * the popup (unlike the popup, which is destroyed on every close). The
+ * popup's own state never holds anything after that but the derived
+ * address and the unlocked flag; signing calls carry no secret at all.
+ * sign.lock drops the cache on wallet lock; sign.set-account-index tracks
+ * an HD account switch so the next signature follows the account showing
+ * in the popup, the same way web's signer worker does.
  *
  * Methods:
- *   sign.evm-tx              { seed, hdPath, tx }      → { hash } (broadcasts)
- *   sign.evm-personal        { seed, hdPath, message } → { signature }
- *   sign.evm-typed-data      { seed, hdPath, payload } → { signature }
- *   sign.evm-erc20-transfer  { seed, hdPath, tokenAddress, to, amount } → { hash }
+ *   sign.init                { source }                 → { address }
+ *   sign.lock                                            → { ok }
+ *   sign.set-account-index   { accountIndex }            → { address }
+ *   sign.address                                         → { address }
+ *   sign.evm-tx              { tx }                      → { hash } (broadcasts)
+ *   sign.evm-personal        { message }                 → { signature }
+ *   sign.evm-typed-data      { payload }                 → { signature }
+ *   sign.evm-erc20-transfer  { tokenAddress, to, amount } → { hash }
+ *
+ * `source` is `{ kind: 'mnemonic', mnemonic } | { kind: 'privateKey', privateKey }`.
  */
+type SignerSource = { kind: 'mnemonic'; mnemonic: string } | { kind: 'privateKey'; privateKey: string };
+let cachedSource: SignerSource | null = null;
+let cachedAccountIdx = 0;
+
+/** Rebuilds the active account's wallet from the cached source on every
+ *  call — nothing persists beyond this document's module scope, so there
+ *  is no derived key sitting around between signatures either. */
+async function cachedWallet(): Promise<import('ethers').HDNodeWallet | import('ethers').Wallet> {
+  if (!cachedSource) throw new Error('signer_locked');
+  const { Mnemonic, HDNodeWallet, Wallet } = await import('ethers');
+  if (cachedSource.kind === 'privateKey') return new Wallet(cachedSource.privateKey);
+  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(cachedSource.mnemonic), `m/44'/60'/0'/0/${cachedAccountIdx}`);
+}
+
 /** Provider for the chain a transfer was approved on — `chainId` and its
  *  `rpcUrl` must both come with the request; there is no default network. */
 async function chainProvider(msg: { [k: string]: unknown }): Promise<import('ethers').JsonRpcProvider> {
@@ -200,19 +225,34 @@ async function chainProvider(msg: { [k: string]: unknown }): Promise<import('eth
 }
 
 async function handleSignMessage(msg: { type: string; [k: string]: unknown }): Promise<unknown> {
-  const { Mnemonic, HDNodeWallet, Wallet, Contract, getBytes } = await import('ethers');
+  // sign.init / sign.lock / sign.set-account-index / sign.address manage the
+  // cache itself and need no wallet built up front.
+  if (msg.type === 'sign.init') {
+    const source = msg.source as SignerSource;
+    if (!source || (source.kind !== 'mnemonic' && source.kind !== 'privateKey')) throw new Error('source required');
+    cachedSource = source;
+    cachedAccountIdx = typeof msg.accountIndex === 'number' && msg.accountIndex >= 0 ? msg.accountIndex : 0;
+    return { ok: true, address: (await cachedWallet()).address };
+  }
+  if (msg.type === 'sign.lock') {
+    cachedSource = null;
+    cachedAccountIdx = 0;
+    return { ok: true };
+  }
+  if (msg.type === 'sign.set-account-index') {
+    if (cachedSource?.kind === 'mnemonic') cachedAccountIdx = Math.max(0, Math.floor(Number(msg.accountIndex ?? 0)));
+    return { ok: true, address: (await cachedWallet()).address };
+  }
+  if (msg.type === 'sign.address') {
+    return { ok: true, address: (await cachedWallet()).address };
+  }
+
+  const { Contract, getBytes } = await import('ethers');
   type TransactionRequest = import('ethers').TransactionRequest;
   type TypedDataDomain    = import('ethers').TypedDataDomain;
   type TypedDataField     = import('ethers').TypedDataField;
 
-  const seed    = String(msg.seed ?? '');
-  const hdPath  = String(msg.hdPath ?? "m/44'/60'/0'/0/0");
-  if (!seed) throw new Error('seed required');
-
-  // A raw 0x-hex key is a single EVM account — hdPath doesn't apply.
-  const wallet = /^0x[0-9a-fA-F]{64}$/.test(seed.trim())
-    ? new Wallet(seed.trim())
-    : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed), hdPath);
+  const wallet = await cachedWallet();
 
   try {
     switch (msg.type) {
@@ -264,9 +304,9 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
     }
   } finally {
     // No explicit secret-wipe primitive in JS, but releasing the
-    // reference lets V8 collect it on the next GC pass.
-    // The seed string itself is owned by the caller and lives in
-    // the postMessage clone — not much we can do about that.
+    // reference lets V8 collect it on the next GC pass. The long-lived
+    // secret is cachedSource (wiped by sign.lock on wallet lock); `wallet`
+    // itself only ever lives for this one call.
   }
 }
 

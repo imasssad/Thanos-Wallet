@@ -4942,7 +4942,6 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
         if (!net) throw new Error('This swap quote has no network the wallet can sign on.');
         const { signAndBroadcastTx } = await import('./offscreen-sign');
         signedTxHash = await signAndBroadcastTx({
-          seed,
           tx: {
             to: utx.to, value: utx.value, data: utx.data,
             gas: utx.gas,
@@ -5825,11 +5824,14 @@ function App() {
   useEffect(() => { void loadHiddenAssets().then(() => setVisTick((t) => t + 1)); }, []);
 
   /** Switch to a different derived account. Updates storage so the
-   *  next popup open + the signer paths pick up the same index. */
+   *  next popup open + the signer paths pick up the same index, and pushes
+   *  the switch into the offscreen signer's cache (hardening-audit H-1) so
+   *  the very next signature follows the account now on screen. */
   const switchAccount = (idx: number) => {
     if (idx < 0 || idx >= accountCount) return;
     setActiveAccountIndex(idx);
     setActiveIdx(idx);
+    void import('./offscreen-sign').then(({ setSignerAccountIndex }) => setSignerAccountIndex(idx)).catch(() => { /* offscreen not ready yet */ });
   };
 
   /** Add a new derived account at the next index. Bumps accountCount
@@ -5841,6 +5843,7 @@ function App() {
     setAccountCountState(next + 1);
     setActiveAccountIndex(next);
     setActiveIdx(next);
+    void import('./offscreen-sign').then(({ setSignerAccountIndex }) => setSignerAccountIndex(next)).catch(() => { /* offscreen not ready yet */ });
   };
 
   /* ─── Wallets — several secrets in the one vault (lib/vault.ts) ──────────
@@ -5857,14 +5860,19 @@ function App() {
     if (r) setWallets(r.wallets);
   };
   useEffect(() => { if (unlocked) void refreshWallets(); }, [unlocked]); // eslint-disable-line react-hooks/exhaustive-deps
-  /** Show the wallet lib/vault.ts has just opened. */
+  /** Show the wallet lib/vault.ts has just opened. Also re-points the
+   *  offscreen signer at this wallet's secret (hardening-audit H-1) — a
+   *  different wallet means a different signing source, not just a
+   *  different display. */
   const openWalletSecret = (secret: string) => {
     const words = secret.split(' ');
     const pk = isPrivateKeyWallet(words);
+    const idx = pk ? 0 : getActiveAccountIndex();
     setSeed(words);
     setActiveWalletId(getCurrentWalletId());
-    setActiveIdx(pk ? 0 : getActiveAccountIndex());
+    setActiveIdx(idx);
     setAccountCountState(pk ? 1 : getAccountCount());
+    void import('./offscreen-sign').then(({ initSigner }) => initSigner(words, idx)).catch(() => { /* offscreen not ready yet */ });
   };
   const activeWallet = wallets.find(w => w.id === activeWalletId);
   const openId = activeWalletId || getCurrentWalletId();
@@ -6061,6 +6069,7 @@ function App() {
     clearSessionKey();
     void clearPersistedSessionKey();
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });
+    void import('./offscreen-sign').then(({ lockSigner }) => lockSigner()).catch(() => { /* offscreen not ready yet */ });
     setSeed([]);
     setActiveWalletId('');
     setWallets([]);
@@ -6196,6 +6205,11 @@ function App() {
               setSeed(words); setActiveWalletId(getCurrentWalletId()); setUnlocked(true);
               autoUnlocked = true;
               cacheSessionKey(key); // reseed the fast in-page cache
+              // Re-push the secret into the offscreen signer too — the popup
+              // was just recreated (it has no state across a close), but the
+              // offscreen document may have survived; re-init is idempotent
+              // and covers the case where it didn't (hardening-audit H-1).
+              void import('./offscreen-sign').then(({ initSigner }) => initSigner(words, getActiveAccountIndex())).catch(() => {});
               // Re-announce the active address so dApps / eth_accounts work on an
               // auto-unlock (mirrors onComplete), and refresh the persisted key so
               // the sliding window reflects this use.
@@ -6240,6 +6254,7 @@ function App() {
     setAddStart(null);
     clearSessionKey();
     void clearPersistedSessionKey(); // drop the survives-popup-close key too
+    void import('./offscreen-sign').then(({ lockSigner }) => lockSigner()).catch(() => { /* offscreen not ready yet */ });
     // A locked wallet keeps no live Quantt login either (quantt.ts).
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     // Tell the background SW the wallet is locked so dApps see accountsChanged([]).
@@ -6264,11 +6279,14 @@ function App() {
     setActiveWalletId(getCurrentWalletId()); // Onboarding has just opened it
     setHasVault(true);
     setUnlocked(true);
+    // Push the secret into the offscreen signer (hardening-audit H-1) — once,
+    // here, not on every later signing call. Reads the stored active index so
+    // re-unlock returns the same account the user last had selected.
+    const idx = getActiveAccountIndex();
+    void import('./offscreen-sign').then(({ initSigner }) => initSigner(s, idx)).catch(() => { /* offscreen not ready yet */ });
     // Announce the unlocked address so the background can answer eth_accounts.
-    // Reads the stored active index so re-unlock returns the same account
-    // the user last had selected, not always Account 1.
     try {
-      const addr = deriveEvm(s, getActiveAccountIndex());
+      const addr = deriveEvm(s, idx);
       browser?.runtime?.sendMessage({ type: 'thanos-active-address', address: addr });
     } catch {}
   };

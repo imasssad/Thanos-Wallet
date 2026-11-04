@@ -9,13 +9,6 @@
 import { createContext, useContext } from 'react';
 import { parseUnits, getAddress } from 'ethers';
 import { humanSendError, lithoToEvm } from '@thanos/sdk-core';
-import { getActiveAccountIndex } from '../../lib/vault';
-
-/** HD path for the active account. Computed at sign time so an account
- *  switch in the popup takes effect on the very next send. */
-function activeHdPath(): string {
-  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
-}
 
 const API_BASE = String(
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
@@ -104,8 +97,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   }
 
   // ─── EVM (the asset's own chain) ──────────────────────────────────────
-  // Signing happens in the offscreen document — derived private keys
-  // never live in this popup's JS heap. See offscreen-sign.ts.
+  // Signing happens in the offscreen document, which already has the
+  // secret cached from unlock (hardening-audit H-1) — no seed crosses
+  // this call. See offscreen-sign.ts.
   const evmChain = args.evmChain;
   if (!evmChain?.chainId || !evmChain.rpcUrl) throw new Error('Pick the network to send on');
   let value: bigint;
@@ -118,8 +112,6 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   try {
     if (args.tokenAddress) {
       return await transferErc20({
-        seed:         args.seed,
-        hdPath:       activeHdPath(),
         tokenAddress: args.tokenAddress,
         to:           args.to,
         amount:       value,
@@ -128,8 +120,6 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
       });
     }
     return await signAndBroadcastTx({
-      seed:    args.seed,
-      hdPath:  activeHdPath(),
       tx:      { to: args.to, value: '0x' + value.toString(16) },
       chainId: evmChain.chainId,
       rpcUrl:  evmChain.rpcUrl,
