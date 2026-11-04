@@ -54,7 +54,6 @@ import { getKametProvider, KAMET_CHAIN_ID } from '../lib/rpc';
 import { getEvmProvider } from '../lib/evm-chains';
 import { parseUnits as ethersParseUnits, Contract as EthersContract, formatUnits as ethersFormatUnits } from 'ethers';
 import { LedgerError } from '../lib/ledger-transport';
-import { getActiveAccountIndex } from '../lib/vault';
 import { MultXBridge } from './MultXBridge';
 import { MULTX_CONFIG } from '../lib/multx-thanos';
 import { recordPendingTx } from '../lib/tx-store';
@@ -485,7 +484,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       const t = setTimeout(async () => {
         try {
           const est = await estimateNativeEvmFee(
-            wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+            wallet.evmAddress,
             { chainId: evmChainId, recipient: evmRecipient, amount },
           );
           if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} ${evmChain.nativeSymbol}` : null);
@@ -526,7 +525,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
     const t = setTimeout(async () => {
       try {
         const est = await estimateLithoNativeFee(
-          wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+          wallet.evmAddress,
           { chainId: KAMET_CHAIN_ID, recipient: to, amount },
         );
         if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} LITHO` : null);
@@ -899,15 +898,16 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         return;
       }
       try {
-        const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
         // A token on this chain → ERC-20 transfer; the native coin → native.
-        const acctIdx = getActiveAccountIndex();
+        // Signing happens in the signer worker (hardening-audit H-1) — it
+        // already holds the unlocked key and tracks the active HD account,
+        // so neither call below needs the seed/private key at all.
         const result = tokenOnChain
-          ? await sendEvmToken(walletInput, {
+          ? await sendEvmToken({
               chainId: evmChainId, tokenAddress: tokenOnChain.address, decimals: tokenOnChain.decimals,
-              symbol: tokenOnChain.symbol, recipient: evmRecipient, amount, accountIdx: acctIdx,
+              symbol: tokenOnChain.symbol, recipient: evmRecipient, amount,
             })
-          : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: evmRecipient, amount, accountIdx: acctIdx });
+          : await sendNativeEvm({ chainId: evmChainId, recipient: evmRecipient, amount });
         recordPendingSend(result.hash);
         setTxHash(result.hash);
         setStage('pending');
@@ -1011,13 +1011,11 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       setStage('failed');
       return;
     }
-    /* Kamet keyring sends — native LITHO through the chain-aware main-thread
-       sendLithoNative (the seed is already in this context). Signs from the
-       ACTIVE account. */
+    /* Kamet keyring sends — native LITHO, signed in the signer worker
+       (hardening-audit H-1), which already tracks the active account. */
     try {
-      const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
-      const result = await sendLithoNative(walletInput, {
-        chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount, accountIdx: getActiveAccountIndex(),
+      const result = await sendLithoNative({
+        chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount,
       });
       recordPendingSend(result.hash);
       setTxHash(result.hash);
