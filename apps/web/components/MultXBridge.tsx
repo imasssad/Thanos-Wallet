@@ -10,8 +10,7 @@ import {
   type MultXBridgeOption, type MultXBridgeStep, type MultXBridgeTransfer,
 } from '@thanos/sdk-core';
 import { useWallet } from './shell/AppShell';
-import { getActiveAccountIndex } from '../lib/vault';
-import { thanosBridge, multxChain, multxSigner } from '../lib/multx-thanos';
+import { thanosBridge, multxChain, multxSigner, multxRemoteSigner } from '../lib/multx-thanos';
 import { displayAddress, shortAddress } from '../lib/address';
 
 const TONE: Record<'pending' | 'ok' | 'bad' | 'warn', string> = {
@@ -109,11 +108,16 @@ export function MultXBridge() {
     if (!option || !canRun || running.current) return;
     running.current = true;
     setErr(''); setCurrent(null); setStep('checking');
-    let signer: ReturnType<typeof multxSigner> | null = null;
+    // Private-key-imported wallets still build a local signer+provider pair
+    // that needs an explicit destroy(); the mnemonic/HD path routes through
+    // the signing Worker (multxRemoteSigner) and owns no provider to close.
+    let pkSigner: ReturnType<typeof multxSigner> | null = null;
     try {
-      signer = multxSigner({ privateKey: wallet?.privateKey, seed: wallet?.seed ?? [], accountIdx: getActiveAccountIndex() }, option.sourceChainId);
+      const signer = wallet?.privateKey
+        ? (pkSigner = multxSigner({ privateKey: wallet.privateKey }, option.sourceChainId)).signer
+        : await multxRemoteSigner(option.sourceChainId);
       const done = await bridge.send({
-        signer: signer.signer, option, amount: amt,
+        signer, option, amount: amt,
         onStep: setStep,
         onUpdate: (t) => { setCurrent(t); refreshHistory(); },
       });
@@ -122,7 +126,7 @@ export function MultXBridge() {
     } catch (e) {
       setErr(bridgeErrorMessage(e));
     } finally {
-      signer?.destroy();
+      pkSigner?.destroy();
       setStep(null);
       running.current = false;
       refreshHistory();

@@ -6,10 +6,11 @@
  * variables) — routes, bridges and tokens come only from that manifest.
  * History lives in storage.local, shared by the popup and the side panel.
  */
-import { createThanosBridge, multxThanosConfig, bridgeSigner, lithoscanTxUrl, type ThanosBridge } from '@thanos/sdk-core';
-import { HDNodeWallet, Mnemonic } from 'ethers';
+import { createThanosBridge, multxThanosConfig, bridgeSigner, createRemoteEvmSigner, lithoscanTxUrl, type ThanosBridge } from '@thanos/sdk-core';
+import { HDNodeWallet, JsonRpcProvider, Mnemonic, type Signer } from 'ethers';
 import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
 import { allEvmChains } from './custom-assets';
+import { getSignerAddress, signAndBroadcastTx } from '../entrypoints/popup/offscreen-sign';
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
 
@@ -48,15 +49,60 @@ export function thanosBridge(): ThanosBridge {
   return instance;
 }
 
-/** The active account's key: a private-key wallet's own, or the seed's at the active index. */
+/** The active account's key: a private-key wallet's own, or the seed's at
+ *  the active index. Still used for display (deriving the address shown
+ *  before a transfer, MultXBridgePanel.tsx) — that non-signing use is a
+ *  separate, larger pattern (reading the seed into component state purely
+ *  to show an address) left open across every client, not this signing
+ *  path. multxSigner() itself no longer calls this for the signing case —
+ *  see its doc comment. */
 export function multxPrivateKey(seed: string[]): string {
   if (isPrivateKeyWallet(seed)) return seed[0].trim();
   return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${getActiveAccountIndex()}`).privateKey;
 }
 
-/** A signer for the active account on the route's source chain. */
-export function multxSigner(seed: string[], chainId: number): ReturnType<typeof bridgeSigner> {
+/** A signer for a private-key-imported account on the route's source
+ *  chain — that key is already surfaced to the UI by the import flow
+ *  itself (a separate, accepted exposure), so handing it to `bridgeSigner`
+ *  directly adds nothing new.
+ *
+ * H-1 residual, closed for the mnemonic/HD case: this used to derive a
+ * raw private key from the seed right here for EVERY wallet, re-crossing
+ * the seed into exactly the state the H-1 work's offscreen-signer caching
+ * closed for every other EVM signing path. A mnemonic/HD account now
+ * routes through that same cache instead — see multxRemoteSigner(). */
+export function multxSigner(privateKey: string, chainId: number): ReturnType<typeof bridgeSigner> {
   const url = multxRpcUrl(chainId);
   if (!url) throw new Error(`No RPC for chain ${chainId}`);
-  return bridgeSigner(multxPrivateKey(seed), url, chainId);
+  return bridgeSigner(privateKey, url, chainId);
+}
+
+/** The mnemonic/HD-account counterpart of multxSigner() — see its doc
+ *  comment. Reads the already-unlocked account's address from the
+ *  offscreen signer (no secret crosses back to the popup) and routes
+ *  every signed transaction through its existing sign.evm-tx op. */
+export async function multxRemoteSigner(chainId: number): Promise<Signer> {
+  const url = multxRpcUrl(chainId);
+  if (!url) throw new Error(`No RPC for chain ${chainId}`);
+  const address  = await getSignerAddress();
+  const provider = new JsonRpcProvider(url, chainId, { staticNetwork: true, cacheTimeout: -1 });
+  return createRemoteEvmSigner({
+    address,
+    provider,
+    sendTransaction: async (tx) => ({
+      hash: await signAndBroadcastTx({
+        tx: {
+          to:        tx.to as string,
+          value:     tx.value?.toString(),
+          data:      tx.data as string | undefined,
+          gasLimit:  tx.gasLimit?.toString(),
+          gasPrice:  tx.gasPrice?.toString(),
+          nonce:     tx.nonce ?? undefined,
+          chainId,
+        },
+        chainId,
+        rpcUrl: url,
+      }),
+    }),
+  });
 }

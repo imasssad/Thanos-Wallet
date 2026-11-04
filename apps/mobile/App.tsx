@@ -169,7 +169,7 @@ import {
   bridgeErrorMessage, bridgeTransferLabel, formatBridgeAmount, parseBridgeAmount,
   type MultXBridgeOption, type MultXBridgeStep, type MultXBridgeTransfer,
 } from './lib/multx-thanos/service';
-import { MULTX_CONFIG, thanosBridge, multxChain, multxSigner, multxPrivateKey } from './lib/thanos-bridge';
+import { MULTX_CONFIG, thanosBridge, multxChain, multxSigner, multxRemoteSigner, multxPrivateKey } from './lib/thanos-bridge';
 import { resolveRecipient, evmToLitho, lithoToEvm } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
@@ -6157,11 +6157,16 @@ function BridgeScreen({ goBack }: { goBack: () => void }) {
     if (!option || !canRun || running.current) return;
     running.current = true;
     setErr(''); setCurrent(null); setStep('checking');
-    let signer: ReturnType<typeof multxSigner> | null = null;
+    // Private-key-imported wallets build a local signer+provider pair that
+    // needs an explicit destroy(); the mnemonic/HD path routes through
+    // lib/signer.ts's cache (multxRemoteSigner) and owns no provider.
+    let pkSigner: ReturnType<typeof multxSigner> | null = null;
     try {
-      signer = multxSigner(seed, option.sourceChainId);
+      const signer = isPrivateKeyWallet(seed)
+        ? (pkSigner = multxSigner(seed[0].trim(), option.sourceChainId)).signer
+        : await multxRemoteSigner(option.sourceChainId);
       const done = await bridge.send({
-        signer: signer.signer, option, amount: amt,
+        signer, option, amount: amt,
         onStep: setStep,
         onUpdate: (t) => { setCurrent(t); refreshHistory(); },
       });
@@ -6177,7 +6182,7 @@ function BridgeScreen({ goBack }: { goBack: () => void }) {
       setErr(bridgeErrorMessage(e));
       void notifyIfEnabled('Bridge failed', bridgeErrorMessage(e));
     } finally {
-      signer?.destroy();
+      pkSigner?.destroy();
       setStep(null);
       running.current = false;
       refreshHistory();
