@@ -6910,11 +6910,11 @@ function SettingsScreen() {
   const onToggleNotif = async () => {
     if (notifOn) {
       await setNotificationsEnabled(false);
-      await unregisterPush(walletAddr, seed).catch(() => {});
+      await unregisterPush(walletAddr).catch(() => {});
       setNotifOn(false);
       return;
     }
-    const ok = await registerPush(walletAddr, seed);
+    const ok = await registerPush(walletAddr);
     if (!ok) {
       Alert.alert('Notifications unavailable', 'Enable notifications for Thanos in your device settings, then try again. (Push delivery also requires the app to be a real device build.)');
       return;
@@ -9466,7 +9466,7 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed, activeAccount
   // on when it asked (lib/wc-signer pins it); signatures are chain-independent.
   const run = async (req: DappRequest) => {
     try {
-      const result = await executeWcRequest(seed, {
+      const result = await executeWcRequest({
         request: { method: req.method, params: req.params },
         chainId: `eip155:${req.chainId}`,
       });
@@ -10707,7 +10707,7 @@ function App() {
   useEffect(() => {
     if (!unlocked || walletSeed.length === 0) return;
     isNotificationsEnabled().then(on => {
-      if (on) registerPush(walletAddr, walletSeed).catch(() => {});
+      if (on) registerPush(walletAddr).catch(() => {});
     });
   }, [unlocked, walletSeed, walletAddr]);
 
@@ -11036,7 +11036,7 @@ function App() {
 
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}
-            <WalletConnectRequestHost seed={walletSeed} account={walletAddr}/>
+            <WalletConnectRequestHost account={walletAddr}/>
 
             {/* WalletConnect deep-link pairing — opens + auto-pairs when a dApp
                 hands off a wc: URI via thanoswallet://wc?uri=… Rendered app-level

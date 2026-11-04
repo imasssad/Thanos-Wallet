@@ -88,14 +88,16 @@ export async function getPushToken(): Promise<string | null> {
  *  before storing/dropping a device token against it. Silent: this is the
  *  app proving its own wallet's address, not a dApp request, so it never
  *  shows the signing-approval sheet. Returns null on any failure (offline,
- *  locked wallet, backend not live yet) — callers treat that as "skip". */
-async function signOwnershipProof(seed: string[], address: string): Promise<{ nonceToken: string; signature: string } | null> {
-  if (!seed.length) return null;
+ *  locked wallet, backend not live yet) — callers treat that as "skip".
+ *  Hardening-audit H-1: no seed parameter — executeWcRequest signs through
+ *  lib/signer.ts's own cache (set once at unlock by App.tsx) and throws if
+ *  the wallet is locked, caught below the same as any other failure. */
+async function signOwnershipProof(address: string): Promise<{ nonceToken: string; signature: string } | null> {
   try {
     const nonceRes = await fetch(`${API_BASE}/push/nonce?address=${encodeURIComponent(address)}`);
     if (!nonceRes.ok) return null;
     const { nonceToken, message } = await nonceRes.json() as { nonceToken: string; message: string };
-    const signature = await executeWcRequest(seed, { request: { method: 'personal_sign', params: [message, address] } }) as string;
+    const signature = await executeWcRequest({ request: { method: 'personal_sign', params: [message, address] } }) as string;
     return { nonceToken, signature };
   } catch {
     return null;
@@ -108,11 +110,11 @@ async function signOwnershipProof(seed: string[], address: string): Promise<{ no
  * Returns true when a token was obtained (local notifications work
  * regardless). Network/registration failures are swallowed.
  */
-export async function registerPush(address: string, seed: string[]): Promise<boolean> {
+export async function registerPush(address: string): Promise<boolean> {
   const token = await getPushToken();
   if (!token) return false;
   try {
-    const proof = await signOwnershipProof(seed, address);
+    const proof = await signOwnershipProof(address);
     if (!proof) return true; // local notifications still work; remote registration skipped
     await fetch(`${API_BASE}/push/register`, {
       method: 'POST',
@@ -126,10 +128,10 @@ export async function registerPush(address: string, seed: string[]): Promise<boo
 }
 
 /** Tell the backend to stop pushing to this device. */
-export async function unregisterPush(address: string, seed: string[]): Promise<void> {
+export async function unregisterPush(address: string): Promise<void> {
   try {
     const token = await getPushToken();
-    const proof = token ? await signOwnershipProof(seed, address) : null;
+    const proof = token ? await signOwnershipProof(address) : null;
     if (token && proof) {
       await fetch(`${API_BASE}/push/unregister`, {
         method: 'POST',

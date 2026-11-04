@@ -359,7 +359,7 @@ interface PendingReq {
   verified?: { origin?: string; validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean };
 }
 
-export function WalletConnectRequestHost({ seed, account }: { seed: string[]; account?: string }) {
+export function WalletConnectRequestHost({ account }: { account?: string }) {
   const [pending, setPending] = useState<PendingReq | null>(null);
   /* Requests queue: a new one never replaces the sheet on screen (a dApp
      could otherwise swap it just before Approve, and the first request
@@ -438,7 +438,7 @@ export function WalletConnectRequestHost({ seed, account }: { seed: string[]; ac
     if (!pending || busy || blocked) return;
     setBusy('approve');
     try {
-      const result = await executeWcRequest(seed, {
+      const result = await executeWcRequest({
         request: { method: pending.method, params: pending.params },
         chainId: pending.chainId,
       });

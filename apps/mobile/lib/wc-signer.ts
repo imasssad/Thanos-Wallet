@@ -1,10 +1,9 @@
 /**
  * WalletConnect request signer for the mobile wallet.
  *
- * Takes the unlocked BIP39 seed and a session_request, signs/broadcasts
- * with ethers, and returns the JSON-RPC result. Pure logic — the UI
- * (WalletConnectRequestHost) decides whether to call this after the
- * user approves.
+ * Signs/broadcasts a session_request with ethers and returns the JSON-RPC
+ * result. Pure logic — the UI (WalletConnectRequestHost) decides whether to
+ * call this after the user approves.
  *
  * Supported methods:
  *   personal_sign / eth_sign      → EIP-191 message signature
@@ -18,8 +17,15 @@
  * broadcast on exactly that chain. There is no default network to fall back
  * to — a transaction for a chain the wallet doesn't know is refused.
  *
- * The seed never leaves this module; a fresh HDNodeWallet is built per
- * call and discarded.
+ * Hardening-audit H-1 (mobile, slice 4 of 4): this used to take the seed as
+ * a parameter and lazily call `signer.setSeed()` on first use — meaning
+ * every caller still had to hold the seed (App.tsx's `walletSeed` state)
+ * and pass it in, the exact "walletSeed in App state, passed to
+ * executeWcRequest" the audit names. lib/signer.ts's module-scope cache is
+ * now the ONLY thing this reads: App.tsx calls signer.setSeed()/clearSeed()
+ * once, at unlock and lock (already true for setSeed; clearSeed already ran
+ * on lock too — the gap was this function still accepting and threading a
+ * seed parameter it didn't strictly need). No seed crosses this call.
  */
 import {
   JsonRpcProvider, getBytes, toUtf8Bytes, isHexString, parseUnits,
@@ -123,15 +129,14 @@ export function summariseRequest(method: string, params: unknown): string {
  *
  *  Routes every signing call through `./signer`, which holds the seed
  *  in a module-private closure (not React state) — derived private keys
- *  never live in any caller's scope. */
-export async function executeWcRequest(seed: string[], reqParams: WcRequestParams): Promise<unknown> {
-  if (!seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
+ *  never live in any caller's scope, and this function no longer needs
+ *  the seed itself, only the chain and the dApp's request. */
+export async function executeWcRequest(reqParams: WcRequestParams): Promise<unknown> {
+  const signer = await import('./signer');
+  if (!signer.hasSeed()) throw new WcSignerError(-32000, 'Wallet is locked');
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
   const path = activeHdPath();
-
-  const signer = await import('./signer');
-  if (!signer.hasSeed()) signer.setSeed(seed);
 
   switch (method) {
     case 'eth_accounts':
@@ -308,7 +313,12 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
 
   const path = activeHdPath();
   const signer = await import('./signer');
-  if (!signer.hasSeed()) signer.setSeed(args.seed);
+  // Hardening-audit H-1: no lazy setSeed() here — App.tsx already pushed
+  // the secret into the cache at unlock. A miss means the cache was
+  // cleared out from under this call (a lock raced it); fail closed
+  // rather than silently re-deriving from args.seed (still held only for
+  // the BTC/SOL/Cosmos branches above, which this module doesn't cover).
+  if (!signer.hasSeed()) throw new WcSignerError(-32000, 'Wallet is locked');
 
   try {
     if (args.tokenAddress) {
