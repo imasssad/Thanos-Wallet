@@ -124,3 +124,92 @@ export async function transferErc20(hdPath: string, args: {
 export function deriveAddress(hdPath: string): string {
   return unlockedWallet(hdPath).address;
 }
+
+/* ─── Solana / Cosmos ──────────────────────────────────────────────────
+ * O-01 (H-1 residual): mnemonic-only — no private-key import exists for
+ * either chain, so these two never need isRawKey's branch. They import
+ * their chain-specific deps lazily (this module loads at app startup,
+ * before any signing happens) to keep that cost out of every launch. */
+
+// O-01 (H-1 residual): this reimplements sdk-core's SolanaClient.send()
+// rather than importing @thanos/sdk-core — tsconfig.main.json's rootDir
+// is scoped to src/main (the main process's build stays hermetic, same
+// reason the EVM code above uses bare `ethers` instead of sdk-core), and
+// sdk-core's package.json points `types`/`main` straight at its own
+// src/, which sits outside that rootDir. Kept in lock-step with
+// packages/sdk-core/src/clients/solana-client.ts and src/utils/
+// mnemonic.ts's deriveSolanaKeypair — same derivation path
+// (m/44'/501'/0'/0'), same SLIP-0010 (ed25519-hd-key) + ed25519
+// (tweetnacl) primitives.
+async function deriveSolanaKeypair(mnemonic: string) {
+  const bip39 = await import('bip39');
+  const { derivePath } = await import('ed25519-hd-key');
+  const nacl = (await import('tweetnacl')).default;
+  const { Keypair } = await import('@solana/web3.js');
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const derived = derivePath("m/44'/501'/0'/0'", seed.toString('hex')).key;
+  const keypair = nacl.sign.keyPair.fromSeed(derived);
+  return Keypair.fromSecretKey(Buffer.from(keypair.secretKey));
+}
+
+export async function sendSolana(args: {
+  recipient: string; amount: string; mintAddress?: string; decimals?: number;
+}): Promise<string> {
+  if (!_seed) throw new Error('Wallet is locked — call signer:set-seed first');
+  if (isRawKey(_seed)) throw new Error('sol_requires_mnemonic');
+  const {
+    Connection, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction,
+  } = await import('@solana/web3.js');
+  const signer = await deriveSolanaKeypair(_seed);
+  // Matches packages/sdk-core/src/chains/networks.ts's SOLANA_MAINNET entry.
+  const connection = new Connection('https://solana-rpc.publicnode.com', 'confirmed');
+
+  if (!args.mintAddress) {
+    const tx = new Transaction().add(SystemProgram.transfer({
+      fromPubkey: signer.publicKey,
+      toPubkey:   new PublicKey(args.recipient),
+      lamports:   Math.round(Number(args.amount) * LAMPORTS_PER_SOL),
+    }));
+    return sendAndConfirmTransaction(connection, tx, [signer]);
+  }
+
+  const { createAssociatedTokenAccountInstruction, createTransferInstruction, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } =
+    await import('@solana/spl-token');
+  const mint = new PublicKey(args.mintAddress);
+  const decimals = args.decimals ?? 6;
+  const fromAta = getAssociatedTokenAddressSync(mint, signer.publicKey);
+  const toOwner = new PublicKey(args.recipient);
+  const toAta = getAssociatedTokenAddressSync(mint, toOwner, true);
+  const accountInfo = await connection.getAccountInfo(toAta);
+  const amount = BigInt(Math.round(Number(args.amount) * 10 ** decimals));
+  const tx = new Transaction();
+  if (!accountInfo) tx.add(createAssociatedTokenAccountInstruction(signer.publicKey, toAta, toOwner, mint));
+  tx.add(createTransferInstruction(fromAta, toAta, signer.publicKey, amount, [], TOKEN_PROGRAM_ID));
+  return sendAndConfirmTransaction(connection, tx, [signer]);
+}
+
+export async function sendCosmosTx(args: {
+  recipient: string; amount: string; memo?: string;
+}): Promise<string> {
+  if (!_seed) throw new Error('Wallet is locked — call signer:set-seed first');
+  if (isRawKey(_seed)) throw new Error('cosmos_requires_mnemonic');
+  const amt = parseFloat(args.amount);
+  if (!amt || amt <= 0) throw new Error('invalid_amount');
+  const { DirectSecp256k1HdWallet } = await import('@cosmjs/proto-signing');
+  const { SigningStargateClient, GasPrice } = await import('@cosmjs/stargate');
+  const { stringToPath } = await import('@cosmjs/crypto');
+  // Matches apps/desktop/src/renderer/cosmos.ts's own defaults exactly.
+  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(_seed, {
+    prefix: 'cosmos', hdPaths: [stringToPath("m/44'/118'/0'/0/0")],
+  });
+  const [acc] = await wallet.getAccounts();
+  const client = await SigningStargateClient.connectWithSigner(
+    'https://cosmos-rpc.publicnode.com', wallet, { gasPrice: GasPrice.fromString('0.025uatom') },
+  );
+  const amountMicro = Math.round(amt * 1e6).toString();
+  const result = await client.sendTokens(
+    acc.address, args.recipient, [{ denom: 'uatom', amount: amountMicro }], 'auto', args.memo ?? '',
+  );
+  if (result.code !== 0) throw new Error(result.rawLog || `cosmos_tx_failed_code_${result.code}`);
+  return result.transactionHash;
+}

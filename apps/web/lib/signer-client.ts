@@ -160,3 +160,25 @@ export function signerSendBitcoin(input: {
 }): Promise<{ hash: string }> {
   return call('send-btc', input);
 }
+
+/** Solana send via the worker — native SOL or an SPL token (when
+ *  mintAddress is given). No private-key import exists for SOL yet, so
+ *  every send goes through this path. */
+export function signerSendSolana(input: {
+  recipient:    string;
+  amount:       string;        // human-readable SOL
+  mintAddress?: string;
+  decimals?:    number;
+}): Promise<{ hash: string }> {
+  return call('send-sol', input);
+}
+
+/** Cosmos (ATOM) send via the worker. No private-key import exists for
+ *  ATOM yet, so every send goes through this path. */
+export function signerSendCosmos(input: {
+  recipient: string;
+  amount:    string;           // human-readable ATOM
+  memo?:     string;
+}): Promise<{ hash: string }> {
+  return call('send-cosmos', input);
+}

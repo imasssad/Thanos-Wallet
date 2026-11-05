@@ -233,6 +233,8 @@ app.whenReady().then(() => {
   handleTrusted('signer:personal',    (_e, hdPath: string, msg)     => signer.signPersonalMessage(hdPath, msg));
   handleTrusted('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
   handleTrusted('signer:erc20-transfer', (_e, hdPath: string, args, chain) => signer.transferErc20(hdPath, args, chain));
+  handleTrusted('signer:send-sol',    (_e, args)                    => signer.sendSolana(args));
+  handleTrusted('signer:send-cosmos', (_e, args)                    => signer.sendCosmosTx(args));
 
   /* Native-HID Ledger bridge — used by the renderer as a fallback when
      WebHID is unavailable (typically Linux). Lazy-loaded so a missing

@@ -1,11 +1,14 @@
 /**
  * Cosmos Hub (ATOM) integration — extension popup.
- * Mirrors apps/web/lib/cosmos.ts.
+ * Mirrors apps/web/lib/cosmos.ts. H-1 residual, closed: sendCosmos now
+ * routes through the offscreen signer (sendCosmosTx) instead of building
+ * a DirectSecp256k1HdWallet from the mnemonic read out of popup state.
  */
 import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing';
-import { SigningStargateClient, GasPrice, calculateFee } from '@cosmjs/stargate';
+import { GasPrice, calculateFee } from '@cosmjs/stargate';
 import { fromBech32 } from '@cosmjs/encoding';
 import { stringToPath, type HdPath } from '@cosmjs/crypto';
+import { sendCosmosTx } from '../entrypoints/popup/offscreen-sign';
 
 function env(name: string, fallback: string): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -87,7 +90,7 @@ export function estimateCosmosFee(): { atom: string; gas: number } {
 }
 
 export async function sendCosmos(input: {
-  mnemonic: string; recipient: string; amount: string; memo?: string;
+  recipient: string; amount: string; memo?: string;
 }): Promise<string> {
   const recipient = input.recipient.trim();
   if (!isValidCosmosAddress(recipient)) {
@@ -98,30 +101,14 @@ export async function sendCosmos(input: {
   catch { throw new CosmosSendError('invalid_amount', 'Enter a valid amount'); }
   if (amountUatom <= 0n) throw new CosmosSendError('invalid_amount', 'Amount must be greater than zero');
 
-  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(input.mnemonic, {
-    prefix: BECH32_PREFIX, hdPaths: [stringToPath(HD_PATH) as HdPath],
-  });
-  const [acc] = await wallet.getAccounts();
-  const client = await SigningStargateClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
-
   try {
-    const result = await client.sendTokens(
-      acc.address, recipient,
-      [{ denom: NATIVE_DENOM, amount: amountUatom.toString() }],
-      'auto', input.memo ?? '',
-    );
-    if (result.code !== 0) {
-      throw new CosmosSendError('rpc_error', result.rawLog || `Tx failed (code ${result.code})`);
-    }
-    return result.transactionHash;
+    return await sendCosmosTx({ recipient, amount: input.amount, memo: input.memo });
   } catch (e) {
     if (e instanceof CosmosSendError) throw e;
     const msg = (e as Error).message || '';
     if (/insufficient/i.test(msg)) throw new CosmosSendError('insufficient', 'Insufficient ATOM for amount + fees');
     if (/rejected|denied/i.test(msg)) throw new CosmosSendError('rejected', 'Transaction rejected');
     throw new CosmosSendError('rpc_error', msg || 'Failed to broadcast');
-  } finally {
-    client.disconnect();
   }
 }
 

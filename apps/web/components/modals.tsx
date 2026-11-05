@@ -717,7 +717,6 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       setError(null);
       try {
         const hash = await sendCosmos({
-          mnemonic:  wallet.seed.join(' '),
           recipient: to.trim(),
           // Reserve ~0.005 ATOM for gas when sending max so the fee doesn't push
           // the total over the balance.
@@ -791,9 +790,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         const sig = selectedToken.address === null
           // Native SOL: reserve ~0.00001 SOL for the signature fee on send-max.
           // (SPL token max is the full token balance — its fee is paid in SOL.)
-          ? await sendSol({       mnemonic: wallet.seed.join(' '), recipient: to.trim(),
+          ? await sendSol({       recipient: to.trim(),
                                    amount: maxMode ? String(Math.max(0, parseFloat(amount || '0') - 0.00001)) : amount })
-          : await sendSplToken({  mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount,
+          : await sendSplToken({  recipient: to.trim(), amount,
                                    mintAddress: selectedToken.address, decimals: selectedToken.decimals });
         recordPendingSend(sig);
         setTxHash(sig);

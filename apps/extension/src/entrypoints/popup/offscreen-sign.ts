@@ -124,3 +124,27 @@ export async function transferErc20(args: {
   });
   return r.hash;
 }
+
+/** O-01 (H-1 residual): Solana send via the offscreen signer — native SOL
+ *  or an SPL token (when mintAddress is given). Mnemonic-only — no
+ *  private-key import exists for SOL. */
+export async function sendSolana(args: {
+  recipient: string; amount: string; mintAddress?: string; decimals?: number;
+}): Promise<string> {
+  const r = await send<BridgeOk & { hash: string }>({
+    type: 'sign.sol-send', recipient: args.recipient, amount: args.amount,
+    mintAddress: args.mintAddress, decimals: args.decimals,
+  });
+  return r.hash;
+}
+
+/** O-01 (H-1 residual): Cosmos (ATOM) send via the offscreen signer.
+ *  Mnemonic-only — no private-key import exists for ATOM. */
+export async function sendCosmosTx(args: {
+  recipient: string; amount: string; memo?: string;
+}): Promise<string> {
+  const r = await send<BridgeOk & { hash: string }>({
+    type: 'sign.cosmos-send', recipient: args.recipient, amount: args.amount, memo: args.memo,
+  });
+  return r.hash;
+}

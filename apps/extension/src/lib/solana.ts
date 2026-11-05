@@ -1,9 +1,12 @@
 /**
  * Solana wallet integration — extension popup.
- * Mirrors apps/web/lib/solana.ts.
+ * Mirrors apps/web/lib/solana.ts. H-1 residual, closed: sends now route
+ * through the offscreen signer (sendSolana) instead of calling
+ * client.send(mnemonic, ...) with the mnemonic read from popup state.
  */
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { SolanaClient, SOLANA_MAINNET } from '@thanos/sdk-core';
+import { sendSolana } from '../entrypoints/popup/offscreen-sign';
 
 const NETWORK = SOLANA_MAINNET;
 let _connection: Connection | null = null;
@@ -37,7 +40,7 @@ export class SolanaSendError extends Error {
 }
 
 export async function sendSol(input: {
-  mnemonic: string; recipient: string; amount: string;
+  recipient: string; amount: string;
 }): Promise<string> {
   if (!isValidSolanaAddress(input.recipient)) {
     throw new SolanaSendError('invalid_address', 'Recipient is not a valid Solana address');
@@ -46,9 +49,7 @@ export async function sendSol(input: {
     throw new SolanaSendError('invalid_amount', 'Amount must be greater than zero');
   }
   try {
-    return await client.send(input.mnemonic, {
-      chainId: NETWORK.chainId, to: input.recipient, amount: input.amount,
-    });
+    return await sendSolana({ recipient: input.recipient, amount: input.amount });
   } catch (e) {
     const msg = (e as Error)?.message || 'Failed to send';
     if (/insufficient funds|insufficient lamports/i.test(msg)) {
@@ -62,12 +63,12 @@ export async function sendSol(input: {
 }
 
 export async function sendSplToken(input: {
-  mnemonic: string; recipient: string; amount: string; mintAddress: string; decimals?: number;
+  recipient: string; amount: string; mintAddress: string; decimals?: number;
 }): Promise<string> {
   if (!isValidSolanaAddress(input.recipient))   throw new SolanaSendError('invalid_address', 'Recipient is not a valid Solana address');
   if (!isValidSolanaAddress(input.mintAddress)) throw new SolanaSendError('invalid_token',   'Token mint address is not valid');
-  return await client.send(input.mnemonic, {
-    chainId: NETWORK.chainId, to: input.recipient, amount: input.amount,
+  return await sendSolana({
+    recipient: input.recipient, amount: input.amount,
     mintAddress: input.mintAddress, decimals: input.decimals ?? 6,
   });
 }

@@ -247,6 +247,49 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
     return { ok: true, address: (await cachedWallet()).address };
   }
 
+  // O-01 (H-1 residual): Solana and Cosmos sends — mnemonic-only (no
+  // private-key import exists for either chain), so these two branches
+  // never touch cachedWallet()'s ethers-specific derivation; they read
+  // cachedSource.mnemonic directly, same as the EVM branches below read
+  // it via cachedWallet(). The secret still never leaves this document.
+  if (msg.type === 'sign.sol-send') {
+    if (!cachedSource) throw new Error('signer_locked');
+    if (cachedSource.kind !== 'mnemonic') throw new Error('sol_requires_mnemonic');
+    const { SolanaClient, SOLANA_MAINNET } = await import('@thanos/sdk-core');
+    const hash = await new SolanaClient().send(cachedSource.mnemonic, {
+      chainId:     SOLANA_MAINNET.chainId,
+      to:          String(msg.recipient ?? ''),
+      amount:      String(msg.amount ?? '0'),
+      mintAddress: typeof msg.mintAddress === 'string' ? msg.mintAddress : undefined,
+      decimals:    typeof msg.decimals === 'number' ? msg.decimals : undefined,
+    });
+    return { ok: true, hash };
+  }
+  if (msg.type === 'sign.cosmos-send') {
+    if (!cachedSource) throw new Error('signer_locked');
+    if (cachedSource.kind !== 'mnemonic') throw new Error('cosmos_requires_mnemonic');
+    const amt = parseFloat(String(msg.amount ?? '0'));
+    if (!amt || amt <= 0) throw new Error('invalid_amount');
+    const { DirectSecp256k1HdWallet } = await import('@cosmjs/proto-signing');
+    const { SigningStargateClient, GasPrice } = await import('@cosmjs/stargate');
+    const { stringToPath } = await import('@cosmjs/crypto');
+    // Matches apps/extension/src/lib/cosmos.ts's own defaults exactly.
+    const cosmosWallet = await DirectSecp256k1HdWallet.fromMnemonic(cachedSource.mnemonic, {
+      prefix: 'cosmos', hdPaths: [stringToPath("m/44'/118'/0'/0/0")],
+    });
+    const [acc] = await cosmosWallet.getAccounts();
+    const stargate = await SigningStargateClient.connectWithSigner(
+      'https://cosmos-rpc.publicnode.com', cosmosWallet, { gasPrice: GasPrice.fromString('0.025uatom') },
+    );
+    const amountMicro = Math.round(amt * 1e6).toString();
+    const result = await stargate.sendTokens(
+      acc.address, String(msg.recipient ?? ''),
+      [{ denom: 'uatom', amount: amountMicro }], 'auto', typeof msg.memo === 'string' ? msg.memo : '',
+    );
+    if (result.code !== 0) throw new Error(result.rawLog || `cosmos_tx_failed_code_${result.code}`);
+    return { ok: true, hash: result.transactionHash };
+  }
+
   const { Contract, getBytes } = await import('ethers');
   type TransactionRequest = import('ethers').TransactionRequest;
   type TypedDataDomain    = import('ethers').TypedDataDomain;

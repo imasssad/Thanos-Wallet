@@ -127,6 +127,8 @@ declare global {
         personal(hdPath: string, msg: string | Uint8Array):          Promise<string>;
         typedData(hdPath: string, payload: IpcTypedDataPayload):     Promise<string>;
         erc20Transfer(hdPath: string, args: { tokenAddress: string; to: string; amount: string }, chain: { chainId: number; rpcUrl: string }): Promise<string>;
+        sendSol(args: { recipient: string; amount: string; mintAddress?: string; decimals?: number }): Promise<string>;
+        sendCosmos(args: { recipient: string; amount: string; memo?: string }): Promise<string>;
       };
       /** Native-HID Ledger fallback — present only on desktop builds
        *  whose main process has the optional
