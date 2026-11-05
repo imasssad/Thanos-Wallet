@@ -94,10 +94,14 @@ function storedActivity(address: string): DisplayTx[] {
 /** The seed's Bitcoin / Solana / Cosmos addresses, each best-effort — for
  *  their balances and their history. */
 async function otherChainAddresses(phrase: string): Promise<{ bitcoin?: string; solana?: string; cosmos?: string }> {
+  // O-01 (H-1 residual, non-signing): Solana/Cosmos come from the main-
+  // process signer bridge, not derived from `phrase` here. Bitcoin isn't
+  // signing-isolated yet (H-1 residual, deferred).
+  const bridge = typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined;
   const [bitcoin, solana, cosmos] = await Promise.allSettled([
     import('./bitcoin').then((m) => m.getBitcoinAddress(phrase)),
-    import('./solana').then((m) => m.getSolanaAddress(phrase)),
-    import('./cosmos').then((m) => m.getCosmosAddress(phrase)),
+    bridge ? bridge.solAddress()    : Promise.reject(new Error('no signer bridge')),
+    bridge ? bridge.cosmosAddress() : Promise.reject(new Error('no signer bridge')),
   ]);
   const ok = (r: PromiseSettledResult<string>) => (r.status === 'fulfilled' ? r.value : undefined);
   return { bitcoin: ok(bitcoin), solana: ok(solana), cosmos: ok(cosmos) };

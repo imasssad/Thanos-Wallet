@@ -148,3 +148,17 @@ export async function sendCosmosTx(args: {
   });
   return r.hash;
 }
+
+/** O-01 (H-1 residual, non-signing): the cached account's Solana address,
+ *  without the mnemonic leaving the offscreen document just to show a
+ *  balance or receive address. */
+export async function getSolanaAddressFromSigner(): Promise<string> {
+  const r = await send<BridgeOk & { address: string }>({ type: 'sign.sol-address' });
+  return r.address;
+}
+
+/** O-01 (H-1 residual, non-signing): same, for Cosmos. */
+export async function getCosmosAddressFromSigner(): Promise<string> {
+  const r = await send<BridgeOk & { address: string }>({ type: 'sign.cosmos-address' });
+  return r.address;
+}

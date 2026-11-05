@@ -234,3 +234,26 @@ export async function sendCosmosTx(args: {
     return result.transactionHash;
   } finally { client.disconnect(); }
 }
+
+// O-01 (H-1 residual, non-signing): balance/receive displays used to call
+// getSolanaAddress(mnemonic) / getCosmosAddress(mnemonic) with the
+// mnemonic read out of component state. These derive the same address
+// from this module's cache instead, so the mnemonic never has to leave
+// it just to show a balance or receive address.
+
+export async function solanaAddress(): Promise<string> {
+  const signer = await solanaKeypair();
+  return signer.publicKey.toBase58();
+}
+
+export async function cosmosAddress(): Promise<string> {
+  if (!_seed) throw new Error('Wallet is locked');
+  if (PRIVATE_KEY_RE.test(_seed)) throw new Error('cosmos_requires_mnemonic');
+  const { DirectSecp256k1HdWallet } = await import('@cosmjs/proto-signing');
+  const { stringToPath } = await import('@cosmjs/crypto');
+  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(_seed, {
+    prefix: 'cosmos', hdPaths: [stringToPath("m/44'/118'/0'/0/0")],
+  });
+  const [acc] = await wallet.getAccounts();
+  return acc.address;
+}

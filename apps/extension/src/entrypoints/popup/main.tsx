@@ -4442,12 +4442,14 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
       void import('../../lib/bitcoin').then(m => { if (!cancelled) setBtcAddr(m.getBitcoinAddress(seed.join(' '))); })
         .catch(() => { if (!cancelled) setBtcAddr(''); });
     }
+    // O-01 (H-1 residual, non-signing): both addresses come from the
+    // offscreen signer's cache, not derived from `seed` here.
     if (chain === 'sol' && !solAddr && seed.length) {
-      void import('../../lib/solana').then(m => { if (!cancelled) setSolAddr(m.getSolanaAddress(seed.join(' '))); })
-        .catch(() => { if (!cancelled) setSolAddr(''); });
+      void import('./offscreen-sign').then(m => m.getSolanaAddressFromSigner())
+        .then(a => { if (!cancelled) setSolAddr(a); }).catch(() => { if (!cancelled) setSolAddr(''); });
     }
     if (chain === 'atom' && !atomAddr && seed.length) {
-      void import('../../lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
+      void import('./offscreen-sign').then(m => m.getCosmosAddressFromSigner())
         .then(a => { if (!cancelled) setAtomAddr(a); }).catch(() => { if (!cancelled) setAtomAddr(''); });
     }
     return () => { cancelled = true; };

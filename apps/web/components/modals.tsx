@@ -1508,9 +1508,8 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
  */
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import QRCode from 'qrcode';
-import { getSolanaAddress } from '../lib/solana';
 import { getBitcoinAddressFromSource } from '../lib/bitcoin';
-import { getCosmosAddress } from '../lib/cosmos';
+import { signerSolanaAddress, signerCosmosAddress } from '../lib/signer-client';
 
 interface ReceiveNetwork {
   id:      string;
@@ -1563,37 +1562,44 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
   const litho = wallet?.addresses?.litho ?? '';
   const evm   = wallet?.addresses?.evm   ?? '';
 
-  /* Derive non-EVM addresses on demand. Same code path as the dashboard
-     uses to display SOL / BTC balances; safe to call repeatedly.
-     Cosmos derivation is async (CosmJS does I/O-free crypto behind a
-     Promise) so it lands via a separate useEffect. */
-  const { btcAddr, solAddr } = useMemo(() => {
+  /* Derive non-EVM addresses on demand. Bitcoin isn't signing-isolated yet
+     (H-1 residual, deferred — see apps/web/lib/bitcoin.ts), so it still
+     derives from the raw seed here; safe to call repeatedly. Solana and
+     Cosmos ARE isolated (O-01/H-1 residual, closed) — both land via their
+     own effect, reading the address from the signing Worker's cache
+     instead of the seed. */
+  const btcAddr = useMemo(() => {
     const seedAvailable = !!wallet?.seed?.length;
     const pk = wallet?.privateKey;
-    let btc = '';
-    let sol = '';
     try {
-      if (seedAvailable) {
-        sol = getSolanaAddress(wallet!.seed.join(' '));
-      }
       const source = pk
         ? { kind: 'privateKey' as const, privateKey: pk }
         : seedAvailable
           ? { kind: 'mnemonic' as const, mnemonic: wallet!.seed.join(' ') }
           : null;
-      if (source) btc = getBitcoinAddressFromSource(source);
-    } catch { /* derivation can fail for malformed keys — show nothing */ }
-    return { btcAddr: btc, solAddr: sol };
+      return source ? getBitcoinAddressFromSource(source) : '';
+    } catch { return ''; /* derivation can fail for malformed keys — show nothing */ }
   }, [wallet?.seed, wallet?.privateKey]);
+
+  const [solAddr, setSolAddr] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setSolAddr('');
+    if (!wallet?.seed?.length) return;
+    signerSolanaAddress()
+      .then(({ address }) => { if (!cancelled) setSolAddr(address); })
+      .catch(() => { /* wallet locked / worker not ready — show no row */ });
+    return () => { cancelled = true; };
+  }, [wallet?.seed]);
 
   const [atomAddr, setAtomAddr] = useState('');
   useEffect(() => {
     let cancelled = false;
     setAtomAddr('');
     if (!wallet?.seed?.length) return;
-    getCosmosAddress(wallet.seed.join(' '))
-      .then(a => { if (!cancelled) setAtomAddr(a); })
-      .catch(() => { /* swallow — malformed seed shows no row */ });
+    signerCosmosAddress()
+      .then(({ address }) => { if (!cancelled) setAtomAddr(address); })
+      .catch(() => { /* wallet locked / worker not ready — show no row */ });
     return () => { cancelled = true; };
   }, [wallet?.seed]);
 

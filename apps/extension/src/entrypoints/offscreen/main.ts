@@ -290,6 +290,29 @@ async function handleSignMessage(msg: { type: string; [k: string]: unknown }): P
     return { ok: true, hash: result.transactionHash };
   }
 
+  // O-01 (H-1 residual, non-signing): balance/receive displays used to
+  // call getSolanaAddress(mnemonic) / getCosmosAddress(mnemonic) with the
+  // mnemonic read out of popup state. These derive the same address
+  // inside the offscreen document instead, so the mnemonic never has to
+  // cross back to the popup just to show a balance or receive address.
+  if (msg.type === 'sign.sol-address') {
+    if (!cachedSource) throw new Error('signer_locked');
+    if (cachedSource.kind !== 'mnemonic') throw new Error('sol_requires_mnemonic');
+    const { SolanaClient } = await import('@thanos/sdk-core');
+    return { ok: true, address: new SolanaClient().deriveAccount(cachedSource.mnemonic, 0).address };
+  }
+  if (msg.type === 'sign.cosmos-address') {
+    if (!cachedSource) throw new Error('signer_locked');
+    if (cachedSource.kind !== 'mnemonic') throw new Error('cosmos_requires_mnemonic');
+    const { DirectSecp256k1HdWallet } = await import('@cosmjs/proto-signing');
+    const { stringToPath } = await import('@cosmjs/crypto');
+    const cosmosWallet = await DirectSecp256k1HdWallet.fromMnemonic(cachedSource.mnemonic, {
+      prefix: 'cosmos', hdPaths: [stringToPath("m/44'/118'/0'/0/0")],
+    });
+    const [acc] = await cosmosWallet.getAccounts();
+    return { ok: true, address: acc.address };
+  }
+
   const { Contract, getBytes } = await import('ethers');
   type TransactionRequest = import('ethers').TransactionRequest;
   type TypedDataDomain    = import('ethers').TypedDataDomain;

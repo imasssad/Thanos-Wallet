@@ -114,6 +114,10 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
       ipcRenderer.invoke('signer:send-sol', args) as Promise<string>,
     sendCosmos: (args: { recipient: string; amount: string; memo?: string }) =>
       ipcRenderer.invoke('signer:send-cosmos', args) as Promise<string>,
+    // O-01 (H-1 residual, non-signing): balance/receive displays read
+    // these instead of deriving from the seed in the renderer.
+    solAddress:    () => ipcRenderer.invoke('signer:sol-address')    as Promise<string>,
+    cosmosAddress: () => ipcRenderer.invoke('signer:cosmos-address') as Promise<string>,
   },
 
   /* ─── Native-HID Ledger fallback ────────────────────────────────────

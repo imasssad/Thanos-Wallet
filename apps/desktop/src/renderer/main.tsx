@@ -129,6 +129,8 @@ declare global {
         erc20Transfer(hdPath: string, args: { tokenAddress: string; to: string; amount: string }, chain: { chainId: number; rpcUrl: string }): Promise<string>;
         sendSol(args: { recipient: string; amount: string; mintAddress?: string; decimals?: number }): Promise<string>;
         sendCosmos(args: { recipient: string; amount: string; memo?: string }): Promise<string>;
+        solAddress():    Promise<string>;
+        cosmosAddress(): Promise<string>;
       };
       /** Native-HID Ledger fallback — present only on desktop builds
        *  whose main process has the optional
@@ -4235,14 +4237,15 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
       void import('./bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
         .catch(() => setBtcAddr(''));
     }
+    // O-01 (H-1 residual, non-signing): both come from the main-process
+    // signer bridge, not derived from `seed` here.
     if (chain === 'sol' && !solAddr && seed.length) {
-      void import('./solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
-        .catch(() => setSolAddr(''));
+      const bridge = window.thanosDesktop?.signer;
+      if (bridge) void bridge.solAddress().then(setSolAddr).catch(() => setSolAddr(''));
     }
     if (chain === 'atom' && !atomAddr && seed.length) {
-      void import('./cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
-        .then(setAtomAddr)
-        .catch(() => setAtomAddr(''));
+      const bridge = window.thanosDesktop?.signer;
+      if (bridge) void bridge.cosmosAddress().then(setAtomAddr).catch(() => setAtomAddr(''));
     }
   }, [chain, seed, btcAddr, solAddr, atomAddr]);
 

@@ -923,13 +923,15 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             const m = await import('./lib/bitcoin');
             return parseFloat(await m.getBitcoinBalance(m.getBitcoinAddress(phrase))) || 0;
           } },
+          // O-01 (H-1 residual, non-signing): both addresses come from
+          // lib/signer.ts's cache, not derived from `phrase` here.
           { sym: 'SOL', name: 'Solana', decimals: 9, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
-            const m = await import('./lib/solana');
-            return parseFloat(await m.getSolanaBalance(m.getSolanaAddress(phrase))) || 0;
+            const [m, s] = await Promise.all([import('./lib/solana'), import('./lib/signer')]);
+            return parseFloat(await m.getSolanaBalance(await s.solanaAddress())) || 0;
           } },
           { sym: 'ATOM', name: 'Cosmos Hub', decimals: 6, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
-            const m = await import('./lib/cosmos');
-            return parseFloat(await m.getCosmosBalance(await m.getCosmosAddress(phrase))) || 0;
+            const [m, s] = await Promise.all([import('./lib/cosmos'), import('./lib/signer')]);
+            return parseFloat(await m.getCosmosBalance(await s.cosmosAddress())) || 0;
           } },
         ];
         InteractionManager.runAfterInteractions(() => {
@@ -1174,8 +1176,10 @@ async function nativeHistoryAddrs(evm: string, phrase: string): Promise<HistoryA
   await new Promise<void>((resolve) => { InteractionManager.runAfterInteractions(() => resolve()); });
   const out: HistoryAddresses = {};
   try { out.bitcoin = (await import('./lib/bitcoin')).getBitcoinAddress(phrase); } catch { /* left out */ }
-  try { out.solana = (await import('./lib/solana')).getSolanaAddress(phrase); } catch { /* left out */ }
-  try { out.cosmos = await (await import('./lib/cosmos')).getCosmosAddress(phrase); } catch { /* left out */ }
+  // O-01 (H-1 residual, non-signing): both come from lib/signer.ts's
+  // cache, not derived from `phrase` here.
+  try { out.solana = await (await import('./lib/signer')).solanaAddress(); } catch { /* left out */ }
+  try { out.cosmos = await (await import('./lib/signer')).cosmosAddress(); } catch { /* left out */ }
   historyAddrCache.set(key, out);
   return out;
 }
@@ -5304,13 +5308,14 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
       void import('./lib/bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
         .catch(() => setBtcAddr(''));
     }
+    // O-01 (H-1 residual, non-signing): both come from lib/signer.ts's
+    // cache, not derived from `seed` here.
     if (chain === 'solana' && !solAddr && seed.length) {
-      void import('./lib/solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
+      void import('./lib/signer').then(s => s.solanaAddress()).then(setSolAddr)
         .catch(() => setSolAddr(''));
     }
     if (chain === 'cosmos' && !atomAddr && seed.length) {
-      void import('./lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
-        .then(setAtomAddr)
+      void import('./lib/signer').then(s => s.cosmosAddress()).then(setAtomAddr)
         .catch(() => setAtomAddr(''));
     }
   }, [chain, seed, btcAddr, solAddr, atomAddr]);

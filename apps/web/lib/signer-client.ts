@@ -182,3 +182,14 @@ export function signerSendCosmos(input: {
 }): Promise<{ hash: string }> {
   return call('send-cosmos', input);
 }
+
+/** O-01 (H-1 residual, non-signing): the cached account's Solana address,
+ *  without the mnemonic leaving the worker just to show a balance. */
+export function signerSolanaAddress(): Promise<{ address: string }> {
+  return call('address-sol');
+}
+
+/** O-01 (H-1 residual, non-signing): same, for Cosmos. */
+export function signerCosmosAddress(): Promise<{ address: string }> {
+  return call('address-cosmos');
+}
