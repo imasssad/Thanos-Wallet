@@ -249,6 +249,34 @@ describe('GET /auth/me', () => {
   });
 });
 
+describe('POST /auth/step-up (THN-R1 M-04)', () => {
+  it('rejects without a session token', async () => {
+    const res = await request(app).post('/auth/step-up').send({ password: 'whatever' });
+    expect(res.status).toBe(401);
+  });
+
+  it('issues a step-up token on the correct password, rejects the wrong one', async () => {
+    const { signAccessToken } = await import('../lib/jwt.js');
+    const token = await signAccessToken({ sub: 'user-su', sessionId: 'sess-su', deviceId: 'dev-su' });
+    const argon2 = (await import('argon2')).default;
+    const goodHash = await argon2.hash('the_correct_password', { type: argon2.argon2id });
+
+    dbQueryOne.mockResolvedValueOnce({ password_hash: goodHash });
+    const wrong = await request(app).post('/auth/step-up').set('Authorization', `Bearer ${token}`).send({ password: 'nope' });
+    expect(wrong.status).toBe(401);
+
+    dbQueryOne.mockResolvedValueOnce({ password_hash: goodHash });
+    const right = await request(app).post('/auth/step-up').set('Authorization', `Bearer ${token}`).send({ password: 'the_correct_password' });
+    expect(right.status).toBe(200);
+    expect(right.body.stepUpToken).toEqual(expect.any(String));
+
+    // The issued token is scoped to this exact session.
+    const { verifyStepUpToken } = await import('../lib/step-up.js');
+    expect(verifyStepUpToken(right.body.stepUpToken, 'user-su', 'sess-su')).toBe(true);
+    expect(verifyStepUpToken(right.body.stepUpToken, 'user-su', 'a-different-session')).toBe(false);
+  }, 15_000);
+});
+
 describe('POST /auth/refresh', () => {
   it('rejects a missing refresh token with 400', async () => {
     const res = await request(app).post('/auth/refresh').send({});
@@ -257,6 +285,7 @@ describe('POST /auth/refresh', () => {
 
   it('rejects an unknown refresh token with 401', async () => {
     dbQueryOne.mockResolvedValueOnce(null);
+    dbQuery.mockResolvedValueOnce([]); // reuse-detection UPDATE — no session matches this hash either way
     const res = await request(app)
       .post('/auth/refresh')
       .send({ refreshToken: 'no_such_token_here' });
@@ -270,7 +299,9 @@ describe('POST /auth/refresh', () => {
       device_id:  'dev-x',
       expires_at: new Date(Date.now() - 1000), // past
       revoked:    false,
+      created_at: new Date(),
     });
+    dbQuery.mockResolvedValueOnce([]); // reuse-detection UPDATE
     const res = await request(app)
       .post('/auth/refresh')
       .send({ refreshToken: 'whatever' });
@@ -284,6 +315,7 @@ describe('POST /auth/refresh', () => {
       device_id:  'dev-y',
       expires_at: new Date(Date.now() + 60_000),
       revoked:    false,
+      created_at: new Date(),
     });
     dbQuery.mockResolvedValueOnce([{ id: 'sess-y' }]); // UPDATE sessions SET refresh_token = ... RETURNING id
 
@@ -296,12 +328,13 @@ describe('POST /auth/refresh', () => {
     // New refresh token is fresh, not equal to the one sent.
     expect(res.body.refreshToken).not.toBe('oldRefresh');
 
-    // The rotation is a compare-and-swap on the PRESENTED token's hash.
+    // The rotation is a compare-and-swap on the PRESENTED token's hash, which
+    // is also written into previous_refresh_token (THN-06 reuse detection).
     const { hashRefreshToken } = await import('../lib/jwt.js');
     const [sql, values] = dbQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/WHERE id = \$3 AND refresh_token = \$4 AND revoked = false/);
-    expect(values[2]).toBe('sess-y');
-    expect(values[3]).toBe(hashRefreshToken('oldRefresh'));
+    expect(sql).toMatch(/SET refresh_token = \$1, previous_refresh_token = \$2.*WHERE id = \$4 AND refresh_token = \$2 AND revoked = false/s);
+    expect(values[1]).toBe(hashRefreshToken('oldRefresh'));
+    expect(values[3]).toBe('sess-y');
   });
 
   it('refuses a refresh that lost a concurrent rotation with 401', async () => {
@@ -313,6 +346,7 @@ describe('POST /auth/refresh', () => {
       device_id:  'dev-z',
       expires_at: new Date(Date.now() + 60_000),
       revoked:    false,
+      created_at: new Date(),
     });
     dbQuery.mockResolvedValueOnce([]); // CAS UPDATE matched nothing
 
@@ -322,6 +356,47 @@ describe('POST /auth/refresh', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.accessToken).toBeUndefined();
+  });
+
+  it('THN-06: revokes the session when a superseded refresh token is replayed', async () => {
+    // The presented token no longer matches the session's CURRENT hash (it
+    // was already rotated away by the legitimate client) — the no-match path
+    // checks previous_refresh_token and finds it, so this is reuse, not a
+    // bare 401: the session is revoked outright.
+    dbQueryOne.mockResolvedValueOnce(null);
+    dbQuery.mockResolvedValueOnce([{ id: 'sess-stolen' }]); // reuse-detection UPDATE finds + revokes a row
+
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: 'stolenOldToken' });
+
+    expect(res.status).toBe(401);
+    const { hashRefreshToken } = await import('../lib/jwt.js');
+    const [sql, values] = dbQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/UPDATE sessions SET revoked = true.*WHERE previous_refresh_token = \$1 AND revoked = false/s);
+    expect(values[0]).toBe(hashRefreshToken('stolenOldToken'));
+  });
+
+  it('THN-06: refuses refresh on a session past its absolute lifetime, even with a valid current token', async () => {
+    dbQueryOne.mockResolvedValueOnce({
+      id:         'sess-old',
+      user_id:    'user-old',
+      device_id:  'dev-old',
+      expires_at: new Date(Date.now() + 60_000),      // rolling expiry still fine
+      revoked:    false,
+      created_at: new Date(Date.now() - 200 * 86_400_000), // created 200 days ago
+    });
+    dbQuery.mockResolvedValueOnce([]); // revoke UPDATE
+
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: 'stillValidButOldSession' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/log in again/);
+    const [sql, values] = dbQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/UPDATE sessions SET revoked = true, revoked_at = NOW\(\) WHERE id = \$1/);
+    expect(values[0]).toBe('sess-old');
   });
 });
 

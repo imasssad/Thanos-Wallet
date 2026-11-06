@@ -118,18 +118,18 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     if (args.splMintAddress) {
       const { sendSplToken } = await import('./solana');
       return sendSplToken({
-        mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount,
+        recipient: args.to, amount: args.amount,
         mintAddress: args.splMintAddress, decimals: args.decimals,
       });
     }
     const { sendSol } = await import('./solana');
-    return sendSol({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
+    return sendSol({ recipient: args.to, amount: args.amount });
   }
   if (chain === 'cosmos') {
     if (!args.seed.length) throw new Error('Wallet is locked');
     const { sendCosmos } = await import('./cosmos');
     return sendCosmos({
-      mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount, memo: args.memo,
+      recipient: args.to, amount: args.amount, memo: args.memo,
     });
   }
 

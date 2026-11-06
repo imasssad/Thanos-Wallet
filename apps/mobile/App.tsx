@@ -169,7 +169,7 @@ import {
   bridgeErrorMessage, bridgeTransferLabel, formatBridgeAmount, parseBridgeAmount,
   type MultXBridgeOption, type MultXBridgeStep, type MultXBridgeTransfer,
 } from './lib/multx-thanos/service';
-import { MULTX_CONFIG, thanosBridge, multxChain, multxSigner, multxPrivateKey } from './lib/thanos-bridge';
+import { MULTX_CONFIG, thanosBridge, multxChain, multxSigner, multxRemoteSigner, multxPrivateKey } from './lib/thanos-bridge';
 import { resolveRecipient, evmToLitho, lithoToEvm } from './lib/address';
 import { checkDnnsAvailability, registerDnnsName, reverseLookupDnns, type Availability } from './lib/dnns';
 import { apiClient, type AuthUser } from './lib/auth-client';
@@ -961,13 +961,15 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             const m = await import('./lib/bitcoin');
             return parseFloat(await m.getBitcoinBalance(m.getBitcoinAddress(phrase))) || 0;
           } },
+          // O-01 (H-1 residual, non-signing): both addresses come from
+          // lib/signer.ts's cache, not derived from `phrase` here.
           { sym: 'SOL', name: 'Solana', decimals: 9, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
-            const m = await import('./lib/solana');
-            return parseFloat(await m.getSolanaBalance(m.getSolanaAddress(phrase))) || 0;
+            const [m, s] = await Promise.all([import('./lib/solana'), import('./lib/signer')]);
+            return parseFloat(await m.getSolanaBalance(await s.solanaAddress())) || 0;
           } },
           { sym: 'ATOM', name: 'Cosmos Hub', decimals: 6, fetchBal: !HOME_LOAD_NATIVE_CHAINS ? undefined : async () => {
-            const m = await import('./lib/cosmos');
-            return parseFloat(await m.getCosmosBalance(await m.getCosmosAddress(phrase))) || 0;
+            const [m, s] = await Promise.all([import('./lib/cosmos'), import('./lib/signer')]);
+            return parseFloat(await m.getCosmosBalance(await s.cosmosAddress())) || 0;
           } },
         ];
         InteractionManager.runAfterInteractions(() => {
@@ -1214,8 +1216,10 @@ async function nativeHistoryAddrs(evm: string, phrase: string): Promise<HistoryA
   await new Promise<void>((resolve) => { InteractionManager.runAfterInteractions(() => resolve()); });
   const out: HistoryAddresses = {};
   try { out.bitcoin = (await import('./lib/bitcoin')).getBitcoinAddress(phrase); } catch { /* left out */ }
-  try { out.solana = (await import('./lib/solana')).getSolanaAddress(phrase); } catch { /* left out */ }
-  try { out.cosmos = await (await import('./lib/cosmos')).getCosmosAddress(phrase); } catch { /* left out */ }
+  // O-01 (H-1 residual, non-signing): both come from lib/signer.ts's
+  // cache, not derived from `phrase` here.
+  try { out.solana = await (await import('./lib/signer')).solanaAddress(); } catch { /* left out */ }
+  try { out.cosmos = await (await import('./lib/signer')).cosmosAddress(); } catch { /* left out */ }
   historyAddrCache.set(key, out);
   return out;
 }
@@ -1659,6 +1663,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
 
   const cardNo = card ? (require('./lib/lax').cardNumberOf(card) as string | undefined) : undefined;
+  const cardId = card ? (require('./lib/lax').cardIdOf(card) as string | undefined) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
   const refresh = async (): Promise<import('./lib/lax').LaxStatus | null> => {
@@ -1671,8 +1676,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = lax.cardNumberOf(list[0]);
-          if (cn) { lax.laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = lax.cardIdOf(list[0]);
+          if (ci) { lax.laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
       return st;
@@ -1730,7 +1735,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
                 }}
               />
             )}
-            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
+            {view === 'dashboard' && <LaxDashboard C={C} styles={styles} card={card} cardId={cardId} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
             {view === 'topup'    && cardNo && <LaxTopUp C={C} styles={styles} cardNo={cardNo} onDone={(amt: number, cur: string) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
             {view === 'success'  && <LaxSuccess C={C} styles={styles} last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
           </ScrollView>
@@ -2019,7 +2024,7 @@ function LaxTxnRow({ t, C, last }: { t: import('./lib/lax').LaxTxn; C: any; last
   );
 }
 
-function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, onSoon, onRefresh }: any) {
+function LaxDashboard({ C, styles, card, cardId, last4, txns, notLive, onTopUp, onSoon, onRefresh }: any) {
   const balance = card?.balance != null ? Number(card.balance) : null;
   const isFrozen = String(card?.status || '').toLowerCase() === 'frozen';
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -2029,7 +2034,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
   const [freezeBusy, setFreezeBusy]   = useState(false);
 
   const toggleFreeze = () => {
-    if (!cardNo || freezeBusy) return;
+    if (!cardId || freezeBusy) return;
     const next = isFrozen ? 'active' : 'frozen';
     Alert.alert(
       isFrozen ? 'Unfreeze card?' : 'Freeze card?',
@@ -2044,7 +2049,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
             setFreezeBusy(true);
             try {
               const lax = require('./lib/lax') as typeof import('./lib/lax');
-              await lax.laxSetCardStatus(cardNo, next);
+              await lax.laxSetCardStatus(cardId, next);
               await onRefresh?.();
             } catch (e: any) {
               Alert.alert('Could not update card', e?.message || 'Try again.');
@@ -2055,7 +2060,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
     );
   };
 
-  const hasCard = Boolean(cardNo);
+  const hasCard = Boolean(cardId);
   const actions = [
     { icon: Plus,       label: 'Top Up',       onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : onTopUp },
     { icon: CreditCard, label: 'Card Details', onPress: !hasCard || notLive ? (hasCard ? onSoon : undefined) : () => setDetailsOpen(true) },
@@ -2112,7 +2117,7 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
         <LaxTxnRow key={t.id || i} t={t} C={C} last={i === Math.min(txns.length, 6) - 1}/>
       ))}
 
-      <LaxCardDetailsSheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} cardNumber={cardNo}/>
+      <LaxCardDetailsSheet visible={detailsOpen} onClose={() => setDetailsOpen(false)} cardNumber={cardId}/>
       <LaxMoreSheet visible={moreOpen} onClose={() => setMoreOpen(false)} onHistory={() => setHistoryOpen(true)} onPhysical={() => { setMoreOpen(false); setPhysicalOpen(true); }}/>
       <LaxTxnHistorySheet visible={historyOpen} onClose={() => setHistoryOpen(false)} txns={txns}/>
       <LaxPhysicalCardSheet visible={physicalOpen} onClose={() => setPhysicalOpen(false)}/>
@@ -2124,34 +2129,98 @@ function LaxDashboard({ C, styles, card, cardNo, last4, txns, notLive, onTopUp, 
  *  Financial secret data: fetched fresh each open, never persisted past
  *  this sheet's lifetime, and hidden behind a tap-to-reveal gate (mirrors
  *  RevealPhraseModal's reveal button) instead of shown plaintext on open. */
-function LaxCardDetailsSheet({ visible, onClose, cardNumber }: { visible: boolean; onClose: () => void; cardNumber?: string }) {
+/** THN-R1 M-04: GET .../details requires a fresh step-up grant (re-entered
+ *  account password) on top of the normal session. Cached in-memory on the
+ *  api-client singleton (apiClient.getCachedStepUp()), so repeat opens
+ *  within a few minutes skip the prompt. */
+function StepUpPasswordPrompt({ onCancel, onConfirm }: {
+  onCancel: () => void;
+  onConfirm: (password: string) => Promise<string | null>;
+}) {
+  const C = useColors();
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setErr(null);
+    const error = await onConfirm(password);
+    setBusy(false);
+    if (error) setErr(error);
+  };
+  return (
+    <View style={{ gap: 12 }}>
+      <Text style={{ color: C.textSecondary, fontSize: 13, lineHeight: 18 }}>
+        For your security, re-enter your Thanos account password to continue.
+      </Text>
+      <TextInput
+        secureTextEntry autoFocus value={password} onChangeText={setPassword}
+        placeholder="Password" placeholderTextColor={C.textMuted}
+        onSubmitEditing={() => void submit()}
+        style={{ borderWidth: 1, borderColor: C.borderSubtle, borderRadius: 10, padding: 12, color: C.textPrimary, fontSize: 14, backgroundColor: C.bgElevated }}
+      />
+      {err && <Text style={{ color: '#ef4444', fontSize: 12 }}>{err}</Text>}
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Pressable onPress={onCancel} disabled={busy} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.borderSubtle, alignItems: 'center' }}>
+          <Text style={{ color: C.textPrimary, fontWeight: '700' }}>Cancel</Text>
+        </Pressable>
+        <Pressable onPress={submit} disabled={busy || !password} style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: C.blue, alignItems: 'center', opacity: busy || !password ? 0.6 : 1 }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>{busy ? 'Confirming…' : 'Confirm'}</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function LaxCardDetailsSheet({ visible, onClose, cardNumber: cardId }: { visible: boolean; onClose: () => void; cardNumber?: string }) {
   const C = useColors();
   const [details, setDetails] = useState<import('./lib/lax').LaxCardDetails | null>(null);
   const [shown, setShown]     = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr]         = useState<string | null>(null);
+  const [needsStepUp, setNeedsStepUp] = useState(false);
 
   useScreenProtect(visible && shown);
 
-  useEffect(() => {
-    if (!visible) { setDetails(null); setShown(false); setErr(null); return; }
-    if (!cardNumber) return;
+  const fetchDetails = async (stepUpToken: string) => {
     setLoading(true); setErr(null);
-    (async () => {
-      try {
-        const lax = require('./lib/lax') as typeof import('./lib/lax');
-        const d = await lax.laxCardDetails(cardNumber);
-        setDetails(d);
-      } catch (e: any) {
-        setErr(e?.message || 'Could not load card details — try again.');
-      } finally { setLoading(false); }
-    })();
-  }, [visible, cardNumber]);
+    try {
+      const lax = require('./lib/lax') as typeof import('./lib/lax');
+      const d = await lax.laxCardDetails(cardId!, stepUpToken);
+      setDetails(d);
+    } catch (e: any) {
+      setErr(e?.message || 'Could not load card details — try again.');
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    if (!visible) { setDetails(null); setShown(false); setErr(null); setNeedsStepUp(false); return; }
+    if (!cardId) return;
+    const apiClient = require('./lib/auth-client').apiClient as { getCachedStepUp(): string | null };
+    const cached = apiClient.getCachedStepUp();
+    if (cached) void fetchDetails(cached);
+    else setNeedsStepUp(true);
+  }, [visible, cardId]);
 
   if (!visible) return null;
   return (
     <SheetShell title="Card Details" onClose={onClose}>
-      {loading ? (
+      {needsStepUp ? (
+        <StepUpPasswordPrompt
+          onCancel={onClose}
+          onConfirm={async (password) => {
+            try {
+              const apiClient = require('./lib/auth-client').apiClient as { stepUp(p: string): Promise<{ stepUpToken: string }> };
+              const { stepUpToken } = await apiClient.stepUp(password);
+              setNeedsStepUp(false);
+              await fetchDetails(stepUpToken);
+              return null;
+            } catch (e: any) {
+              return e?.message || 'Incorrect password';
+            }
+          }}
+        />
+      ) : loading ? (
         <ActivityIndicator color={C.blue}/>
       ) : err ? (
         <Text style={{ color: '#ef4444', fontSize: 13 }}>{err}</Text>
@@ -5282,13 +5351,14 @@ function ReceiveScreen({ goBack, initialSym, initialChainId }: { goBack: () => v
       void import('./lib/bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
         .catch(() => setBtcAddr(''));
     }
+    // O-01 (H-1 residual, non-signing): both come from lib/signer.ts's
+    // cache, not derived from `seed` here.
     if (chain === 'solana' && !solAddr && seed.length) {
-      void import('./lib/solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
+      void import('./lib/signer').then(s => s.solanaAddress()).then(setSolAddr)
         .catch(() => setSolAddr(''));
     }
     if (chain === 'cosmos' && !atomAddr && seed.length) {
-      void import('./lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
-        .then(setAtomAddr)
+      void import('./lib/signer').then(s => s.cosmosAddress()).then(setAtomAddr)
         .catch(() => setAtomAddr(''));
     }
   }, [chain, seed, btcAddr, solAddr, atomAddr]);
@@ -6135,11 +6205,16 @@ function BridgeScreen({ goBack }: { goBack: () => void }) {
     if (!option || !canRun || running.current) return;
     running.current = true;
     setErr(''); setCurrent(null); setStep('checking');
-    let signer: ReturnType<typeof multxSigner> | null = null;
+    // Private-key-imported wallets build a local signer+provider pair that
+    // needs an explicit destroy(); the mnemonic/HD path routes through
+    // lib/signer.ts's cache (multxRemoteSigner) and owns no provider.
+    let pkSigner: ReturnType<typeof multxSigner> | null = null;
     try {
-      signer = multxSigner(seed, option.sourceChainId);
+      const signer = isPrivateKeyWallet(seed)
+        ? (pkSigner = multxSigner(seed[0].trim(), option.sourceChainId)).signer
+        : await multxRemoteSigner(option.sourceChainId);
       const done = await bridge.send({
-        signer: signer.signer, option, amount: amt,
+        signer, option, amount: amt,
         onStep: setStep,
         onUpdate: (t) => { setCurrent(t); refreshHistory(); },
       });
@@ -6155,7 +6230,7 @@ function BridgeScreen({ goBack }: { goBack: () => void }) {
       setErr(bridgeErrorMessage(e));
       void notifyIfEnabled('Bridge failed', bridgeErrorMessage(e));
     } finally {
-      signer?.destroy();
+      pkSigner?.destroy();
       setStep(null);
       running.current = false;
       refreshHistory();
@@ -9373,7 +9448,13 @@ function OnboardingScreen({
 /** `host` is the page that sent the request (from the message's URL), not
  *  whatever the browser shows by the time the user looks at the sheet. */
 interface DappRequest {
-  id: number; method: string; params: unknown[]; host: string;
+  id: number; method: string; params: unknown[];
+  /** Display only (shown in the approval sheet / chrome bar). */
+  host: string;
+  /** Scheme + host + port — what grants are actually keyed and compared on
+   *  (THN-07): two different ports, or http vs https, on the same host are
+   *  two different origins and must not share one grant. */
+  origin: string;
   /** The chain the dApp was on when it asked — the request is reviewed
    *  against and signed on this chain, even if the dApp switches chains
    *  while the approval sheet is open. */
@@ -9396,8 +9477,14 @@ function providerNonce(): string {
  *  RPC. (Makalu isn't built in any more, 2026-09-29.) */
 const BROWSER_DEFAULT_CHAIN_ID = 9005;
 
-function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
+function InAppBrowser({ url, minimized, onMinimize, onClose, seed, activeAccountIndex }: {
   url: string; minimized: boolean; onMinimize: () => void; onClose: () => void; seed: string[];
+  /** The account the wallet is CURRENTLY signing with (H-03) — must come from
+   *  the caller's own reactive state, never re-read via getActiveAccountIndex()
+   *  here: that getter is a plain synchronous read, not reactive, so a memo
+   *  keyed only on `seed` kept showing/connecting the PREVIOUS account after
+   *  switchAccount() changed the index without changing the seed itself. */
+  activeAccountIndex: number;
 }) {
   const C = useColors();
   const ref = useRef<WebView>(null);
@@ -9406,12 +9493,13 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [connected, setConnected] = useState(false);
-  // Host the connect grant was given on. The WebView can navigate anywhere
-  // (no origin whitelist) and re-injects the provider on every document, so a
-  // redirect from an allowlisted site to attacker.com would otherwise inherit
-  // the grant — scope eth_accounts / silent re-connect to this host only
-  // (mirrors the desktop connectedOrigin gate).
-  const [connectedHost, setConnectedHost] = useState('');
+  // Origin (scheme+host+port) the connect grant was given on. The WebView
+  // can navigate anywhere (no origin whitelist) and re-injects the provider
+  // on every document, so a redirect from an allowlisted site to
+  // attacker.com — or even to the same host over plain http — would
+  // otherwise inherit the grant; scope eth_accounts / silent re-connect to
+  // this exact origin only (THN-07, mirrors the desktop connectedOrigin gate).
+  const [connectedOrigin, setConnectedOrigin] = useState('');
   const [pending, setPending] = useState<DappRequest | null>(null);
   // One approval at a time, tracked synchronously: two requests in the same
   // tick must not both pass, and a new one never replaces the sheet shown.
@@ -9427,22 +9515,50 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   // MUST derive at the ACTIVE account index — executeWcRequest signs with the
   // active hdPath, so an index-0 address here would make eth_accounts / the
   // already-connected reply disagree with the signer (a multi-account user's
-  // Quantt /typed-verify would then reject the recovered address).
-  const address = useMemo(() => (seed.length ? deriveEvmAddress(seed, getActiveAccountIndex()) : ''), [seed]);
+  // Quantt /typed-verify would then reject the recovered address). Depends on
+  // the caller's reactive activeAccountIndex, not a re-read of the module
+  // getter (H-03) — see the prop's doc comment above.
+  const address = useMemo(
+    () => (seed.length ? deriveEvmAddress(seed, activeAccountIndex) : ''),
+    [seed, activeAccountIndex],
+  );
+
+  // H-03: a connect grant is only valid for the account it was given to. If
+  // the active account changes WHILE connected (switchAccount, a wallet
+  // switch, or a lock/unlock into a different wallet), the grant must not
+  // silently carry over to the new address — any pending request is rejected
+  // closed, the dApp is told it disconnected, and it has to re-request.
+  const grantedAddressRef = useRef<string>('');
+  useEffect(() => {
+    if (grantedAddressRef.current && grantedAddressRef.current !== address) {
+      setConnected(false);
+      setConnectedOrigin('');
+      if (pendingRef.current) {
+        send(rejectJs(pendingRef.current.id, 4001, 'Active account changed — request cancelled'));
+        pendingRef.current = null;
+        setPending(null);
+      }
+      send(`(function(){try{window.__thanos_emit&&window.__thanos_emit('accountsChanged',[]);}catch(e){}})();true;`);
+    }
+    grantedAddressRef.current = address;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
   let host = current;
   try { host = new URL(current).host; } catch { /* keep raw */ }
+  let topOrigin = current;
+  try { topOrigin = new URL(current).origin; } catch { /* keep raw */ }
 
-  // Silent reconnect: if this host was already approved (for the CURRENT
+  // Silent reconnect: if this origin was already approved (for the CURRENT
   // active account — a grant for a different account never auto-applies),
   // restore the connected state without showing the approval sheet again.
   // Without this, every fresh visit to a previously-connected dApp required
-  // re-approving from scratch, since `connected`/`connectedHost` are plain
+  // re-approving from scratch, since `connected`/`connectedOrigin` are plain
   // component state that resets whenever the browser tab is closed/reopened.
   useEffect(() => {
-    if (!host || !address) return;
-    const grant = getGrant(host, address);
-    if (grant) { setConnected(true); setConnectedHost(host); }
-  }, [host, address]);
+    if (!topOrigin || !address) return;
+    const grant = getGrant(topOrigin, address);
+    if (grant) { setConnected(true); setConnectedOrigin(topOrigin); }
+  }, [topOrigin, address]);
 
   const send = (js: string) => ref.current?.injectJavaScript(js);
 
@@ -9451,13 +9567,13 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
   // on when it asked (lib/wc-signer pins it); signatures are chain-independent.
   const run = async (req: DappRequest) => {
     try {
-      const result = await executeWcRequest(seed, {
+      const result = await executeWcRequest({
         request: { method: req.method, params: req.params },
         chainId: `eip155:${req.chainId}`,
       });
       if (req.method === 'eth_requestAccounts') {
-        setConnected(true); setConnectedHost(req.host);
-        grantConnection(req.host, address, req.chainId);
+        setConnected(true); setConnectedOrigin(req.origin);
+        grantConnection(req.origin, address, req.chainId);
       }
       send(resolveJs(req.id, result));
     } catch (e) {
@@ -9473,14 +9589,27 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
     if (msg.nonce !== nonce) return; // not our provider (e.g. a cross-origin iframe)
     let reqHost = host;
     try { reqHost = new URL(frameUrl).host || host; } catch { /* keep the shown host */ }
-    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost, chainId: currentChainId };
+    let reqOrigin = topOrigin;
+    let reqIsHttps = false;
+    try { const u = new URL(frameUrl); reqOrigin = u.origin; reqIsHttps = u.protocol === 'https:'; } catch { /* keep the shown origin */ }
+    const req: DappRequest = { id: msg.id, method: msg.method, params: msg.params || [], host: reqHost, origin: reqOrigin, chainId: currentChainId };
+
+    // THN-07: the provider is withheld from a non-HTTPS top frame outright,
+    // same as the desktop in-app browser — the WebView re-injects it on every
+    // document regardless of scheme, so without this a same-site redirect (or
+    // link) to plain http would keep answering requests from a document an
+    // on-path attacker can tamper with freely.
+    if (!reqIsHttps) {
+      send(rejectJs(req.id, 4900, 'Wallet disconnected'));
+      return;
+    }
 
     // Read-only / already-authorised methods resolve immediately.
     if (req.method === 'eth_chainId')  { send(resolveJs(req.id, `0x${currentChainId.toString(16)}`)); return; }
     if (req.method === 'net_version')  { send(resolveJs(req.id, String(currentChainId))); return; }
-    // Address is disclosed ONLY to the host that was granted the connection —
-    // a page the WebView later navigated to (redirect/link) must re-prompt.
-    const grantedHere = connected && !!address && !!connectedHost && connectedHost === req.host;
+    // Address is disclosed ONLY to the origin that was granted the connection
+    // — a page the WebView later navigated to (redirect/link) must re-prompt.
+    const grantedHere = connected && !!address && !!connectedOrigin && connectedOrigin === req.origin;
     if (req.method === 'eth_accounts') {
       send(resolveJs(req.id, grantedHere ? [address] : []));
       return;
@@ -9519,10 +9648,11 @@ function InAppBrowser({ url, minimized, onMinimize, onClose, seed }: {
       return;
     }
     // Anything else (eth_call, eth_getBalance, eth_estimateGas, …) is a
-    // read — proxy to the RPC of the chain the dApp is on.
+    // read — proxy to the RPC of the chain the dApp is on, if the method is
+    // on the read-only allowlist (M-02); rpcProxy itself refuses the rest.
     rpcProxy(req.method, req.params, currentChainId)
       .then(r => send(resolveJs(req.id, r)))
-      .catch(e => send(rejectJs(req.id, -32603, (e as Error)?.message || 'RPC error')));
+      .catch(e => send(rejectJs(req.id, e instanceof WcSignerError ? e.code : -32603, (e as Error)?.message || 'RPC error')));
   };
 
   const isConnect = pending?.method === 'eth_requestAccounts';
@@ -10828,6 +10958,7 @@ function App() {
                   onMinimize={() => setBrowserTab(t => (t ? { ...t, minimized: true } : t))}
                   onClose={() => setBrowserTab(null)}
                   seed={[]}
+                  activeAccountIndex={0}
                 />
               )}
               {browserTab?.minimized && (
@@ -11012,7 +11143,7 @@ function App() {
 
             {/* Always-mounted WalletConnect listener — pops an approve/
                 reject sheet whenever a paired dApp sends a sign request. */}
-            <WalletConnectRequestHost seed={walletSeed} account={walletAddr}/>
+            <WalletConnectRequestHost account={walletAddr}/>
 
             {/* WalletConnect deep-link pairing — opens + auto-pairs when a dApp
                 hands off a wc: URI via thanoswallet://wc?uri=… Rendered app-level
@@ -11037,6 +11168,7 @@ function App() {
                 onMinimize={() => setBrowserTab(t => (t ? { ...t, minimized: true } : t))}
                 onClose={() => setBrowserTab(null)}
                 seed={walletSeed}
+                activeAccountIndex={curAcctIdx}
               />
             )}
             {/* Discover tab only: everywhere else the pill sat on top of the

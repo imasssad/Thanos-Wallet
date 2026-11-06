@@ -17,7 +17,7 @@
  *      bypassed, and it keeps the dApp WebContentsView (its own preload and
  *      its own `dapp:rpc` channel) off these channels.
  */
-const { ipcMain, shell } = require('electron') as typeof import('electron');
+const { app, ipcMain, shell } = require('electron') as typeof import('electron');
 const path = require('path') as typeof import('path');
 const { pathToFileURL } = require('url') as typeof import('url');
 import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
@@ -36,7 +36,11 @@ function normalisePath(p: string): string {
 export function isAppUrl(raw: string): boolean {
   let u: URL;
   try { u = new URL(raw); } catch { return false; }
-  if (process.env.NODE_ENV === 'development') return u.origin === DEV_ORIGIN;
+  // app.isPackaged, not NODE_ENV (THN-04): NODE_ENV is a plain env var that
+  // reads the same way in the signed binary as in dev, so setting it there
+  // would make this function trust a local dev server — handing it the
+  // vault and signer IPC — in a build users rely on being locked down.
+  if (!app.isPackaged) return u.origin === DEV_ORIGIN;
   if (u.protocol !== 'file:') return false;
   const entry = new URL(pathToFileURL(path.join(__dirname, 'index.html')).href);
   return normalisePath(decodeURIComponent(u.pathname)) === normalisePath(decodeURIComponent(entry.pathname));

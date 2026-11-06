@@ -22,6 +22,9 @@ import {
   HDNodeWallet, Mnemonic, Wallet, JsonRpcProvider,
   type Provider,
 } from 'ethers';
+// Pure module (ethers primitives only), so it doesn't delay the ready
+// handshake below the way an sdk-core barrel import would.
+import { messageBytesFor } from '../lib/message-bytes';
 // Deep import, NOT the @thanos/sdk-core barrel: this worker's entry must stay
 // synchronous (see the ready handshake at the bottom). The Bitcoin client is
 // loaded on demand in handleSendBitcoin — it pulls tiny-secp256k1's async
@@ -133,12 +136,11 @@ async function handleSetAccountIndex(p: SetIdxPayload): Promise<SetIdxReply> {
   return { address: cachedAddress };
 }
 
+/** Signs exactly the bytes the approval sheet displayed — see
+ *  lib/message-bytes.ts for why the decode lives there (O-05). */
 async function handleSignMessage(p: SignMsgPayload): Promise<SignMsgReply> {
   const signer = getSigner();
-  const messageBytes = p.message.startsWith('0x')
-    ? new Uint8Array(p.message.slice(2).match(/.{1,2}/g)!.map(h => parseInt(h, 16)))
-    : new TextEncoder().encode(p.message);
-  const signature = await signer.signMessage(messageBytes);
+  const signature = await signer.signMessage(messageBytesFor(p.message));
   return { signature };
 }
 
@@ -207,11 +209,119 @@ async function handleSendBitcoin(p: SendBtcPayload): Promise<SendBtcReply> {
   return { hash: txid };
 }
 
+/* ─── Solana handler ─────────────────────────────────────────────────── */
+// O-01 (H-1 residual): Solana sends always use a mnemonic-derived account
+// (no private-key import exists for SOL yet — lib/solana.ts's own call
+// sites refuse to even try), so every send here now goes through the
+// worker, same as EVM and Bitcoin.
+
+interface SendSolPayload {
+  recipient:    string;
+  amount:       string;       // human-readable SOL
+  mintAddress?: string;       // omitted → native SOL
+  decimals?:    number;
+}
+interface SendSolReply { hash: string }
+
+async function handleSendSolana(p: SendSolPayload): Promise<SendSolReply> {
+  if (!source) throw new Error('worker_locked');
+  if (source.kind !== 'mnemonic') throw new Error('sol_requires_mnemonic');
+  const { SolanaClient, SOLANA_MAINNET } = await import('@thanos/sdk-core');
+  const client = new SolanaClient();
+  const hash = await client.send(source.mnemonic, {
+    chainId:     SOLANA_MAINNET.chainId,
+    to:          p.recipient.trim(),
+    amount:      p.amount,
+    mintAddress: p.mintAddress,
+    decimals:    p.decimals,
+  });
+  return { hash };
+}
+
+/** O-01 (H-1 residual, non-signing): balance displays used to call
+ *  getSolanaAddress(mnemonic) with the mnemonic read out of component/
+ *  module state. This derives the same address inside the worker, so the
+ *  mnemonic never has to leave it just to show a balance. */
+interface AddressSolReply { address: string }
+async function handleAddressSolana(): Promise<AddressSolReply> {
+  if (!source) throw new Error('worker_locked');
+  if (source.kind !== 'mnemonic') throw new Error('sol_requires_mnemonic');
+  const { SolanaClient } = await import('@thanos/sdk-core');
+  return { address: new SolanaClient().deriveAccount(source.mnemonic, 0).address };
+}
+
+/* ─── Cosmos handler ─────────────────────────────────────────────────── */
+// O-01 (H-1 residual): same reasoning as Solana — mnemonic-only, no
+// private-key import for ATOM.
+
+interface SendCosmosPayload {
+  recipient: string;
+  amount:    string;    // human-readable ATOM
+  memo?:     string;
+}
+interface SendCosmosReply { hash: string }
+
+// Matches apps/web/lib/cosmos.ts's own defaults/env overrides exactly —
+// keep both in sync if either changes.
+function cosmosEnv(name: string, fallback: string): string {
+  const env = typeof process !== 'undefined' ? (process as { env?: Record<string, string | undefined> }).env : undefined;
+  return env?.[name] || fallback;
+}
+const COSMOS_RPC_URL   = cosmosEnv('NEXT_PUBLIC_COSMOS_RPC', 'https://cosmos-rpc.publicnode.com');
+const COSMOS_BECH32    = 'cosmos';
+const COSMOS_HD_PATH   = "m/44'/118'/0'/0/0";
+const COSMOS_DENOM     = 'uatom';
+const COSMOS_DECIMALS  = 6;
+const COSMOS_GAS_PRICE = '0.025uatom';
+
+async function handleSendCosmos(p: SendCosmosPayload): Promise<SendCosmosReply> {
+  if (!source) throw new Error('worker_locked');
+  if (source.kind !== 'mnemonic') throw new Error('cosmos_requires_mnemonic');
+  const amt = parseFloat(p.amount);
+  if (!amt || amt <= 0) throw new Error('invalid_amount');
+
+  const { DirectSecp256k1HdWallet } = await import('@cosmjs/proto-signing');
+  const { SigningStargateClient, GasPrice } = await import('@cosmjs/stargate');
+  const { stringToPath } = await import('@cosmjs/crypto');
+  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(source.mnemonic, {
+    prefix:  COSMOS_BECH32,
+    hdPaths: [stringToPath(COSMOS_HD_PATH)],
+  });
+  const [acc] = await wallet.getAccounts();
+  const client = await SigningStargateClient.connectWithSigner(COSMOS_RPC_URL, wallet, {
+    gasPrice: GasPrice.fromString(COSMOS_GAS_PRICE),
+  });
+  const amountMicro = Math.round(amt * 10 ** COSMOS_DECIMALS).toString();
+  const result = await client.sendTokens(
+    acc.address,
+    p.recipient.trim(),
+    [{ denom: COSMOS_DENOM, amount: amountMicro }],
+    'auto',
+    p.memo ?? '',
+  );
+  if (result.code !== 0) throw new Error(result.rawLog || `cosmos_tx_failed_code_${result.code}`);
+  return { hash: result.transactionHash };
+}
+
+/** O-01 (H-1 residual, non-signing) — same reasoning as Solana's address op. */
+interface AddressCosmosReply { address: string }
+async function handleAddressCosmos(): Promise<AddressCosmosReply> {
+  if (!source) throw new Error('worker_locked');
+  if (source.kind !== 'mnemonic') throw new Error('cosmos_requires_mnemonic');
+  const { DirectSecp256k1HdWallet } = await import('@cosmjs/proto-signing');
+  const { stringToPath } = await import('@cosmjs/crypto');
+  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(source.mnemonic, {
+    prefix: COSMOS_BECH32, hdPaths: [stringToPath(COSMOS_HD_PATH)],
+  });
+  const [acc] = await wallet.getAccounts();
+  return { address: acc.address };
+}
+
 /* ─── Message dispatch ───────────────────────────────────────────────── */
 
 interface RpcRequest {
   id:      number;
-  op:      'init' | 'send-btc' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock' | 'set-account-index';
+  op:      'init' | 'send-btc' | 'send-sol' | 'send-cosmos' | 'address-sol' | 'address-cosmos' | 'sign-message' | 'sign-typed-data' | 'sign-transaction' | 'address' | 'lock' | 'set-account-index';
   payload?: unknown;
 }
 
@@ -222,6 +332,10 @@ self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
     switch (op) {
       case 'init':             result = await handleInit(payload as InitPayload); break;
       case 'send-btc':         result = await handleSendBitcoin(payload as SendBtcPayload); break;
+      case 'send-sol':         result = await handleSendSolana(payload as SendSolPayload); break;
+      case 'send-cosmos':      result = await handleSendCosmos(payload as SendCosmosPayload); break;
+      case 'address-sol':      result = await handleAddressSolana(); break;
+      case 'address-cosmos':   result = await handleAddressCosmos(); break;
       case 'sign-message':     result = await handleSignMessage(payload as SignMsgPayload); break;
       case 'sign-typed-data':  result = await handleSignTypedData(payload as SignTypedDataPayload); break;
       case 'sign-transaction': result = await handleSignTransaction(payload as SignTxPayload); break;

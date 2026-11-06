@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HDNodeWallet, Mnemonic, Wallet, JsonRpcProvider, formatEther, getAddress } from 'ethers';
 import './styles.css';
@@ -72,9 +72,10 @@ import { MultiSigView } from './multisig';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
   laxRegisterThanosAccount, hasThanosAccount, laxAccountEmail, cardNumberOf,
-  laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractKycUrl,
+  laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractKycUrl, cardIdOf,
   type LaxStatus, type LaxCard as LaxCardData, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from './lax';
+import { apiClient } from './auth-client';
 
 type SignerChoice = 'seed' | 'ledger' | 'trezor';
 
@@ -126,6 +127,10 @@ declare global {
         personal(hdPath: string, msg: string | Uint8Array):          Promise<string>;
         typedData(hdPath: string, payload: IpcTypedDataPayload):     Promise<string>;
         erc20Transfer(hdPath: string, args: { tokenAddress: string; to: string; amount: string }, chain: { chainId: number; rpcUrl: string }): Promise<string>;
+        sendSol(args: { recipient: string; amount: string; mintAddress?: string; decimals?: number }): Promise<string>;
+        sendCosmos(args: { recipient: string; amount: string; memo?: string }): Promise<string>;
+        solAddress():    Promise<string>;
+        cosmosAddress(): Promise<string>;
       };
       /** Native-HID Ledger fallback — present only on desktop builds
        *  whose main process has the optional
@@ -1966,6 +1971,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const [moreOpen, setMoreOpen]       = useState(false);
 
   const cardNo = card ? cardNumberOf(card) : undefined;
+  const cardId = card ? cardIdOf(card) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
   const refresh = async () => {
@@ -1977,8 +1983,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = cardNumberOf(list[0]);
-          if (cn) { laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = cardIdOf(list[0]);
+          if (ci) { laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
     } catch { /* leave status null — treated as not-live */ }
@@ -1998,7 +2004,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
   const openLearn = () => openDapp(LAX_LEARN_URL, 'LAX Card');
 
   const toggleFreeze = async () => {
-    if (!cardNo) return;
+    if (!cardId) return;
     const frozen = String(card?.status || '').toLowerCase() === 'frozen';
     const confirmMsg = frozen
       ? `Unfreeze card •••• ${last4}? It will be usable for new transactions again immediately.`
@@ -2007,7 +2013,7 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
     setFreezeErr(null);
     setFreezing(true);
     try {
-      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await laxSetCardStatus(cardId, frozen ? 'active' : 'frozen');
       await refresh();
     } catch (e) {
       setFreezeErr((e as Error)?.message || `Could not ${frozen ? 'unfreeze' : 'freeze'} the card — try again.`);
@@ -2059,8 +2065,8 @@ function LaxCardFlow({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
-    {detailsOpen && cardNo && <LaxCardDetailsModal cardNumber={cardNo} onClose={() => setDetailsOpen(false)}/>}
-    {moreOpen && cardNo && <LaxMoreModal cardNumber={cardNo} last4={last4} onClose={() => setMoreOpen(false)}/>}
+    {detailsOpen && cardId && <LaxCardDetailsModal cardNumber={cardId} onClose={() => setDetailsOpen(false)}/>}
+    {moreOpen && cardId && <LaxMoreModal cardNumber={cardId} last4={last4} onClose={() => setMoreOpen(false)}/>}
     </ModalPortal>
   );
 }
@@ -2438,20 +2444,91 @@ function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cu
   );
 }
 
+/* ── step-up auth (THN-R1 M-04) ───────────────────────────────────────
+   Card details now requires a fresh step-up grant from the server
+   (POST /auth/step-up) on top of the normal session — see
+   apps/web/components/LaxCard.tsx for the same pattern. */
+function StepUpPasswordModal({ onCancel, onSubmit }: {
+  onCancel: () => void;
+  onSubmit: (password: string) => Promise<string | null>;
+}) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setErr(null);
+    const error = await onSubmit(password);
+    setBusy(false);
+    if (error) setErr(error);
+  };
+  return (
+    <Modal title="Confirm your password" onClose={onCancel}>
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+          For your security, re-enter your Thanos account password to continue.
+        </p>
+        <input
+          type="password" autoComplete="current-password" placeholder="Password" value={password} autoFocus
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+          style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: 13 }}
+        />
+        {err && <div style={{ color: 'var(--red, #ef4444)', fontSize: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <button onClick={onCancel} disabled={busy} style={{ flex: 1, padding: '11px 16px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-primary)' }}>Cancel</button>
+          <button onClick={submit} disabled={busy || !password} style={{ flex: 1, padding: '11px 16px', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', border: 'none', background: 'var(--blue, #3b7af7)', color: '#fff', opacity: busy || !password ? 0.6 : 1 }}>
+            {busy ? 'Confirming…' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function useStepUp(): { ensure: () => Promise<string | null>; modal: React.ReactNode } {
+  const [pending, setPending] = useState<{ resolve: (token: string | null) => void } | null>(null);
+  const ensure = useCallback((): Promise<string | null> => {
+    const cached = apiClient.getCachedStepUp();
+    if (cached) return Promise.resolve(cached);
+    return new Promise<string | null>((resolve) => setPending({ resolve }));
+  }, []);
+  const modal = pending ? (
+    <StepUpPasswordModal
+      onCancel={() => { pending.resolve(null); setPending(null); }}
+      onSubmit={async (password) => {
+        try {
+          const { stepUpToken } = await apiClient.stepUp(password);
+          pending.resolve(stepUpToken);
+          setPending(null);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : 'Incorrect password';
+        }
+      }}
+    />
+  ) : null;
+  return { ensure, modal };
+}
+
 /** PAN / expiry / CVC — genuinely sensitive. Never persisted outside this
  *  modal's own state, cleared the moment it closes; blurred-by-default with
  *  a click-to-reveal gate (same pattern as ExportSeedModal's phrase/key). */
-function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onClose: () => void }) {
+function LaxCardDetailsModal({ cardNumber: cardId, onClose }: { cardNumber: string; onClose: () => void }) {
   const [details, setDetails] = useState<LaxCardDetails | null>(null);
   const [hidden, setHidden]   = useState(true);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState<string | null>(null);
+  const { ensure: ensureStepUp, modal: stepUpModal } = useStepUp();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const stepUpToken = await ensureStepUp();
+      if (cancelled) return;
+      if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNumber);
+        const d = await laxCardDetails(cardId, stepUpToken);
         if (!cancelled) setDetails(d);
       } catch (e) {
         if (!cancelled) setErr((e as Error)?.message || 'Could not load card details — try again.');
@@ -2460,7 +2537,7 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
       }
     })();
     return () => { cancelled = true; };
-  }, [cardNumber]);
+  }, [cardId]);
 
   const close = () => { setDetails(null); onClose(); };
 
@@ -2475,6 +2552,7 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
   );
 
   return (
+    <>
     <Modal title="Card Details" onClose={close}>
       <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {loading ? (
@@ -2497,6 +2575,8 @@ function LaxCardDetailsModal({ cardNumber, onClose }: { cardNumber: string; onCl
         <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>Never stored on this device — cleared as soon as you close this window.</p>
       </div>
     </Modal>
+    {stepUpModal}
+    </>
   );
 }
 
@@ -2505,7 +2585,7 @@ const LAX_MORE_SOON = ['Replace card', 'Report lost', 'Close card'];
 /** "More" actions — full (untruncated) transaction history is real and
  *  reuses laxCardTransactions(); replace/lost/close have no confirmed
  *  backend support yet, so they stay clearly-labeled coming-soon rows. */
-function LaxMoreModal({ cardNumber, last4, onClose }: { cardNumber: string; last4: string; onClose: () => void }) {
+function LaxMoreModal({ cardNumber: cardId, last4, onClose }: { cardNumber: string; last4: string; onClose: () => void }) {
   const [view, setView]       = useState<'menu' | 'history' | 'physical'>('menu');
   const [txns, setTxns]       = useState<LaxTxn[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2516,7 +2596,7 @@ function LaxMoreModal({ cardNumber, last4, onClose }: { cardNumber: string; last
     if (txns) return;
     setLoading(true); setErr(null);
     try {
-      setTxns(await laxCardTransactions(cardNumber));
+      setTxns(await laxCardTransactions(cardId));
     } catch (e) {
       setErr((e as Error)?.message || 'Could not load transactions.');
     } finally { setLoading(false); }
@@ -3111,7 +3191,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       const nv = await createVault(r.mnemonic, nw);
       saveVault(nv);
       const re = await openVault(nv, nw);
-      if (re) cacheSessionKey(re.key);
+      if (re) await cacheSessionKey(re.key);
       setDone(true);
     } catch { setErr('Could not change the password.'); }
     finally { setBusy(false); }
@@ -4207,14 +4287,15 @@ function ReceiveModal({ onClose, addresses }: { onClose: () => void; addresses?:
       void import('./bitcoin').then(m => setBtcAddr(m.getBitcoinAddress(seed.join(' '))))
         .catch(() => setBtcAddr(''));
     }
+    // O-01 (H-1 residual, non-signing): both come from the main-process
+    // signer bridge, not derived from `seed` here.
     if (chain === 'sol' && !solAddr && seed.length) {
-      void import('./solana').then(m => setSolAddr(m.getSolanaAddress(seed.join(' '))))
-        .catch(() => setSolAddr(''));
+      const bridge = window.thanosDesktop?.signer;
+      if (bridge) void bridge.solAddress().then(setSolAddr).catch(() => setSolAddr(''));
     }
     if (chain === 'atom' && !atomAddr && seed.length) {
-      void import('./cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
-        .then(setAtomAddr)
-        .catch(() => setAtomAddr(''));
+      const bridge = window.thanosDesktop?.signer;
+      if (bridge) void bridge.cosmosAddress().then(setAtomAddr).catch(() => setAtomAddr(''));
     }
   }, [chain, seed, btcAddr, solAddr, atomAddr]);
 
@@ -5663,7 +5744,7 @@ function OnboardingFlow({ onComplete, hasVault, addMode }: { onComplete: (seed: 
       const vault = await createVault(seed.join(' '), password);
       saveVault(vault);
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       await openWallet(seed.join(' ')); // the new vault's one wallet
       setWalletOrigin(currentWalletId(), 'created'); // labels it in Wallets & accounts
       setSeedBackedUp(true); // create flow includes seed verification
@@ -5689,7 +5770,7 @@ function OnboardingFlow({ onComplete, hasVault, addMode }: { onComplete: (seed: 
       const vault = await createVault(secret, password);
       saveVault(vault);
       const opened = await openVault(vault, password);
-      if (opened) cacheSessionKey(opened.key);
+      if (opened) await cacheSessionKey(opened.key);
       await openWallet(secret); // the new vault's one wallet
       setWalletOrigin(currentWalletId(), 'imported'); // labels it in Wallets & accounts
       setSeedBackedUp(true); // imported — user already holds the secret
@@ -5752,7 +5833,7 @@ function OnboardingFlow({ onComplete, hasVault, addMode }: { onComplete: (seed: 
         setUnlockPwd('');
         return;
       }
-      cacheSessionKey(opened.key);
+      await cacheSessionKey(opened.key);
       // The vault may hold several wallets: open the one in use last time.
       const w = await openWallet(opened.mnemonic);
       onComplete(seedWords(w.secret), unlockPwd);
@@ -6589,7 +6670,7 @@ function App() {
     if (!window.confirm(first)) return;
     if (!window.confirm('Are you sure? This cannot be undone.')) return;
     clearVault();
-    clearSessionKey();
+    void clearSessionKey().catch(() => {});
     void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     setWalletSeed([]);
@@ -6674,16 +6755,16 @@ function App() {
     (async () => {
       if (hasLegacyPlaintext()) {
         const mig = await migrateLegacyPlaintext();
-        if (mig.ok && mig.key) cacheSessionKey(mig.key);
+        if (mig.ok && mig.key) await cacheSessionKey(mig.key);
       }
       const vault = loadVault();
       setHasVault(!!vault);
       if (!vault) return;
-      const key = getSessionKey();
+      const key = await getSessionKey();
       if (!key) return;
       // ...unless the window sat idle past the auto-lock timeout before this
       // load: the idle watcher couldn't lock a renderer that was reloading.
-      if (idleExpired(sessionStorage, readAutoLockMinutes(localStorage))) { clearSessionKey(); return; }
+      if (idleExpired(sessionStorage, readAutoLockMinutes(localStorage))) { await clearSessionKey(); return; }
       const plaintext = await openVaultWithKey(vault, key);
       if (plaintext) {
         // The vault may hold several wallets: open the one in use before the reload.
@@ -6697,7 +6778,7 @@ function App() {
         // without the bridge just keep using the renderer signer.
         try { await window.thanosDesktop?.signer?.setSeed(words.join(' ')); } catch { /* no bridge */ }
       } else {
-        clearSessionKey();
+        await clearSessionKey();
       }
     })().catch(() => { /* fall through to onboarding */ });
   }, []);
@@ -6725,7 +6806,7 @@ function App() {
   const lock = () => {
     setUnlocked(false);
     setWalletSeed([]);
-    clearSessionKey();
+    void clearSessionKey().catch(() => {});
     void window.thanosDesktop?.signer?.clearSeed().catch(() => { /* no bridge */ });
     // A locked wallet keeps no live Quantt login either (quantt.ts).
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });

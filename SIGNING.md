@@ -81,8 +81,21 @@ per-binary; populate it with the signtool invocation for the HSM in use.
 
 ### Linux
 
-No signing needed for AppImage / `.deb` — we publish SHA-256 hashes alongside
-the binaries and let users verify manually.
+No OS-level code signing exists for AppImage / `.deb` the way Gatekeeper/
+SmartScreen give the other two targets — we publish SHA-256 hashes alongside
+the binaries and let users verify manually. That hash sits in the same
+GitHub Release as the binary it hashes, so it proves nothing on its own if
+the release itself were ever compromised; it only catches corruption or a
+mismatched download. electron-updater's own AppImage auto-update channel
+checks nothing beyond that same hash (see SECURITY.md).
+
+| Variable                   | What it is                                                     |
+|-----------------------------|----------------------------------------------------------------|
+| `RELEASE_GPG_PRIVATE_KEY`  | Optional. Armored GPG private key; when set, release.yml GPG-signs the AppImage (`*.AppImage.sig`), giving a manual verifier a signature independent of the release's own hash. |
+| `RELEASE_GPG_PASSPHRASE`   | Passphrase for that key.                                       |
+
+Without these two secrets the build is unchanged from before — only the
+`.sha256` sidecar ships.
 
 ---
 

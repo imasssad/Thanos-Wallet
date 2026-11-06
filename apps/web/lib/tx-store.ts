@@ -380,8 +380,10 @@ export async function historyAddresses(seed?: string[], privateKey?: string): Pr
     import('./bitcoin').then(m => {
       out.bitcoin = m.getBitcoinAddressFromSource(privateKey ? { kind: 'privateKey', privateKey } : { kind: 'mnemonic', mnemonic });
     }).catch(() => {}),
-    mnemonic ? import('./solana').then(m => { out.solana = m.getSolanaAddress(mnemonic); }).catch(() => {}) : null,
-    mnemonic ? import('./cosmos').then(async m => { out.cosmos = await m.getCosmosAddress(mnemonic); }).catch(() => {}) : null,
+    // O-01 (H-1 residual, non-signing): both addresses come from the
+    // signing Worker's own cache, not derived from `mnemonic` here.
+    mnemonic ? import('./signer-client').then(async m => { out.solana = (await m.signerSolanaAddress()).address; }).catch(() => {}) : null,
+    mnemonic ? import('./signer-client').then(async m => { out.cosmos = (await m.signerCosmosAddress()).address; }).catch(() => {}) : null,
   ]);
   return out;
 }

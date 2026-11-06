@@ -7,10 +7,12 @@ import {
   generateRefreshToken,
   hashRefreshToken,
   refreshTokenExpiresAt,
+  sessionPastAbsoluteLifetime,
 } from '../lib/jwt.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { authLimiter, sensitiveOpLimiter } from '../middleware/rate-limit.js';
 import { recordAuthEvent } from '../lib/metrics.js';
+import { issueStepUpToken } from '../lib/step-up.js';
 
 export const authRouter = Router();
 
@@ -89,6 +91,14 @@ authRouter.post('/register', authLimiter, async (req: Request, res: Response) =>
   // Check existing user
   const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
   if (existing) {
+    // Hardening-audit L-2: a registered email answering 409 immediately is
+    // an account-enumeration oracle. Closing it fully needs an
+    // email-verification gate (so success ALSO doesn't hand back tokens
+    // immediately) — infrastructure this deployment doesn't have. Short of
+    // that, at least don't let response latency add a second oracle: pay
+    // the same Argon2id cost a real registration would, so this path and
+    // the success path below take comparably long.
+    await burnVerifyTime(password);
     res.status(409).json({ error: 'Email already registered' });
     return;
   }
@@ -220,27 +230,54 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
 
   const session = await queryOne<{
     id: string; user_id: string; device_id: string | null;
-    expires_at: Date; revoked: boolean;
+    expires_at: Date; revoked: boolean; created_at: Date;
   }>(
-    `SELECT id, user_id, device_id, expires_at, revoked
+    `SELECT id, user_id, device_id, expires_at, revoked, created_at
      FROM sessions WHERE refresh_token = $1`,
     [hash]
   );
 
   if (!session || session.revoked || session.expires_at < new Date()) {
+    // THN-06: a token that doesn't match any session's CURRENT hash might
+    // still match one's PREVIOUS hash — i.e. it was valid, but the session
+    // already rotated past it (the legitimate client refreshed since). That
+    // can only mean this exact token leaked and is now being replayed, so
+    // the right response isn't the same quiet 401 as a garbage token: revoke
+    // the session outright, forcing the legitimate user to log in again on
+    // whichever side notices first.
+    const reused = await query<{ id: string }>(
+      `UPDATE sessions SET revoked = true, revoked_at = NOW()
+        WHERE previous_refresh_token = $1 AND revoked = false
+        RETURNING id`,
+      [hash]
+    );
+    if (reused.length > 0) {
+      recordAuthEvent('refresh_reuse_detected', 'failure');
+    }
     res.status(401).json({ error: 'Invalid or expired refresh token' });
+    return;
+  }
+
+  if (sessionPastAbsoluteLifetime(session.created_at)) {
+    // THN-06: rotation alone lets a session renew forever — this caps it
+    // from the session's own creation, independent of how often it's been
+    // refreshed since.
+    await query(`UPDATE sessions SET revoked = true, revoked_at = NOW() WHERE id = $1`, [session.id]);
+    res.status(401).json({ error: 'Session expired — please log in again' });
     return;
   }
 
   // Rotate refresh token — compare-and-swap on the presented hash, so two
   // concurrent refreshes with the same token can't both succeed (each would
   // mint a live access token and fork the session). Only the first wins.
+  // previous_refresh_token keeps the hash this rotation supersedes, so a
+  // later replay of THIS exact token is caught by the reuse check above.
   const { raw: newRaw, hash: newHash } = generateRefreshToken();
   const rotated = await query<{ id: string }>(
-    `UPDATE sessions SET refresh_token = $1, expires_at = $2
-      WHERE id = $3 AND refresh_token = $4 AND revoked = false
+    `UPDATE sessions SET refresh_token = $1, previous_refresh_token = $2, expires_at = $3
+      WHERE id = $4 AND refresh_token = $2 AND revoked = false
       RETURNING id`,
-    [newHash, refreshTokenExpiresAt(), session.id, hash]
+    [newHash, hash, refreshTokenExpiresAt(), session.id]
   );
   if (rotated.length === 0) {
     res.status(401).json({ error: 'Invalid or expired refresh token' });
@@ -288,6 +325,33 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
     mfaEnabled: user.mfa_enabled,
     createdAt: user.created_at,
   });
+});
+
+// ─── POST /auth/step-up ─────────────────────────────────────────────────────
+
+const StepUpSchema = z.object({ password: z.string().min(1) });
+
+/** THN-R1 M-04: re-confirm the account password to get a short-lived grant
+ *  (see middleware/auth.ts's requireStepUp) for the handful of routes where
+ *  a stolen-but-valid access token alone isn't enough — card PIN
+ *  view/change, full card details, card activation. Rate-limited the same
+ *  as other password-bearing endpoints; a wrong password burns the same
+ *  Argon2id-verify time as login so it isn't a faster oracle than login is. */
+authRouter.post('/step-up', requireAuth, sensitiveOpLimiter, async (req: Request, res: Response) => {
+  const parse = StepUpSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: 'password required' }); return; }
+  const { userId, sessionId } = req as AuthRequest;
+  const user = await queryOne<{ password_hash: string }>(`SELECT password_hash FROM users WHERE id = $1`, [userId]);
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+  const valid = await argon2.verify(user.password_hash, parse.data.password);
+  if (!valid) {
+    recordAuthEvent('step_up', 'failure');
+    res.status(401).json({ error: 'Incorrect password' });
+    return;
+  }
+  recordAuthEvent('step_up', 'success');
+  const { token, expiresAt } = issueStepUpToken(userId, sessionId);
+  res.json({ stepUpToken: token, expiresAt });
 });
 
 // ─── GET /auth/sessions ─────────────────────────────────────────────────────

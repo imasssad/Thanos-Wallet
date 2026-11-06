@@ -24,8 +24,11 @@ function setup(opts: { sessionChain?: number; phishing?: boolean; signFails?: bo
   };
   let n = 0;
   const handle = createSessionRequestHandler(deps);
-  const send = (method: string, params: unknown[], origin = 'https://dapp.example', chainId?: string) =>
-    handle({ topic: 't1', id: ++n, params: { request: { method, params }, chainId }, verifyContext: { verified: { origin } } });
+  const send = (
+    method: string, params: unknown[], origin = 'https://dapp.example', chainId?: string,
+    verify: { validation?: 'VALID' | 'INVALID' | 'UNKNOWN'; isScam?: boolean } = {},
+  ) =>
+    handle({ topic: 't1', id: ++n, params: { request: { method, params }, chainId }, verifyContext: { verified: { origin, ...verify } } });
   return { deps, confirms, send };
 }
 
@@ -127,6 +130,22 @@ describe('web WalletConnect requests', () => {
     expect(deps.respondError).toHaveBeenCalledWith('t1', 3, -32002, expect.stringMatching(/Duplicate/));
     await send('eth_signTransaction', [{}]);
     expect(deps.respondError).toHaveBeenCalledWith('t1', 4, 4200, 'Method not supported: eth_signTransaction');
+  });
+
+  it('THN-03: WalletConnect Verify escalates risk — isScam blocks even a plain message', async () => {
+    const { deps, confirms, send } = setup();
+    await send('personal_sign', ['0x68656c6c6f', ME], 'https://evil.example', undefined, { isScam: true });
+    expect(confirms[0].review.risk).toBe('block');
+    expect(confirms[0].review.blockReason).toMatch(/known scam/);
+    await expect(confirms[0].approve()).rejects.toThrow();
+    expect(deps.signMessage).not.toHaveBeenCalled();
+  });
+
+  it('THN-03: INVALID escalates a safe message to review, not left as safe', async () => {
+    const { confirms, send } = setup();
+    await send('personal_sign', ['0x68656c6c6f', ME], 'https://dapp.example', undefined, { validation: 'INVALID' });
+    expect(confirms[0].review.risk).toBe('review');
+    expect(confirms[0].review.warnings[0]).toMatch(/does NOT match the domain/);
   });
 
   it('switches to a supported chain and refuses unknown ones', async () => {

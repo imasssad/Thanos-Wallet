@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -47,8 +47,8 @@ jobs:
     # ratchet down as the codebase converges, not up.
     continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -59,8 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -75,8 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -91,8 +91,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -119,6 +119,15 @@ jobs:
       - run: node scripts/sync-multisig.mjs --check
       # Mobile's copy of the native Lithic reader (Makalu native LAX) matches sdk-core's.
       - run: node scripts/sync-native-lithic.mjs --check
+      # Extension — vault round-trip, THN-02 connection-approval slot, and
+      # the O-01 sender-gate regression tests (background.ts + the
+      # offscreen signer's own gate). Was build-only (build-extension
+      # above); this suite existed but never actually ran in CI.
+      - run: pnpm --filter @thanos/extension test
+      # Desktop — ipc-guard.ts's trust boundary (O-01/M20-M21): the
+      # window-navigation lock and the top-frame-only IPC gate. apps/desktop
+      # had no test suite at all until this one.
+      - run: pnpm --filter @thanos/desktop test
 
   integration-pg:
     name: integration (api ↔ real Postgres)
@@ -155,8 +164,8 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -189,8 +198,8 @@ jobs:
     # consciously added there.
     continue-on-error: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -200,6 +209,34 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm audit --audit-level=high --prod
+      - name: pnpm audit — Electron specifically (THN-05)
+        # Electron ships as a devDependency (electron-builder requires this —
+        # it's bundled into the packaged app, not installed alongside it), so
+        # the --prod gate above never sees its advisories at all: THN-R1 found
+        # 12 open high-severity Electron CVEs that this gate had been blind to
+        # for weeks. Running the full (non---prod) audit as a blocking gate is
+        # not an option — the monorepo's full devDependency tree (build
+        # tooling, @walletconnect's react-native transitives, …) carries over a
+        # hundred advisories that are test/build-time-only noise, which would
+        # make this gate permanently red for reasons unrelated to what ships.
+        # So: run the full audit, but fail ONLY on an advisory whose vulnerable
+        # package is literally `electron` — the one devDependency that ships
+        # inside the shipped app and so is squarely a "prod" risk despite the
+        # package.json classification.
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+        run: |
+          pnpm audit --audit-level=high --json > /tmp/full-audit.json || true
+          node -e "
+            const data = JSON.parse(require('fs').readFileSync('/tmp/full-audit.json', 'utf8'));
+            const advisories = Object.values(data.advisories || {});
+            const electron = advisories.filter(a => (a.module_name || '').toLowerCase() === 'electron');
+            if (electron.length === 0) { console.log('No open high+ Electron advisories.'); process.exit(0); }
+            console.error(electron.length + ' open high+ Electron advisor' + (electron.length === 1 ? 'y' : 'ies') + ':');
+            for (const a of electron) console.error('  [' + a.severity + '] ' + a.title + ' — fixed in ' + a.patched_versions + ' — ' + a.url);
+            console.error('Bump apps/desktop/package.json\'s electron devDependency to a patched version.');
+            process.exit(1);
+          "
 
   gitleaks:
     name: secret scan (gitleaks)
@@ -211,7 +248,7 @@ jobs:
     # billing layer. Drop the action and run the CLI directly: it's the
     # same scanner, MIT-licensed, no license check.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }  # full history so the scan covers every commit on a PR
       - name: Install gitleaks CLI
         run: |
@@ -229,7 +266,7 @@ jobs:
         run: gitleaks detect --config=.gitleaks.toml --redact --verbose --report-format json --report-path gitleaks-report.json
       - name: Upload gitleaks report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gitleaks-report
           path: gitleaks-report.json
@@ -249,7 +286,7 @@ jobs:
     # gives us the second monitoring layer + a paper trail per commit.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Probe thanos.fi production endpoints
         # --category prod isolates the check to /api/health, /privacy,
         # icons, etc. — the user-facing surface a commit could break.
@@ -270,7 +307,7 @@ jobs:
     # the operator if a real outage persists.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Probe Lithosphere + external chain RPCs
         run: bash ops/link-probe.sh --category litho
       - name: Probe external chain RPCs (BTC / SOL / Cosmos / ETH / BSC)

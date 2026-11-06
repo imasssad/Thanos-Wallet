@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Wallet, HDNodeWallet, Mnemonic, randomBytes, getAddress } from 'ethers';
 import { MultXBridgePanel } from './MultXBridgePanel';
@@ -78,10 +78,11 @@ import { setContactEncryptionKey } from '../../lib/contact-crypto';
 import { addLocalActivity, getLocalNativeHash, setLocalNativeHash } from '../../lib/local-activity';
 import {
   laxStatus, laxCards, laxCardTransactions, laxCurrencies, laxTopUp,
-  hasThanosAccount, laxRegisterThanosAccount, laxAccountEmail, cardNumberOf,
+  hasThanosAccount, laxRegisterThanosAccount, laxAccountEmail, cardNumberOf, cardIdOf,
   laxIssueCard, laxCardDetails, laxSetCardStatus, laxCreatePhysicalHolder, laxStartPhysicalKyc, laxSubmitPhysicalHolder, extractLaxRedirectUrl,
   type LaxStatus, type LaxCard as LaxCard_, type LaxTxn, type LaxCardDetails, type LaxHolderInput,
 } from '../../lib/lax';
+import { apiClient } from '../../lib/auth-client';
 
 /* ──────────────────────── Storage / Wallet helpers ──────────────────────── */
 
@@ -979,6 +980,7 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
   const [lastTopUp, setLastTopUp] = useState<{ amount: number; currency: string } | null>(null);
 
   const cardNo = card ? cardNumberOf(card) : undefined;
+  const cardId = card ? cardIdOf(card) : undefined;
   const last4  = cardNo ? cardNo.slice(-4) : (typeof card?.last4 === 'string' ? card.last4 : '••••');
 
   const refresh = async () => {
@@ -990,8 +992,8 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
         setCards(list);
         if (list[0]) {
           setCard(list[0]);
-          const cn = cardNumberOf(list[0]);
-          if (cn) { laxCardTransactions(cn).then(setTxns).catch(() => setTxns([])); }
+          const ci = cardIdOf(list[0]);
+          if (ci) { laxCardTransactions(ci).then(setTxns).catch(() => setTxns([])); }
         }
       }
     } catch { /* leave status null — treated as not-live */ }
@@ -1029,7 +1031,7 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
               {view === 'intro'     && <LaxIntro notLive={notLive} onStart={() => setView(notLive ? 'soon' : 'create')} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
               {view === 'soon'      && <LaxComingSoon onClose={onClose} onLearn={() => browser.tabs.create({ url: LAX_LEARN_MORE_URL })}/>}
               {view === 'create'    && <LaxCreate status={status} onDone={async () => { await refresh(); setView(status?.configuredForIssuance ? 'dashboard' : 'soon'); }}/>}
-              {view === 'dashboard' && <LaxDashboard card={card} cardNo={cardNo} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
+              {view === 'dashboard' && <LaxDashboard card={card} cardId={cardId} last4={last4} txns={txns} notLive={notLive} onTopUp={() => setView('topup')} onSoon={() => setView('soon')} onRefresh={refresh}/>}
               {view === 'topup'     && cardNo && <LaxTopUp cardNo={cardNo} onDone={(amt, cur) => { setLastTopUp({ amount: amt, currency: cur }); refresh(); setView('success'); }}/>}
               {view === 'success'   && <LaxSuccess last4={last4} topUp={lastTopUp} onDone={() => setView('dashboard')}/>}
             </>
@@ -1311,8 +1313,8 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
   return null;
 }
 
-function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onRefresh }: {
-  card: LaxCard_ | null; cardNo?: string; last4: string; txns: LaxTxn[]; notLive: boolean;
+function LaxDashboard({ card, cardId, last4, txns, notLive, onTopUp, onSoon, onRefresh }: {
+  card: LaxCard_ | null; cardId?: string; last4: string; txns: LaxTxn[]; notLive: boolean;
   onTopUp: () => void; onSoon: () => void; onRefresh: () => Promise<void> | void;
 }) {
   const [modal, setModal] = useState<'details' | 'more' | null>(null);
@@ -1323,7 +1325,7 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
   const frozen = String(card?.status ?? '').toLowerCase().includes('froz');
 
   const toggleFreeze = async () => {
-    if (!cardNo || freezeBusy) return;
+    if (!cardId || freezeBusy) return;
     const msg = frozen
       ? 'Unfreeze this card? It will be usable for purchases again.'
       : "Freeze this card? You won't be able to use it for purchases until you unfreeze it.";
@@ -1332,7 +1334,7 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
     setFreezeErr(null);
     setFreezeBusy(true);
     try {
-      await laxSetCardStatus(cardNo, frozen ? 'active' : 'frozen');
+      await laxSetCardStatus(cardId, frozen ? 'active' : 'frozen');
       await onRefresh();
     } catch (e) {
       setFreezeErr(e instanceof Error ? e.message : 'Could not update card status — try again.');
@@ -1341,9 +1343,9 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
 
   const actions: Array<{ icon: typeof Plus; label: string; onPress: () => void }> = [
     { icon: Plus,       label: 'Top Up',                    onPress: notLive ? onSoon : onTopUp },
-    { icon: CreditCard, label: 'Card Details',               onPress: (notLive || !cardNo) ? onSoon : () => setModal('details') },
-    { icon: Shield,     label: frozen ? 'Unfreeze' : 'Freeze', onPress: (notLive || !cardNo) ? onSoon : () => { void toggleFreeze(); } },
-    { icon: Maximize2,  label: 'More',                       onPress: (notLive || !cardNo) ? onSoon : () => setModal('more') },
+    { icon: CreditCard, label: 'Card Details',               onPress: (notLive || !cardId) ? onSoon : () => setModal('details') },
+    { icon: Shield,     label: frozen ? 'Unfreeze' : 'Freeze', onPress: (notLive || !cardId) ? onSoon : () => { void toggleFreeze(); } },
+    { icon: Maximize2,  label: 'More',                       onPress: (notLive || !cardId) ? onSoon : () => setModal('more') },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1386,8 +1388,8 @@ function LaxDashboard({ card, cardNo, last4, txns, notLive, onTopUp, onSoon, onR
         <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
       ) : txns.slice(0, 6).map((t, i) => <LaxTxnRow key={t.id || i} t={t} last={i === Math.min(txns.length, 6) - 1}/>)}
 
-      {modal === 'details' && cardNo && <LaxCardDetailsModal cardNo={cardNo} onClose={() => setModal(null)}/>}
-      {modal === 'more' && cardNo && <LaxMoreModal cardNo={cardNo} onClose={() => setModal(null)}/>}
+      {modal === 'details' && cardId && <LaxCardDetailsModal cardId={cardId} onClose={() => setModal(null)}/>}
+      {modal === 'more' && cardId && <LaxMoreModal cardId={cardId} onClose={() => setModal(null)}/>}
     </div>
   );
 }
@@ -1415,17 +1417,88 @@ function LaxTxnRow({ t, last }: { t: LaxTxn; last: boolean }) {
 /** "Card Details" action — PAN/expiry/CVC, GET /lax/card/:n/details. Sensitive:
  *  blurred behind a tap-to-reveal gate (mirrors RecoveryPhraseModal's reveal
  *  UX) and cleared from state the moment this modal unmounts. */
-function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+/* ── step-up auth (THN-R1 M-04) ───────────────────────────────────────
+   Card details now requires a fresh step-up grant from the server
+   (POST /auth/step-up) on top of the normal session — see
+   apps/web/components/LaxCard.tsx for the same pattern. */
+function StepUpPasswordModal({ onCancel, onSubmit }: {
+  onCancel: () => void;
+  onSubmit: (password: string) => Promise<string | null>;
+}) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    if (!password || busy) return;
+    setBusy(true); setErr(null);
+    const error = await onSubmit(password);
+    setBusy(false);
+    if (error) setErr(error);
+  };
+  return (
+    <Modal title="Confirm your password" onClose={onCancel}>
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+          For your security, re-enter your Thanos account password to continue.
+        </p>
+        <input
+          type="password" autoComplete="current-password" placeholder="Password" value={password} autoFocus
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+          className="field-input"
+        />
+        {err && <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <button className="btn-secondary" style={{ flex: 1 }} onClick={onCancel} disabled={busy}>Cancel</button>
+          <button className="btn-primary" style={{ flex: 1 }} onClick={submit} disabled={busy || !password}>
+            {busy ? 'Confirming…' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function useStepUp(): { ensure: () => Promise<string | null>; modal: React.ReactNode } {
+  const [pending, setPending] = useState<{ resolve: (token: string | null) => void } | null>(null);
+  const ensure = useCallback((): Promise<string | null> => {
+    const cached = apiClient.getCachedStepUp();
+    if (cached) return Promise.resolve(cached);
+    return new Promise<string | null>((resolve) => setPending({ resolve }));
+  }, []);
+  const modal = pending ? (
+    <StepUpPasswordModal
+      onCancel={() => { pending.resolve(null); setPending(null); }}
+      onSubmit={async (password) => {
+        try {
+          const { stepUpToken } = await apiClient.stepUp(password);
+          pending.resolve(stepUpToken);
+          setPending(null);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : 'Incorrect password';
+        }
+      }}
+    />
+  ) : null;
+  return { ensure, modal };
+}
+
+function LaxCardDetailsModal({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const [details, setDetails] = useState<LaxCardDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState<string | null>(null);
   const [hidden, setHidden]   = useState(true);
+  const { ensure: ensureStepUp, modal: stepUpModal } = useStepUp();
 
   useEffect(() => {
     let live = true;
     (async () => {
+      const stepUpToken = await ensureStepUp();
+      if (!live) return;
+      if (!stepUpToken) { onClose(); return; }
       try {
-        const d = await laxCardDetails(cardNo);
+        const d = await laxCardDetails(cardId, stepUpToken);
         if (live) setDetails(d);
       } catch (e) {
         if (live) setErr(e instanceof Error ? e.message : 'Could not load card details.');
@@ -1436,11 +1509,12 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
     // Clear sensitive data the instant this modal goes away, regardless of
     // how — close button, backdrop click, or unmount.
     return () => { live = false; setDetails(null); };
-  }, [cardNo]);
+  }, [cardId]);
 
   const close = () => { setDetails(null); onClose(); };
 
   return (
+    <>
     <div className="modal-back" onClick={close}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
@@ -1461,7 +1535,7 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
                   color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   fontSize: 14, letterSpacing: 0.5, filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s', userSelect: 'text',
                 }}>
-                  {details?.pan || cardNo}
+                  {details?.pan || '—'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 24 }}>
@@ -1495,12 +1569,14 @@ function LaxCardDetailsModal({ cardNo, onClose }: { cardNo: string; onClose: () 
         </div>
       </div>
     </div>
+    {stepUpModal}
+    </>
   );
 }
 
 /** "More" action — full transaction history (real) plus clearly-labeled
  *  coming-soon items for actions with no confirmed backend support. */
-function LaxMoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void }) {
+function LaxMoreModal({ cardId, onClose }: { cardId: string; onClose: () => void }) {
   const [view, setView] = useState<'menu' | 'history' | 'physical'>('menu');
   const [txns, setTxns]   = useState<LaxTxn[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1511,7 +1587,7 @@ function LaxMoreModal({ cardNo, onClose }: { cardNo: string; onClose: () => void
     setLoading(true);
     setErr(null);
     try {
-      setTxns(await laxCardTransactions(cardNo));
+      setTxns(await laxCardTransactions(cardId));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not load transactions.');
     } finally { setLoading(false); }
@@ -4404,12 +4480,14 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
       void import('../../lib/bitcoin').then(m => { if (!cancelled) setBtcAddr(m.getBitcoinAddress(seed.join(' '))); })
         .catch(() => { if (!cancelled) setBtcAddr(''); });
     }
+    // O-01 (H-1 residual, non-signing): both addresses come from the
+    // offscreen signer's cache, not derived from `seed` here.
     if (chain === 'sol' && !solAddr && seed.length) {
-      void import('../../lib/solana').then(m => { if (!cancelled) setSolAddr(m.getSolanaAddress(seed.join(' '))); })
-        .catch(() => { if (!cancelled) setSolAddr(''); });
+      void import('./offscreen-sign').then(m => m.getSolanaAddressFromSigner())
+        .then(a => { if (!cancelled) setSolAddr(a); }).catch(() => { if (!cancelled) setSolAddr(''); });
     }
     if (chain === 'atom' && !atomAddr && seed.length) {
-      void import('../../lib/cosmos').then(m => m.getCosmosAddress(seed.join(' ')))
+      void import('./offscreen-sign').then(m => m.getCosmosAddressFromSigner())
         .then(a => { if (!cancelled) setAtomAddr(a); }).catch(() => { if (!cancelled) setAtomAddr(''); });
     }
     return () => { cancelled = true; };
@@ -4904,7 +4982,6 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
         if (!net) throw new Error('This swap quote has no network the wallet can sign on.');
         const { signAndBroadcastTx } = await import('./offscreen-sign');
         signedTxHash = await signAndBroadcastTx({
-          seed,
           tx: {
             to: utx.to, value: utx.value, data: utx.data,
             gas: utx.gas,
@@ -5793,11 +5870,14 @@ function App() {
   useEffect(() => { void loadHiddenAssets().then(() => setVisTick((t) => t + 1)); }, []);
 
   /** Switch to a different derived account. Updates storage so the
-   *  next popup open + the signer paths pick up the same index. */
+   *  next popup open + the signer paths pick up the same index, and pushes
+   *  the switch into the offscreen signer's cache (hardening-audit H-1) so
+   *  the very next signature follows the account now on screen. */
   const switchAccount = (idx: number) => {
     if (idx < 0 || idx >= accountCount) return;
     setActiveAccountIndex(idx);
     setActiveIdx(idx);
+    void import('./offscreen-sign').then(({ setSignerAccountIndex }) => setSignerAccountIndex(idx)).catch(() => { /* offscreen not ready yet */ });
   };
 
   /** Add a new derived account at the next index. Bumps accountCount
@@ -5809,6 +5889,7 @@ function App() {
     setAccountCountState(next + 1);
     setActiveAccountIndex(next);
     setActiveIdx(next);
+    void import('./offscreen-sign').then(({ setSignerAccountIndex }) => setSignerAccountIndex(next)).catch(() => { /* offscreen not ready yet */ });
   };
 
   /* ─── Wallets — several secrets in the one vault (lib/vault.ts) ──────────
@@ -5825,14 +5906,19 @@ function App() {
     if (r) setWallets(r.wallets);
   };
   useEffect(() => { if (unlocked) void refreshWallets(); }, [unlocked]); // eslint-disable-line react-hooks/exhaustive-deps
-  /** Show the wallet lib/vault.ts has just opened. */
+  /** Show the wallet lib/vault.ts has just opened. Also re-points the
+   *  offscreen signer at this wallet's secret (hardening-audit H-1) — a
+   *  different wallet means a different signing source, not just a
+   *  different display. */
   const openWalletSecret = (secret: string) => {
     const words = secret.split(' ');
     const pk = isPrivateKeyWallet(words);
+    const idx = pk ? 0 : getActiveAccountIndex();
     setSeed(words);
     setActiveWalletId(getCurrentWalletId());
-    setActiveIdx(pk ? 0 : getActiveAccountIndex());
+    setActiveIdx(idx);
     setAccountCountState(pk ? 1 : getAccountCount());
+    void import('./offscreen-sign').then(({ initSigner }) => initSigner(words, idx)).catch(() => { /* offscreen not ready yet */ });
   };
   const activeWallet = wallets.find(w => w.id === activeWalletId);
   const openId = activeWalletId || getCurrentWalletId();
@@ -6029,6 +6115,7 @@ function App() {
     clearSessionKey();
     void clearPersistedSessionKey();
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });
+    void import('./offscreen-sign').then(({ lockSigner }) => lockSigner()).catch(() => { /* offscreen not ready yet */ });
     setSeed([]);
     setActiveWalletId('');
     setWallets([]);
@@ -6164,6 +6251,11 @@ function App() {
               setSeed(words); setActiveWalletId(getCurrentWalletId()); setUnlocked(true);
               autoUnlocked = true;
               cacheSessionKey(key); // reseed the fast in-page cache
+              // Re-push the secret into the offscreen signer too — the popup
+              // was just recreated (it has no state across a close), but the
+              // offscreen document may have survived; re-init is idempotent
+              // and covers the case where it didn't (hardening-audit H-1).
+              void import('./offscreen-sign').then(({ initSigner }) => initSigner(words, getActiveAccountIndex())).catch(() => {});
               // Re-announce the active address so dApps / eth_accounts work on an
               // auto-unlock (mirrors onComplete), and refresh the persisted key so
               // the sliding window reflects this use.
@@ -6208,6 +6300,7 @@ function App() {
     setAddStart(null);
     clearSessionKey();
     void clearPersistedSessionKey(); // drop the survives-popup-close key too
+    void import('./offscreen-sign').then(({ lockSigner }) => lockSigner()).catch(() => { /* offscreen not ready yet */ });
     // A locked wallet keeps no live Quantt login either (quantt.ts).
     void forgetQuanttSession().catch(() => { /* nothing to forget */ });
     // Tell the background SW the wallet is locked so dApps see accountsChanged([]).
@@ -6232,11 +6325,14 @@ function App() {
     setActiveWalletId(getCurrentWalletId()); // Onboarding has just opened it
     setHasVault(true);
     setUnlocked(true);
+    // Push the secret into the offscreen signer (hardening-audit H-1) — once,
+    // here, not on every later signing call. Reads the stored active index so
+    // re-unlock returns the same account the user last had selected.
+    const idx = getActiveAccountIndex();
+    void import('./offscreen-sign').then(({ initSigner }) => initSigner(s, idx)).catch(() => { /* offscreen not ready yet */ });
     // Announce the unlocked address so the background can answer eth_accounts.
-    // Reads the stored active index so re-unlock returns the same account
-    // the user last had selected, not always Account 1.
     try {
-      const addr = deriveEvm(s, getActiveAccountIndex());
+      const addr = deriveEvm(s, idx);
       browser?.runtime?.sendMessage({ type: 'thanos-active-address', address: addr });
     } catch {}
   };
@@ -6270,6 +6366,8 @@ function App() {
         request: { method: pendingRpc.method, params: pendingRpc.params },
         // Sign on the chain this sheet reviewed, not whatever is active by now.
         chainId: rpcChainId !== undefined ? `eip155:${rpcChainId}` : undefined,
+        // ...and as the account it reviewed, shown above as "Signing as" (O-06).
+        account: pendingRpc.address,
       });
       // Contract guard: signing/tx methods MUST resolve to a 0x-prefixed
       // string (personal_sign/eth_sign/eth_signTypedData_v4 → 65-byte

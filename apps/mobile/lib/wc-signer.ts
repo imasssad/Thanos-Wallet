@@ -1,10 +1,9 @@
 /**
  * WalletConnect request signer for the mobile wallet.
  *
- * Takes the unlocked BIP39 seed and a session_request, signs/broadcasts
- * with ethers, and returns the JSON-RPC result. Pure logic — the UI
- * (WalletConnectRequestHost) decides whether to call this after the
- * user approves.
+ * Signs/broadcasts a session_request with ethers and returns the JSON-RPC
+ * result. Pure logic — the UI (WalletConnectRequestHost) decides whether to
+ * call this after the user approves.
  *
  * Supported methods:
  *   personal_sign / eth_sign      → EIP-191 message signature
@@ -18,8 +17,15 @@
  * broadcast on exactly that chain. There is no default network to fall back
  * to — a transaction for a chain the wallet doesn't know is refused.
  *
- * The seed never leaves this module; a fresh HDNodeWallet is built per
- * call and discarded.
+ * Hardening-audit H-1 (mobile, slice 4 of 4): this used to take the seed as
+ * a parameter and lazily call `signer.setSeed()` on first use — meaning
+ * every caller still had to hold the seed (App.tsx's `walletSeed` state)
+ * and pass it in, the exact "walletSeed in App state, passed to
+ * executeWcRequest" the audit names. lib/signer.ts's module-scope cache is
+ * now the ONLY thing this reads: App.tsx calls signer.setSeed()/clearSeed()
+ * once, at unlock and lock (already true for setSeed; clearSeed already ran
+ * on lock too — the gap was this function still accepting and threading a
+ * seed parameter it didn't strictly need). No seed crosses this call.
  */
 import {
   JsonRpcProvider, getBytes, toUtf8Bytes, isHexString, parseUnits,
@@ -53,10 +59,27 @@ async function requestChain(reqParams: { chainId?: string }): Promise<ExtEvmChai
   return getExtEvmChain(id);
 }
 
+/** Read-only JSON-RPC methods the in-app browser's WebView may proxy
+ *  straight to the chain node (M-02). Anything not on this list — a
+ *  write-oriented or admin RPC name a malicious/compromised page asks for,
+ *  if the selected node happens to support it — never reaches the node at
+ *  all. Mirrors the extension's RPC_PASSTHROUGH (background.ts). */
+const RPC_PASSTHROUGH = new Set<string>([
+  'eth_call', 'eth_estimateGas', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+  'eth_blockNumber', 'eth_getBalance', 'eth_getCode', 'eth_getStorageAt', 'eth_getProof',
+  'eth_getTransactionCount', 'eth_getTransactionReceipt', 'eth_getTransactionByHash',
+  'eth_getTransactionByBlockHashAndIndex', 'eth_getTransactionByBlockNumberAndIndex',
+  'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getBlockReceipts',
+  'eth_getBlockTransactionCountByNumber', 'eth_getBlockTransactionCountByHash',
+  'eth_getLogs', 'eth_getUncleCountByBlockHash', 'eth_getUncleCountByBlockNumber',
+  'eth_createAccessList', 'eth_syncing', 'web3_clientVersion', 'net_listening',
+]);
+
 /** Proxy a read-only JSON-RPC call (eth_call, eth_getBalance,
  *  eth_estimateGas, eth_blockNumber, …) to the chain the in-app browser is
  *  on — a dApp on BNB/ETH/etc. reads that chain's state. */
 export async function rpcProxy(method: string, params: unknown[], chainId: number): Promise<unknown> {
+  if (!RPC_PASSTHROUGH.has(method)) throw new WcSignerError(4200, `Method not supported: ${method}`);
   const { getExtEvmChain, getExtEvmProvider } = await import('./evm-external');
   if (!getExtEvmChain(chainId)) throw new WcSignerError(4901, 'This network is not available in the wallet.');
   // getExtEvmProvider returns a JsonRpcProvider (typed as the base Provider).
@@ -106,15 +129,14 @@ export function summariseRequest(method: string, params: unknown): string {
  *
  *  Routes every signing call through `./signer`, which holds the seed
  *  in a module-private closure (not React state) — derived private keys
- *  never live in any caller's scope. */
-export async function executeWcRequest(seed: string[], reqParams: WcRequestParams): Promise<unknown> {
-  if (!seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
+ *  never live in any caller's scope, and this function no longer needs
+ *  the seed itself, only the chain and the dApp's request. */
+export async function executeWcRequest(reqParams: WcRequestParams): Promise<unknown> {
+  const signer = await import('./signer');
+  if (!signer.hasSeed()) throw new WcSignerError(-32000, 'Wallet is locked');
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
   const path = activeHdPath();
-
-  const signer = await import('./signer');
-  if (!signer.hasSeed()) signer.setSeed(seed);
 
   switch (method) {
     case 'eth_accounts':
@@ -259,17 +281,17 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
     if (args.splMintAddress) {
       const { sendSplToken } = await import('./solana');
       return sendSplToken({
-        mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount,
+        recipient: args.to, amount: args.amount,
         mintAddress: args.splMintAddress, decimals: args.decimals,
       });
     }
     const { sendSol } = await import('./solana');
-    return sendSol({ mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount });
+    return sendSol({ recipient: args.to, amount: args.amount });
   }
   if (chain === 'cosmos') {
     const { sendCosmos } = await import('./cosmos');
     return sendCosmos({
-      mnemonic: args.seed.join(' '), recipient: args.to, amount: args.amount, memo: args.memo,
+      recipient: args.to, amount: args.amount, memo: args.memo,
     });
   }
 
@@ -291,7 +313,12 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
 
   const path = activeHdPath();
   const signer = await import('./signer');
-  if (!signer.hasSeed()) signer.setSeed(args.seed);
+  // Hardening-audit H-1: no lazy setSeed() here — App.tsx already pushed
+  // the secret into the cache at unlock. A miss means the cache was
+  // cleared out from under this call (a lock raced it); fail closed
+  // rather than silently re-deriving from args.seed (still held only for
+  // the BTC/SOL/Cosmos branches above, which this module doesn't cover).
+  if (!signer.hasSeed()) throw new WcSignerError(-32000, 'Wallet is locked');
 
   try {
     if (args.tokenAddress) {

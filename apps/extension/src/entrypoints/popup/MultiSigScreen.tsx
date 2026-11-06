@@ -9,7 +9,11 @@ import { extensionMultisigBridge, extensionMultisigNetwork } from '../../lib/mul
 
 export function MultiSigScreen({ seed, evmAddr, accountIndex }: { seed: string[]; evmAddr: string; accountIndex: number }) {
   const network = useMemo(() => extensionMultisigNetwork(), []);
-  const bridge = useMemo(() => (evmAddr ? extensionMultisigBridge(seed, evmAddr, accountIndex) : null), [seed, evmAddr, accountIndex]);
+  // accountIndex stays a dep so a switch rebuilds the bridge for the new
+  // address even though the signing itself no longer takes an explicit path
+  // (extensionMultisigBridge checks the offscreen signer's own cached
+  // account against `evmAddr` before every signature).
+  const bridge = useMemo(() => (evmAddr ? extensionMultisigBridge(seed, evmAddr) : null), [seed, evmAddr, accountIndex]);
   return (
     <div className="screen-pad" style={{ padding: 14 }}>
       <ThanosMultiSig network={network} bridge={bridge} compact />

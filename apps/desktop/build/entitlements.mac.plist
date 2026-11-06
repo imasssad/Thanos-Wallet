@@ -35,12 +35,17 @@
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-  <true/>
 
-  <!-- electron-updater downloads + executes a temporary installer at
-       update time; the hardened runtime needs explicit permission. -->
-  <key>com.apple.security.cs.disable-library-validation</key>
-  <true/>
+  <!-- allow-dyld-environment-variables and disable-library-validation were
+       removed here (THN-04c): neither is something this app's own code
+       needs — Electron itself doesn't require DYLD_INSERT_LIBRARIES, and
+       electron-updater only ever downloads and launches an installer as a
+       separate signed process, which isn't gated by this process's own
+       library-validation entitlement. Together they let anyone with local
+       access set DYLD_INSERT_LIBRARIES (or load an unsigned/mis-signed
+       dylib) into a process holding the unlocked seed, which is exactly
+       what the hardened runtime above is supposed to prevent. Re-add
+       either only alongside a concrete, tested reason a dependency needs
+       it (which dependency, which call fails without it). -->
 </dict>
 </plist>

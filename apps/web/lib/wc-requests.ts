@@ -16,13 +16,13 @@
  *
  * Read-only methods (accounts, chainId) and chain switches answer directly.
  */
-import { reviewSigningRequest, type SignReview } from '@thanos/sdk-core';
+import { reviewSigningRequest, applyWcVerifyContext, type SignReview, type WcVerifyContext } from '@thanos/sdk-core';
 
 export interface WcSessionRequest {
   topic: string;
   id: number;
   params: { request: { method: string; params?: unknown }; chainId?: string };
-  verifyContext?: { verified?: { origin?: string } };
+  verifyContext?: WcVerifyContext;
 }
 
 export interface TypedDataToSign {
@@ -111,9 +111,14 @@ export function createSessionRequestHandler<R extends WcSessionRequest>(deps: Wc
     }
 
     const confirm = (review: SignReview, run: () => Promise<unknown>, what: 'signature' | 'transaction') => {
+      // THN-03: fold WalletConnect's own Verify result in before the
+      // caller's phishing-list check, and use the VERIFIED origin for that
+      // check — never request.params's self-declared one, which the
+      // Verify API exists specifically to not be fooled by.
+      const verified = applyWcVerifyContext(review, request.verifyContext);
       const origin = request.verifyContext?.verified?.origin;
       const originBlock = origin && deps.blockedOrigin ? deps.blockedOrigin(origin) : null;
-      const final = originBlock ? withBlock(review, originBlock) : review;
+      const final = originBlock ? withBlock(verified, originBlock) : verified;
       deps.confirm({
         request,
         review: final,

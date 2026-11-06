@@ -259,16 +259,22 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
               const bal = parseFloat(await m.getBitcoinBalance(addr)) || 0;
               return { sym: 'BTC',  name: 'Bitcoin',    bal, decimals: 8 };
             })(),
+            // O-01 (H-1 residual, non-signing): both addresses come from
+            // the offscreen signer's cache, not derived from `phrase`.
             (async () => {
-              const m = await import('../../lib/solana');
-              const addr = m.getSolanaAddress(phrase);
+              const [m, { getSolanaAddressFromSigner }] = await Promise.all([
+                import('../../lib/solana'), import('./offscreen-sign'),
+              ]);
+              const addr = await getSolanaAddressFromSigner();
               xAddrs.solana = addr;
               const bal = parseFloat(await m.getSolanaBalance(addr)) || 0;
               return { sym: 'SOL',  name: 'Solana',     bal, decimals: 9 };
             })(),
             (async () => {
-              const m = await import('../../lib/cosmos');
-              const addr = await m.getCosmosAddress(phrase);
+              const [m, { getCosmosAddressFromSigner }] = await Promise.all([
+                import('../../lib/cosmos'), import('./offscreen-sign'),
+              ]);
+              const addr = await getCosmosAddressFromSigner();
               xAddrs.cosmos = addr;
               const bal = parseFloat(await m.getCosmosBalance(addr)) || 0;
               return { sym: 'ATOM', name: 'Cosmos Hub', bal, decimals: 6 };

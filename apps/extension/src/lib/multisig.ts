@@ -4,7 +4,7 @@
  * bridge to the offscreen signer, where keys are derived and used.
  */
 import { jsonSafe, multisigNetwork, type MultisigNetwork, type WalletBridge } from '@thanos/multisig';
-import { signAndBroadcastTx, signTypedData } from '../entrypoints/popup/offscreen-sign';
+import { signAndBroadcastTx, signTypedData, getSignerAddress } from '../entrypoints/popup/offscreen-sign';
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
 
@@ -29,27 +29,36 @@ export function extensionMultisigNetwork(): MultisigNetwork {
 }
 
 /**
- * The active account's bridge. The HD path is fixed when the bridge is made (the popup makes a
- * new one when the account changes), so a signature can never come from another account than
- * the one on screen. A private-key wallet is a single account; the offscreen ignores the path.
+ * The active account's bridge. Hardening-audit H-1: signing now goes through
+ * the offscreen signer's own CACHED account (kept in sync with the popup's
+ * active index via setSignerAccountIndex on every switch), not a per-call
+ * hdPath — so `check()` below re-derives the offscreen's current address and
+ * refuses to sign if it has drifted from the `address` this bridge was built
+ * for, the same guard desktop's multisig.tsx uses around its own IPC bridge.
  */
-export function extensionMultisigBridge(seed: string[], address: string, accountIndex: number): WalletBridge {
-  const hdPath = `m/44'/60'/0'/0/${accountIndex}`;
+export function extensionMultisigBridge(seed: string[], address: string): WalletBridge {
+  const check = async () => {
+    if ((await getSignerAddress()).toLowerCase() !== address.toLowerCase()) {
+      throw new Error('The active account changed. Go back and try again.');
+    }
+  };
   return {
     address,
     canSign: seed.length > 0,
     cannotSignReason: 'Unlock your wallet to act on multisigs',
-    sendTransaction: (tx) =>
-      signAndBroadcastTx({
-        seed,
-        hdPath,
+    sendTransaction: async (tx) => {
+      await check();
+      return signAndBroadcastTx({
         tx: { to: tx.to, data: tx.data, value: `0x${tx.value.toString(16)}`, gasLimit: tx.gasLimit.toString() },
         chainId: tx.chainId,
         rpcUrl: tx.rpcUrl,
-      }),
+      });
+    },
     // Runtime messages are JSON: bigints travel as decimal strings (same signature).
-    signTypedData: ({ domain, types, message }) =>
-      signTypedData({ seed, hdPath, payload: jsonSafe({ domain: domain as Record<string, unknown>, types, value: message }) }),
+    signTypedData: async ({ domain, types, message }) => {
+      await check();
+      return signTypedData({ payload: jsonSafe({ domain: domain as Record<string, unknown>, types, value: message }) });
+    },
     openUrl: (url) => void browser.tabs.create({ url }),
   };
 }

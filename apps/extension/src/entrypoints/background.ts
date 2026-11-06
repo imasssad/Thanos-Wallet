@@ -74,6 +74,28 @@ function expireRpc(p: { id: string; tabId?: number; pageId?: string }): void {
   pushResultToTab(p.tabId, p.pageId, { error: { code: 4001, message: 'Request expired' } });
 }
 
+/* THN-02: the connection slot had the one-request-at-a-time rule above, but
+   not the gate — a second eth_requestAccounts/wallet_requestPermissions just
+   overwrote `pending_approval` with its own origin while the first site's
+   request was still showing in the popup. Worse, the result handler trusted
+   whatever origin `pending_approval` held AT RESOLUTION TIME, not the origin
+   that `approvalId` was originally issued to — so a second site's request
+   landing between the first popup render and the first tap connected the
+   *second* site's origin with the *first* site's approved address. Mirrors
+   inflightRpc: a synchronous in-memory claim plus a storage.session TTL
+   check so it also holds across a service-worker restart, and the result
+   handler now checks `appr.id === approvalId` before trusting `appr.origin`. */
+const PENDING_APPROVAL_TTL_MS = 10 * 60_000;
+const APPROVAL_BUSY = 'Another connection request is already waiting in the Thanos popup — approve or reject it first.';
+let inflightApproval: { id: string; at: number } | null = null;
+const approvalIdTime = (id: string) => Number(String(id).split('.')[0]);
+function expireApproval(p: { id: string; tabId?: number; pageId?: string }): void {
+  const r = pendingResolvers.get(p.id);
+  pendingResolvers.delete(p.id);
+  r?.reject(rpcError(4001, 'Request expired'));
+  pushResultToTab(p.tabId, p.pageId, { error: { code: 4001, message: 'Request expired' } });
+}
+
 /** Durable delivery: push a finished RPC result/ error straight to the tab
  *  that made the request, so a freshly-restarted SW is never in the path.
  *  content.ts correlates by pageId and resolves the page's provider.request(). */
@@ -254,8 +276,19 @@ async function handleRpc(req: RpcMessage, sender?: { tab?: { id?: number } }): P
         if (existing) return [existing.address];
       }
 
-      // Need user approval. Stash a pending approval and open the popup.
+      // Need user approval. One connection request at a time, same rule and
+      // same race-proofing as the sign/tx path (THN-02).
+      if (inflightApproval && Date.now() - inflightApproval.at < PENDING_APPROVAL_TTL_MS) throw rpcError(-32002, APPROVAL_BUSY);
       const id = `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+      const staleApproval = inflightApproval;
+      inflightApproval = { id, at: Date.now() };
+      const { pending_approval: storedApproval } = (await browser.storage.session.get('pending_approval')) as { pending_approval?: PendingApproval };
+      if (storedApproval && storedApproval.id !== staleApproval?.id && Date.now() - approvalIdTime(storedApproval.id) < PENDING_APPROVAL_TTL_MS) {
+        if (inflightApproval?.id === id) inflightApproval = null;
+        throw rpcError(-32002, APPROVAL_BUSY);
+      }
+      if (storedApproval) expireApproval(storedApproval);
+      else if (staleApproval) expireApproval({ id: staleApproval.id });
       await browser.storage.session.set({
         pending_approval: { id, origin, method: 'eth_requestAccounts', params: [], tabId, pageId, reply: asking ? 'permissions' : 'accounts' } as PendingApproval,
       });
@@ -533,6 +566,7 @@ export default defineBackground(() => {
 
     // 2) Popup posting back the user's approval / rejection.
     if (m?.type === 'thanos-approval-result' && m.approvalId) {
+      if (inflightApproval?.id === m.approvalId) inflightApproval = null;
       const pending = pendingResolvers.get(m.approvalId);
       pendingResolvers.delete(m.approvalId);
       // Same fast + durable split as the sign path: resolve the in-memory
@@ -540,7 +574,14 @@ export default defineBackground(() => {
       // tab so a connect approval survives SW eviction too.
       (async () => {
         const stored = (await browser.storage.session.get('pending_approval')) as { pending_approval?: PendingApproval };
-        const appr = stored.pending_approval;
+        // THN-02: `pending_approval` may belong to a LATER request than the
+        // one this result answers — the slot is a single key, and a second
+        // eth_requestAccounts can (now, within the busy window) still land
+        // between this popup rendering and the user tapping Approve. Binding
+        // on the id, not just reading whatever origin is currently stored, is
+        // what stops that later request's origin from being connected with
+        // this approval's address.
+        const appr = stored.pending_approval?.id === m.approvalId ? stored.pending_approval : undefined;
         if (m.approved && m.address) {
           const origin = appr?.origin;
           const conn = { address: m.address!, connectedAt: Date.now() };
@@ -551,12 +592,14 @@ export default defineBackground(() => {
             await browser.storage.local.set({ active_address: m.address });
             broadcastEvent('accountsChanged', [m.address]);
           }
-          await browser.storage.session.remove('pending_approval');
+          // Only clear the slot if it's still this approval's — a later
+          // request may already occupy it (THN-02).
+          if (appr) await browser.storage.session.remove('pending_approval');
           const result = appr?.reply === 'permissions' && origin ? [accountsPermission(origin, conn)] : [m.address];
           pending?.resolve(result);
           pushResultToTab(appr?.tabId, appr?.pageId, { result });
         } else {
-          await browser.storage.session.remove('pending_approval');
+          if (appr) await browser.storage.session.remove('pending_approval');
           pending?.reject(rpcError(4001, 'User rejected the request'));
           pushResultToTab(appr?.tabId, appr?.pageId, { error: { code: 4001, message: 'User rejected the request' } });
         }

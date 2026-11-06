@@ -7,7 +7,7 @@
  * identical below this header — packages/sdk-core/src/__tests__/
  * sign-review.test.ts runs its whole suite against both.
  */
-import { formatEther, getAddress, Interface, isHexString, toUtf8String } from 'ethers';
+import { formatEther, getAddress, Interface, isHexString, toUtf8String, TypedDataEncoder } from 'ethers';
 
 export type SignRisk = 'safe' | 'caution' | 'review' | 'block';
 
@@ -228,6 +228,22 @@ function parseTyped(raw: unknown): Typed | null {
   return { domain, types, primaryType: o.primaryType, message };
 }
 
+/** The one struct `types` unambiguously describes, EIP712Domain aside — the
+ *  same derivation ethers v6's signTypedData() does internally (it never
+ *  reads a `primaryType` field), via TypedDataEncoder, whose constructor
+ *  also rejects unused or malformed type entries. Returns null rather than
+ *  throwing, so a hostile or malformed payload is a review verdict, not an
+ *  unhandled exception in the approval sheet. */
+function derivePrimaryType(types: Record<string, unknown>): string | null {
+  const withoutDomain: Record<string, unknown> = { ...types };
+  delete withoutDomain.EIP712Domain;
+  try {
+    return TypedDataEncoder.getPrimaryType(withoutDomain as Record<string, Array<{ name: string; type: string }>>);
+  } catch {
+    return null;
+  }
+}
+
 function reviewTypedData(params: unknown[], input: SignReviewInput): SignReview {
   // v3/v4: [account, typedData]; some dApps swap them.
   const [a, b] = params;
@@ -240,6 +256,21 @@ function reviewTypedData(params: unknown[], input: SignReviewInput): SignReview 
   }
   const r = new Review('Sign typed data');
   accountCheck(r, forAccount, input.account);
+
+  // The struct the wallet will actually sign — never the dApp's own
+  // `primaryType` label, which ethers v6 ignores. A mismatch, or types the
+  // encoder can't resolve to one unambiguous struct, blocks outright: the
+  // sheet below would otherwise review (and the signature would sign) a
+  // different request than the one the user is shown.
+  const realType = derivePrimaryType(typed.types);
+  if (realType === null) {
+    r.block('This request\'s type definitions don\'t describe one clear struct to sign (ambiguous, unused, or malformed) — the wallet can\'t tell what it would really sign, so it refuses.');
+    return r.done();
+  }
+  if (realType !== typed.primaryType) {
+    r.block(`This request is labelled "${typed.primaryType}", but its type definitions actually describe "${realType}" — that is what would really be signed, not the label. Refusing.`);
+    return r.done();
+  }
 
   const d = typed.domain;
   const chainId = parseChainId(d.chainId);

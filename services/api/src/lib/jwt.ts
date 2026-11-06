@@ -4,6 +4,12 @@ import crypto from 'crypto';
 const JWT_SECRET  = process.env.JWT_SECRET;
 const EXPIRES_IN  = process.env.JWT_EXPIRES_IN   ?? '15m';
 const REFRESH_EXP = process.env.REFRESH_EXPIRES_IN ?? '30d';
+// THN-06: refresh-token rotation alone lets a session renew indefinitely —
+// every successful refresh pushes expires_at another REFRESH_EXP out, so a
+// session that's never caught sitting idle long enough to hit that rolling
+// window just never ends. This caps it from the session's own creation,
+// independent of how often it's been refreshed.
+const SESSION_ABSOLUTE_LIFETIME = process.env.SESSION_ABSOLUTE_LIFETIME ?? '90d';
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be at least 32 characters');
@@ -72,4 +78,10 @@ export function parseDurationMs(duration: string): number {
 
 export function refreshTokenExpiresAt(): Date {
   return new Date(Date.now() + parseDurationMs(REFRESH_EXP));
+}
+
+/** True once a session has outlived its absolute lifetime from creation,
+ *  regardless of how many times it's been rotated since (THN-06). */
+export function sessionPastAbsoluteLifetime(createdAt: Date): boolean {
+  return Date.now() - createdAt.getTime() > parseDurationMs(SESSION_ABSOLUTE_LIFETIME);
 }
