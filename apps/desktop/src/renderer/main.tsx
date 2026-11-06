@@ -468,7 +468,7 @@ function ExchangeWidget({ onSwap }: { onSwap: () => void }) {
 
 /* Lets any token row (right-panel list, Assets table, dashboard tokens)
    open the token-detail modal without prop-drilling. Provided by App. */
-const OpenTokenDetail = React.createContext<((sym: string, chainId?: number) => void) | null>(null);
+const OpenTokenDetail = React.createContext<((sym: string, chainId?: number, nativeTarget?: string) => void) | null>(null);
 const useOpenTokenDetail = () => useContext(OpenTokenDetail);
 
 /* ───── Skeleton placeholders (cold first-load only) ─────
@@ -537,7 +537,7 @@ function PortfolioList({ onViewAll }: { onViewAll: () => void }) {
           <div className="portfolio-sym" style={{ padding: 12 }}>No assets yet</div>
         )}
         {coins.map(c => (
-          <div key={`${c.sym}-${c.chainId ?? 'litho'}`} className="portfolio-row" onClick={() => openDetail?.(c.sym, c.chainId)} style={{ cursor: 'pointer' }}>
+          <div key={`${c.sym}-${c.chainId ?? 'litho'}${c.nativeTarget ? '-native' : ''}`} className="portfolio-row" onClick={() => openDetail?.(c.sym, c.chainId, c.nativeTarget)} style={{ cursor: 'pointer' }}>
             <TokenAvatar sym={c.sym} color={c.color} className="portfolio-icon"/>
             <div>
               <div className="portfolio-name">{c.name}</div>
@@ -545,7 +545,9 @@ function PortfolioList({ onViewAll }: { onViewAll: () => void }) {
             </div>
             <div className="portfolio-right">
               <div className="portfolio-price">{formatUsd(c.usdValue)}</div>
-              <div className="portfolio-chg">{c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</div>
+              <div className="portfolio-chg">{c.readOnly
+                ? (c.readError ? 'Makalu native · unavailable' : 'Makalu native · view only')
+                : c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</div>
             </div>
           </div>
         ))}
@@ -3057,7 +3059,7 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
   const title = tx.type === 'Send' ? 'Sent' : tx.type === 'Receive' ? 'Received' : tx.type === 'Swap' ? 'Swap' : 'Transaction';
   const amountNum = tx.rawAmount ?? 0;
   const amountStr = amountNum.toLocaleString('en-US', { maximumFractionDigits: 6 });
-  const priceUsd = coins.find(c => c.sym.toLowerCase() === tx.sym.toLowerCase())?.priceUsd ?? null;
+  const priceUsd = coins.find(c => !c.nativeTarget && c.sym.toLowerCase() === tx.sym.toLowerCase())?.priceUsd ?? null;
   const fiat = priceUsd != null && amountNum > 0
     ? withCurrencyAffix(convertFromUsd(amountNum * priceUsd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     : null;
@@ -3428,6 +3430,52 @@ function tdFmtUsdPrice(nUsd: number): string {
   return withCurrencyAffix(n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 }
 
+/** Native Lithic asset (Makalu LAX) — read through the native gateway and
+ *  view-only: no Send, no price chart (the LAX market data belongs to the
+ *  older EVM token, a different asset). */
+function NativeAssetModal({ nativeTarget, onClose }: { nativeTarget: string; onClose: () => void }) {
+  const { coins } = usePortfolioCtx();
+  const coin = coins.find(c => c.nativeTarget === nativeTarget);
+  const sym = coin?.sym ?? 'LAX';
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
+      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+      <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>{children}</span>
+    </div>
+  );
+  return (
+    <ModalPortal>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-box" data-testid="native-asset" onClick={e => e.stopPropagation()} style={{ maxWidth: 560, width: '100%', maxHeight: 'calc(92vh / 1.5)', overflowY: 'auto' }}>
+        <div className="modal-header">
+          <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <TokenAvatar sym={sym} color={coin?.color ?? '#52525b'} className="tx-avatar" label={sym.slice(0, 2)}/>
+            {coin?.name ?? 'Lithosphere Algorithmic'} ({sym})
+          </span>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: '4px 20px 20px' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Your balance</div>
+          <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', fontFamily: 'Geist Mono, monospace' }}>
+            {coin && !coin.readError ? `${coin.balanceText} ${sym}` : 'Unavailable'}
+          </div>
+          {coin?.readError && <div style={{ fontSize: 12, color: 'var(--red, #f87171)', marginTop: 4 }}>Couldn’t read the balance: {coin.readError}</div>}
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '10px 0 16px', lineHeight: 1.5 }}>
+            A native Lithic token on Makalu (testnet). View only — sending native LAX isn’t available in Thanos yet.
+            This is not the older LAX token on Makalu (0x1Cde…4B8d).
+          </div>
+          <Row label="Network">Lithosphere Makalu</Row>
+          <Row label="Native contract"><HiAddr value={nativeTarget} head={6} tail={6}/></Row>
+          <Row label="Read through">Native gateway 0x…f000</Row>
+          <Row label="Decimals">{coin?.decimals ?? 18}</Row>
+          {coin?.blockHeight && <Row label="Read at block">{Number(coin.blockHeight).toLocaleString('en-US')}</Row>}
+        </div>
+      </div>
+    </div>
+    </ModalPortal>
+  );
+}
+
 function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
   sym: string; chainId?: number; onClose: () => void; onSend: () => void; onReceive: () => void;
 }) {
@@ -3435,9 +3483,10 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
   // Prefer an exact (symbol + chain) match — the same symbol lives on several
   // chains (ETH on Ethereum, Base, Arbitrum…), so a symbol-only match would
   // resolve to whichever came first, not the row that was actually tapped.
+  // Native Lithic rows have their own view-only detail (NativeAssetModal).
   const coin =
-    coins.find(c => c.sym.toLowerCase() === sym.toLowerCase() && c.chainId === chainId)
-    ?? coins.find(c => c.sym.toLowerCase() === sym.toLowerCase());
+    coins.find(c => !c.nativeTarget && c.sym.toLowerCase() === sym.toLowerCase() && c.chainId === chainId)
+    ?? coins.find(c => !c.nativeTarget && c.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   const network =
     coin?.sym === 'BTC' ? 'Bitcoin' : coin?.sym === 'SOL' ? 'Solana' :
@@ -3648,7 +3697,8 @@ const NON_EVM_SYMS = new Set(['BTC', 'SOL', 'ATOM']);
    precedence over its synthetic placeholder. Every entry carries its chainId —
    the chain the send is signed on. */
 function buildEvmSendAssets(coins: DisplayCoin[]): DisplayCoin[] {
-  const evmOwned   = coins.filter(c => !NON_EVM_SYMS.has(c.sym) && c.chainId != null);
+  // View-only rows (native Makalu LAX) can't be sent.
+  const evmOwned   = coins.filter(c => !NON_EVM_SYMS.has(c.sym) && c.chainId != null && !c.readOnly);
   const ownedByKey = new Map(evmOwned.map(c => [coinKey(c), c]));
 
   const externalSynthetic: DisplayCoin[] = [
@@ -4774,7 +4824,7 @@ function PortfolioView() {
             </div>
           </div>
           {coins.map(c => (
-            <div key={`${c.sym}-${c.chainId ?? 'litho'}`} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+            <div key={`${c.sym}-${c.chainId ?? 'litho'}${c.nativeTarget ? '-native' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }}/>
               <span style={{ fontSize: 12, flex: 1, color: 'var(--text-secondary)' }}>{c.name}</span>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{c.pct}%</span>
@@ -4797,7 +4847,7 @@ function PortfolioView() {
             <tbody>
               {loading && coins.length === 0 && <SkeletonTableRows rows={5} cols={5}/>}
               {coins.map(c => (
-                <tr key={`${c.sym}-${c.chainId ?? 'litho'}`} onClick={() => openDetail?.(c.sym, c.chainId)} style={{ cursor: 'pointer' }}>
+                <tr key={`${c.sym}-${c.chainId ?? 'litho'}${c.nativeTarget ? '-native' : ''}`} onClick={() => openDetail?.(c.sym, c.chainId, c.nativeTarget)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div className="tx-cell">
                       <TokenAvatar sym={c.sym} color={c.color} className="tx-avatar" label={c.sym.slice(0,2)}/>
@@ -4807,7 +4857,7 @@ function PortfolioView() {
                       </div>
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.readOnly ? 'View only' : c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'Geist Mono, monospace', fontSize: 11 }}>{c.balanceText} {c.sym}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600, fontSize: 12 }}>{formatUsd(c.usdValue)}</td>
                   <td style={{ textAlign: 'right' }}>
@@ -6384,7 +6434,13 @@ function App() {
   /** Chain of the tapped row — the same symbol lives on several chains, so
    *  symbol alone can't tell TokenDetailModal (or Send) which one it is. */
   const [detailChainId, setDetailChainId] = useState<number | undefined>(undefined);
-  const openToken = (sym: string, chainId?: number) => { setDetailSym(sym); setDetailChainId(chainId); };
+  /** Native target of a tapped native Lithic row (view-only detail). */
+  const [detailNative, setDetailNative] = useState<string | undefined>(undefined);
+  const openToken = (sym: string, chainId?: number, nativeTarget?: string) => {
+    setDetailNative(nativeTarget);
+    if (nativeTarget) return;
+    setDetailSym(sym); setDetailChainId(chainId);
+  };
   /** Asset carried from the detail screen into Send so it opens pre-seeded
    *  with the token the user was viewing — on that token's own chain. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
@@ -7060,6 +7116,7 @@ function App() {
       </nav>
 
       {/* Modals */}
+      {detailNative && <NativeAssetModal nativeTarget={detailNative} onClose={() => setDetailNative(undefined)} />}
       {detailSym && (
         <TokenDetailModal
           sym={detailSym}

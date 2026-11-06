@@ -9,10 +9,12 @@
  * received on a network no explorer covers, noticed as balance increases
  * (lib/incoming.ts). (The Thanos
  * indexer only covers the Makalu testnet, which the wallet no longer
- * includes — 2026-09-29.)
+ * includes — 2026-09-29.) With Makalu added as a custom network, native
+ * Lithic LAX is read through the native gateway and shown view-only.
  */
 import { createContext, useContext, useEffect, useState } from 'react';
-import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
+import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readNativeLaxBalance } from '@thanos/sdk-core';
+import { customChains } from '../../lib/custom-assets';
 import { getLocalActivity, addLocalReceive, mergeExplorerRows, resolvePendingActivity, rowId } from '../../lib/local-activity';
 import { fetchWalletHistory, HISTORY_EVM_CHAIN_IDS } from '../../lib/explorer-activity';
 import { detectIncoming, watchKeyEvm, watchKeyNative, type WatchedBalance } from '../../lib/incoming';
@@ -128,6 +130,16 @@ export interface DisplayCoin {
   tokenAddress?: string; native: boolean;
   /** EVM chainId for external-EVM holdings (1/56/137/…); absent for Litho/BTC/SOL/ATOM. */
   chainId?: number;
+  /** Native Lithic asset (Makalu LAX): its native target — not an ERC-20
+   *  address, so never a tokenAddress. View-only: no Send. */
+  nativeTarget?: string;
+  readOnly?: boolean;
+  /** Exact balance in base units (`balance` is a lossy JS number). */
+  baseUnits?: string;
+  /** Block the balance was read at. */
+  blockHeight?: string;
+  /** Why the balance couldn't be read — shown instead of a false 0. */
+  readError?: string;
 }
 
 export interface DisplayTx {
@@ -168,6 +180,30 @@ export interface PortfolioState {
   reload:   () => void;
 }
 
+/** Native LAX on Makalu, read through the native gateway — only when the
+ *  user has added Makalu (700777) as a custom network, at that network's RPC.
+ *  A failed read shows as unavailable, never as 0. */
+async function readNativeLaxCoin(address: string): Promise<DisplayCoin | null> {
+  const makalu = customChains().find((c) => c.chainId === NATIVE_LAX.chainId);
+  if (!makalu) return null;
+  const coin: DisplayCoin = {
+    sym: NATIVE_LAX.symbol, name: NATIVE_LAX.name, chainId: NATIVE_LAX.chainId,
+    balance: 0, balanceText: '—', decimals: NATIVE_LAX.decimals,
+    priceUsd: 0, usdValue: 0, color: coinColor(NATIVE_LAX.symbol), native: false,
+    nativeTarget: NATIVE_LAX.nativeTarget, readOnly: true,
+  };
+  try {
+    const r = await readNativeLaxBalance(address, { rpcUrl: makalu.rpcUrl });
+    return {
+      ...coin,
+      balance: Number(r.balanceFormatted), balanceText: formatNativeAmount(r.balanceBaseUnits, r.decimals),
+      baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+    };
+  } catch (e) {
+    return { ...coin, readError: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Fetch + price the wallet's portfolio and activity. When `seed` is
  *  provided, also derives BTC/SOL/ATOM addresses and adds their native
  *  balances to the displayed coin list — so the dashboard total
@@ -205,6 +241,9 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
         // A pricing outage mustn't hide balances — they just show unpriced.
         const prices = await fetchEcosystemPrices().catch(() => ({} as Record<string, number>));
         if (cancelled) return;
+
+        // Started now, awaited with the rest below.
+        const nativeLax = readNativeLaxCoin(address);
 
         // Cross-chain native positions — only when seed is unlocked.
         const xchain: DisplayCoin[] = [];
@@ -305,9 +344,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         } catch { /* best-effort */ }
 
+        const lax = await nativeLax;
+        if (cancelled) return;
         const totalUsd = xchain.reduce((s, x) => s + x.usdValue, 0)
                        + evmExt.reduce((s, x) => s + x.usdValue, 0);
-        const coins: DisplayCoin[] = [...xchain, ...evmExt];
+        const coins: DisplayCoin[] = [...xchain, ...evmExt, ...(lax ? [lax] : [])];
         // Lithosphere MAINNET (chainId 9005) always leads regardless of
         // amount — the Web4 home chain, client requirement 2026-08-27.
         coins.sort((a, b) => {

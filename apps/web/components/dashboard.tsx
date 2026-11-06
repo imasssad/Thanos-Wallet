@@ -15,6 +15,9 @@ import { formatFiat, convertFromUsd, withCurrencyAffix } from '@thanos/sdk-core'
 import { useDisplayCurrency } from '../lib/use-fx';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
+import { NativeAssetModal } from './NativeAssetModal';
+import { useNativeLax } from '../lib/native-lax';
+import { NATIVE_LAX } from '@thanos/sdk-core';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
 import { PortfolioChart } from './PortfolioChart';
@@ -403,6 +406,8 @@ export function Dashboard() {
    *  along for EVM rows (LITHO/ETH/BNB/…, tokens) so the screen labels and
    *  reads the right network. */
   const [detail, setDetail] = useState<{ sym: string; chainId?: number } | null>(null);
+  /** Native Makalu LAX's view-only detail screen. */
+  const [nativeDetail, setNativeDetail] = useState(false);
   const wallet = useWallet();
   const evmAddress = wallet?.evmAddress;
   const prices    = usePrices();
@@ -427,6 +432,8 @@ export function Dashboard() {
    *  skeleton (Lithosphere Mainnet is one of these chains). */
   const [evmLoaded, setEvmLoaded] = useState(false);
   const [evmTokenBalances, setEvmTokenBalances] = useState<Array<{ token: EvmTokenLike; balance: number }>>([]);
+  /* Native Lithic LAX — only with Makalu added as a custom network. */
+  const nativeLax = useNativeLax(evmAddress);
   const walletSeed = wallet?.seed;
   const walletPk   = wallet?.privateKey;
   useEffect(() => {
@@ -511,6 +518,8 @@ export function Dashboard() {
         color:  tok.color,
         chainId: undefined as number | undefined,
         native:  true,
+        readOnly: false,
+        readError: undefined as string | undefined,
       };
     };
     const solRow = buildNonEvmRow('SOL', solBalance);
@@ -531,6 +540,8 @@ export function Dashboard() {
       color:  chain.color,
       chainId: chain.chainId as number | undefined,
       native:  true,
+      readOnly: false,
+      readError: undefined as string | undefined,
     }));
 
     /* EVM tokens per chain — one row each, the chain in the name so
@@ -552,10 +563,29 @@ export function Dashboard() {
         color:  token.symbol === 'USDT' ? '#26a17b' : token.symbol === 'USDC' ? '#2775ca' : '#8b7df7',
         chainId: token.chainId as number | undefined,
         native:  false,
+        readOnly: false,
+        readError: undefined as string | undefined,
       };
     });
 
-    const combined = [...evmRows, ...evmTokenRows, ...extraRows];
+    /* Native Lithic LAX on Makalu — view-only, unpriced (it isn't the EVM
+       LAX the price feeds track). A failed read shows as unavailable. */
+    const nativeRows = nativeLax ? [{
+      sym:    NATIVE_LAX.symbol,
+      name:   `${NATIVE_LAX.name} · Makalu native`,
+      bal:    nativeLax.ok ? nativeLax.text : '—',
+      balNum: nativeLax.ok ? Number(nativeLax.read.balanceFormatted) : 0,
+      usdNum: 0,
+      priceKnown: false,
+      chg:    0,
+      color:  '#a3e635',
+      chainId: NATIVE_LAX.chainId as number | undefined,
+      native:  false,
+      readOnly: true,
+      readError: nativeLax.ok ? undefined : nativeLax.error,
+    }] : [];
+
+    const combined = [...evmRows, ...evmTokenRows, ...extraRows, ...nativeRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
     return combined.map(c => ({
       sym: c.sym, name: c.name, bal: c.bal, balNum: c.balNum, usdNum: c.usdNum,
@@ -563,9 +593,10 @@ export function Dashboard() {
       priceKnown: c.priceKnown,
       chg: c.chg, color: c.color,
       chainId: c.chainId, native: c.native,
+      readOnly: c.readOnly, readError: c.readError,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [solBalance, btcBalance, evmChainBalances, evmTokenBalances, prices]);
+  }, [solBalance, btcBalance, evmChainBalances, evmTokenBalances, nativeLax, prices]);
 
   /* Bumped to force a recompute of the optimistic pending rows (localStorage
      mutations don't trigger React). Ticked when the Send modal closes and on
@@ -730,6 +761,7 @@ export function Dashboard() {
       {modal === 'swap'    && <SwapModal    fullScreen={swapFull} onClose={() => { setModal(null); setSwapFull(false); }}/>}
       {modal === 'laxcard' && <LaxCardModal onClose={() => setModal(null)}/>}
       {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
+      {nativeDetail && <NativeAssetModal state={nativeLax} onClose={() => setNativeDetail(false)}/>}
 
       <div style={{
         maxWidth: 760, margin: '0 auto',
@@ -985,11 +1017,11 @@ export function Dashboard() {
                   : '';
                 return (
                 <div
-                  key={`${c.sym}-${c.chainId ?? 'litho'}`}
+                  key={`${c.sym}-${c.chainId ?? 'litho'}${c.readOnly ? '-native' : ''}`}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setDetail({ sym: c.sym, chainId: c.chainId })}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail({ sym: c.sym, chainId: c.chainId }); } }}
+                  onClick={() => c.readOnly ? setNativeDetail(true) : setDetail({ sym: c.sym, chainId: c.chainId })}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (c.readOnly) setNativeDetail(true); else setDetail({ sym: c.sym, chainId: c.chainId }); } }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '14px 4px',
@@ -1005,7 +1037,9 @@ export function Dashboard() {
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}>
-                      <span>{priceTxt || c.name}</span>
+                      <span>{c.readOnly
+                        ? (c.readError ? 'Makalu native · balance unavailable' : 'Makalu native · view only')
+                        : priceTxt || c.name}</span>
                       {c.chg !== 0 && (
                         <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontWeight: 600 }}>
                           {c.chg >= 0 ? '+' : ''}{c.chg.toFixed(2)}%

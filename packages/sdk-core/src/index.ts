@@ -15,6 +15,7 @@ export * from './clients/lithic-client';
 export * from './clients/lep100-client';
 export * from './clients/bitcoin-client';
 export * from './clients/solana-client';
+export * from './clients/native-lithic';
 
 /* ── Chains · providers · gas ────────────────────────────────────────── */
 export * from './chains/networks';

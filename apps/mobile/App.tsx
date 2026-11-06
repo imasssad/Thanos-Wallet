@@ -661,6 +661,16 @@ interface DisplayAsset {
   chain?: 'solana' | 'cosmos';
   /** Explorer logo, for tokens the app has no icon for. */
   logo?: string;
+  /** Native Lithic asset (Makalu LAX): its native target — not an ERC-20
+   *  address, so never a tokenAddress. View-only: no Send. */
+  nativeTarget?: string;
+  readOnly?: boolean;
+  /** Exact balance in base units (`balance` is a lossy JS number). */
+  baseUnits?: string;
+  /** Block the balance was read at. */
+  blockHeight?: string;
+  /** Why the balance couldn't be read — shown instead of a false 0. */
+  readError?: string;
 }
 interface PortfolioState {
   assets: DisplayAsset[]; totalUsd: number; loading: boolean; offline: boolean;
@@ -775,6 +785,32 @@ function heldTokenRows(tokens: HeldToken[], prices: Record<string, number>, list
   return rows;
 }
 
+/** Native LAX on Makalu, read through the native gateway (lib/native-lithic)
+ *  — only when the user has added Makalu (700777) as a custom network, at that
+ *  network's RPC. A failed read shows as unavailable, never as 0. */
+async function readNativeLaxAsset(address: string): Promise<DisplayAsset | null> {
+  const [lithic, custom] = await Promise.all([import('./lib/native-lithic'), import('./lib/custom-assets')]);
+  const { NATIVE_LAX } = lithic;
+  const makalu = custom.customChains().find((c) => c.chainId === NATIVE_LAX.chainId);
+  if (!makalu) return null;
+  const row: DisplayAsset = {
+    sym: NATIVE_LAX.symbol, name: NATIVE_LAX.name, chainId: NATIVE_LAX.chainId,
+    balance: 0, balanceText: '—', decimals: NATIVE_LAX.decimals,
+    priceUsd: 0, usdValue: 0, color: assetColor(NATIVE_LAX.symbol), native: false,
+    nativeTarget: NATIVE_LAX.nativeTarget, readOnly: true,
+  };
+  try {
+    const r = await lithic.readNativeLaxBalance(address, { rpcUrl: makalu.rpcUrl });
+    return {
+      ...row,
+      balance: Number(r.balanceFormatted), balanceText: lithic.formatNativeAmount(r.balanceBaseUnits, r.decimals),
+      baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+    };
+  } catch (e) {
+    return { ...row, readError: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce]   = useState(0);
   const [assets, setAssets] = useState<DisplayAsset[]>([]);
@@ -827,7 +863,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
         // first and paints before the deferred native chains below. Each read
         // is guarded on its own: a network that fails keeps its last-known
         // balance (never blanked to $0), and failed prices just price at $0.
-        const [evm, prices] = await Promise.all([
+        const [evm, prices, nativeLax] = await Promise.all([
           (async () => {
             const m = await import('./lib/evm-external');
             const [natives, tokens] = await Promise.all([
@@ -837,6 +873,8 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             return { natives, tokens, chainName: (id: number) => m.getExtEvmChain(id)?.name ?? '' };
           })().catch(() => null),
           fetchEcosystemPrices().catch(() => ({} as Record<string, number>)),
+          // Native Lithic LAX (Makalu added only) — view-only.
+          readNativeLaxAsset(address).catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -894,7 +932,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             // instead of lingering. Persisted as the new snapshot (public data
             // only) when at least one network answered — an offline refresh
             // never overwrites a good snapshot.
-            const merged = [...nativeRows, ...tokenRows, ...prev.filter((p) => p.chainId === 0)];
+            const merged = [...nativeRows, ...tokenRows, ...(nativeLax ? [nativeLax] : []), ...prev.filter((p) => p.chainId === 0)];
             if (nativesRead > 0) void setPortfolioSnapshot(address, merged, merged.reduce((s, x) => s + x.usdValue, 0));
             return merged;
           });
@@ -1025,7 +1063,9 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
   // listed token) wins — a tap or a Send pick by symbol + network can't land
   // on another contract.
   const displayAssets = useMemo(() => {
-    const taken = new Set(assets.map((a) => `${a.chainId}:${a.sym.toUpperCase()}`));
+    // Native Lithic LAX doesn't take the EVM LAX's place: a discovered EVM
+    // LAX on Makalu is a different asset and still joins.
+    const taken = new Set(assets.filter((a) => !a.nativeTarget).map((a) => `${a.chainId}:${a.sym.toUpperCase()}`));
     const extra = (found.address === address ? found.rows : []).filter((r) => {
       const k = `${r.chainId}:${r.sym.toUpperCase()}`;
       if (taken.has(k)) return false;
@@ -2459,7 +2499,7 @@ function LessKnownToggle({ count, shown, onPress }: { count: number; shown: bool
   );
 }
 
-function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string, chainId?: number) => void }) {
+function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; onOpenToken: (sym: string, chainId?: number, nativeTarget?: string) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -2634,11 +2674,13 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
             <Text style={[styles.rowSub, { padding: 16 }]}>No assets yet.</Text>
           )}
           {assets.map((a, i) => (
-            <Pressable key={assetKeyOf(a)} style={[styles.row, (i < assets.length - 1 || lessKnownCount > 0) && styles.rowBorder]} onPress={() => onOpenToken(a.sym, a.chainId)}>
+            <Pressable key={assetKeyOf(a)} style={[styles.row, (i < assets.length - 1 || lessKnownCount > 0) && styles.rowBorder]} onPress={() => onOpenToken(a.sym, a.chainId, a.nativeTarget)}>
               <Avatar symbol={a.sym} color={a.color} chainId={a.chainId} native={a.native} icon={heldTokenIcon(a)}/>
               <View style={styles.rowMid}>
                 <Text style={styles.rowSymbol}>{a.name}</Text>
-                <Text style={styles.rowSub}>{a.priceUsd > 0 ? formatUsd(a.priceUsd) : a.lessKnown ? 'Less known' : '—'}</Text>
+                <Text style={styles.rowSub}>{a.readOnly
+                  ? (a.readError ? 'Makalu native · balance unavailable' : 'Makalu native · view only')
+                  : a.priceUsd > 0 ? formatUsd(a.priceUsd) : a.lessKnown ? 'Less known' : '—'}</Text>
               </View>
               <View style={styles.rowRight}>
                 {/* A discovered token without a price shows its balance only. */}
@@ -4547,7 +4589,8 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
   // is offered only once its chain confirmed its balance and decimals (a
   // wrong decimals value sends the wrong amount).
   const { isVisible, hiddenNetworks } = useHiddenAssets(addr);
-  const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0 && isVisible(a) && (!a.discovered || a.verified)), [assets, isVisible]);
+  // View-only rows (native Makalu LAX) can't be sent.
+  const evmAssets = useMemo(() => assets.filter((a) => a.chainId !== 0 && !a.readOnly && isVisible(a) && (!a.discovered || a.verified)), [assets, isVisible]);
   const coin =
     (selectedKey ? evmAssets.find((a) => assetKeyOf(a) === selectedKey) : undefined)
     // An exact (symbol + chain) match — several symbols repeat across chains
@@ -8128,6 +8171,53 @@ function tdChartSvg(prices: Array<[number, number]>, w: number, h: number, strok
     + `<path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
 
+/** Native Lithic asset (Makalu LAX) — read through the native gateway and
+ *  view-only: no Send/Receive/Swap, no price chart (the LAX market data
+ *  belongs to the older EVM token, a different asset). */
+function NativeAssetScreen({ nativeTarget, goBack }: { nativeTarget: string; goBack: () => void }) {
+  const C = useColors();
+  const addr = useWalletAddr();
+  const seed = useWalletSeed();
+  const { assets } = usePortfolio(addr, seed);
+  // This screen's own usePortfolio paints the saved snapshot, then refreshes —
+  // no row yet means still loading, not a failed read.
+  const coin = assets.find(a => a.nativeTarget === nativeTarget);
+  const sym = coin?.sym ?? 'LAX';
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+      <Text style={{ color: C.textMuted, fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: C.textPrimary, fontWeight: '600', fontSize: 13 }}>{children}</Text>
+    </View>
+  );
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bgCard }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
+        <Pressable onPress={goBack} style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: C.textPrimary, fontSize: 22 }}>‹</Text>
+        </Pressable>
+        <Avatar symbol={sym} color={coin?.color ?? '#52525b'} size={26} chainId={coin?.chainId} native={false}/>
+        <Text style={{ color: C.textPrimary, fontWeight: '700', fontSize: 15, marginLeft: 8 }}>{coin?.name ?? 'Lithosphere Algorithmic'} ({sym})</Text>
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+        <Text style={{ color: C.textPrimary, fontSize: 15, fontWeight: '800', marginBottom: 4 }}>Your balance</Text>
+        <Text style={{ color: C.textPrimary, fontSize: 28, fontWeight: '800', fontFamily: MONO }}>
+          {!coin ? '…' : coin.readError ? 'Unavailable' : `${coin.balanceText} ${sym}`}
+        </Text>
+        {coin?.readError && <Text style={{ color: C.red, fontSize: 12, marginTop: 4 }}>Couldn’t read the balance: {coin.readError}</Text>}
+        <Text style={{ color: C.textMuted, fontSize: 12, lineHeight: 18, marginTop: 10, marginBottom: 16 }}>
+          A native Lithic token on Makalu (testnet). View only — sending native LAX isn’t available in Thanos yet.
+          This is not the older LAX token on Makalu (0x1Cde…4B8d).
+        </Text>
+        <Row label="Network">Lithosphere Makalu</Row>
+        <Row label="Native contract">{`${nativeTarget.slice(0, 8)}…${nativeTarget.slice(-6)}`}</Row>
+        <Row label="Read through">Native gateway 0x…f000</Row>
+        <Row label="Decimals">{coin?.decimals ?? 18}</Row>
+        {coin?.blockHeight && <Row label="Read at block">{Number(coin.blockHeight).toLocaleString('en-US')}</Row>}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: {
   sym: string; chainId?: number; goBack: () => void; onSend: () => void; onReceive: (chainId?: number) => void; onSwap: () => void;
 }) {
@@ -8142,9 +8232,10 @@ function TokenDetailScreen({ sym, chainId, goBack, onSend, onReceive, onSwap }: 
   // regardless of which row the user actually tapped. Falls back to a
   // symbol-only match for callers that don't know the chain (e.g. Market,
   // which browses prices rather than holdings).
+  // Native Lithic rows have their own view-only screen (NativeAssetScreen).
   const coin = chainId != null
-    ? assets.find(a => a.sym.toLowerCase() === sym.toLowerCase() && a.chainId === chainId)
-    : assets.find(a => a.sym.toLowerCase() === sym.toLowerCase());
+    ? assets.find(a => !a.nativeTarget && a.sym.toLowerCase() === sym.toLowerCase() && a.chainId === chainId)
+    : assets.find(a => !a.nativeTarget && a.sym.toLowerCase() === sym.toLowerCase());
   const price = coin?.priceUsd ?? 0;
   // Gates the Swap action: off while SWAP_LIVE is (swaps quoted on the Makalu
   // testnet only); when it opens, for Lithosphere Mainnet tokens.
@@ -9848,7 +9939,7 @@ function donutSvg(segs: { color: string; pct: number }[]): string {
   return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(-90 ${cx} ${cy})">${arcs}</g></svg>`;
 }
 
-function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string, chainId?: number) => void }) {
+function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken: (sym: string, chainId?: number, nativeTarget?: string) => void }) {
   const C = useColors();
   const styles = useStyles();
   const addr = useWalletAddr();
@@ -9908,7 +9999,7 @@ function AssetsScreen({ goBack, onOpenToken }: { goBack: () => void; onOpenToken
         {rows.map((a, i) => (
           <Pressable
             key={assetKeyOf(a)}
-            onPress={() => onOpenToken(a.sym, a.chainId)}
+            onPress={() => onOpenToken(a.sym, a.chainId, a.nativeTarget)}
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: i < rows.length - 1 || lessKnownCount > 0 ? 1 : 0, borderBottomColor: C.borderSubtle, opacity: a.hidden ? 0.45 : 1 }}
           >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: a.color, marginRight: 10 }}/>
@@ -10207,7 +10298,13 @@ function App() {
    *  must disambiguate by chain, not just symbol, or it always resolves to
    *  whichever same-symbol asset happens to be first in the list. */
   const [detailChainId, setDetailChainId] = useState<number | undefined>(undefined);
-  const openToken = (sym: string, chainId?: number) => { setDetailSym(sym); setDetailChainId(chainId); };
+  /** Native target of a tapped native Lithic row (view-only screen). */
+  const [detailNative, setDetailNative] = useState<string | undefined>(undefined);
+  const openToken = (sym: string, chainId?: number, nativeTarget?: string) => {
+    setDetailNative(nativeTarget);
+    if (nativeTarget) return;
+    setDetailSym(sym); setDetailChainId(chainId);
+  };
   /** Asset carried from detail into Send/Swap/Receive so they open pre-seeded. */
   const [seedSym, setSeedSym] = useState<string | null>(null);
   /** Chain of the seeded asset (Receive needs it to show the exact network). */
@@ -11374,6 +11471,11 @@ function App() {
               </AnimatedSwitch>
               {!UNDER_TOPBAR_SCREENS.has(screen) && <TabBarSpacer/>}
             </View>
+
+            {/* Native Lithic asset — view-only screen, same full-screen Modal. */}
+            <Modal visible={!!detailNative} animationType="slide" onRequestClose={() => setDetailNative(undefined)} presentationStyle="fullScreen">
+              {detailNative && <NativeAssetScreen nativeTarget={detailNative} goBack={() => setDetailNative(undefined)}/>}
+            </Modal>
 
             {/* Token-detail overlay — full-screen Modal over the tab shell. */}
             <Modal visible={!!detailSym} animationType="slide" onRequestClose={() => { setDetailSym(null); setDetailChainId(undefined); }} presentationStyle="fullScreen">

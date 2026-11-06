@@ -6,14 +6,16 @@
  * @thanos/sdk-core's CoinGecko pricing. Activity is the wallet's history on
  * every network from the block explorers plus the user's own recorded sends,
  * both kept in local-activity.ts. (The Thanos indexer only covers the Makalu
- * testnet, which the wallet no longer includes — 2026-09-29.)
+ * testnet, which the wallet no longer includes — 2026-09-29.) With Makalu added
+ * as a custom network, native Lithic LAX is read through the native gateway
+ * and shown view-only.
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { fetchEcosystemPrices, formatFiat } from '@thanos/sdk-core';
+import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readNativeLaxBalance } from '@thanos/sdk-core';
 import { getLocalActivity, resolvePendingActivity, setNativeHash, type LocalTx } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
 import { syncWalletHistory } from './explorer-activity';
-import { getExtEvmChain } from './custom-assets';
+import { customChains, getExtEvmChain } from './custom-assets';
 import { isPrivateKeyWallet } from './vault';
 
 /* ─── Display helpers ────────────────────────────────────────────────── */
@@ -123,6 +125,16 @@ export interface DisplayCoin {
   /** EVM chain id (9005 Lithosphere Mainnet, 1, 56, … or a custom network) —
    *  Send signs on exactly this chain. Undefined for BTC / SOL / ATOM. */
   chainId?: number;
+  /** Native Lithic asset (Makalu LAX): its native target — not an ERC-20
+   *  address, so never a tokenAddress. View-only: no Send. */
+  nativeTarget?: string;
+  readOnly?: boolean;
+  /** Exact balance in base units (`balance` is a lossy JS number). */
+  baseUnits?: string;
+  /** Block the balance was read at. */
+  blockHeight?: string;
+  /** Why the balance couldn't be read — shown instead of a false 0. */
+  readError?: string;
 }
 
 export interface DisplayTx {
@@ -167,6 +179,30 @@ export interface PortfolioState {
 }
 
 /* ─── Fetch ──────────────────────────────────────────────────────────── */
+
+/** Native LAX on Makalu, read through the native gateway — only when the
+ *  user has added Makalu (700777) as a custom network, at that network's RPC.
+ *  A failed read shows as unavailable, never as 0. */
+async function readNativeLaxCoin(address: string): Promise<DisplayCoin | null> {
+  const makalu = customChains().find((c) => c.chainId === NATIVE_LAX.chainId);
+  if (!makalu) return null;
+  const coin: DisplayCoin = {
+    sym: NATIVE_LAX.symbol, name: NATIVE_LAX.name, chainId: NATIVE_LAX.chainId,
+    balance: 0, balanceText: '—', decimals: NATIVE_LAX.decimals,
+    priceUsd: 0, usdValue: 0, pct: 0, color: coinColor(NATIVE_LAX.symbol), native: false,
+    nativeTarget: NATIVE_LAX.nativeTarget, readOnly: true,
+  };
+  try {
+    const r = await readNativeLaxBalance(address, { rpcUrl: makalu.rpcUrl });
+    return {
+      ...coin,
+      balance: Number(r.balanceFormatted), balanceText: formatNativeAmount(r.balanceBaseUnits, r.decimals),
+      baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+    };
+  } catch (e) {
+    return { ...coin, readError: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 /** Fetch + price the wallet's portfolio and activity. Re-runs on
  *  address change. When `seed` is supplied, also derives BTC/SOL/ATOM
@@ -228,6 +264,8 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
     }
     (async () => {
       try {
+        // Started now, awaited with the rest below.
+        const nativeLax = readNativeLaxCoin(address);
         // Balances come straight from each chain's RPC below. The Thanos
         // indexer only covers the Makalu testnet, which the wallet no longer
         // includes (2026-09-29), so its holdings and activity aren't shown.
@@ -320,6 +358,10 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             }
           }
         } catch { /* best-effort — external chains stay hidden on failure */ }
+
+        const lax = await nativeLax;
+        if (cancelled) return;
+        if (lax) xchain.push(lax);
 
         const totalUsd = xchain.reduce((s, x) => s + x.usdValue, 0);
         const coins: DisplayCoin[] = xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 }));

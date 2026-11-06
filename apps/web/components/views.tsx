@@ -34,6 +34,9 @@ import { displayAddress, toLithoForm } from '../lib/address';
 import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 import { TokenDetailModal } from './TokenDetailModal';
+import { NativeAssetModal } from './NativeAssetModal';
+import { useNativeLax } from '../lib/native-lax';
+import { NATIVE_LAX } from '@thanos/sdk-core';
 import { getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from '../lib/asset-visibility';
 import * as customAssets from '../lib/custom-assets';
 import { TransactionDetailModal } from './TransactionDetailModal';
@@ -269,6 +272,8 @@ export function PortfolioView() {
   const prices = usePrices();
   /** Token-detail screen — opened by tapping any asset row (with its chain). */
   const [detail, setDetail] = useState<{ sym: string; chainId?: number } | null>(null);
+  /** Native Makalu LAX's view-only detail screen. */
+  const [nativeDetail, setNativeDetail] = useState(false);
 
   // Balances straight from each chain's RPC — every EVM chain (Lithosphere
   // Mainnet first) with its tokens, plus BTC / SOL / ATOM. (This page used to
@@ -280,6 +285,8 @@ export function PortfolioView() {
       ? { kind: 'mnemonic' as const, mnemonic: wallet.seed.join(' ') }
       : null;
   const live = useLiveBalances(evmAddress, walletSource);
+  // Native Lithic LAX — only with Makalu added as a custom network.
+  const nativeLax = useNativeLax(evmAddress);
   const [tokenBals, setTokenBals] = useState<Array<{ token: customAssets.EvmTokenLike; balance: number }>>([]);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   useEffect(() => {
@@ -300,6 +307,7 @@ export function PortfolioView() {
       key: `${e.chain.nativeSymbol}@${e.chain.chainId}`, sym: e.chain.nativeSymbol, name: e.chain.name,
       chainId: e.chain.chainId as number | undefined, balNum: e.balance,
       priceUsd: prices?.[e.chain.nativeSymbol] ?? null, color: e.chain.color,
+      balText: undefined as string | undefined, readOnly: false,
     })),
     ...tokenBals.map(({ token, balance }) => ({
       key: `${token.symbol}@${token.chainId}:${token.address}`, sym: token.symbol,
@@ -307,16 +315,26 @@ export function PortfolioView() {
       chainId: token.chainId as number | undefined, balNum: balance,
       priceUsd: prices?.[token.symbol] ?? (token.symbol === 'USDT' || token.symbol === 'USDC' ? 1 : null),
       color: TOKENS.find(t => t.sym === token.symbol)?.color ?? '#52525b',
+      balText: undefined as string | undefined, readOnly: false,
     })),
     ...(['BTC', 'SOL', 'ATOM'] as const).map(sym => ({
       key: sym, sym, name: TOKENS.find(t => t.sym === sym)?.name ?? sym,
       chainId: undefined as number | undefined, balNum: live.bySymNumber.get(sym.toLowerCase()) ?? 0,
       priceUsd: prices?.[sym] ?? null, color: TOKENS.find(t => t.sym === sym)?.color ?? '#52525b',
+      balText: undefined as string | undefined, readOnly: false,
     })).filter(r => r.balNum > 0),
+    // Native Lithic LAX on Makalu — view-only and unpriced (the LAX price
+    // feeds track the older EVM token). Exact amount text from base units.
+    ...(nativeLax ? [{
+      key: `${NATIVE_LAX.symbol}@${NATIVE_LAX.chainId}:native`, sym: NATIVE_LAX.symbol, name: `${NATIVE_LAX.name} · Makalu native`,
+      chainId: NATIVE_LAX.chainId as number | undefined, balNum: nativeLax.ok ? Number(nativeLax.read.balanceFormatted) : 0,
+      priceUsd: null, color: '#a3e635',
+      balText: nativeLax.ok ? nativeLax.text : '—', readOnly: true,
+    }] : []),
   ].sort((a, b) => (a.chainId === 9005 ? -1 : 0) - (b.chainId === 9005 ? -1 : 0));
   const _raw = rowsRaw.map(r => ({
     ...r,
-    bal: r.balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }),
+    bal: r.balText ?? r.balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }),
     usd: Math.round(r.balNum * (r.priceUsd ?? 0)),
     chg: quoteChange(r.sym),
   }));
@@ -336,7 +354,8 @@ export function PortfolioView() {
     color: r.color,
     pct:   Math.max(1, Math.round((r.usd / _total) * 100)),
     priceKnown: r.priceUsd != null,
-    price: r.priceUsd != null ? fmtUsd(r.priceUsd, 4) : '—',
+    price: r.readOnly ? 'View only' : r.priceUsd != null ? fmtUsd(r.priceUsd, 4) : '—',
+    readOnly: r.readOnly,
   }));
   let offset = 0;
   const r = 70, circ = 2 * Math.PI * r;
@@ -349,6 +368,7 @@ export function PortfolioView() {
   return (
     <div className="main-area" style={{ width: '100%' }}>
       {detail && <TokenDetailModal sym={detail.sym} chainId={detail.chainId} onClose={() => setDetail(null)}/>}
+      {nativeDetail && <NativeAssetModal state={nativeLax} onClose={() => setNativeDetail(false)}/>}
       <div className="page-wrap">
         <div className="page-header">
           <h1 className="page-title">Assets</h1>
@@ -397,9 +417,9 @@ export function PortfolioView() {
                 {coins.map(c => (
                   <tr
                     key={c.key}
-                    onClick={() => setDetail({ sym: c.sym, chainId: c.chainId })}
+                    onClick={() => c.readOnly ? setNativeDetail(true) : setDetail({ sym: c.sym, chainId: c.chainId })}
                     tabIndex={0}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail({ sym: c.sym, chainId: c.chainId }); } }}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (c.readOnly) setNativeDetail(true); else setDetail({ sym: c.sym, chainId: c.chainId }); } }}
                     style={{ cursor: 'pointer' }}
                   >
                     <td>
