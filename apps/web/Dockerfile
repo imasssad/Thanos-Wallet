@@ -11,8 +11,11 @@ WORKDIR /repo
 # pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
-# Copy lockfiles + workspace declaration first (for better layer caching)
-COPY pnpm-workspace.yaml package.json ./
+# Copy the lockfile + workspace declaration first (for better layer caching).
+# The install below is --frozen-lockfile: every deploy gets the versions CI
+# tested, never whatever is newest that day (an unlocked install pulled a
+# newer @walletconnect/types and broke the 2026-11-06 deploy).
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY tsconfig.base.json ./
 
 # Copy package.json from each workspace package (without source — for cache)
@@ -29,7 +32,7 @@ COPY vendor/ vendor/
 
 # --ignore-scripts skips native compile (usb, tiny-secp256k1, etc.) which only
 # matters for browser-side hardware-wallet code, not server-rendered web.
-RUN pnpm install --filter @thanos/web... --frozen-lockfile=false --ignore-scripts
+RUN pnpm install --filter @thanos/web... --frozen-lockfile --ignore-scripts
 
 # Now copy source for web + its workspace deps
 COPY apps/web              apps/web

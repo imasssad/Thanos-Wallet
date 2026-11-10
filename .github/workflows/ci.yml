@@ -92,8 +92,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Node 22: the desktop suite mocks electron with node:test mock.module,
+      # which needs Node >= 22.3 (on 20 every ipc-guard import came back empty).
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       # SDK-core: BIP-39/44 derivation + bech32 round-trip + price-history math
