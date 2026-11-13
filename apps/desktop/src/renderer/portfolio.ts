@@ -15,7 +15,7 @@ import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readN
 import { getLocalActivity, resolvePendingActivity, setNativeHash, type LocalTx } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
 import { syncWalletHistory } from './explorer-activity';
-import { customChains, getExtEvmChain, onCustomAssetsChanged } from './custom-assets';
+import { customChains, getExtEvmChain, onCustomAssetsChanged, refreshDiscoveredTokens } from './custom-assets';
 import { isPrivateKeyWallet } from './vault';
 
 /* ─── Display helpers ────────────────────────────────────────────────── */
@@ -364,6 +364,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             }
           }
         } catch { /* best-effort — external chains stay hidden on failure */ }
+
+        // What else this address holds on Lithosphere (LithoScan). Throttled,
+        // never awaited here: it only announces a change, which re-runs this
+        // effect and reads the new rows' balances the normal way.
+        void refreshDiscoveredTokens(address);
 
         const lax = await nativeLax;
         if (cancelled) return;

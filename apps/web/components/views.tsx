@@ -299,6 +299,10 @@ export function PortfolioView() {
     customAssets.getAllEvmTokenBalancesMerged(evmAddress)
       .then(r => { if (!cancel) setTokenBals(r); })
       .catch(() => { /* a token read failing leaves that row out */ });
+    // What else this address holds on Lithosphere (LithoScan). Throttled, and
+    // never awaited in front of the balances: it only announces a change,
+    // which re-runs this effect and reads the new rows the normal way.
+    void customAssets.refreshDiscoveredTokens(evmAddress);
     return () => { cancel = true; };
   }, [evmAddress, assetsTick]);
   useEffect(() => { if (!live.loading) setUpdatedAt(Date.now()); }, [live.loading]);

@@ -16,6 +16,7 @@
  * every mutation refreshes it.
  */
 import { Contract, JsonRpcProvider } from 'ethers';
+import { createDiscoveryOverlay, type DiscoveredTokenRow } from '@thanos/sdk-core';
 import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, type ExtEvmChain, type ExtEvmToken } from './evm-external-meta';
 
 const CHAINS_KEY = 'thanos.custom_evm_chains.v1';
@@ -78,12 +79,16 @@ export interface ExtTokenLike {
   custom?: true;
 }
 
-/** All tokens for a chain: built-ins + user tokens (deduped by address). */
+/** All tokens for a chain: built-ins, then the user's, then discovered —
+ *  deduped by address, so an added token keeps its own entry (and its
+ *  always-visible row) rather than being replaced by a discovered twin. */
 export function allTokensForChain(chainId: number): ExtTokenLike[] {
   const builtin: ExtTokenLike[] = EXT_EVM_TOKENS.filter((t) => t.chainId === chainId);
   const seen = new Set(builtin.map((t) => t.address.toLowerCase()));
   const extra = tokenCache.filter((t) => t.chainId === chainId && !seen.has(t.address.toLowerCase()));
-  return [...builtin, ...extra];
+  for (const t of extra) seen.add(t.address.toLowerCase());
+  const found = discovery.tokensForChain(chainId).filter((t) => !seen.has(t.address.toLowerCase()));
+  return [...builtin, ...extra, ...found];
 }
 
 /** All tokens across every chain (built-ins + custom) — for building the
@@ -148,6 +153,30 @@ function notifyChanged(): void {
   // After the write, never before: a listener re-reads these caches.
   for (const fn of [...listeners]) { try { fn(); } catch { /* one bad listener can't break the rest */ } }
 }
+
+/* ── tokens discovered on Lithosphere ───────────────────────────────────
+   Held tokens the user never added by hand (client 2026-11-13: "tokens from
+   lithoscan ... automatically show in thanos if user holds them"). Metadata
+   only: the balance on screen is read by evm-external.ts on the token's own
+   chain, exactly as for a built-in. Lithosphere alone for now — the other
+   chains' sources would add far more rows than were asked for. ── */
+const discovery = createDiscoveryOverlay({ chainIds: [9005], onChange: notifyChanged });
+
+/** Read again (throttled) what this address holds on Lithosphere. Resolves
+ *  when the pass is over and never throws; call it beside the balance reads,
+ *  never in front of them. */
+export function refreshDiscoveredTokens(address: string, force = false): Promise<void> {
+  return discovery.refresh(address, [
+    ...EXT_EVM_TOKENS.map((t) => ({ chainId: t.chainId, address: t.address, symbol: t.symbol })),
+    ...tokenCache.map((t) => ({ chainId: t.chainId, address: t.address, symbol: t.symbol })),
+  ], force);
+}
+
+/** Tokens discovery found, for the one address it last read. */
+export const discoveredTokens = (): readonly DiscoveredTokenRow[] => discovery.tokens();
+
+/** Forget them (wallet locked, account removed). */
+export const clearDiscoveredTokens = (): void => discovery.clear();
 
 function persist(): void {
   try {
