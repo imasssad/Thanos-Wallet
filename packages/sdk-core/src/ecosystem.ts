@@ -29,12 +29,12 @@ export interface EcosystemApp {
 }
 
 /** Section headers in display order. Apps render grouped under these.
- *  'DeFi' and 'Community' were added on client request (2026-11-13) and are
- *  separate from 'DeFi & Yield', which holds the DEXes. */
+ *  'Community' was added on client request (2026-11-13); the DeFi apps from
+ *  the same request sit in the existing 'DeFi & Yield' rather than a second
+ *  DeFi section (client confirmed 2026-11-13: "DeFi & Yield works"). */
 export const ECOSYSTEM_SECTIONS = [
   'AI & Agents',
   'DeFi & Yield',
-  'DeFi',
   'NFTs',
   'Infrastructure',
   'Rewards',
@@ -99,6 +99,25 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     category: 'DEX',
     section: 'DeFi & Yield',
   },
+  // Added on client request 2026-11-13.
+  {
+    id: 'litho-finance',
+    name: 'Litho.Finance',
+    description: 'DeFi on Lithosphere.',
+    url: 'https://litho.finance',
+    color: '#3b7af7',
+    category: 'DeFi',
+    section: 'DeFi & Yield',
+  },
+  {
+    id: 'lithovault',
+    name: 'LithoVault.ai',
+    description: 'Vaults and yield strategies on Lithosphere.',
+    url: 'https://lithovault.ai',
+    color: '#8b7df7',
+    category: 'DeFi',
+    section: 'DeFi & Yield',
+  },
   // EGO Exchange removed per Esha 2026-06-10 — re-add when the team
   // confirms a real product URL + the integration is ready.
   // Mansa AI removed per client 2026-09-15 — re-add when confirmed ready.
@@ -111,25 +130,6 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   //   category: 'AI · DeFi',
   //   section: 'DeFi & Yield',
   // },
-  // ─── DeFi (client 2026-11-13) ────────────────────────────────────────
-  {
-    id: 'litho-finance',
-    name: 'Litho.Finance',
-    description: 'DeFi on Lithosphere.',
-    url: 'https://litho.finance',
-    color: '#3b7af7',
-    category: 'DeFi',
-    section: 'DeFi',
-  },
-  {
-    id: 'lithovault',
-    name: 'LithoVault.ai',
-    description: 'Vaults and yield strategies on Lithosphere.',
-    url: 'https://lithovault.ai',
-    color: '#8b7df7',
-    category: 'DeFi',
-    section: 'DeFi',
-  },
   // ─── NFTs ────────────────────────────────────────────────────────────
   {
     id: 'colle',
