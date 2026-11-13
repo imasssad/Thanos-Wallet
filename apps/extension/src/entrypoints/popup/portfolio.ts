@@ -14,7 +14,7 @@
  */
 import { createContext, useContext, useEffect, useState } from 'react';
 import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readNativeLaxBalance } from '@thanos/sdk-core';
-import { customChains } from '../../lib/custom-assets';
+import { customChains, onCustomAssetsChanged, refreshDiscoveredTokens } from '../../lib/custom-assets';
 import { getLocalActivity, addLocalReceive, mergeExplorerRows, resolvePendingActivity, rowId } from '../../lib/local-activity';
 import { fetchWalletHistory, HISTORY_EVM_CHAIN_IDS } from '../../lib/explorer-activity';
 import { detectIncoming, watchKeyEvm, watchKeyNative, type WatchedBalance } from '../../lib/incoming';
@@ -222,6 +222,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Omit<PortfolioState, 'reload' | 'address'>>(() => initialStateFor(address));
 
+  // The token list changing — a token added or removed in Settings, or one
+  // discovery found — re-reads the balances, so the row appears without the
+  // popup being closed and opened again.
+  useEffect(() => onCustomAssetsChanged(() => setNonce((n) => n + 1)), []);
+
   const seedKey = seed?.join(' ') ?? '';
 
   useEffect(() => {
@@ -320,7 +325,14 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             }]),
           ]);
           const natives = nativeReads.filter((r): r is { chain: typeof r.chain; balance: number } => r.balance != null && r.balance > 0);
-          const tokens = tokenReads.filter((r): r is { token: typeof r.token; balance: number } => r.balance != null && r.balance > 0);
+          // Built-in USDT/USDC are a catalog: only what's actually held shows.
+          // A token the USER added is an explicit "show me this", so it keeps
+          // its row at zero — and even when the RPC read fails (balance null),
+          // so an added asset never silently vanishes from Home/Assets.
+          const tokens = tokenReads.flatMap(({ token, balance }) =>
+            balance != null && balance > 0 ? [{ token, balance }]
+            : token.custom              ? [{ token, balance: balance ?? 0 }]
+            : []);
           for (const { chain, balance } of natives) {
             const priceUsd = prices[chain.nativeSymbol] ?? 0;
             evmExt.push({
@@ -343,6 +355,11 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             });
           }
         } catch { /* best-effort */ }
+
+        // What else this address holds on Lithosphere (LithoScan). Throttled,
+        // never awaited here: it only announces a change, which re-runs this
+        // effect and reads the new rows' balances the normal way.
+        void refreshDiscoveredTokens(address);
 
         const lax = await nativeLax;
         if (cancelled) return;

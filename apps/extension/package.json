@@ -1,6 +1,6 @@
 {
   "name": "@thanos/extension",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "private": true,
   "description": "Thanos Wallet \u2014 Lithosphere-first browser extension with Bitcoin, Solana, MultX bridge, Ignite DEX and dApp EIP-1193 provider.",
   "homepage": "https://thanos.fi",

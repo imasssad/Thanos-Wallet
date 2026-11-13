@@ -119,11 +119,29 @@ export async function probeErc20(rpcUrl: string, address: string): Promise<Token
 
 /* ── mutations (persist + refresh cache) ────────────────────────────── */
 
+/* ── change notification ──────────────────────────────────────────────
+   The portfolio keeps its coin rows in component state, so a token added in
+   Settings would not show up until the next load. Every mutation goes through
+   persist(), which makes it the one place to announce the change from. */
+const listeners = new Set<() => void>();
+
+/** Subscribe to custom-network/token changes; returns an unsubscribe fn. */
+export function onCustomAssetsChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+function notifyChanged(): void {
+  // After the write, never before: a listener re-reads these caches.
+  for (const fn of [...listeners]) { try { fn(); } catch { /* one bad listener can't break the rest */ } }
+}
+
 async function persist(): Promise<void> {
   await Promise.all([
     AsyncStorage.setItem(CHAINS_KEY, JSON.stringify(chainCache)),
     AsyncStorage.setItem(TOKENS_KEY, JSON.stringify(tokenCache)),
   ]);
+  notifyChanged();
 }
 
 /** Add a custom EVM network. Rejects if the chainId collides with a built-in.

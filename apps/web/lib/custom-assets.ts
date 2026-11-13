@@ -15,6 +15,7 @@
  * components, but Next can still evaluate it during a server render pass).
  */
 import { Contract, JsonRpcProvider } from 'ethers';
+import { createDiscoveryOverlay, type DiscoveredTokenRow } from '@thanos/sdk-core';
 import { EVM_CHAINS, getEvmProvider, registerChainLookup, browserRpcUrl, type EvmChain } from './evm-chains';
 import { EVM_TOKENS, type EvmToken } from './evm-tokens';
 
@@ -72,14 +73,23 @@ export function allEvmChains(): EvmChain[] {
 
 /** Minimal token shape shared by the built-in catalog and user-added
  *  tokens — everything downstream only reads fields, never a literal type. */
-export interface EvmTokenLike { chainId: number; symbol: string; name: string; address: string; decimals: number }
+export interface EvmTokenLike {
+  chainId: number; symbol: string; name: string; address: string; decimals: number;
+  /** true on a token the USER added. Such a token keeps its row at zero
+   *  balance — see getAllEvmTokenBalancesMerged. */
+  custom?: true;
+}
 
-/** All tokens for a chain: built-ins + user tokens (deduped by address). */
+/** All tokens for a chain: built-ins, then the user's, then discovered —
+ *  deduped by address, so an added token keeps its own entry (and its
+ *  always-visible row) rather than being replaced by a discovered twin. */
 export function allTokensForChain(chainId: number): EvmTokenLike[] {
   const builtin: EvmTokenLike[] = EVM_TOKENS.filter((t) => t.chainId === chainId);
   const seen = new Set(builtin.map((t) => t.address.toLowerCase()));
   const extra = tokenCache.filter((t) => t.chainId === chainId && !seen.has(t.address.toLowerCase()));
-  return [...builtin, ...extra];
+  for (const t of extra) seen.add(t.address.toLowerCase());
+  const found = discovery.tokensForChain(chainId).filter((t) => !seen.has(t.address.toLowerCase()));
+  return [...builtin, ...extra, ...found];
 }
 
 /** All tokens across every chain (built-ins + custom). */
@@ -113,6 +123,11 @@ export async function getAllEvmNativeBalancesMerged(address: string): Promise<Ar
     .map((r) => r.value);
 }
 
+/** ERC-20 balances for every known token — built-ins + user-added.
+ *  The built-ins are a catalog, so a failed or zero read is omitted. A token
+ *  the USER added is an explicit "show me this": it is always returned, at
+ *  zero when the read fails, so an added asset never silently vanishes from
+ *  the asset list. */
 export async function getAllEvmTokenBalancesMerged(address: string): Promise<Array<{ token: EvmTokenLike; balance: number }>> {
   if (!address) return [];
   const { formatUnits } = await import('ethers');
@@ -121,12 +136,16 @@ export async function getAllEvmTokenBalancesMerged(address: string): Promise<Arr
     all.map(async (t) => {
       const c = new Contract(t.address, ERC20_BALANCE_ABI, getEvmProvider(t.chainId));
       const raw: bigint = await c.balanceOf(address);
-      return { token: t, balance: parseFloat(formatUnits(raw, t.decimals)) };
+      return parseFloat(formatUnits(raw, t.decimals)) || 0;
     }),
   );
-  return results
-    .filter((r): r is PromiseFulfilledResult<{ token: EvmTokenLike; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
-    .map((r) => r.value);
+  return all.flatMap((token, i) => {
+    const r = results[i];
+    const balance = r.status === 'fulfilled' ? r.value : null;
+    if (balance != null && balance > 0) return [{ token, balance }];
+    if (token.custom) return [{ token, balance: balance ?? 0 }];
+    return [];
+  });
 }
 
 /* ── on-chain validation / metadata (never trust user input blindly) ── */
@@ -163,11 +182,54 @@ export async function probeErc20(rpcUrl: string, address: string): Promise<Token
 
 /* ── mutations (persist + refresh cache) ────────────────────────────── */
 
+/* ── change notification ──────────────────────────────────────────────
+   The balance readers above keep their rows in component state keyed on the
+   address, so a token added in Settings would not show up until a reload.
+   Every mutation goes through persist(), which makes it the one place to
+   announce the change from. */
+const listeners = new Set<() => void>();
+
+/** Subscribe to custom-network/token changes; returns an unsubscribe fn. */
+export function onCustomAssetsChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+/* ── tokens discovered on Lithosphere ───────────────────────────────────
+   Held tokens the user never added by hand (client 2026-11-13: "tokens from
+   lithoscan ... automatically show in thanos if user holds them"). Metadata
+   only: the balance on screen is read on the token's own chain by the same
+   code that reads a built-in's. Lithosphere alone for now — the other
+   chains' sources would add far more rows than were asked for. ── */
+const discovery = createDiscoveryOverlay({ chainIds: [9005], onChange: () => notifyChanged() });
+
+/** Read again (throttled) what this address holds on Lithosphere. Resolves
+ *  when the pass is over and never throws; call it beside the balance reads,
+ *  never in front of them. */
+export function refreshDiscoveredTokens(address: string, force = false): Promise<void> {
+  return discovery.refresh(address, [
+    ...EVM_TOKENS.map((t) => ({ chainId: t.chainId, address: t.address, symbol: t.symbol })),
+    ...tokenCache.map((t) => ({ chainId: t.chainId, address: t.address, symbol: t.symbol })),
+  ], force);
+}
+
+/** Tokens discovery found, for the one address it last read. */
+export const discoveredTokens = (): readonly DiscoveredTokenRow[] => discovery.tokens();
+
+/** Forget them (wallet locked, account removed). */
+export const clearDiscoveredTokens = (): void => discovery.clear();
+
+function notifyChanged(): void {
+  // After the write, never before: a listener re-reads these caches.
+  for (const fn of [...listeners]) { try { fn(); } catch { /* one bad listener can't break the rest */ } }
+}
+
 function persist(): void {
   try {
     window.localStorage.setItem(CHAINS_KEY, JSON.stringify(chainCache));
     window.localStorage.setItem(TOKENS_KEY, JSON.stringify(tokenCache));
   } catch { /* ignore */ }
+  notifyChanged();
 }
 
 /** Add a custom EVM network. Rejects if the chainId collides with a built-in.

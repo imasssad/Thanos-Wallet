@@ -226,6 +226,7 @@ const DAPP_ICONS: Record<string, string> = {
   furgpt: '/images/dapps/furgpt.png',
   imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png', magma: '/images/dapps/magma.png',
   lithoscan: '/images/dapps/lithoscan.png', // client-supplied 2026-09-11
+  'litho-finance': '/images/dapps/litho-finance.png', // client-supplied 2026-11-13
 };
 
 /* Swappable assets — the verified Makalu token set (matches the web
@@ -653,7 +654,7 @@ function Onboarding({ hasVault, onComplete, addMode }: {
                   position: 'absolute', inset: 0,
                   background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)',
                   borderRadius: 8, border: 'none',
-                  color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
+                  color: 'var(--text-primary)', fontSize: 14, fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
@@ -740,7 +741,7 @@ function Onboarding({ hasVault, onComplete, addMode }: {
                 key={mode}
                 type="button"
                 className={importMode === mode ? 'btn-primary' : 'btn-outline'}
-                style={{ flex: 1, padding: '8px 10px', fontSize: 12 }}
+                style={{ flex: 1, padding: '8px 10px', fontSize: 14 }}
                 onClick={() => { setImportMode(mode); setImportInput(''); setFormErr(''); }}
               >{label}</button>
             ))}
@@ -764,7 +765,7 @@ function Onboarding({ hasVault, onComplete, addMode }: {
             const ok = importMode === 'key' ? isPk : [12, 15, 18, 21, 24].includes(wc);
             return (
               <>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
                   {importMode === 'key'
                     ? (v === '' ? '' : isPk ? 'Private key — one EVM account' : 'Not a private key (64 hex characters)')
                     : `${wc} words`}
@@ -870,7 +871,7 @@ function MiniChart({ holdings }: { holdings: Holding[] }) {
       </svg>
       <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 4 }}>
         {(['7d', '30d'] as Range[]).map(r => (
-          <button key={r} onClick={() => setRange(r)} className={`filter-pill ${range === r ? 'active' : ''}`} style={{ fontSize: 10, padding: '2px 8px' }}>
+          <button key={r} onClick={() => setRange(r)} className={`filter-pill ${range === r ? 'active' : ''}`} style={{ fontSize: 11.5, padding: '2px 8px' }}>
             {r.toUpperCase()}
           </button>
         ))}
@@ -910,22 +911,22 @@ function LaxCardArt({ last4, active }: { last4?: string; active?: boolean } = {}
         width: '42%', opacity: 0.45, filter: 'drop-shadow(0 0 26px rgba(59,122,247,0.45))',
       }}/>
       <div style={{
-        position: 'absolute', top: '9%', left: '7%', fontSize: 20, fontWeight: 800, letterSpacing: '0.32em',
+        position: 'absolute', top: '9%', left: '7%', fontSize: 21.5, fontWeight: 800, letterSpacing: '0.32em',
         background: 'linear-gradient(90deg,#5b8cff,#9bb0ff)', WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent', backgroundClip: 'text',
       }}>LAX</div>
       {last4 && (
-        <div style={{ position: 'absolute', bottom: '10%', left: '7%', color: '#9db8ff', fontSize: 11, fontWeight: 600, letterSpacing: 1.5 }}>
+        <div style={{ position: 'absolute', bottom: '10%', left: '7%', color: '#9db8ff', fontSize: 12.5, fontWeight: 600, letterSpacing: 1.5 }}>
           •••• {last4}
         </div>
       )}
       <div style={{ position: 'absolute', bottom: '10%', right: '7%', textAlign: 'right', lineHeight: 1 }}>
         <div style={{
-          fontSize: 23, fontWeight: 800, fontStyle: 'italic',
+          fontSize: 25, fontWeight: 800, fontStyle: 'italic',
           background: 'linear-gradient(90deg,#1a3fd6,#3b7af7)', WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent', backgroundClip: 'text',
         }}>VISA</div>
-        <div style={{ fontSize: 9, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>{active ? 'Virtual' : 'Algorithmic'}</div>
+        <div style={{ fontSize: 10.5, fontWeight: 500, color: '#5b8cff', marginTop: 2 }}>{active ? 'Virtual' : 'Algorithmic'}</div>
       </div>
     </div>
   );
@@ -935,16 +936,16 @@ function LaxCard() {
   const [showFlow, setShowFlow] = useState(false);
   return (
     <div className="card" style={{ padding: 16, marginTop: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12, color: 'var(--text-secondary)', fontSize: 14, fontWeight: 700 }}>
         <CreditCard size={14} color="var(--blue)"/> Virtual Card
       </div>
       <LaxCardArt/>
-      <div style={{ fontSize: 14.5, fontWeight: 800, margin: '13px 0 9px', color: 'var(--text-primary)' }}>
+      <div style={{ fontSize: 16.5, fontWeight: 800, margin: '13px 0 9px', color: 'var(--text-primary)' }}>
         Own Your Crypto Virtual Card
       </div>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
         {LAX_BENEFITS.map(b => (
-          <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.4 }}>
+          <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: 'var(--text-secondary)', fontSize: 14.5, lineHeight: 1.4 }}>
             <Check size={15} color="var(--blue)" strokeWidth={2.6} style={{ marginTop: 1, flexShrink: 0 }}/>
             <span>{b}</span>
           </li>
@@ -1023,7 +1024,7 @@ function LaxCardFlowModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="modal-body">
           {booting ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: 14 }}>
               Loading…
             </div>
           ) : (
@@ -1048,24 +1049,24 @@ function LaxIntro({ notLive, onStart, onLearn }: { notLive: boolean; onStart: ()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <LaxCardArt/>
-      <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', lineHeight: 1.3 }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 19.5, fontWeight: 800, textAlign: 'center', lineHeight: 1.3 }}>
         Own Your Crypto{'\n'}In The Real World
       </div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 14.5, lineHeight: 1.5, textAlign: 'center' }}>
         The LAX Card lets you spend your crypto globally, anywhere Visa™ is accepted.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginTop: 2 }}>
         {LAX_INTRO_BENEFITS.map(b => (
           <div key={b} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <Check size={15} color="var(--blue)" strokeWidth={2.6}/>
-            <span style={{ color: 'var(--text-secondary)', fontSize: 12.5 }}>{b}</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 14.5 }}>{b}</span>
           </div>
         ))}
       </div>
       <button className="btn-primary" onClick={onStart}>Get Started</button>
       <button className="btn-link" onClick={onLearn}>Learn more</button>
       {notLive && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', lineHeight: 1.4 }}>
           Native card issuance is rolling out — you can still explore the flow.
         </div>
       )}
@@ -1077,13 +1078,13 @@ function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center', paddingTop: 20 }}>
       <LaxCardArt/>
-      <div style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 800, textAlign: 'center', marginTop: 6 }}>Welcome to LAX Cash!</div>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, textAlign: 'center', marginTop: -6 }}>
+      <div style={{ color: 'var(--text-primary)', fontSize: 19.5, fontWeight: 800, textAlign: 'center', marginTop: 6 }}>Welcome to LAX Cash!</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.5, textAlign: 'center', marginTop: -6 }}>
         Your money. Ready for anywhere. Spend, send, and manage your money with the LAX Card — built for a faster, more flexible financial experience.
       </div>
       <div style={{ alignSelf: 'stretch', background: 'var(--bg-elevated)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {LAX_BENEFITS.map((b: string) => (
-          <div key={b} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.45 }}>
+          <div key={b} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.45 }}>
             <span style={{ color: 'var(--blue, #3b7af7)', fontWeight: 800 }}>✓</span><span>{b}</span>
           </div>
         ))}
@@ -1091,7 +1092,7 @@ function LaxComingSoon({ onClose, onLearn }: { onClose: () => void; onLearn: () 
       {/* Own branded intro (client 2026-09-27) — the partner widget's landing page
           shows third-party branding, so it opens only when the user applies. */}
       <button className="btn-primary" style={{ alignSelf: 'stretch', marginTop: 2 }} onClick={onLearn}>Get Started →</button>
-      <div style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center' }}>Your LAX Card is ready when you are.</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 12.5, textAlign: 'center' }}>Your LAX Card is ready when you are.</div>
       <button className="btn-link" onClick={onClose}>Not now</button>
     </div>
   );
@@ -1200,9 +1201,9 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
             }}>
               {i < railIdx
                 ? <Check size={12} color="#fff" strokeWidth={3}/>
-                : <span style={{ color: i === railIdx ? '#fff' : 'var(--text-muted)', fontSize: 11, fontWeight: 800 }}>{i + 1}</span>}
+                : <span style={{ color: i === railIdx ? '#fff' : 'var(--text-muted)', fontSize: 12.5, fontWeight: 800 }}>{i + 1}</span>}
             </div>
-            <span style={{ color: i === railIdx ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 10 }}>{r.label}</span>
+            <span style={{ color: i === railIdx ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 11.5 }}>{r.label}</span>
           </div>
           {i < LAX_CREATE_RAIL.length - 1 && <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)', margin: '0 6px' }}/>}
         </React.Fragment>
@@ -1214,7 +1215,7 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {rail}
-        <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center', padding: 20 }}>Loading…</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 14, textAlign: 'center', padding: 20 }}>Loading…</div>
       </div>
     );
   }
@@ -1224,11 +1225,11 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {rail}
         <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>During verification you will need to:</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>During verification you will need to:</div>
           {LAX_KYC_STEPS.map(s => (
             <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
               <Check size={14} color="var(--blue)" strokeWidth={2.4}/>
-              <span style={{ color: 'var(--text-primary)', fontSize: 12 }}>{s}</span>
+              <span style={{ color: 'var(--text-primary)', fontSize: 14 }}>{s}</span>
             </div>
           ))}
         </div>
@@ -1243,15 +1244,15 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
           }}>
             {agreed && <Check size={12} color="#fff" strokeWidth={3}/>}
           </div>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 13, flex: 1 }}>I agree to the LAX Terms &amp; Conditions</span>
         </div>
 
-        {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+        {err && <div style={{ color: '#ef4444', fontSize: 13 }}>{err}</div>}
 
         <button className="btn-primary" disabled={!agreed || busy} onClick={submitAccount}>
           {busy ? 'Creating…' : 'Next'}
         </button>
-        <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', lineHeight: 1.4 }}>
           {status?.configuredForIssuance
             ? 'Next you’ll pick a starting balance, then ID verification if it’s required.'
             : 'Card issuance isn’t enabled yet — your account is created and you’ll be notified when cards go live.'}
@@ -1264,21 +1265,21 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {rail}
-        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 2 }}>Starting balance (USD, minimum ${LAX_MIN_CARD_USD})</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>Starting balance (USD, minimum ${LAX_MIN_CARD_USD})</div>
         <input className="field" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
-          style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', height: 52 }}/>
+          style={{ fontSize: 21.5, fontWeight: 800, textAlign: 'center', height: 52 }}/>
         <div style={{ display: 'flex', gap: 8 }}>
           {LAX_ISSUE_QUICK.map(q => (
             <button key={q} onClick={() => setAmount(String(q))} style={{
               flex: 1, padding: '9px 0', borderRadius: 9, border: '1px solid var(--border-default)',
-              background: 'transparent', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: 'transparent', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}>${q}</button>
           ))}
         </div>
 
-        <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.45 }}>You’ll pay with crypto — USDT, USDC, ETH, BTC and more — on LAX’s secure checkout page.</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12.5, lineHeight: 1.45 }}>You’ll pay with crypto — USDT, USDC, ETH, BTC and more — on LAX’s secure checkout page.</div>
 
-        {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+        {err && <div style={{ color: '#ef4444', fontSize: 13 }}>{err}</div>}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-outline" style={{ flex: 1 }} disabled={busy} onClick={() => setStep('account')}>Back</button>
@@ -1297,8 +1298,8 @@ function LaxCreate({ status, onDone }: { status: LaxStatus | null; onDone: () =>
         <div style={{ width: 64, height: 64, borderRadius: 32, background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 8 }}>
           <Shield size={28} color="var(--blue)"/>
         </div>
-        <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800, textAlign: 'center' }}>LAX’s checkout opened in a new tab</div>
-        <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, lineHeight: 1.5, textAlign: 'center' }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 17, fontWeight: 800, textAlign: 'center' }}>LAX’s checkout opened in a new tab</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 14.5, lineHeight: 1.5, textAlign: 'center' }}>
           Pay for your card there (and verify your identity if LAX asks), then come back — your card will appear here once it&apos;s ready.
         </div>
         {verifyUrl && (
@@ -1352,11 +1353,11 @@ function LaxDashboard({ card, cardId, last4, txns, notLive, onTopUp, onSoon, onR
       <LaxCardArt active last4={last4}/>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <div style={{ width: 7, height: 7, borderRadius: 4, background: card ? '#22c55e' : 'var(--text-muted)' }}/>
-        <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>{card ? String(card.status || 'Active') : 'No card yet'}</span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{card ? String(card.status || 'Active') : 'No card yet'}</span>
       </div>
       <div>
-        <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Card Balance</div>
-        <div style={{ color: 'var(--text-primary)', fontSize: 26, fontWeight: 800 }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Card Balance</div>
+        <div style={{ color: 'var(--text-primary)', fontSize: 28, fontWeight: 800 }}>
           {balance != null ? `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
         </div>
       </div>
@@ -1367,25 +1368,25 @@ function LaxDashboard({ card, cardId, last4, txns, notLive, onTopUp, onSoon, onR
             <div style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <a.icon size={16} color="var(--blue)"/>
             </div>
-            <span style={{ color: 'var(--text-secondary)', fontSize: 10.5 }}>{a.label}</span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{a.label}</span>
           </button>
         ))}
       </div>
-      {freezeBusy && <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center' }}>Updating card status…</div>}
-      {freezeErr && <div style={{ color: '#ef4444', fontSize: 11.5, textAlign: 'center' }}>{freezeErr}</div>}
+      {freezeBusy && <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center' }}>Updating card status…</div>}
+      {freezeErr && <div style={{ color: '#ef4444', fontSize: 13, textAlign: 'center' }}>{freezeErr}</div>}
 
       {notLive && (
         <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: 11, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
           <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }}/>
-          <span style={{ color: 'var(--text-secondary)', fontSize: 11.5, lineHeight: 1.45 }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.45 }}>
             LAX isn&apos;t live yet — balance and actions will work once the partner setup is finished.
           </span>
         </div>
       )}
 
-      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 800, marginTop: 2 }}>Recent Transactions</div>
+      <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 800, marginTop: 2 }}>Recent Transactions</div>
       {txns.length === 0 ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No transactions yet.</div>
       ) : txns.slice(0, 6).map((t, i) => <LaxTxnRow key={t.id || i} t={t} last={i === Math.min(txns.length, 6) - 1}/>)}
 
       {modal === 'details' && cardId && <LaxCardDetailsModal cardId={cardId} onClose={() => setModal(null)}/>}
@@ -1400,13 +1401,13 @@ function LaxTxnRow({ t, last }: { t: LaxTxn; last: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: last ? 'none' : '1px solid var(--border-subtle)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: 'var(--text-primary)', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 14.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {t.merchant || t.type || 'Transaction'}
         </div>
-        {t.date && <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>{t.date}</div>}
+        {t.date && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>{t.date}</div>}
       </div>
       {t.amount != null && (
-        <span style={{ color: t.amount < 0 ? 'var(--text-primary)' : '#22c55e', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
+        <span style={{ color: t.amount < 0 ? 'var(--text-primary)' : '#22c55e', fontSize: 14.5, fontWeight: 700, flexShrink: 0 }}>
           {t.amount < 0 ? '' : '+'}{t.amount.toLocaleString('en-US', { style: 'currency', currency: t.currency || 'USD' })}
         </span>
       )}
@@ -1438,7 +1439,7 @@ function StepUpPasswordModal({ onCancel, onSubmit }: {
   return (
     <Modal title="Confirm your password" onClose={onCancel}>
       <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.5, margin: 0 }}>
           For your security, re-enter your Thanos account password to continue.
         </p>
         <input
@@ -1447,7 +1448,7 @@ function StepUpPasswordModal({ onCancel, onSubmit }: {
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
           className="field-input"
         />
-        {err && <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>}
+        {err && <div style={{ color: '#ef4444', fontSize: 14 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button className="btn-secondary" style={{ flex: 1 }} onClick={onCancel} disabled={busy}>Cancel</button>
           <button className="btn-primary" style={{ flex: 1 }} onClick={submit} disabled={busy || !password}>
@@ -1524,30 +1525,30 @@ function LaxCardDetailsModal({ cardId, onClose }: { cardId: string; onClose: () 
         </div>
         <div className="modal-body" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {loading ? (
-            <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center', padding: 20 }}>Loading…</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 14, textAlign: 'center', padding: 20 }}>Loading…</div>
           ) : err ? (
-            <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>
+            <div style={{ color: '#ef4444', fontSize: 14 }}>{err}</div>
           ) : (
             <div style={{ position: 'relative', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Card Number</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Card Number</div>
                 <div style={{
                   color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  fontSize: 14, letterSpacing: 0.5, filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s', userSelect: 'text',
+                  fontSize: 16, letterSpacing: 0.5, filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s', userSelect: 'text',
                 }}>
                   {details?.pan || '—'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 24 }}>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Expiry</div>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Expiry</div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 700, filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s' }}>
                     {details?.expMonth && details?.expYear ? `${details.expMonth}/${details.expYear}` : '—'}
                   </div>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>CVC</div>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700, filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>CVC</div>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 700, filter: hidden ? 'blur(6px)' : 'none', transition: 'filter 0.2s' }}>
                     {details?.cvc ?? '—'}
                   </div>
                 </div>
@@ -1555,7 +1556,7 @@ function LaxCardDetailsModal({ cardId, onClose }: { cardId: string; onClose: () 
               {hidden && (
                 <button type="button" onClick={() => setHidden(false)} style={{
                   position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)',
-                  borderRadius: 10, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
+                  borderRadius: 10, border: 'none', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   Tap to reveal
@@ -1563,7 +1564,7 @@ function LaxCardDetailsModal({ cardId, onClose }: { cardId: string; onClose: () 
               )}
             </div>
           )}
-          <div style={{ color: 'var(--text-muted)', fontSize: 10.5, textAlign: 'center', lineHeight: 1.4 }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', lineHeight: 1.4 }}>
             Never share these details. They&apos;re never stored or logged by Thanos.
           </div>
         </div>
@@ -1612,19 +1613,19 @@ function LaxMoreModal({ cardId, onClose }: { cardId: string; onClose: () => void
                 </button>
               {['Manage Card', 'Replace card', 'Report lost', 'Close card'].map(label => (
                 <button key={label} onClick={() => window.alert(`${label} is not exposed by the current LAX Project 612 API. No card change was made.`)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4px', background: 'none', border: 0, textAlign: 'left', cursor: 'pointer' }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{label}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 10, background: 'var(--bg-elevated)', padding: '3px 8px', borderRadius: 999 }}>Coming soon</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 15 }}>{label}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11.5, background: 'var(--bg-elevated)', padding: '3px 8px', borderRadius: 999 }}>Coming soon</span>
                 </button>
               ))}
             </div>
           ) : view === 'physical' ? <ExtensionPhysicalCardSetup /> : (
             <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               {loading ? (
-                <div style={{ color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center', padding: 20 }}>Loading…</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 14, textAlign: 'center', padding: 20 }}>Loading…</div>
               ) : err ? (
-                <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>
+                <div style={{ color: '#ef4444', fontSize: 14 }}>{err}</div>
               ) : txns.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>No transactions yet.</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No transactions yet.</div>
               ) : txns.map((t, i) => <LaxTxnRow key={t.id || i} t={t} last={i === txns.length - 1}/>)}
             </div>
           )}
@@ -1644,9 +1645,9 @@ function ExtensionPhysicalCardSetup() {
   const create = async () => { setBusy(true); setErr(null); try { const raw = await laxCreatePhysicalHolder(form); const o = raw as Record<string, unknown>; const id = String(o.holderId ?? o.card_holder_id ?? ''); if (!id) throw new Error('LAX did not return a card-holder id.'); setHolderId(id); setStep('created'); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not create the card holder.'); } finally { setBusy(false); } };
   const startKyc = async () => { setBusy(true); setErr(null); try { await laxStartPhysicalKyc(holderId); setStep('kyc'); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not start KYC.'); } finally { setBusy(false); } };
   const submit = async () => { setBusy(true); setErr(null); try { await laxSubmitPhysicalHolder(holderId); setStep('submitted'); } catch (e) { setErr(e instanceof Error ? e.message : 'Could not submit to issuer.'); } finally { setBusy(false); } };
-  if (step !== 'form') return <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 14 }}><div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Holder ID: <strong style={{ color: 'var(--text-primary)' }}>{holderId}</strong></div>{err && <div style={{ color: '#ef4444', fontSize: 12 }}>{err}</div>}{step === 'created' && <button className="btn-primary" onClick={startKyc} disabled={busy}>{busy ? 'Starting…' : 'Start KYC'}</button>}{step === 'kyc' && <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Submitting…' : 'Submit To Issuer'}</button>}{step === 'submitted' && <div style={{ color: '#22c55e', fontSize: 12 }}>Submitted to LAX issuer.</div>}</div>;
+  if (step !== 'form') return <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 14 }}><div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Holder ID: <strong style={{ color: 'var(--text-primary)' }}>{holderId}</strong></div>{err && <div style={{ color: '#ef4444', fontSize: 14 }}>{err}</div>}{step === 'created' && <button className="btn-primary" onClick={startKyc} disabled={busy}>{busy ? 'Starting…' : 'Start KYC'}</button>}{step === 'kyc' && <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Submitting…' : 'Submit To Issuer'}</button>}{step === 'submitted' && <div style={{ color: '#22c55e', fontSize: 14 }}>Submitted to LAX issuer.</div>}</div>;
   const fields: Array<[keyof LaxHolderInput, string]> = [['name','Full name'],['firstName','First name'],['lastName','Last name'],['email','Email'],['address_line1','Address'],['city','City'],['state','State'],['country','Country'],['zip','Postal code'],['phone','Phone'],['cellPhoneNumber','Mobile'],['birth_date','Birth date (YYYY-MM-DD)']];
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14 }}><div style={{ color: 'var(--text-secondary)', fontSize: 11 }}>Details are sent to LAX/Zypto for physical-card KYC and issuance.</div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>{fields.map(([key, label]) => <input key={key} className="field-input" placeholder={label} value={String(form[key] ?? '')} onChange={e => update(key, e.target.value)} />)}</div>{err && <div style={{ color: '#ef4444', fontSize: 11 }}>{err}</div>}<button className="btn-primary" onClick={create} disabled={busy}>{busy ? 'Creating…' : 'Create Card Holder'}</button></div>;
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14 }}><div style={{ color: 'var(--text-secondary)', fontSize: 12.5 }}>Details are sent to LAX/Zypto for physical-card KYC and issuance.</div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>{fields.map(([key, label]) => <input key={key} className="field-input" placeholder={label} value={String(form[key] ?? '')} onChange={e => update(key, e.target.value)} />)}</div>{err && <div style={{ color: '#ef4444', fontSize: 12.5 }}>{err}</div>}<button className="btn-primary" onClick={create} disabled={busy}>{busy ? 'Creating…' : 'Create Card Holder'}</button></div>;
 }
 
 const LAX_TOPUP_QUICK = [50, 100, 200, 500];
@@ -1685,7 +1686,7 @@ function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cu
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>Select crypto to top up with</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Select crypto to top up with</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {currencies.map(cur => (
           <button key={cur} onClick={() => setCurrency(cur)} style={{
@@ -1693,24 +1694,24 @@ function LaxTopUp({ cardNo, onDone }: { cardNo: string; onDone: (amt: number, cu
             border: `1px solid ${currency === cur ? 'var(--blue)' : 'var(--border-default)'}`,
             background: currency === cur ? 'var(--blue-dim)' : 'transparent', cursor: 'pointer',
           }}>
-            <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}>{cur}</span>
+            <span style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 700 }}>{cur}</span>
           </button>
         ))}
       </div>
 
-      <div style={{ color: 'var(--text-secondary)', fontSize: 11.5, marginTop: 2 }}>Top up amount (USD)</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 2 }}>Top up amount (USD)</div>
       <input className="field" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal"
-        style={{ fontSize: 20, fontWeight: 800, textAlign: 'center', height: 52 }}/>
+        style={{ fontSize: 21.5, fontWeight: 800, textAlign: 'center', height: 52 }}/>
       <div style={{ display: 'flex', gap: 8 }}>
         {LAX_TOPUP_QUICK.map(q => (
           <button key={q} onClick={() => setAmount(String(q))} style={{
             flex: 1, padding: '9px 0', borderRadius: 9, border: '1px solid var(--border-default)',
-            background: 'transparent', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            background: 'transparent', color: 'var(--text-primary)', fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}>${q}</button>
         ))}
       </div>
 
-      {err && <div style={{ color: '#ef4444', fontSize: 11.5 }}>{err}</div>}
+      {err && <div style={{ color: '#ef4444', fontSize: 13 }}>{err}</div>}
 
       <button className="btn-primary" disabled={busy} onClick={submit}>
         {busy ? 'Processing…' : 'Top Up'}
@@ -1725,9 +1726,9 @@ function LaxSuccess({ last4, topUp, onDone }: { last4: string; topUp: { amount: 
       <div style={{ width: 72, height: 72, borderRadius: 36, background: 'rgba(34,197,94,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Check size={34} color="#22c55e" strokeWidth={3}/>
       </div>
-      <div style={{ color: 'var(--text-primary)', fontSize: 19, fontWeight: 800 }}>Top Up Successful!</div>
+      <div style={{ color: 'var(--text-primary)', fontSize: 20.5, fontWeight: 800 }}>Top Up Successful!</div>
       {topUp && (
-        <div style={{ color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 15, textAlign: 'center', lineHeight: 1.5 }}>
           <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>
             ${Number(topUp.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </span> has been added to your LAX Card •••• {last4}
@@ -1825,7 +1826,7 @@ function QuanttKillSwitchBanner({ ks }: { ks: QuanttKillSwitch | null }) {
   return (
     <div role="alert" style={{
       background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)',
-      borderRadius: 9, padding: '8px 10px', fontSize: 11, color: '#f59e0b', lineHeight: 1.4, marginBottom: 8,
+      borderRadius: 9, padding: '8px 10px', fontSize: 12.5, color: '#f59e0b', lineHeight: 1.4, marginBottom: 8,
     }}>
       {killSwitchMessage(ks)}
     </div>
@@ -1849,10 +1850,10 @@ function QuanttPanel({ overview, onSelectAgent, onCreateAgent, onViewAll }: {
       {p && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>{fmtUsd(p.equity)}</span>
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
+            <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-primary)' }}>{fmtUsd(p.equity)}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: posColor(p.pnl30d) }}>{pct(p.pnl30d)} · 30d</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
             {p.activeAgents} active agents · <span style={{ color: posColor(p.pnl24h) }}>{pct(p.pnl24h)} 24h</span>
           </div>
         </>
@@ -1862,7 +1863,7 @@ function QuanttPanel({ overview, onSelectAgent, onCreateAgent, onViewAll }: {
           key={a.id}
           onClick={() => onSelectAgent(a)}
           style={{
-            display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, marginTop: 6,
+            display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, marginTop: 6,
             width: '100%', background: 'transparent', border: 'none', padding: '3px 0', cursor: 'pointer', textAlign: 'left',
           }}
         >
@@ -1873,12 +1874,12 @@ function QuanttPanel({ overview, onSelectAgent, onCreateAgent, onViewAll }: {
       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
         <button
           onClick={onCreateAgent}
-          style={{ flex: 1, fontSize: 10.5, fontWeight: 700, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: 'transparent', color: 'var(--blue)', border: '1px solid var(--blue)' }}
+          style={{ flex: 1, fontSize: 12, fontWeight: 700, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: 'transparent', color: 'var(--blue)', border: '1px solid var(--blue)' }}
         >+ Create agent</button>
         {agents.length > 0 && (
           <button
             onClick={onViewAll}
-            style={{ flex: 1, fontSize: 10.5, fontWeight: 700, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default))' }}
+            style={{ flex: 1, fontSize: 12, fontWeight: 700, padding: '6px 8px', borderRadius: 7, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default))' }}
           >All agents</button>
         )}
       </div>
@@ -1906,9 +1907,9 @@ function QuanttAgentsListModal({ onClose, onSelectAgent, onCreateAgent }: {
     <Modal title="Your agents" onClose={onClose}>
       <div className="modal-body">
         <button className="btn-primary" style={{ marginBottom: 12 }} onClick={onCreateAgent}>+ Create agent</button>
-        {items == null && !err && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>}
-        {err && <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load agents — try again.</div>}
-        {items && items.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No agents yet.</div>}
+        {items == null && !err && <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Loading…</div>}
+        {err && <div style={{ fontSize: 14, color: '#ef4444' }}>Couldn&apos;t load agents — try again.</div>}
+        {items && items.length === 0 && <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>No agents yet.</div>}
         {items && items.map((it, i) => {
           const id = quanttRowId(it);
           if (!id) return null;
@@ -1924,8 +1925,8 @@ function QuanttAgentsListModal({ onClose, onSelectAgent, onCreateAgent }: {
                 padding: '10px 12px', marginBottom: 8, cursor: 'pointer',
               }}
             >
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)' }}>{name}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{status ?? '—'}</span>
+              <span style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text-primary)' }}>{name}</span>
+              <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{status ?? '—'}</span>
             </button>
           );
         })}
@@ -2011,7 +2012,7 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
       <div className="modal-body">
         <div style={{
           background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)',
-          borderRadius: 9, padding: '9px 11px', fontSize: 11, color: '#ef4444', lineHeight: 1.4, marginBottom: 12,
+          borderRadius: 9, padding: '9px 11px', fontSize: 12.5, color: '#ef4444', lineHeight: 1.4, marginBottom: 12,
         }}>
           Real funds, no sandbox. Once created you&apos;ll deposit real crypto into this agent&apos;s own wallet and it trades autonomously — there is no test mode to rehearse in.
         </div>
@@ -2037,7 +2038,7 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
                 type="button"
                 onClick={() => toggleChain(c.value)}
                 style={{
-                  padding: '6px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  padding: '6px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                   background: on ? 'var(--blue)' : 'transparent', color: on ? '#fff' : 'var(--text-secondary)',
                   border: `1px solid ${on ? 'var(--blue)' : 'var(--border-default)'}`,
                 }}
@@ -2060,7 +2061,7 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
                 onClick={() => setDexPreference(d)}
                 style={{
                   background: on ? 'var(--bg-card)' : 'transparent', border: 'none', cursor: 'pointer',
-                  padding: '5px 14px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  padding: '5px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700,
                   color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
                 }}
               >{d === 'kamet' ? 'Kamet' : 'Magma'}</button>
@@ -2074,7 +2075,7 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
         <button
           type="button"
           onClick={() => setAdvanced(v => !v)}
-          style={{ marginTop: 14, background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: 0 }}
+          style={{ marginTop: 14, background: 'none', border: 'none', color: 'var(--blue)', fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: 0 }}
         >{advanced ? '▾ Hide advanced' : '▸ Advanced risk settings'}</button>
 
         {advanced && (
@@ -2098,7 +2099,7 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
           </div>
         )}
 
-        {err && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 10 }}>{err}</div>}
+        {err && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 10 }}>{err}</div>}
         <button className="btn-primary" disabled={!canSubmit} style={{ marginTop: 16 }} onClick={submit}>
           {busy ? 'Creating…' : 'Create agent (real funds)'}
         </button>
@@ -2109,7 +2110,7 @@ function QuanttCreateAgentModal({ onClose, onCreated }: { onClose: () => void; o
 
 function quanttBtnGhost(color: string, disabled: boolean): React.CSSProperties {
   return {
-    flex: 1, padding: '7px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+    flex: 1, padding: '7px 8px', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
     background: 'transparent', color, border: `1px solid ${color}`,
     cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
   };
@@ -2123,19 +2124,19 @@ function QuanttOverviewTab({ status, halted, rows, loadErr, toggling, analyzing,
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {status && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14.5 }}>
           <span style={{ color: 'var(--text-secondary)' }}>Status</span>
           <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{status}</span>
         </div>
       )}
       {rows.map(([k, v]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, gap: 8 }}>
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14.5, gap: 8 }}>
           <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
           <span style={{ color: 'var(--text-primary)', fontWeight: 600, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v}</span>
         </div>
       ))}
       {loadErr && (
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
           Couldn&apos;t load additional details from Quantts — showing what&apos;s already known.
         </div>
       )}
@@ -2150,7 +2151,7 @@ function QuanttOverviewTab({ status, halted, rows, loadErr, toggling, analyzing,
       <button onClick={onAnalyze} disabled={analyzing} className="btn-outline" style={{ marginTop: 4 }}>
         {analyzing ? 'Analyzing…' : 'Analyze now'}
       </button>
-      {analyzeMsg && <div style={{ fontSize: 11, color: 'var(--blue)' }}>{analyzeMsg}</div>}
+      {analyzeMsg && <div style={{ fontSize: 12.5, color: 'var(--blue)' }}>{analyzeMsg}</div>}
     </div>
   );
 }
@@ -2180,31 +2181,31 @@ function QuanttWalletTab({ agentId }: { agentId: string }) {
     try { await navigator.clipboard.writeText(shown); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
   };
 
-  if (!wallet && !err) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading wallet…</div>;
-  if (err) return <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load the agent wallet.</div>;
+  if (!wallet && !err) return <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Loading wallet…</div>;
+  if (err) return <div style={{ fontSize: 14, color: '#ef4444' }}>Couldn&apos;t load the agent wallet.</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
         Agent wallet address
       </div>
-      <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 10.5 }}>
+      <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 12 }}>
         {shown ?? '—'}
-        {shown && shown !== address && <div style={{ fontSize: 9.5, marginTop: 4, opacity: 0.7 }}>EVM address {address}</div>}
+        {shown && shown !== address && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.7 }}>EVM address {address}</div>}
       </div>
       <button className="btn-outline" onClick={copy} disabled={!shown}>{copied ? '✓ Copied' : 'Copy address'}</button>
 
       {balanceRows.length > 0 && (
         <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {balanceRows.map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14.5 }}>
               <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
               <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{v}</span>
             </div>
           ))}
         </div>
       )}
-      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>
         Use the Deposit tab to fund this agent from your own wallet.
       </div>
     </div>
@@ -2256,22 +2257,22 @@ function QuanttDepositTab({ agentId, myAddress, funding }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{
         background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.35)',
-        borderRadius: 9, padding: '9px 11px', fontSize: 11, color: '#ef4444', lineHeight: 1.4,
+        borderRadius: 9, padding: '9px 11px', fontSize: 12.5, color: '#ef4444', lineHeight: 1.4,
       }}>
         Real funds, no sandbox. Step 1 below sends crypto on-chain — there is no way to undo a broadcast transfer.
       </div>
 
       <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
           Step 1 — send funds
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
           Send crypto from your Thanos wallet to this agent&apos;s own address.
         </div>
-        <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 10, marginBottom: 8 }}>
+        <div className="addr-box" style={{ wordBreak: 'break-all', fontSize: 11.5, marginBottom: 8 }}>
           {shown ?? (err ? 'Unavailable' : 'Loading…')}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
           {!funding ? 'Checking which network this agent uses…'
             : !fund ? 'Couldn’t read which network this agent trades on — check it before sending.'
             : <>
@@ -2294,17 +2295,17 @@ function QuanttDepositTab({ agentId, myAddress, funding }: {
       </div>
 
       <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
           Step 2 — tell Quantt
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
           Only after the on-chain transfer above has confirmed — this is a separate call telling Quantt to recognize and credit it.
         </div>
         <button className="btn-outline" disabled={confirming} onClick={confirmDeposit}>
           {confirming ? 'Confirming…' : "I've sent the funds — confirm deposit"}
         </button>
-        {confirmResult === 'ok' && <div style={{ fontSize: 11, color: '#22c55e', marginTop: 8 }}>Deposit confirmed with Quantt.</div>}
-        {confirmResult === 'err' && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 8 }}>{confirmMsg}</div>}
+        {confirmResult === 'ok' && <div style={{ fontSize: 12.5, color: '#22c55e', marginTop: 8 }}>Deposit confirmed with Quantt.</div>}
+        {confirmResult === 'err' && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 8 }}>{confirmMsg}</div>}
       </div>
 
       {showSend && shown && (
@@ -2359,24 +2360,24 @@ function QuanttDecisionsTab({ agentId }: { agentId: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {liveStatus === 'live' && <div style={{ color: '#22c55e', fontSize: 10.5, fontWeight: 700 }}>● Live</div>}
+      {liveStatus === 'live' && <div style={{ color: '#22c55e', fontSize: 12, fontWeight: 700 }}>● Live</div>}
       {(liveStatus === 'connecting' || liveStatus === 'retrying') && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Connecting to live updates…</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Connecting to live updates…</div>
       )}
-      {items.length === 0 && !loading && !err && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>No decisions yet.</div>}
-      {err && <div style={{ fontSize: 12, color: '#ef4444' }}>Couldn&apos;t load decisions.</div>}
+      {items.length === 0 && !loading && !err && <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>No decisions yet.</div>}
+      {err && <div style={{ fontSize: 14, color: '#ef4444' }}>Couldn&apos;t load decisions.</div>}
       {items.map((it, i) => {
         const skip = ['action', 'decision', 'type', 'createdAt', 'timestamp', 'created_at', 'date', 'id', '_id'];
         const label = quanttPickStr(quanttAsObj(it), ['action', 'decision', 'type']) ?? 'Decision';
         const when = quanttPickStr(quanttAsObj(it), ['createdAt', 'timestamp', 'created_at', 'date']);
         return (
           <div key={quanttRowId(it) ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 9 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, fontWeight: 700, marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
               <span style={{ color: 'var(--text-primary)' }}>{label}</span>
               {when && <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{when}</span>}
             </div>
             {quanttObjRows(it, skip).map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, gap: 8, marginTop: 2 }}>
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8, marginTop: 2 }}>
                 <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
                 <span style={{ color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
               </div>
@@ -2407,16 +2408,16 @@ function QuanttListTab({ agentId, fetcher, emptyLabel, errLabel }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 
-  if (items == null && !err) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>;
-  if (err) return <div style={{ fontSize: 12, color: '#ef4444' }}>{errLabel}</div>;
-  if (items!.length === 0) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{emptyLabel}</div>;
+  if (items == null && !err) return <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Loading…</div>;
+  if (err) return <div style={{ fontSize: 14, color: '#ef4444' }}>{errLabel}</div>;
+  if (items!.length === 0) return <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{emptyLabel}</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {items!.map((it, i) => (
         <div key={quanttRowId(it) ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 9, display: 'flex', flexDirection: 'column', gap: 3 }}>
           {quanttObjRows(it, ['id', '_id']).map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, gap: 8 }}>
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8 }}>
               <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
               <span style={{ color: 'var(--text-primary)', fontWeight: 600, textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
             </div>
@@ -2504,23 +2505,23 @@ function QuanttWithdrawTab({ agentId, seed, myAddress }: { agentId: string; seed
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {boundAddress === undefined && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Checking your verified withdrawal address…</div>}
+      {boundAddress === undefined && <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Checking your verified withdrawal address…</div>}
 
       {boundAddress === null && (
         <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, padding: 10 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
             Withdrawals only pay out to a verified address — bind your own wallet address first (signs a message, no funds move).
           </div>
           <button className="btn-primary" disabled={binding || !myAddress} onClick={bind}>
             {binding ? 'Verifying…' : 'Verify my wallet address'}
           </button>
-          {bindErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 8 }}>{bindErr}</div>}
+          {bindErr && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 8 }}>{bindErr}</div>}
         </div>
       )}
 
       {boundAddress && (
         <>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
             Verified withdrawal address: <span style={{ color: 'var(--text-primary)', fontWeight: 600, wordBreak: 'break-all' }}>{boundAddress}</span>
           </div>
           <label className="field-label">AMOUNT</label>
@@ -2530,31 +2531,31 @@ function QuanttWithdrawTab({ agentId, seed, myAddress }: { agentId: string; seed
           <button className="btn-primary" disabled={!canWithdraw} style={{ marginTop: 10 }} onClick={withdraw}>
             {withdrawing ? 'Withdrawing…' : 'Withdraw'}
           </button>
-          {withdrawOk && <div style={{ fontSize: 11, color: '#22c55e' }}>Withdrawal submitted.</div>}
-          {withdrawErr && <div style={{ fontSize: 11, color: '#ef4444' }}>{withdrawErr}</div>}
+          {withdrawOk && <div style={{ fontSize: 12.5, color: '#22c55e' }}>Withdrawal submitted.</div>}
+          {withdrawErr && <div style={{ fontSize: 12.5, color: '#ef4444' }}>{withdrawErr}</div>}
         </>
       )}
 
       <div style={{ marginTop: 6, paddingTop: 10, borderTop: '1px solid var(--border-default)' }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
           Withdrawal history
         </div>
-        {history == null && !historyErr && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Loading…</div>}
-        {historyErr && <div style={{ fontSize: 11, color: '#ef4444' }}>Couldn&apos;t load withdrawal history.</div>}
-        {history && history.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>No withdrawals yet.</div>}
+        {history == null && !historyErr && <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>Loading…</div>}
+        {historyErr && <div style={{ fontSize: 12.5, color: '#ef4444' }}>Couldn&apos;t load withdrawal history.</div>}
+        {history && history.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>No withdrawals yet.</div>}
         {history && history.map((it, i) => {
           const id = quanttRowId(it);
           const pending = withdrawalResumable(it);
           return (
             <div key={id ?? i} style={{ border: '1px solid var(--border-default)', borderRadius: 9, padding: 8, marginBottom: 6 }}>
               {quanttObjRows(it, ['id', '_id']).map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, gap: 8 }}>
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 8 }}>
                   <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
                   <span style={{ color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
                 </div>
               ))}
               {pending && id && (
-                <button className="btn-outline" style={{ marginTop: 6, fontSize: 10.5, padding: '5px 8px' }} disabled={resuming === id} onClick={() => resume(id)}>
+                <button className="btn-outline" style={{ marginTop: 6, fontSize: 12, padding: '5px 8px' }} disabled={resuming === id} onClick={() => resume(id)}>
                   {resuming === id ? 'Resuming…' : 'Resume'}
                 </button>
               )}
@@ -2608,9 +2609,9 @@ function QuanttSettingsTab({ agentId, raw, onSaved }: { agentId: string; raw: un
   };
   useEffect(() => { if (config) reset(config); }, [config]);
 
-  if (!raw) return <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Loading…</div>;
+  if (!raw) return <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Loading…</div>;
   if (!config) {
-    return <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Settings aren&apos;t available for this agent right now — Quantts didn&apos;t return its full configuration.</div>;
+    return <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Settings aren&apos;t available for this agent right now — Quantts didn&apos;t return its full configuration.</div>;
   }
 
   const save = async () => {
@@ -2642,10 +2643,10 @@ function QuanttSettingsTab({ agentId, raw, onSaved }: { agentId: string; raw: un
     } finally { setBusy(false); }
   };
 
-  const labelStyle: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4 };
+  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4 };
   const inputStyle: React.CSSProperties = {
     width: '100%', boxSizing: 'border-box', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-    borderRadius: 8, padding: '7px 9px', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'inherit',
+    borderRadius: 8, padding: '7px 9px', color: 'var(--text-primary)', fontSize: 14, fontFamily: 'inherit',
   };
   const showPrompt = config.strategy === 'custom' || config.strategyPrompt !== null;
   return (
@@ -2656,7 +2657,7 @@ function QuanttSettingsTab({ agentId, raw, onSaved }: { agentId: string; raw: un
       <select id={`${uid}-tf`} style={inputStyle} value={timeframe} onChange={e => setTimeframe(e.target.value as QuanttTimeframe)}>
         {QUANTT_TIMEFRAMES.map(t => <option key={t} value={t}>{t}</option>)}
       </select>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>
         <input type="checkbox" checked={autopilot} onChange={e => setAutopilot(e.target.checked)}/>
         Autopilot — execute decisions without asking first
       </label>
@@ -2668,16 +2669,16 @@ function QuanttSettingsTab({ agentId, raw, onSaved }: { agentId: string; raw: un
       )}
       {QUANTT_EDITABLE_NUMBERS.map(([key, label]) => (
         <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <label htmlFor={`${uid}-${key}`} style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{label}</label>
+          <label htmlFor={`${uid}-${key}`} style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{label}</label>
           <input id={`${uid}-${key}`} style={{ ...inputStyle, width: 80, textAlign: 'right' }} inputMode="decimal"
             value={numbers[key]} onChange={e => setNumbers(n => ({ ...n, [key]: e.target.value }))}/>
         </div>
       ))}
-      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
         Strategy {config.strategy} · {config.chains.join(', ')} · {config.tokens.join(', ')} · {config.quoteAsset} — to trade other markets, create a new agent.
       </div>
-      {errors.map(e => <div key={e} style={{ fontSize: 11, color: '#ef4444' }}>{e}</div>)}
-      {saved && <div style={{ fontSize: 11, color: '#22c55e' }}>Settings saved.</div>}
+      {errors.map(e => <div key={e} style={{ fontSize: 12.5, color: '#ef4444' }}>{e}</div>)}
+      {saved && <div style={{ fontSize: 12.5, color: '#22c55e' }}>Settings saved.</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn-outline" style={{ flex: 1 }} onClick={() => { reset(config); setErrors([]); setSaved(false); }}>Reset</button>
         <button className="btn-primary" style={{ flex: 1 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button>
@@ -2779,7 +2780,7 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
               key={t.key}
               onClick={() => setTab(t.key)}
               style={{
-                flexShrink: 0, padding: '5px 10px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, cursor: 'pointer',
+                flexShrink: 0, padding: '5px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 background: tab === t.key ? 'var(--blue)' : 'transparent',
                 color: tab === t.key ? '#fff' : 'var(--text-secondary)',
                 border: `1px solid ${tab === t.key ? 'var(--blue)' : 'var(--border-default)'}`,
@@ -2804,7 +2805,7 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
         {tab === 'trades'    && <QuanttTradesTab agentId={agent.id}/>}
         {tab === 'positions' && <QuanttPositionsTab agentId={agent.id}/>}
 
-        {actionErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 10 }}>{actionErr}</div>}
+        {actionErr && <div style={{ fontSize: 12.5, color: '#ef4444', marginTop: 10 }}>{actionErr}</div>}
 
         <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-default)' }}>
           <button
@@ -2812,7 +2813,7 @@ function QuanttAgentDetailModal({ agent, onClose, onChanged }: {
             disabled={deleting}
             style={{
               width: '100%', padding: '8px 12px', borderRadius: 9, background: 'transparent',
-              color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', fontSize: 11.5, fontWeight: 700,
+              color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', fontSize: 13, fontWeight: 700,
               cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
             }}
           >{deleting ? 'Deleting…' : 'Delete agent'}</button>
@@ -2873,9 +2874,9 @@ function AIAssistant() {
 
   return (
     <div className="card" style={{ padding: 16, marginTop: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 11, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>AI Assistant</span>
-        {session && <span style={{ color: 'var(--blue)', fontSize: 11, fontWeight: 700 }}>● Connected</span>}
+        {session && <span style={{ color: 'var(--blue)', fontSize: 12.5, fontWeight: 700 }}>● Connected</span>}
       </div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <div style={{
@@ -2886,8 +2887,8 @@ function AIAssistant() {
           <Sparkles size={16}/>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>Quantts Agents</div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--text-primary)' }}>Quantts Agents</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: 2 }}>
             {session
               ? 'Signed in with your wallet — your AI trading agents.'
               : 'AI trading agents you fund and monitor across chains. Sign in with your wallet — no password.'}
@@ -2901,17 +2902,17 @@ function AIAssistant() {
               onViewAll={() => setShowAll(true)}
             />
           )}
-          {err && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6, lineHeight: 1.35 }}>{err}</div>}
+          {err && <div style={{ fontSize: 12.5, color: '#ff6b6b', marginTop: 6, lineHeight: 1.35 }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             {session ? (
               <>
                 <button
                   onClick={() => browser.tabs.create({ url: QUANTT_AGENTS_URL })}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' }}
+                  style={{ fontSize: 14, fontWeight: 700, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' }}
                 >Open Quantts ↗</button>
                 <button
                   onClick={disconnect}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default))' }}
+                  style={{ fontSize: 14, fontWeight: 700, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default))' }}
                 >Disconnect</button>
               </>
             ) : (
@@ -2919,11 +2920,11 @@ function AIAssistant() {
                 <button
                   onClick={connect}
                   disabled={busy || !seed?.length}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: busy || !seed?.length ? 'default' : 'pointer', background: 'var(--blue)', color: '#fff', opacity: busy || !seed?.length ? 0.6 : 1 }}
+                  style={{ fontSize: 14, fontWeight: 700, padding: '7px 12px', borderRadius: 9, border: 'none', cursor: busy || !seed?.length ? 'default' : 'pointer', background: 'var(--blue)', color: '#fff', opacity: busy || !seed?.length ? 0.6 : 1 }}
                 >{busy ? 'Connecting…' : 'Connect with Thanos'}</button>
                 <button
                   onClick={() => browser.tabs.create({ url: QUANTT_AGENTS_URL })}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default))' }}
+                  style={{ fontSize: 14, fontWeight: 700, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default))' }}
                 >Open ↗</button>
               </>
             )}
@@ -3231,7 +3232,7 @@ function DiscoverScreen() {
       ))}
       {groups.length === 0 && !isLink && <div className="row-sub" style={{ padding: 12 }}>No apps match “{q}”.</div>}
 
-      <div style={{ display: 'flex', gap: 6, marginTop: 10, fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 10, fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
         <span style={{ flexShrink: 0, marginTop: 1, color: '#10b981', display: 'inline-flex' }}><Shield size={12}/></span>
         <span>Always check the URL in your browser before connecting your wallet.</span>
       </div>
@@ -3252,8 +3253,19 @@ function CustomAssetsSection() {
   const [tChain, setTChain] = useState<number>(0); const [tAddr, setTAddr] = useState('');
   const [tBusy, setTBusy] = useState(false); const [tErr, setTErr] = useState<string | null>(null);
 
+  // This only refreshes the list shown HERE; Home re-reads its own balances
+  // off custom-assets' change notification (see usePortfolio).
   const refresh = () => { setChains([...customChains()]); setTokens([...customTokens()]); };
   useEffect(() => { void loadCustomAssets().then(refresh); }, []);
+
+  // The popup is a fixed 360x600 box, so a form opened from the bottom of a
+  // long Settings page renders below the fold — the contract-address field
+  // looked missing. Bring the open form into view.
+  const formRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!openForm) return;
+    formRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [openForm]);
 
   const nets = allEvmChains();
 
@@ -3285,9 +3297,9 @@ function CustomAssetsSection() {
     finally { setTBusy(false); }
   };
 
-  const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '7px 9px', fontSize: 12, marginTop: 6 };
-  const btn: React.CSSProperties = { fontSize: 12, fontWeight: 700, padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' };
-  const link: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 };
+  const inp: React.CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '7px 9px', fontSize: 14, marginTop: 6 };
+  const btn: React.CSSProperties = { fontSize: 14, fontWeight: 700, padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--blue)', color: '#fff' };
+  const link: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: 'var(--blue)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 };
 
   return (
     <>
@@ -3322,12 +3334,12 @@ function CustomAssetsSection() {
         )}
 
         {openForm === 'net' && (
-          <div style={{ paddingTop: 8 }}>
+          <div ref={formRef} style={{ paddingTop: 8 }}>
             <input style={inp} placeholder="Network name (e.g. Sepolia)" value={nName} onChange={(e) => setNName(e.target.value)}/>
             <input style={inp} placeholder="RPC URL (https://…)" value={nRpc} onChange={(e) => setNRpc(e.target.value)}/>
             <input style={inp} placeholder="Currency symbol (e.g. ETH)" value={nSym} onChange={(e) => setNSym(e.target.value)}/>
             <input style={inp} placeholder="Block explorer URL (optional)" value={nExp} onChange={(e) => setNExp(e.target.value)}/>
-            {nErr && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>{nErr}</div>}
+            {nErr && <div style={{ fontSize: 12.5, color: '#ff6b6b', marginTop: 6 }}>{nErr}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
               <button style={{ ...btn, opacity: nBusy ? 0.6 : 1 }} disabled={nBusy} onClick={addNet}>{nBusy ? 'Checking…' : 'Add network'}</button>
               <button style={link} onClick={() => setOpenForm('')}>Cancel</button>
@@ -3335,12 +3347,12 @@ function CustomAssetsSection() {
           </div>
         )}
         {openForm === 'tok' && (
-          <div style={{ paddingTop: 8 }}>
+          <div ref={formRef} style={{ paddingTop: 8 }}>
             <select style={inp} value={tChain || nets[0]?.chainId} onChange={(e) => setTChain(Number(e.target.value))}>
               {nets.map((c) => <option key={c.chainId} value={c.chainId}>{c.name}</option>)}
             </select>
             <input style={inp} placeholder="Token contract (0x…)" value={tAddr} onChange={(e) => setTAddr(e.target.value)}/>
-            {tErr && <div style={{ fontSize: 11, color: '#ff6b6b', marginTop: 6 }}>{tErr}</div>}
+            {tErr && <div style={{ fontSize: 12.5, color: '#ff6b6b', marginTop: 6 }}>{tErr}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
               <button style={{ ...btn, opacity: tBusy ? 0.6 : 1 }} disabled={tBusy} onClick={addTok}>{tBusy ? 'Checking…' : 'Add token'}</button>
               <button style={link} onClick={() => setOpenForm('')}>Cancel</button>
@@ -3466,7 +3478,7 @@ function SettingsScreen({
               // rate is unavailable) — reflect that in the control.
               void applyDisplayCurrency(pick).then(setFiat);
             }}
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '5px 8px', fontSize: 12 }}
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '5px 8px', fontSize: 14 }}
           >
             {FX_CURRENCIES.map(c => <option key={c}>{c}</option>)}
           </select>
@@ -3520,7 +3532,7 @@ function SettingsScreen({
             className="set-select"
             value={sessionDur}
             onChange={(e) => { void onChangeDuration(e.target.value as SessionDuration); }}
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '5px 8px', fontSize: 12 }}
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '5px 8px', fontSize: 14 }}
           >
             {SESSION_DURATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -3704,7 +3716,7 @@ function shortTxHash(h: string): string {
 }
 function TxDetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12, gap: 10 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 14, gap: 10 }}>
       <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
       <span style={{ fontWeight: 600, textAlign: 'right', minWidth: 0, wordBreak: 'break-word' }}>{children}</span>
     </div>
@@ -3792,8 +3804,8 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
     <Modal title={title} onClose={onClose}>
       <div className="modal-body">
         <div style={{ textAlign: 'center', padding: '2px 0 14px' }}>
-          <div style={{ fontSize: 24, fontWeight: 800 }}>{fiat ? `≈ ${fiat}` : `${tx.pos ? '+' : '-'}${amountStr} ${tx.sym}`}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>{tx.pos ? '+' : '-'}{amountStr} {tx.sym}</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{fiat ? `≈ ${fiat}` : `${tx.pos ? '+' : '-'}${amountStr} ${tx.sym}`}</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 3 }}>{tx.pos ? '+' : '-'}{amountStr} {tx.sym}</div>
         </div>
 
         <div className="card" style={{ padding: '2px 12px', marginBottom: 10 }}>
@@ -3816,7 +3828,7 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
             <TxDetailRow label="Network fee">
               <span>
                 <div>{feeText}</div>
-                {feeUsdText && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{feeUsdText}</div>}
+                {feeUsdText && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 500 }}>{feeUsdText}</div>}
               </span>
             </TxDetailRow>
             <TxDetailRow label="Nonce">{nonceText}</TxDetailRow>
@@ -3834,7 +3846,7 @@ function TxDetailModal({ tx, onClose }: { tx: DisplayTx; onClose: () => void }) 
                   <span style={{ fontFamily: 'monospace' }} title={isLitho ? nativeHash : tx.txHash}>{shortTxHash((isLitho && nativeHash) || tx.txHash)}</span>
                   <TxCopyBtn value={(isLitho && nativeHash) || tx.txHash} what="transaction hash"/>
                   {isLitho && (
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, marginTop: 2 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 500, marginTop: 2 }}>
                       EVM hash <span style={{ fontFamily: 'monospace' }} title={tx.txHash}>{shortTxHash(tx.txHash)}</span>
                       <TxCopyBtn value={tx.txHash} what="EVM hash"/>
                     </div>
@@ -3884,14 +3896,14 @@ function UpdateBanner() {
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
       background: 'var(--blue-dim, #14294f)', borderBottom: '1px solid var(--border-default, #2a3550)',
-      fontSize: 12.5, color: 'var(--text-primary, #fff)',
+      fontSize: 14.5, color: 'var(--text-primary, #fff)',
     }}>
       <span style={{ flex: 1 }}>A new version of Thanos Wallet is ready.</span>
       <button
         onClick={() => { try { browser.runtime.reload(); } catch { /* ignore */ } }}
         style={{
           background: 'var(--blue, #3b7af7)', color: '#fff', border: 'none', borderRadius: 8,
-          padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          padding: '6px 12px', fontSize: 14, fontWeight: 700, cursor: 'pointer',
         }}
       >
         Update now
@@ -3914,11 +3926,11 @@ function MainnetWelcomeModal() {
     <div className="modal-back" onClick={() => setVisible(false)}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign: 'center', padding: 22 }}>
         <img src="/icons/icon128.png" alt="Thanos" width={56} height={56} style={{ display: 'block', margin: '0 auto 14px', objectFit: 'contain' }}/>
-        <h2 style={{ fontSize: 17, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos Wallet</h2>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 6px' }}>
+        <h2 style={{ fontSize: 18.5, fontWeight: 800, margin: '0 0 6px' }}>Welcome to Thanos Wallet</h2>
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 6px' }}>
           Your wallet is on <strong>Lithosphere</strong> (chain&nbsp;9005). The native coin is <strong>LITHO</strong>; Bitcoin, Solana, Cosmos and EVM networks are built in too.
         </p>
-        <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 16px' }}>
+        <p style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 16px' }}>
           Testnets such as Makalu aren&apos;t included — add one in Settings → Networks &amp; tokens.
         </p>
         <button type="button" className="btn-primary" style={{ width: '100%' }} onClick={() => setVisible(false)}>Got it</button>
@@ -3997,7 +4009,7 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
   const stroke = up ? '#10b981' : '#f87171';
   const proxy = TD_PROXY[sym];
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 14 }}>
       <span style={{ color: 'var(--text-muted)' }}>{label}</span>
       <span style={{ fontWeight: 600 }}>{children}</span>
     </div>
@@ -4005,8 +4017,8 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
   return (
     <Modal title={`${coin?.name ?? sym} (${sym})`} onClose={onClose}>
       <div className="modal-body">
-        <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>{price > 0 ? tdPrice(price) : '—'}</div>
-        {proxy && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>Price &amp; market data track {proxy}.</div>}
+        <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>{price > 0 ? tdPrice(price) : '—'}</div>
+        {proxy && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>Price &amp; market data track {proxy}.</div>}
         <div style={{ margin: '12px 0', minHeight: H }}>
           {histLoading && <div style={{ height: H, borderRadius: 10, background: 'var(--bg-elevated)' }}/>}
           {!histLoading && line && (
@@ -4016,7 +4028,7 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
             </svg>
           )}
           {!histLoading && !line && (
-            <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, background: 'var(--bg-elevated)', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '0 16px', lineHeight: 1.5 }}>
+            <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, background: 'var(--bg-elevated)', fontSize: 12.5, color: 'var(--text-muted)', textAlign: 'center', padding: '0 16px', lineHeight: 1.5 }}>
               {hist?.failed ? 'Chart temporarily unavailable. Try again shortly.' : `No price history for ${sym} yet.`}
             </div>
           )}
@@ -4024,7 +4036,7 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
           {TD_RANGES.map(r => (
             <button key={r.key} onClick={() => setRange(r.key)} style={{
-              flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 10, fontWeight: 700, cursor: 'pointer', border: 'none',
+              flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: 'none',
               background: range === r.key ? 'var(--bg-elevated)' : 'transparent',
               color: range === r.key ? 'var(--text-primary)' : 'var(--text-muted)',
             }}>{r.label}</button>
@@ -4034,24 +4046,24 @@ function TokenDetailModal({ sym, chainId, onClose, onSend, onReceive }: {
           <button className="btn-primary" style={{ flex: 1 }} onClick={onSend}>Send</button>
           <button className="btn-outline" style={{ flex: 1 }} onClick={onReceive}>Receive</button>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>Your balance</div>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>Your balance</div>
         <Row label={coin?.name ?? sym}><span style={{ fontFamily: 'Geist Mono, monospace' }}>{coin?.balanceText ?? '0'} {sym}</span></Row>
-        <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 2px' }}>Token details</div>
+        <div style={{ fontSize: 15, fontWeight: 800, margin: '14px 0 2px' }}>Token details</div>
         <Row label="Network">{network}</Row>
         {coin?.tokenAddress
           ? <Row label="Contract"><HiAddr value={coin.tokenAddress} head={6} tail={6}/></Row>
           : <Row label="Contract">{coin?.native ? 'Native' : '—'}</Row>}
         <Row label="Decimals">{coin?.decimals ?? 18}</Row>
-        <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 2px' }}>Market details</div>
-        {proxy && <div style={{ fontSize: 10, color: 'var(--text-muted)', margin: '2px 0' }}>Figures are for {proxy}.</div>}
+        <div style={{ fontSize: 15, fontWeight: 800, margin: '14px 0 2px' }}>Market details</div>
+        {proxy && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: '2px 0' }}>Figures are for {proxy}.</div>}
         <Row label="Market cap">{tdCompact(market?.marketCapUsd ?? null)}</Row>
         <Row label="Volume">{tdCompact(market?.totalVolumeUsd ?? null)}</Row>
         <Row label="All-time high">{market?.athUsd != null ? tdPrice(market.athUsd) : '—'}</Row>
-        <div style={{ fontSize: 13, fontWeight: 800, margin: '14px 0 6px' }}>Your activity</div>
-        {rows.length === 0 && <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
+        <div style={{ fontSize: 15, fontWeight: 800, margin: '14px 0 6px' }}>Your activity</div>
+        {rows.length === 0 && <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 12.5, color: 'var(--text-muted)' }}>No {sym} activity yet.</div>}
         {rows.map(t => (
-          <div key={t.id} onClick={() => setTxDetail(t)} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12, cursor: 'pointer' }}>
-            <div><div style={{ fontWeight: 600 }}>{t.label}{t.pending && <span className="pending-pill">Pending</span>}{t.status === 'failed' && <span className="failed-pill">Failed</span>}</div><div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{t.time}{t.network ? ` · ${t.network}` : ''}</div></div>
+          <div key={t.id} onClick={() => setTxDetail(t)} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 14, cursor: 'pointer' }}>
+            <div><div style={{ fontWeight: 600 }}>{t.label}{t.pending && <span className="pending-pill">Pending</span>}{t.status === 'failed' && <span className="failed-pill">Failed</span>}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{t.time}{t.network ? ` · ${t.network}` : ''}</div></div>
             <span style={{ fontFamily: 'Geist Mono, monospace', color: t.pos ? '#10b981' : 'var(--text-secondary)' }}>{t.amount}</span>
           </div>
         ))}
@@ -4068,7 +4080,7 @@ function NativeAssetModal({ nativeTarget, onClose }: { nativeTarget: string; onC
   const { coins } = usePortfolioCtx();
   const coin = coins.find(c => c.nativeTarget === nativeTarget);
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 12 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 14 }}>
       <span style={{ color: 'var(--text-muted)' }}>{label}</span>
       <span style={{ fontWeight: 600 }}>{children}</span>
     </div>
@@ -4076,12 +4088,12 @@ function NativeAssetModal({ nativeTarget, onClose }: { nativeTarget: string; onC
   return (
     <Modal title={`${coin?.name ?? 'Lithosphere Algorithmic'} (${coin?.sym ?? 'LAX'})`} onClose={onClose}>
       <div className="modal-body" data-testid="native-asset">
-        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>Your balance</div>
-        <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 2 }}>Your balance</div>
+        <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Geist Mono, monospace' }}>
           {coin && !coin.readError ? `${coin.balanceText} ${coin.sym}` : 'Unavailable'}
         </div>
-        {coin?.readError && <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>Couldn’t read the balance: {coin.readError}</div>}
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '10px 0 14px', lineHeight: 1.5 }}>
+        {coin?.readError && <div style={{ fontSize: 12.5, color: '#f87171', marginTop: 4 }}>Couldn’t read the balance: {coin.readError}</div>}
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '10px 0 14px', lineHeight: 1.5 }}>
           A native Lithic token on Makalu (testnet). View only — sending native LAX isn’t available in Thanos yet.
           This is not the older LAX token on Makalu (0x1Cde…4B8d).
         </div>
@@ -4149,12 +4161,12 @@ function OwnAccountPicker({ seed, current, to, chainId, onPick }: {
                 background: sel ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer', color: 'inherit', textAlign: 'left',
               }}
             >
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,122,247,0.14)', color: 'var(--blue, #3b7af7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 700 }}>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,122,247,0.14)', color: 'var(--blue, #3b7af7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15, fontWeight: 700 }}>
                 {a.idx + 1}
               </span>
               <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{shown.slice(0, head)}…{shown.slice(-6)}</span>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{a.name}</span>
+                <span style={{ fontSize: 12.5, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace' }}>{shown.slice(0, head)}…{shown.slice(-6)}</span>
               </span>
               {sel && <span style={{ marginLeft: 'auto', color: 'var(--blue, #3b7af7)' }}>✓</span>}
             </button>
@@ -4301,21 +4313,21 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
   if (txHash) return (
     <Modal title="Send" onClose={onClose}>
       <div className="modal-body" style={{ alignItems: 'center', textAlign: 'center' }}>
-        <div style={{ fontSize: 28 }}>✓</div>
+        <div style={{ fontSize: 30 }}>✓</div>
         <div style={{ fontWeight: 700 }}>Transaction sent</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
           {amt} {chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym} broadcast on {chain === 'evm' ? (evmChainOf(coin?.chainId)?.name ?? 'EVM') : EXT_CHAIN_META[chain].label}
         </div>
         {sentChainId === LITHO_MAINNET_ID ? (
           <div style={{ margin: '8px 0' }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{sentNative ? 'Transaction hash' : 'EVM hash'}</div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{sentNative ?? txHash}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>{sentNative ? 'Transaction hash' : 'EVM hash'}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{sentNative ?? txHash}</div>
             {sentNative && (
-              <div style={{ fontSize: 8.5, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', marginTop: 4, opacity: 0.8 }}>EVM hash {txHash}</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', marginTop: 4, opacity: 0.8 }}>EVM hash {txHash}</div>
             )}
           </div>
         ) : (
-          <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', margin: '8px 0' }}>{txHash}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all', margin: '8px 0' }}>{txHash}</div>
         )}
         <button className="btn-primary" onClick={onClose}>Done</button>
       </div>
@@ -4336,7 +4348,7 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
                 onClick={() => { setChain(c); setTo(''); setAmt(''); setMemo(''); }}
                 style={{
                   flex: 1, padding: '6px 8px', borderRadius: 999, cursor: 'pointer',
-                  fontSize: 10, fontWeight: 700,
+                  fontSize: 11.5, fontWeight: 700,
                   background: selected ? 'var(--blue, #3b7af7)' : 'transparent',
                   color: selected ? '#fff' : 'var(--text-secondary)',
                   border: `1px solid ${selected ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
@@ -4357,14 +4369,14 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
               {coins.map(c => <option key={coinKey(c)} value={coinKey(c)}>{c.sym} — {c.name}</option>)}
             </select>
             {seedMissing && (
-              <div role="status" style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.4, marginTop: 6 }}>
+              <div role="status" style={{ fontSize: 12.5, color: '#f59e0b', lineHeight: 1.4, marginTop: 6 }}>
                 You don&apos;t hold any {initialCoin} on {initialNetworkLabel ?? 'that network'} yet. Add some there first —
                 the same token on another network won&apos;t reach this address.
               </div>
             )}
           </>
         ) : (
-          <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg-elevated)', fontSize: 12 }}>
+          <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg-elevated)', fontSize: 14 }}>
             Native <strong>{EXT_CHAIN_META[chain].sym}</strong> on {EXT_CHAIN_META[chain].label}
           </div>
         )}
@@ -4372,11 +4384,11 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
         <label className="field-label" style={{ marginTop: 14 }}>RECIPIENT</label>
         <input className="field" placeholder={evmChainId != null && evmChainId !== LITHO_MAINNET_ID ? '0x… or name.litho' : EXT_CHAIN_META[chain].placeholder} value={to} onChange={e => setTo(e.target.value)}/>
         {recipientWarning && (
-          <div role="alert" style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>{recipientWarning}</div>
+          <div role="alert" style={{ fontSize: 12.5, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>{recipientWarning}</div>
         )}
         {chain === 'evm' && <OwnAccountPicker seed={seed} current={address ?? ''} to={to} chainId={coin?.chainId} onPick={setTo}/>}
         {!!to.trim() && !recipientOk && chain !== 'evm' && (
-          <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>Not a valid {EXT_CHAIN_META[chain].label} address</div>
+          <div style={{ fontSize: 12.5, color: '#dc2626', marginTop: 4 }}>Not a valid {EXT_CHAIN_META[chain].label} address</div>
         )}
 
         {chain === 'cosmos' && (
@@ -4389,17 +4401,17 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
         <label className="field-label" style={{ marginTop: 14 }}>AMOUNT</label>
         <input className="field" placeholder="0.00" type="number" value={amt} onChange={e => setAmt(e.target.value)}/>
         {chain === 'evm' && (
-          <div style={{ fontSize: 11, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 6 }}>
+          <div style={{ fontSize: 12.5, color: overBalance ? '#dc2626' : 'var(--text-muted)', marginTop: 6 }}>
             {overBalance ? 'Amount exceeds balance' : `Balance: ${coin?.balanceText ?? '—'} ${coin?.sym ?? ''}`}
             {coin && (
               <button
-                style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 11, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}
+                style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 12.5, cursor: 'pointer', marginLeft: 8, fontWeight: 600 }}
                 onClick={() => setAmt(String(coin.balance))}
               >MAX</button>
             )}
           </div>
         )}
-        {error && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 8 }}>{error}</div>}
+        {error && <div style={{ fontSize: 12.5, color: '#dc2626', marginTop: 8 }}>{error}</div>}
         <button className="btn-primary" disabled={!canSend} style={{ marginTop: 16 }} onClick={doSend}>
           {sending ? 'Sending…' : `Send ${chain === 'evm' ? (coin?.sym ?? '') : EXT_CHAIN_META[chain].sym}`}
         </button>
@@ -4563,7 +4575,7 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
   });
   const backLink: React.CSSProperties = {
     background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
-    fontSize: 12, fontWeight: 600, padding: '4px 2px', marginBottom: 4, alignSelf: 'flex-start',
+    fontSize: 14, fontWeight: 600, padding: '4px 2px', marginBottom: 4, alignSelf: 'flex-start',
   };
 
   /* Step 1: pick network */
@@ -4590,13 +4602,13 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
       <Modal title="Select asset" onClose={onClose}>
         <div className="modal-body" style={{ padding: '4px 0' }}>
           <button onClick={() => setStep('network')} style={backLink}>‹ Back</button>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: '0 4px 6px' }}>Receiving on {netName}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', padding: '0 4px 6px' }}>Receiving on {netName}</div>
           {assets.map((a, i) => (
             <button key={a.sym} onClick={() => { setAsset(a); setStep('qr'); }} style={rowBtn(i < assets.length - 1)}>
               <TokenAvatar sym={a.sym} color="var(--blue, #3b7af7)" />
               <span style={{ flex: 1, textAlign: 'left' }}>
                 <span style={{ display: 'block', fontWeight: 600 }}>{a.sym}</span>
-                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-muted)' }}>{a.name}</span>
+                <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-muted)' }}>{a.name}</span>
               </span>
               <span style={{ color: 'var(--text-muted)' }}>›</span>
             </button>
@@ -4615,8 +4627,8 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <TokenAvatar sym={asset?.sym ?? EXT_NETWORKS.find(n => n.id === chain)!.sym} color="var(--blue, #3b7af7)" />
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>{asset?.name} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>({asset?.sym})</span></div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>on {EXT_NETWORKS.find(n => n.id === chain)?.name}</div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{asset?.name} <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>({asset?.sym})</span></div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>on {EXT_NETWORKS.find(n => n.id === chain)?.name}</div>
           </div>
         </div>
 
@@ -4624,18 +4636,18 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
         <div className="qr-box" style={{ background: '#fff', borderRadius: 8, padding: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 180, height: 180 }}>
           {qrDataUrl
             ? <img src={qrDataUrl} alt={displayed} width={168} height={168}/>
-            : <span style={{ fontSize: 11, color: '#666' }}>{displayed ? 'Generating QR…' : 'Loading…'}</span>}
+            : <span style={{ fontSize: 12.5, color: '#666' }}>{displayed ? 'Generating QR…' : 'Loading…'}</span>}
         </div>
 
         {chain !== 'evm' && chainBalance && (
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginTop: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginTop: 8 }}>
             Balance: {chainBalance}
           </div>
         )}
         {chain === 'evm' && lithoAddr && showAlt && (
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 8 }}>EVM address</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 8 }}>EVM address</div>
         )}
-        <div className="addr-box" style={{ wordBreak: 'break-all', marginTop: 8, fontSize: 10 }}>
+        <div className="addr-box" style={{ wordBreak: 'break-all', marginTop: 8, fontSize: 11.5 }}>
           {displayed ? <HiAddr value={displayed} full/> : '—'}
         </div>
         <button className="btn-primary" onClick={copy} disabled={!displayed}>{copied ? '✓ Copied' : 'Copy address'}</button>
@@ -4644,12 +4656,12 @@ function ReceiveModal({ onClose, address }: { onClose: () => void; address: stri
         {chain === 'evm' && lithoAddr && (
           <button type="button" onClick={() => { setShowAlt(v => !v); setCopied(false); }} style={{
             background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px 2px 0',
-            fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textDecoration: 'underline',
+            fontSize: 12.5, fontWeight: 600, color: 'var(--text-muted)', textDecoration: 'underline',
           }}>
             {showAlt ? 'Show litho1 address' : 'Show EVM address'}
           </button>
         )}
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
           Only send <strong style={{ color: 'var(--text-secondary)' }}>{asset?.sym ?? 'supported'}</strong> on {EXT_NETWORKS.find(n => n.id === chain)?.name} to this address. Sending another asset or chain may result in lost funds.
         </div>
       </div>
@@ -4760,7 +4772,7 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
           autoCapitalize="off"
           style={{ fontFamily: address ? 'Geist Mono, monospace' : undefined, fontSize: address ? 11 : undefined }}
         />
-        {err && <div style={{ fontSize: 11, color: 'var(--red)' }}>{err}</div>}
+        {err && <div style={{ fontSize: 12.5, color: 'var(--red)' }}>{err}</div>}
         <button
           className="btn-primary"
           onClick={onAdd}
@@ -4778,10 +4790,10 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
                 <div key={c.id} className="set-row" style={{ alignItems: 'center', padding: '8px 10px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="set-label" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {c.name}{c.pendingSync && <span style={{ color: 'var(--text-muted)', fontSize: 10, marginLeft: 6 }}>· not synced</span>}
+                      {c.name}{c.pendingSync && <span style={{ color: 'var(--text-muted)', fontSize: 11.5, marginLeft: 6 }}>· not synced</span>}
                     </div>
                     <div className="set-sub" title={shown !== c.evm ? `${shown}\nEVM address ${c.evm}` : shown}
-                      style={{ fontFamily: 'Geist Mono, monospace', fontSize: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      style={{ fontFamily: 'Geist Mono, monospace', fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {shortTxAddr(shown)}
                     </div>
                   </div>
@@ -4789,7 +4801,7 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
                     onClick={() => onDelete(c.id)}
                     style={{
                       background: 'none', border: 'none', color: 'var(--red)',
-                      fontSize: 11, cursor: 'pointer', padding: '4px 6px',
+                      fontSize: 12.5, cursor: 'pointer', padding: '4px 6px',
                     }}
                     title="Delete contact"
                   >
@@ -4801,7 +4813,7 @@ function AddressBookModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
         {contacts.length === 0 && (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
             No saved contacts yet. Add one above to send faster next time.
           </div>
         )}
@@ -4871,17 +4883,17 @@ function ExtCrossChainSwap({ bridge }: { bridge: boolean }) {
         </select>
         <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{outv > 0 ? outv.toFixed(6) : '—'}</div>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+      <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 8 }}>
         {rate > 0 ? `1 ${fromTok} ≈ ${rate.toFixed(6)} ${toTok}` : 'Fetching rate…'} · {fromChain.name} → {toChain.name}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, fontSize: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, fontSize: 14 }}>
         <span style={{ color: 'var(--text-secondary)' }}>Recipient · optional</span>
         <button type="button" onClick={() => setRecipientOn(v => !v)} style={{ width: 38, height: 20, borderRadius: 999, border: 'none', cursor: 'pointer', position: 'relative', background: recipientOn ? 'var(--blue, #3b7af7)' : 'var(--border-default)' }}>
           <span style={{ position: 'absolute', top: 2, left: recipientOn ? 20 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff' }}/>
         </button>
       </div>
       {recipientOn && <input className="field" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder={toChain.id === 'makalu' ? 'litho1… or 0x… recipient' : '0x… recipient'} spellCheck={false} style={{ marginTop: 6 }}/>}
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
         ⚠ Cross-chain routing runs on the MultX bridge, currently offline — showing an indicative rate. Execution unlocks when the bridge is live.
       </div>
       <button className="btn-primary" style={{ marginTop: 10, opacity: 0.6 }} disabled>{bridge ? 'Bridge offline' : 'Cross-chain swap · bridge offline'}</button>
@@ -5022,14 +5034,14 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
       <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, margin: '4px 0' }}>
         {(MULTX_CONFIG.enabled ? (['swap', 'cross', 'bridge'] as const) : (['swap', 'cross'] as const)).map(m => (
           <button key={m} disabled={m === 'cross'} title={m === 'cross' ? 'Coming soon — MultX bridge is offline' : undefined} onClick={() => setMode(m)} style={{ opacity: m === 'cross' ? 0.45 : 1,
-            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: m === 'cross' ? 'not-allowed' : 'pointer', fontSize: 11, fontWeight: 700,
+            flex: 1, padding: '6px 4px', borderRadius: 6, border: 'none', cursor: m === 'cross' ? 'not-allowed' : 'pointer', fontSize: 12.5, fontWeight: 700,
             background: mode === m ? 'var(--blue, #3b7af7)' : 'transparent',
             color: mode === m ? '#fff' : 'var(--text-secondary)',
           }}>{m === 'swap' ? 'Swap' : m === 'cross' ? 'Cross-chain · Soon' : 'Bridge'}</button>
         ))}
       </div>
       {(MULTX_CONFIG.enabled && mode === 'bridge') ? <MultXBridgePanel seed={seed}/> : mode === 'cross' ? <ExtCrossChainSwap bridge={false}/> : !SWAP_LIVE ? (
-      <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
+      <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.5 }}>
         <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Swap is coming soon</div>
         Swaps will open on Lithosphere. Until then, send and receive work as usual.
       </div>
@@ -5052,7 +5064,7 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
           </select>
           <div className="field" style={{ flex: 1, display: 'flex', alignItems: 'center', fontWeight: 700 }}>{out}</div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 8 }}>
           {quote ? (
             <>1 {from} ≈ {quote.rate.toFixed(6)} {to} · Route: <strong style={{ color: 'var(--text-primary)' }}>{provider}</strong> · Fee {quote.feeFrom} {from}</>
           ) : err ? <span style={{ color: 'var(--red)' }}>{err}</span>
@@ -5061,7 +5073,7 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
 
         {/* Slippage selector + min received line — same surface as the
             web SwapModal so behaviour stays consistent. */}
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 8, fontSize: 11 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 8, fontSize: 12.5 }}>
           <span style={{ color: 'var(--text-muted)' }}>Slippage</span>
           {[0.1, 0.5, 1, 2].map(s => {
             const active = slippagePct === s;
@@ -5071,7 +5083,7 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
                 type="button"
                 onClick={() => setSlippagePct(s)}
                 style={{
-                  padding: '2px 6px', fontSize: 10, fontWeight: 700,
+                  padding: '2px 6px', fontSize: 11.5, fontWeight: 700,
                   borderRadius: 999, cursor: 'pointer',
                   border: `1px solid ${active ? 'var(--blue, #3b7af7)' : 'var(--border-default)'}`,
                   background: active ? 'var(--blue, #3b7af7)' : 'transparent',
@@ -5082,16 +5094,16 @@ function SwapModal({ onClose, initialFrom }: { onClose: () => void; initialFrom?
           })}
         </div>
         {quote && (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>
             Min received: <strong style={{ color: 'var(--text-primary)' }}>{minReceived.toFixed(6)} {to}</strong>
           </div>
         )}
         {quote?.expiresAt && (
-          <div style={{ fontSize: 11, color: quoteExpired ? 'var(--red)' : 'var(--text-muted)', marginTop: 2 }}>
+          <div style={{ fontSize: 12.5, color: quoteExpired ? 'var(--red)' : 'var(--text-muted)', marginTop: 2 }}>
             {quoteExpired ? 'Quote expired — refresh to retry' : `Quote expires in ${quoteSecsLeft}s`}
           </div>
         )}
-        {pollMsg && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>{pollMsg}</div>}
+        {pollMsg && <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 6 }}>{pollMsg}</div>}
         <button
           className="btn-primary"
           style={{ marginTop: 12 }}
@@ -5120,7 +5132,7 @@ function ManageNetworksModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="Manage networks" onClose={onClose}>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.4 }}>
+      <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.4 }}>
         Hidden networks disappear from your portfolio and totals. You can always turn one back on here.
       </div>
       <div className="card list">
@@ -5185,20 +5197,20 @@ function SessionsPanel() {
     } finally { setBusy(null); }
   };
 
-  if (!rows) return <div style={{ padding: 20, fontSize: 12, color: 'var(--text-muted)' }}>Loading…</div>;
-  if (rows.length === 0) return <div style={{ padding: 20, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>No active dApp connections.</div>;
+  if (!rows) return <div style={{ padding: 20, fontSize: 14, color: 'var(--text-muted)' }}>Loading…</div>;
+  if (rows.length === 0) return <div style={{ padding: 20, fontSize: 14, color: 'var(--text-muted)', textAlign: 'center' }}>No active dApp connections.</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {err && <div style={{ color: 'var(--red)', fontSize: 11 }}>{err}</div>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 12.5 }}>{err}</div>}
       {rows.map(r => (
         <div key={r.topic} style={{ display: 'flex', gap: 10, padding: 10, background: 'var(--bg-elevated)', borderRadius: 8, alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.url}</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{r.name}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.url}</div>
           </div>
           <button onClick={() => disconnect(r.topic)} disabled={busy === r.topic} style={{
-            padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+            padding: '6px 10px', borderRadius: 6, fontSize: 12.5, fontWeight: 700,
             background: 'transparent', border: '1px solid var(--red)', color: 'var(--red)',
             cursor: busy === r.topic ? 'not-allowed' : 'pointer', opacity: busy === r.topic ? 0.6 : 1,
           }}>
@@ -5271,7 +5283,7 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
               <div style={{ display: 'flex', gap: 4, background: 'var(--bg-elevated)', padding: 4, borderRadius: 9, border: '1px solid var(--border-default)', marginBottom: 10 }}>
                 {(['phrase', 'pk'] as const).map(t => (
                   <button key={t} type="button" onClick={() => { setTab(t); setHidden(true); }}
-                    style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
+                    style={{ flex: 1, padding: '6px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, background: tab === t ? 'var(--blue, #3b7af7)' : 'transparent', color: tab === t ? '#fff' : 'var(--text-secondary)' }}>
                     {t === 'phrase' ? 'Phrase' : `Private key · acct ${acctIdx}`}
                   </button>
                 ))}
@@ -5287,25 +5299,25 @@ function RecoveryPhraseModal({ onClose }: { onClose: () => void }) {
                 ))}
                 {hidden && (
                   <button type="button" onClick={() => setHidden(false)}
-                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     Tap to reveal
                   </button>
                 )}
               </div>
             ) : (
               <div style={{ position: 'relative', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, wordBreak: 'break-all', userSelect: 'text', color: 'var(--text-primary)', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>
+                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13, wordBreak: 'break-all', userSelect: 'text', color: 'var(--text-primary)', filter: hidden ? 'blur(8px)' : 'none', transition: 'filter 0.2s' }}>
                   {pk ?? 'Private-key export unavailable for this wallet.'}
                 </div>
                 {hidden && pk && (
                   <button type="button" onClick={() => setHidden(false)}
-                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', backdropFilter: 'blur(2px)', borderRadius: 8, border: 'none', color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     Tap to reveal
                   </button>
                 )}
               </div>
             )}
-            <p className="onb-sub" style={{ marginTop: 8, fontSize: 11 }}>
+            <p className="onb-sub" style={{ marginTop: 8, fontSize: 12.5 }}>
               {tab === 'pk' ? `EVM key for account ${acctIdx} — imports that one account elsewhere.` : 'Restores the whole wallet and every account.'}
             </p>
             <button className="btn-link" disabled={hidden || (tab === 'pk' && !pk)} onClick={copyOut}>
@@ -5404,9 +5416,9 @@ function ApprovalScreen({
         }}>
           <Globe size={26} color="var(--blue)"/>
         </div>
-        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3 }}>Connect this site?</div>
+        <div style={{ fontSize: 18.5, fontWeight: 700, letterSpacing: -0.3 }}>Connect this site?</div>
         <div style={{
-          fontSize: 12, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'Geist Mono, monospace',
+          fontSize: 14, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'Geist Mono, monospace',
           wordBreak: 'break-all',
         }}>
           {host}
@@ -5414,13 +5426,13 @@ function ApprovalScreen({
       </div>
 
       <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>This site will be able to</div>
-        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>This site will be able to</div>
+        <div style={{ fontSize: 15, lineHeight: 1.5 }}>
           • See your wallet address &amp; balance<br/>
           • Request approvals for transactions &amp; signatures
         </div>
         <div style={{
-          fontSize: 11, color: 'var(--text-muted)',
+          fontSize: 12.5, color: 'var(--text-muted)',
           padding: '8px 10px',
           background: 'var(--bg-elevated)',
           borderRadius: 8,
@@ -5428,7 +5440,7 @@ function ApprovalScreen({
           wordBreak: 'break-all',
         }}>
           {shown}
-          {shown !== address && <div style={{ fontSize: 10, marginTop: 4, opacity: 0.8 }}>EVM address {address}</div>}
+          {shown !== address && <div style={{ fontSize: 11.5, marginTop: 4, opacity: 0.8 }}>EVM address {address}</div>}
         </div>
       </div>
 
@@ -6472,11 +6484,11 @@ function App() {
           }}>
             <Globe size={26} color={isTx ? '#f59e0b' : 'var(--blue)'}/>
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>
+          <div style={{ fontSize: 18.5, fontWeight: 700 }}>
             {isTx ? 'Confirm transaction' : 'Signature request'}
           </div>
           <div style={{
-            fontSize: 12, color: 'var(--text-muted)', marginTop: 4,
+            fontSize: 14, color: 'var(--text-muted)', marginTop: 4,
             fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all',
           }}>
             {host}
@@ -6484,7 +6496,7 @@ function App() {
           {rpcChainName && (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
-              fontSize: 12, fontWeight: 700, color: 'var(--text-primary)',
+              fontSize: 14, fontWeight: 700, color: 'var(--text-primary)',
               background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
               borderRadius: 999, padding: '4px 12px',
             }}>
@@ -6497,19 +6509,19 @@ function App() {
         {/* Scrolls inside the sheet (minHeight 0): the decoded rows plus the
             warnings can be taller than the popup, and none may be cut off. */}
         <div className="card" style={{ padding: 14, gap: 8, display: 'flex', flexDirection: 'column', overflowY: 'auto', minHeight: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
             {pendingRpc.method}
           </div>
           {review ? <SignReviewPanel review={review}/> : (
             <div style={{
-              fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               background: 'var(--bg-elevated)', borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto',
             }}>
               {summariseRequest(pendingRpc.method, pendingRpc.params)}
             </div>
           )}
           <div style={{
-            fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all',
+            fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', wordBreak: 'break-all',
           }}>
             {/* litho1… on Lithosphere Mainnet; the request itself (and what
                 the site sees) keeps the 0x form, shown as the EVM address. */}
@@ -6520,7 +6532,7 @@ function App() {
           </div>
         </div>
 
-        {rpcErr && <div style={{ padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.10)', color: '#f87171', fontSize: 12 }}>{rpcErr}</div>}
+        {rpcErr && <div style={{ padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.10)', color: '#f87171', fontSize: 14 }}>{rpcErr}</div>}
 
         {/* Pre-sign simulation — only meaningful for eth_sendTransaction;
             the effect that populates simReport already gates on that. */}
@@ -6537,7 +6549,7 @@ function App() {
                     background: isCritical ? 'rgba(248,113,113,0.10)' : 'rgba(245,158,11,0.10)',
                     border:     isCritical ? '1px solid #f87171' : 'none',
                     color:      isCritical ? '#f87171' : '#f59e0b',
-                    fontSize: 12,
+                    fontSize: 14,
                     lineHeight: 1.4,
                   }}
                 >
@@ -6717,9 +6729,9 @@ class PopupErrorBoundary extends React.Component<{ children: React.ReactNode }, 
       return (
         <div style={{ padding: 24, minHeight: 360, display: 'flex', flexDirection: 'column',
           gap: 12, alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <div style={{ fontSize: 26 }}>⚠️</div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Something went wrong</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 28 }}>⚠️</div>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>Something went wrong</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
             The wallet hit an unexpected error. Your funds are safe — reload to continue.
           </div>
           <button className="btn-primary" style={{ marginTop: 4 }} onClick={() => { try { location.reload(); } catch {} }}>
@@ -6747,8 +6759,8 @@ function showFatalCard(): void {
     '<div style="display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;'
     + 'width:360px;height:600px;background:#080809;color:#e6e6ea;text-align:center;padding:24px;box-sizing:border-box;'
     + "font:13px -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;\">"
-    + '<div style="font-size:26px;">⚠️</div>'
-    + '<div style="font-weight:700;font-size:15px;">Something went wrong</div>'
+    + '<div style="font-size:28px;">⚠️</div>'
+    + '<div style="font-weight:700;font-size:17px;">Something went wrong</div>'
     + '<div style="color:#9a9aa5;line-height:1.5;">The wallet hit an unexpected error. Your funds are safe — reload to continue.</div>'
     + '<button id="thanos-reload" style="margin-top:6px;padding:9px 18px;border:none;border-radius:10px;'
     + 'background:#3b7af7;color:#fff;font-weight:700;cursor:pointer;">Reload</button>'

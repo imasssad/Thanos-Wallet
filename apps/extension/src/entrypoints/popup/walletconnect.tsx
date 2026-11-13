@@ -220,7 +220,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', padding: 4, display: 'inline-flex' }}>
           <ChevronLeft size={20}/>
         </button>
-        <div style={{ fontSize: 15, fontWeight: 700 }}>WalletConnect</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>WalletConnect</div>
       </div>
 
       <div style={{ padding: 12, overflowY: 'auto', flex: 1 }}>
@@ -229,7 +229,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
             <div className="row-sub" style={{ marginBottom: 4 }}>
               {pending.method === 'eth_sendTransaction' ? 'Transaction request from' : 'Signature request from'}
             </div>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>{pending.name}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>{pending.name}</div>
             {review && <div style={{ marginBottom: 12 }}><SignReviewPanel review={review}/></div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={rejectRequest}  disabled={busy} className="btn-secondary" style={{ flex: 1, opacity: busy ? 0.6 : 1 }}>Reject</button>
@@ -240,7 +240,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
                 </button>
               )}
             </div>
-            {!seed.length && <div className="row-sub" style={{ marginTop: 8, fontSize: 10 }}>Unlock the wallet to sign.</div>}
+            {!seed.length && <div className="row-sub" style={{ marginTop: 8, fontSize: 11.5 }}>Unlock the wallet to sign.</div>}
           </>
         ) : proposal ? (
           <>
@@ -289,13 +289,13 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
               placeholder="wc:..."
               spellCheck={false}
               className="field-input"
-              style={{ width: '100%', fontFamily: 'monospace', fontSize: 12, marginBottom: 10 }}
+              style={{ width: '100%', fontFamily: 'monospace', fontSize: 14, marginBottom: 10 }}
             />
             <button onClick={pair} disabled={busy || !uri.trim()} className="btn-primary" style={{ width: '100%', opacity: (busy || !uri.trim()) ? 0.6 : 1 }}>
               {busy ? 'Pairing…' : 'Pair'}
             </button>
 
-            <div className="row-sub" style={{ marginTop: 12, fontSize: 10, lineHeight: 1.5 }}>
+            <div className="row-sub" style={{ marginTop: 12, fontSize: 11.5, lineHeight: 1.5 }}>
               Sessions are kept alive in the background — the relay socket runs in an offscreen document
               so closing this popup no longer ends the connection.
             </div>
@@ -311,7 +311,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
                         <div className="row-name">{s.name}</div>
                         <div className="row-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.url}</div>
                       </div>
-                      <button onClick={() => disconnect(s.topic)} className="btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }}>Disconnect</button>
+                      <button onClick={() => disconnect(s.topic)} className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12.5 }}>Disconnect</button>
                     </div>
                   ))}
                 </div>
@@ -320,7 +320,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           </>
         )}
 
-        {err && <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.10)', color: '#f87171', fontSize: 12 }}>{err}</div>}
+        {err && <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: 'rgba(248,113,113,0.10)', color: '#f87171', fontSize: 14 }}>{err}</div>}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@
  * working; every mutation refreshes it.
  */
 import { Contract, JsonRpcProvider } from 'ethers';
+import { createDiscoveryOverlay, type DiscoveredTokenRow } from '@thanos/sdk-core';
 import { EXT_EVM_CHAINS, EXT_EVM_TOKENS, type ExtEvmChain, type ExtEvmToken } from './evm-external';
 
 const CHAINS_KEY = 'custom_evm_chains';
@@ -59,6 +60,46 @@ export const customChains = (): readonly CustomChain[] => chainCache;
 export const customTokens = (): readonly CustomToken[] => tokenCache;
 export const customAssetsLoaded = (): boolean => loaded;
 
+/* ── change notification ────────────────────────────────────────────────
+   Home keeps its coin rows in app-root state, which doesn't remount on a
+   tab switch, so whatever changes this module's token list has to say so:
+   a token the user adds or removes, and one discovery finds. ── */
+const listeners = new Set<() => void>();
+
+/** Subscribe to token/network list changes; returns an unsubscribe fn. */
+export function onCustomAssetsChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+function notifyChanged(): void {
+  for (const fn of [...listeners]) { try { fn(); } catch { /* one bad listener can't break the rest */ } }
+}
+
+/* ── tokens discovered on Lithosphere ───────────────────────────────────
+   Held tokens the user never added by hand (client 2026-11-13: "tokens from
+   lithoscan ... automatically show in thanos if user holds them"). Metadata
+   only: the balance on screen is read by evm-external.ts on the token's own
+   chain, exactly as for a built-in. Lithosphere alone for now — the other
+   chains' sources would add far more rows than were asked for. ── */
+const discovery = createDiscoveryOverlay({ chainIds: [9005], onChange: notifyChanged });
+
+/** Read again (throttled) what this address holds on Lithosphere. Resolves
+ *  when the pass is over and never throws; call it beside the balance reads,
+ *  never in front of them. */
+export function refreshDiscoveredTokens(address: string, force = false): Promise<void> {
+  return discovery.refresh(address, [
+    ...EXT_EVM_TOKENS.map((t) => ({ chainId: t.chainId, address: t.address, symbol: t.symbol })),
+    ...tokenCache.map((t) => ({ chainId: t.chainId, address: t.address, symbol: t.symbol })),
+  ], force);
+}
+
+/** Tokens discovery found, for the one address it last read. */
+export const discoveredTokens = (): readonly DiscoveredTokenRow[] => discovery.tokens();
+
+/** Forget them (wallet locked, account removed). */
+export const clearDiscoveredTokens = (): void => discovery.clear();
+
 /** All EVM chains: built-ins first, then user chains (deduped by chainId). */
 export function allEvmChains(): ExtEvmChain[] {
   const seen = new Set(EXT_EVM_CHAINS.map((c) => c.chainId));
@@ -72,12 +113,16 @@ export function allEvmChains(): ExtEvmChain[] {
   return [...EXT_EVM_CHAINS, ...extra];
 }
 
-/** All tokens for a chain: built-ins + user tokens (deduped by address). */
-export function allTokensForChain(chainId: number): Array<ExtEvmToken | CustomToken> {
+/** All tokens for a chain: built-ins, then the user's, then discovered —
+ *  deduped by address, so an added token keeps its own entry (and its
+ *  always-visible row) rather than being replaced by a discovered twin. */
+export function allTokensForChain(chainId: number): Array<ExtEvmToken | CustomToken | DiscoveredTokenRow> {
   const builtin = EXT_EVM_TOKENS.filter((t) => t.chainId === chainId);
   const seen = new Set(builtin.map((t) => t.address.toLowerCase()));
   const extra = tokenCache.filter((t) => t.chainId === chainId && !seen.has(t.address.toLowerCase()));
-  return [...builtin, ...extra];
+  for (const t of extra) seen.add(t.address.toLowerCase());
+  const found = discovery.tokensForChain(chainId).filter((t) => !seen.has(t.address.toLowerCase()));
+  return [...builtin, ...extra, ...found];
 }
 
 /* ── on-chain validation / metadata (never trust user input blindly) ── */
@@ -116,6 +161,8 @@ export async function probeErc20(rpcUrl: string, address: string): Promise<Token
 
 async function persist(): Promise<void> {
   await browser.storage.local.set({ [CHAINS_KEY]: chainCache, [TOKENS_KEY]: tokenCache });
+  // After the write, never before: a listener re-reads these caches.
+  notifyChanged();
 }
 
 /** Add a custom EVM network. Rejects if the chainId collides with a built-in.
