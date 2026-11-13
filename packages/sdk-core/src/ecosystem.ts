@@ -28,13 +28,17 @@ export interface EcosystemApp {
   section:     string;
 }
 
-/** Section headers in display order. Apps render grouped under these. */
+/** Section headers in display order. Apps render grouped under these.
+ *  'DeFi' and 'Community' were added on client request (2026-11-13) and are
+ *  separate from 'DeFi & Yield', which holds the DEXes. */
 export const ECOSYSTEM_SECTIONS = [
   'AI & Agents',
   'DeFi & Yield',
+  'DeFi',
   'NFTs',
   'Infrastructure',
   'Rewards',
+  'Community',
 ] as const;
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = [
@@ -107,6 +111,25 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   //   category: 'AI · DeFi',
   //   section: 'DeFi & Yield',
   // },
+  // ─── DeFi (client 2026-11-13) ────────────────────────────────────────
+  {
+    id: 'litho-finance',
+    name: 'Litho.Finance',
+    description: 'DeFi on Lithosphere.',
+    url: 'https://litho.finance',
+    color: '#3b7af7',
+    category: 'DeFi',
+    section: 'DeFi',
+  },
+  {
+    id: 'lithovault',
+    name: 'LithoVault.ai',
+    description: 'Vaults and yield strategies on Lithosphere.',
+    url: 'https://lithovault.ai',
+    color: '#8b7df7',
+    category: 'DeFi',
+    section: 'DeFi',
+  },
   // ─── NFTs ────────────────────────────────────────────────────────────
   {
     id: 'colle',
@@ -136,6 +159,16 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     color: '#3b7af7',
     category: 'Rewards',
     section: 'Rewards',
+  },
+  // ─── Community (client 2026-11-13) ───────────────────────────────────
+  {
+    id: 'degens',
+    name: 'Degens.lt',
+    description: 'Community hub for Lithosphere degens.',
+    url: 'https://degens.lt',
+    color: '#f97316',
+    category: 'Community',
+    section: 'Community',
   },
 ];
 

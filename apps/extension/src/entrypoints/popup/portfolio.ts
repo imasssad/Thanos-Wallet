@@ -320,7 +320,14 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             }]),
           ]);
           const natives = nativeReads.filter((r): r is { chain: typeof r.chain; balance: number } => r.balance != null && r.balance > 0);
-          const tokens = tokenReads.filter((r): r is { token: typeof r.token; balance: number } => r.balance != null && r.balance > 0);
+          // Built-in USDT/USDC are a catalog: only what's actually held shows.
+          // A token the USER added is an explicit "show me this", so it keeps
+          // its row at zero — and even when the RPC read fails (balance null),
+          // so an added asset never silently vanishes from Home/Assets.
+          const tokens = tokenReads.flatMap(({ token, balance }) =>
+            balance != null && balance > 0 ? [{ token, balance }]
+            : token.custom              ? [{ token, balance: balance ?? 0 }]
+            : []);
           for (const { chain, balance } of natives) {
             const priceUsd = prices[chain.nativeSymbol] ?? 0;
             evmExt.push({

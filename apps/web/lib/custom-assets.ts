@@ -72,7 +72,12 @@ export function allEvmChains(): EvmChain[] {
 
 /** Minimal token shape shared by the built-in catalog and user-added
  *  tokens — everything downstream only reads fields, never a literal type. */
-export interface EvmTokenLike { chainId: number; symbol: string; name: string; address: string; decimals: number }
+export interface EvmTokenLike {
+  chainId: number; symbol: string; name: string; address: string; decimals: number;
+  /** true on a token the USER added. Such a token keeps its row at zero
+   *  balance — see getAllEvmTokenBalancesMerged. */
+  custom?: true;
+}
 
 /** All tokens for a chain: built-ins + user tokens (deduped by address). */
 export function allTokensForChain(chainId: number): EvmTokenLike[] {
@@ -113,6 +118,11 @@ export async function getAllEvmNativeBalancesMerged(address: string): Promise<Ar
     .map((r) => r.value);
 }
 
+/** ERC-20 balances for every known token — built-ins + user-added.
+ *  The built-ins are a catalog, so a failed or zero read is omitted. A token
+ *  the USER added is an explicit "show me this": it is always returned, at
+ *  zero when the read fails, so an added asset never silently vanishes from
+ *  the asset list. */
 export async function getAllEvmTokenBalancesMerged(address: string): Promise<Array<{ token: EvmTokenLike; balance: number }>> {
   if (!address) return [];
   const { formatUnits } = await import('ethers');
@@ -121,12 +131,16 @@ export async function getAllEvmTokenBalancesMerged(address: string): Promise<Arr
     all.map(async (t) => {
       const c = new Contract(t.address, ERC20_BALANCE_ABI, getEvmProvider(t.chainId));
       const raw: bigint = await c.balanceOf(address);
-      return { token: t, balance: parseFloat(formatUnits(raw, t.decimals)) };
+      return parseFloat(formatUnits(raw, t.decimals)) || 0;
     }),
   );
-  return results
-    .filter((r): r is PromiseFulfilledResult<{ token: EvmTokenLike; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
-    .map((r) => r.value);
+  return all.flatMap((token, i) => {
+    const r = results[i];
+    const balance = r.status === 'fulfilled' ? r.value : null;
+    if (balance != null && balance > 0) return [{ token, balance }];
+    if (token.custom) return [{ token, balance: balance ?? 0 }];
+    return [];
+  });
 }
 
 /* ── on-chain validation / metadata (never trust user input blindly) ── */
@@ -163,11 +177,26 @@ export async function probeErc20(rpcUrl: string, address: string): Promise<Token
 
 /* ── mutations (persist + refresh cache) ────────────────────────────── */
 
+/* ── change notification ──────────────────────────────────────────────
+   The balance readers above keep their rows in component state keyed on the
+   address, so a token added in Settings would not show up until a reload.
+   Every mutation goes through persist(), which makes it the one place to
+   announce the change from. */
+const listeners = new Set<() => void>();
+
+/** Subscribe to custom-network/token changes; returns an unsubscribe fn. */
+export function onCustomAssetsChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
 function persist(): void {
   try {
     window.localStorage.setItem(CHAINS_KEY, JSON.stringify(chainCache));
     window.localStorage.setItem(TOKENS_KEY, JSON.stringify(tokenCache));
   } catch { /* ignore */ }
+  // After the write, never before: a listener re-reads these caches.
+  for (const fn of [...listeners]) { try { fn(); } catch { /* one bad listener can't break the rest */ } }
 }
 
 /** Add a custom EVM network. Rejects if the chainId collides with a built-in.
