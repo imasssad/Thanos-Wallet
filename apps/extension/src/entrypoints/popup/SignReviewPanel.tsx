@@ -17,11 +17,11 @@ export function SignReviewPanel({ review }: { review: SignReview }) {
   const tone = TONE[review.risk];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.35 }}>{review.title}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.35 }}>{review.title}</div>
       {review.rows.length > 0 && (
         <div style={{
           background: 'var(--bg-elevated)', borderRadius: 8, padding: 10, maxHeight: 190, overflowY: 'auto',
-          display: 'grid', gridTemplateColumns: 'minmax(70px, auto) 1fr', gap: '5px 10px', fontSize: 11.5,
+          display: 'grid', gridTemplateColumns: 'minmax(70px, auto) 1fr', gap: '5px 10px', fontSize: 13,
         }}>
           {review.rows.map((r, i) => (
             <React.Fragment key={`${r.label}-${i}`}>
@@ -38,7 +38,7 @@ export function SignReviewPanel({ review }: { review: SignReview }) {
       {review.warnings.length > 0 && (
         <div role="alert" style={{
           padding: 10, borderRadius: 8, background: tone.bg, border: `1px solid ${tone.border}`,
-          color: tone.fg, fontSize: 11.5, lineHeight: 1.4,
+          color: tone.fg, fontSize: 13, lineHeight: 1.4,
         }}>
           <div style={{ fontWeight: 700, marginBottom: 3 }}>{tone.heading}</div>
           {review.warnings.map((w, i) => <div key={i} style={{ marginTop: i ? 4 : 0 }}>• {w}</div>)}
