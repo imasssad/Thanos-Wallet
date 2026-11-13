@@ -226,6 +226,7 @@ const DAPP_ICONS: Record<string, string> = {
   furgpt: '/images/dapps/furgpt.png',
   imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png', magma: '/images/dapps/magma.png',
   lithoscan: '/images/dapps/lithoscan.png', // client-supplied 2026-09-11
+  'litho-finance': '/images/dapps/litho-finance.png', // client-supplied 2026-11-13
 };
 
 /* Swappable assets — the verified Makalu token set (matches the web
