@@ -6219,6 +6219,7 @@ const DAPP_ICONS: Record<string, string> = {
   agii: './images/dapps/agii.png', colle: './images/dapps/colle.png',
   furgpt: './images/dapps/furgpt.png',
   imagen: './images/dapps/imagen.png', ignite: './images/dapps/ignite.png', magma: './images/dapps/magma.png',
+  'litho-finance': './images/dapps/litho-finance.png', // client-supplied 2026-11-13
 };
 
 function DappTileIcon({ app }: { app: EcosystemApp }) {
