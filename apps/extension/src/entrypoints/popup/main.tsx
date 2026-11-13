@@ -3242,7 +3242,7 @@ function DiscoverScreen() {
 /* Custom networks + tokens (Settings). Add an EVM network by RPC (its real
    chainId is read on-chain) or an ERC-20 by contract (symbol/decimals read
    on-chain). Persisted via lib/custom-assets; flows into portfolio/send/dApp. */
-function CustomAssetsSection() {
+function CustomAssetsSection({ onChanged }: { onChanged: () => void }) {
   const [chains, setChains] = useState<CustomChain[]>([]);
   const [tokens, setTokens] = useState<CustomToken[]>([]);
   const [openForm, setOpenForm] = useState<'' | 'net' | 'tok'>('');
@@ -3253,7 +3253,20 @@ function CustomAssetsSection() {
   const [tBusy, setTBusy] = useState(false); const [tErr, setTErr] = useState<string | null>(null);
 
   const refresh = () => { setChains([...customChains()]); setTokens([...customTokens()]); };
+  // After a mutation, also re-read the portfolio: Home keeps its coin rows in
+  // the app root, which does NOT remount on a tab switch, so without this an
+  // added token only appeared the next time the popup was opened.
+  const refreshAll = () => { refresh(); onChanged(); };
   useEffect(() => { void loadCustomAssets().then(refresh); }, []);
+
+  // The popup is a fixed 360x600 box, so a form opened from the bottom of a
+  // long Settings page renders below the fold — the contract-address field
+  // looked missing. Bring the open form into view.
+  const formRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!openForm) return;
+    formRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [openForm]);
 
   const nets = allEvmChains();
 
@@ -3267,7 +3280,7 @@ function CustomAssetsSection() {
         chainId, name: nName.trim() || `Chain ${chainId}`, rpcUrl: rpc,
         nativeSymbol: (nSym.trim() || 'ETH').toUpperCase(), explorerUrl: nExp.trim(),
       });
-      refresh(); setOpenForm(''); setNName(''); setNRpc(''); setNSym(''); setNExp('');
+      refreshAll(); setOpenForm(''); setNName(''); setNRpc(''); setNSym(''); setNExp('');
     } catch (e) { setNErr((e as Error)?.message || 'Could not reach that RPC'); }
     finally { setNBusy(false); }
   };
@@ -3280,7 +3293,7 @@ function CustomAssetsSection() {
       if (!chain) throw new Error('Pick a network');
       const meta = await probeErc20(chain.rpcUrl, addr);
       await addCustomToken({ chainId: chain.chainId, symbol: meta.symbol, name: meta.name, address: addr, decimals: meta.decimals });
-      refresh(); setOpenForm(''); setTAddr('');
+      refreshAll(); setOpenForm(''); setTAddr('');
     } catch (e) { setTErr((e as Error)?.message || 'Not a valid ERC-20 on that network'); }
     finally { setTBusy(false); }
   };
@@ -3305,7 +3318,7 @@ function CustomAssetsSection() {
               <div className="set-label">{c.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {c.chainId}</span></div>
               <div className="set-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.rpcUrl}</div>
             </div>
-            <button style={link} onClick={() => { void removeCustomChain(c.chainId).then(refresh); }}>Remove</button>
+            <button style={link} onClick={() => { void removeCustomChain(c.chainId).then(refreshAll); }}>Remove</button>
           </div>
         ))}
         {tokens.map((t) => (
@@ -3314,7 +3327,7 @@ function CustomAssetsSection() {
               <div className="set-label">{t.symbol} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>· {nets.find((c) => c.chainId === t.chainId)?.name ?? t.chainId}</span></div>
               <div className="set-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.address}</div>
             </div>
-            <button style={link} onClick={() => { void removeCustomToken(t.chainId, t.address).then(refresh); }}>Remove</button>
+            <button style={link} onClick={() => { void removeCustomToken(t.chainId, t.address).then(refreshAll); }}>Remove</button>
           </div>
         ))}
         {chains.length === 0 && tokens.length === 0 && openForm === '' && (
@@ -3322,7 +3335,7 @@ function CustomAssetsSection() {
         )}
 
         {openForm === 'net' && (
-          <div style={{ paddingTop: 8 }}>
+          <div ref={formRef} style={{ paddingTop: 8 }}>
             <input style={inp} placeholder="Network name (e.g. Sepolia)" value={nName} onChange={(e) => setNName(e.target.value)}/>
             <input style={inp} placeholder="RPC URL (https://…)" value={nRpc} onChange={(e) => setNRpc(e.target.value)}/>
             <input style={inp} placeholder="Currency symbol (e.g. ETH)" value={nSym} onChange={(e) => setNSym(e.target.value)}/>
@@ -3335,7 +3348,7 @@ function CustomAssetsSection() {
           </div>
         )}
         {openForm === 'tok' && (
-          <div style={{ paddingTop: 8 }}>
+          <div ref={formRef} style={{ paddingTop: 8 }}>
             <select style={inp} value={tChain || nets[0]?.chainId} onChange={(e) => setTChain(Number(e.target.value))}>
               {nets.map((c) => <option key={c.chainId} value={c.chainId}>{c.name}</option>)}
             </select>
@@ -3362,8 +3375,10 @@ function CustomAssetsSection() {
 function SettingsScreen({
   isDark, onToggleTheme, onLock, onOpenWalletConnect, onOpenAddressBook, onOpenPermissions,
   address, accountName, onOpenChangePassword, onOpenRecoveryPhrase, onDeleteWallet, onOpenManageNetworks,
-  onOpenWallets, walletCount, openWalletName,
+  onOpenWallets, walletCount, openWalletName, onAssetsChanged,
 }: {
+  /** Re-read Home's balances after a custom network/token is added or removed. */
+  onAssetsChanged: () => void;
   onDeleteWallet: () => void;
   /** Manage wallets — the same Wallets & accounts sheet as the account chip. */
   onOpenWallets: () => void;
@@ -3498,7 +3513,7 @@ function SettingsScreen({
         </button>
       </div>
 
-      <CustomAssetsSection/>
+      <CustomAssetsSection onChanged={onAssetsChanged}/>
 
       <SectionHead Icon={Shield} title="Security" sub="Protect access to your wallet"/>
       <div className="card list">
@@ -6679,7 +6694,8 @@ function App() {
           {tab === 'multisig' && <MultiSigScreen seed={seed} evmAddr={evmAddr} accountIndex={activeIdx}/>}
           {tab === 'activity' && <ActivityScreen/>}
           {tab === 'settings' && <SettingsScreen isDark={isDark} onToggleTheme={toggleTheme} onLock={lock} onOpenWalletConnect={() => setModal('walletconnect')} onOpenAddressBook={() => setModal('address-book')} onOpenPermissions={() => setModal('permissions')} address={lithoAddr || evmAddr} accountName={getAccountName(activeIdx)} onOpenChangePassword={() => setModal('change-password')} onOpenRecoveryPhrase={() => setModal('recovery')} onDeleteWallet={deleteWallet} onOpenManageNetworks={() => setModal('manage-networks')}
-            onOpenWallets={openWallets} walletCount={wallets.length} openWalletName={activeWallet?.name}/>}
+            onOpenWallets={openWallets} walletCount={wallets.length} openWalletName={activeWallet?.name}
+            onAssetsChanged={() => { void loadCustomAssets().then(() => portfolio.reload()); }}/>}
         </div>
         <div className="tabbar">
           {([

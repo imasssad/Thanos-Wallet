@@ -289,6 +289,10 @@ export function PortfolioView() {
   const nativeLax = useNativeLax(evmAddress);
   const [tokenBals, setTokenBals] = useState<Array<{ token: customAssets.EvmTokenLike; balance: number }>>([]);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  // Bumped when a custom network/token is added or removed, so the token read
+  // below re-runs and the new asset appears without a page reload.
+  const [assetsTick, setAssetsTick] = useState(0);
+  useEffect(() => customAssets.onCustomAssetsChanged(() => setAssetsTick(t => t + 1)), []);
   useEffect(() => {
     if (!evmAddress) return;
     let cancel = false;
@@ -296,7 +300,7 @@ export function PortfolioView() {
       .then(r => { if (!cancel) setTokenBals(r); })
       .catch(() => { /* a token read failing leaves that row out */ });
     return () => { cancel = true; };
-  }, [evmAddress]);
+  }, [evmAddress, assetsTick]);
   useEffect(() => { if (!live.loading) setUpdatedAt(Date.now()); }, [live.loading]);
 
   // Price is known ONLY when there's a real source (a live quote; USDT/USDC

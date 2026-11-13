@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import 'react-native-get-random-values'; // polyfills global crypto.getRandomValues — required by vault.ts
 import {
-  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, Linking, Platform, Pressable, RefreshControl,
+  ActivityIndicator, Alert, Animated, AppState, BackHandler, Dimensions, Easing, Image, InteractionManager, KeyboardAvoidingView, Linking, Platform, Pressable, RefreshControl,
   ScrollView, Share, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 // react-native's own SafeAreaView pads only on iOS. Android 15+ draws every
@@ -823,6 +823,19 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
   // Memoise the seed string so the effect doesn't re-fire on every render.
   const seedKey = seed?.join(' ') ?? '';
 
+  // A custom network/token added or removed in Settings re-reads the
+  // portfolio, so the new asset appears straight away instead of only after
+  // the next launch.
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    let cancelled = false;
+    void import('./lib/custom-assets').then((m) => {
+      if (cancelled) return;
+      off = m.onCustomAssetsChanged(() => setNonce((n) => n + 1));
+    });
+    return () => { cancelled = true; off?.(); };
+  }, []);
+
   // Hydrate from the current address's last-known snapshot the instant this
   // address is selected, so the home paints real numbers immediately while the
   // background refresh (the effect below) runs. AsyncStorage is async but fast;
@@ -912,7 +925,11 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             const tokenRows: DisplayAsset[] = [];
             for (const { token, balance } of evm.tokens) {
               const bal = balance ?? prevRow(token.chainId, token.address)?.balance ?? 0;
-              if (!(bal > 0)) continue;
+              // Built-in tokens are a catalog: only what's actually held shows.
+              // A token the USER added is an explicit "show me this", so it
+              // keeps its row at zero — and even when the RPC read fails — so
+              // an added asset never silently vanishes from Home/Assets.
+              if (!(bal > 0) && !token.custom) continue;
               // Built-in USDT/USDC are ≈$1; every other token (custom or
               // ecosystem, e.g. COLLE/IMAGE) uses a live price if known,
               // else $0 — never fabricate a stablecoin peg for it.
@@ -7495,11 +7512,26 @@ function AddressBookModal({ visible, onClose }: { visible: boolean; onClose: () 
 
 /* ─── Settings sub-modals ─────────────────────────────────────────────── */
 
+/** Bottom sheet used by every Settings modal.
+ *
+ *  KeyboardAvoidingView is not optional here: the sheet is pinned to the
+ *  BOTTOM of the screen, so on iOS the on-screen keyboard draws straight over
+ *  its lower half — which is exactly where a sheet's inputs and its submit
+ *  button sit (reported on the iOS build: the "Token contract (0x…)" field was
+ *  covered). iOS needs 'padding' (the keyboard overlays the window); Android
+ *  resizes the window itself, so 'height' keeps it from double-counting.
+ *  Sheets with no inputs are unaffected. Inner scrollers must set
+ *  `flexShrink: 1` so they give up height as the sheet rises, and
+ *  `keyboardShouldPersistTaps="handled"` so the first tap on a button lands
+ *  instead of only dismissing the keyboard. */
 function SheetShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const C = useColors();
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={{ backgroundColor: C.bgCard, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 14, maxHeight: '88%' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={{ fontSize: 17, fontWeight: '800', color: C.textPrimary }}>{title}</Text>
@@ -7507,7 +7539,7 @@ function SheetShell({ title, onClose, children }: { title: string; onClose: () =
           </View>
           {children}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -7634,7 +7666,12 @@ function CustomAssetsModal({ visible, onClose }: { visible: boolean; onClose: ()
 
   return (
     <SheetShell title="Add network / token" onClose={onClose}>
-      <ScrollView style={{ maxHeight: 480 }}>
+      <ScrollView
+        style={{ maxHeight: 480, flexShrink: 1 }}
+        contentContainerStyle={{ paddingBottom: 12 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+      >
         {chains.map((c) => (
           <View key={c.chainId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderSubtle }}>
             <View style={{ flex: 1 }}>

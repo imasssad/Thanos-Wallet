@@ -71,7 +71,12 @@ export function allEvmChains(): ExtEvmChain[] {
 /** Minimal token shape shared by the built-in catalog (symbol typed as
  *  'USDT'|'USDC') and user-added tokens (symbol is whatever the contract
  *  reports) — everything downstream only reads fields, never the literal type. */
-export interface ExtTokenLike { chainId: number; symbol: string; name: string; address: string; decimals: number }
+export interface ExtTokenLike {
+  chainId: number; symbol: string; name: string; address: string; decimals: number;
+  /** true on a token the USER added. Such a token keeps its Home row at zero
+   *  balance — see evm-external.ts's getAllExtEvmTokenBalances. */
+  custom?: true;
+}
 
 /** All tokens for a chain: built-ins + user tokens (deduped by address). */
 export function allTokensForChain(chainId: number): ExtTokenLike[] {
@@ -127,11 +132,29 @@ export async function probeErc20(rpcUrl: string, address: string): Promise<Token
 
 /* ── mutations (persist + refresh cache) ────────────────────────────── */
 
+/* ── change notification ──────────────────────────────────────────────
+   The portfolio keeps its coin rows in component state, so a token added in
+   Settings would not show up until the next load. Every mutation goes through
+   persist(), which makes it the one place to announce the change from. */
+const listeners = new Set<() => void>();
+
+/** Subscribe to custom-network/token changes; returns an unsubscribe fn. */
+export function onCustomAssetsChanged(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+function notifyChanged(): void {
+  // After the write, never before: a listener re-reads these caches.
+  for (const fn of [...listeners]) { try { fn(); } catch { /* one bad listener can't break the rest */ } }
+}
+
 function persist(): void {
   try {
     localStorage.setItem(CHAINS_KEY, JSON.stringify(chainCache));
     localStorage.setItem(TOKENS_KEY, JSON.stringify(tokenCache));
   } catch { /* ignore */ }
+  notifyChanged();
 }
 
 /** Add a custom EVM network. Rejects if the chainId collides with a built-in.

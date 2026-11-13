@@ -136,7 +136,12 @@ export async function getAllExtEvmNativeBalances(address: string): Promise<Array
 
 /** Minimal token shape the portfolio/send need — satisfied by both the
  *  built-in ExtEvmToken and user-added custom tokens. */
-export interface ExtTokenLike { chainId: number; symbol: string; name: string; address: string; decimals: number }
+export interface ExtTokenLike {
+  chainId: number; symbol: string; name: string; address: string; decimals: number;
+  /** true on a token the USER added (lib/custom-assets.ts). Such a token keeps
+   *  its Home row at zero balance — see App.tsx's portfolio load. */
+  custom?: true;
+}
 
 /** ERC-20 balances on every chain — built-in + custom tokens. `balance` is
  *  null when the read failed (callers keep the last-known value). */

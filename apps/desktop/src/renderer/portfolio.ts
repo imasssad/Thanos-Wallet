@@ -15,7 +15,7 @@ import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readN
 import { getLocalActivity, resolvePendingActivity, setNativeHash, type LocalTx } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
 import { syncWalletHistory } from './explorer-activity';
-import { customChains, getExtEvmChain } from './custom-assets';
+import { customChains, getExtEvmChain, onCustomAssetsChanged } from './custom-assets';
 import { isPrivateKeyWallet } from './vault';
 
 /* ─── Display helpers ────────────────────────────────────────────────── */
@@ -210,6 +210,10 @@ async function readNativeLaxCoin(address: string): Promise<DisplayCoin | null> {
  *  portfolio so the total reflects every chain the wallet manages. */
 export function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce] = useState(0);
+  // A custom network/token added or removed in Settings re-reads the
+  // portfolio, so the new asset appears straight away instead of only after
+  // the next launch.
+  useEffect(() => onCustomAssetsChanged(() => setNonce((n) => n + 1)), []);
   // Cached-first: paint real last-known numbers for this address immediately
   // (loading still true — a background refresh is running). Never blocks or
   // changes the fetch below. Activity is saved on its own (local-activity.ts),
@@ -341,7 +345,9 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
               });
             }
             for (const { token, balance } of tokens) {
-              if (balance <= 0) continue;
+              // getAllExtEvmTokenBalances already dropped the built-ins that
+              // aren't held; a zero here is a user-added token, which shows.
+              if (balance < 0) continue;
               // Built-in USDT/USDC are ≈$1; every other token (custom or
               // ecosystem, e.g. COLLE/IMAGE) uses a live price if known,
               // else $0 — never fabricate a stablecoin peg for it.

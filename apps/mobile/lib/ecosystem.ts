@@ -21,7 +21,9 @@ export interface EcosystemApp {
   section:     string;
 }
 
-export const ECOSYSTEM_SECTIONS = ['AI & Agents', 'DeFi & Yield', 'NFTs', 'Infrastructure', 'Rewards'] as const;
+// 'DeFi' and 'Community' added on client request (2026-11-13) — separate
+// from 'DeFi & Yield', which holds the DEXes.
+export const ECOSYSTEM_SECTIONS = ['AI & Agents', 'DeFi & Yield', 'DeFi', 'NFTs', 'Infrastructure', 'Rewards', 'Community'] as const;
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = [
   { id: 'agii',   name: 'AGII',           description: 'AI infrastructure and agents built on Lithosphere.', url: 'https://agii.app',       color: '#8b7df7', category: 'AI',        section: 'AI & Agents' },
@@ -29,9 +31,12 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   { id: 'furgpt', name: 'FurGPT',         description: 'AI agents and tooling on Lithosphere.',             url: 'https://furgpt.org',     color: '#10b981', category: 'AI',        section: 'AI & Agents' },
   { id: 'ignite', name: 'Ignite DEX',     description: 'Same-chain AMM and routing on Lithosphere.',        url: 'https://ignite.trade', color: '#22c55e', category: 'DEX',      section: 'DeFi & Yield' },
   { id: 'magma',  name: 'Magma DEX', description: 'Decentralized trading and liquidity on Lithosphere.', url: 'https://magmadex.trade', color: '#2f6bff', category: 'DEX', section: 'DeFi & Yield' },
+  { id: 'litho-finance', name: 'Litho.Finance', description: 'DeFi on Lithosphere.',                              url: 'https://litho.finance', color: '#3b7af7', category: 'DeFi', section: 'DeFi' },
+  { id: 'lithovault',    name: 'LithoVault.ai', description: 'Vaults and yield strategies on Lithosphere.',       url: 'https://lithovault.ai', color: '#8b7df7', category: 'DeFi', section: 'DeFi' },
   { id: 'colle',  name: 'Colle AI',       description: 'Multi-chain, AI-powered NFT creation and trading.', url: 'https://colle.ai',       color: '#a3e635', category: 'NFT · AI',  section: 'NFTs' },
   { id: 'lithoscan',       name: 'LithoScan',       description: 'Block explorer for Lithosphere.',                                     url: 'https://lithoscan.ai',      color: '#3b7af7', category: 'Explorer', section: 'Infrastructure' },
   { id: 'litho-deals', name: 'LITHO Deals', description: 'Deals, offers and rewards across the Lithosphere ecosystem.', url: 'https://deals.litho.ai', color: '#3b7af7', category: 'Rewards', section: 'Rewards' },
+  { id: 'degens', name: 'Degens.lt', description: 'Community hub for Lithosphere degens.', url: 'https://degens.lt', color: '#f97316', category: 'Community', section: 'Community' },
 ];
 
 export function groupBySection<T extends { section: string }>(apps: T[]): { section: string; apps: T[] }[] {

@@ -32,7 +32,7 @@ import { signerSolanaAddress } from '../lib/signer-client';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
 import { type EvmChain } from '../lib/evm-chains';
 import {
-  getAllEvmNativeBalancesMerged, getAllEvmTokenBalancesMerged, getEvmChainMerged,
+  getAllEvmNativeBalancesMerged, getAllEvmTokenBalancesMerged, getEvmChainMerged, onCustomAssetsChanged,
   type EvmTokenLike,
 } from '../lib/custom-assets';
 import { historyAddresses, pendingActivityRows, resolvePendingTxs, syncExplorerHistory } from '../lib/tx-store';
@@ -473,6 +473,10 @@ export function Dashboard() {
      getAllEvmNativeBalances and stored as per-chain rows so the
      dashboard can show "ETH on Arbitrum" separately from "ETH on
      mainnet". */
+  // Bumped when a custom network/token is added or removed, so the reads
+  // below re-run and the new asset appears without a page reload.
+  const [assetsTick, setAssetsTick] = useState(0);
+  useEffect(() => onCustomAssetsChanged(() => setAssetsTick(t => t + 1)), []);
   useEffect(() => {
     if (!evmAddress) { setEvmChainBalances([]); setEvmTokenBalances([]); setEvmLoaded(false); return; }
     let cancel = false;
@@ -497,7 +501,7 @@ export function Dashboard() {
       }
     })();
     return () => { cancel = true; };
-  }, [evmAddress]);
+  }, [evmAddress, assetsTick]);
 
   /* Build the coin rows STRICTLY from real chain state. No canonical
      fallback: if every chain says zero we show an empty list. Every EVM row

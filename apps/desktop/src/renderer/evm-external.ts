@@ -56,7 +56,11 @@ export async function getAllExtEvmNativeBalances(address: string): Promise<Array
     .map(r => r.value);
 }
 
-/** ERC-20 balances across all chains — built-in USDT/USDC + custom tokens. Failed/zero omitted. */
+/** ERC-20 balances across all chains — built-in USDT/USDC + custom tokens.
+ *  The built-ins are a catalog, so a failed or zero read is omitted. A token
+ *  the USER added is an explicit "show me this": it is always returned, at
+ *  zero when the read fails, so an added asset never silently vanishes from
+ *  Home/Assets. */
 export async function getAllExtEvmTokenBalances(address: string): Promise<Array<{ token: ExtTokenLike; balance: number }>> {
   if (!address) return [];
   const all = allEvmChains().flatMap((c) => allTokensForChain(c.chainId));
@@ -64,10 +68,14 @@ export async function getAllExtEvmTokenBalances(address: string): Promise<Array<
     all.map(async (t) => {
       const c = new Contract(t.address, ERC20_BALANCE_ABI, getExtEvmProvider(t.chainId));
       const raw: bigint = await c.balanceOf(address);
-      return { token: t, balance: parseFloat(formatUnits(raw, t.decimals)) };
+      return parseFloat(formatUnits(raw, t.decimals)) || 0;
     }),
   );
-  return results
-    .filter((r): r is PromiseFulfilledResult<{ token: ExtTokenLike; balance: number }> => r.status === 'fulfilled' && r.value.balance > 0)
-    .map(r => r.value);
+  return all.flatMap((token, i) => {
+    const r = results[i];
+    const balance = r.status === 'fulfilled' ? r.value : null;
+    if (balance != null && balance > 0) return [{ token, balance }];
+    if (token.custom) return [{ token, balance: balance ?? 0 }];
+    return [];
+  });
 }
