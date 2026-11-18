@@ -15,6 +15,36 @@ const IMAGE = '0x1c3547dfa9ce7acd9c54ae49244575fa65bc75e2';
 const USDC_SOL = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const E18 = '000000000000000000';
 
+/* ── Lithosphere (chain 9005): LithoScan names candidates, the node settles
+      them. The wallet reads the token's own balanceOf/symbol/decimals, so
+      these helpers speak ABI. ── */
+const TSYN  = '0xef22613e7cec1c3ce4f8af98594045c664dfb312';
+const GONE  = '0x2222222222222222222222222222222222222222';
+const OLD   = '0x3333333333333333333333333333333333333333';
+const ROUTER = '0x4444444444444444444444444444444444444444';
+const SEL = { bal: '0x70a08231', sym: '0x95d89b41', dec: '0x313ce567' };
+
+/** A 32-byte ABI word from an address or a number. */
+const w = (v: string | number | bigint): string =>
+  (typeof v === 'string' ? v.replace(/^0x/, '').toLowerCase() : BigInt(v).toString(16)).padStart(64, '0');
+const abiUint = (v: string | number | bigint): string => '0x' + w(typeof v === 'string' ? BigInt(v) : v);
+/** An ABI-encoded dynamic `string` return. */
+const abiStr = (t: string): string => {
+  const hex = [...t].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+  return '0x' + w(32) + w(t.length) + hex.padEnd(64, '0');
+};
+/** A `bytes32` symbol, as pre-ERC-20 tokens return it. */
+const b32Str = (t: string): string =>
+  '0x' + [...t].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('').padEnd(64, '0');
+/** fakeFetch key for one eth_call: the node URL plus the start of its body. */
+const ethCall = (token: string, sel: string): string => `{"to":"${token}","data":"${sel}`;
+const rpcOk = (result: string) => ({ jsonrpc: '2.0', id: 1, result });
+/** A transfer() / transferFrom() call as LithoScan's tx list shows it. */
+const transferTx = (token: string, from: string, to: string, amt = '1') =>
+  ({ evmHash: '0x' + 'a'.repeat(64), evmFromAddr: from, evmToAddr: token, inputData: '0xa9059cbb' + w(to) + w(BigInt(amt)) });
+const transferFromTx = (token: string, caller: string, from: string, to: string) =>
+  ({ evmHash: '0x' + 'b'.repeat(64), evmFromAddr: caller, evmToAddr: token, inputData: '0x23b872dd' + w(from) + w(to) + w(1n) });
+
 type Route = [match: string, body: unknown];
 
 /** fetch stand-in: the first route whose substring is in the URL (or POST
@@ -182,7 +212,130 @@ describe.each([['sdk-core', core], ['mobile twin', mobile]])('%s discoverTokenHo
     });
     expect(tokens.length).toBe(5);
     expect(tokens[0]).toMatchObject({ symbol: 'WETH', wellKnown: true, priceUsd: 2400 });
-    expect(m.discoveryEvmChainIds()).toEqual(expect.arrayContaining([1, 10, 43114, 8453, 42161, 137]));
+    expect(m.discoveryEvmChainIds()).toEqual(expect.arrayContaining([9005, 1, 10, 43114, 8453, 42161, 137]));
     expect(m.discoveryEvmChainIds()).not.toContain(56);
+  });
+
+  /* ── Lithosphere ──────────────────────────────────────────────────── */
+
+  it('takes Lithosphere candidates from LithoScan and the balance from the chain', async () => {
+    const seen: string[] = [];
+    const { tokens, read, failed } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      fetchImpl: fakeFetch([
+        ['/token-transfers?limit=100', { items: [
+          { token: { address: TSYN.toUpperCase().replace('0X', '0x'), symbol: 'TSYN' } },  // checksum case
+          { contractAddress: GONE, tokenSymbol: 'GONE' },                                  // sent away since
+          { token: { address: 'not-an-address' } },
+        ] }],
+        [ethCall(TSYN, SEL.bal), rpcOk(abiUint('25' + E18))],
+        [ethCall(TSYN, SEL.sym), rpcOk(abiStr('TSYN'))],
+        [ethCall(TSYN, SEL.dec), rpcOk(abiUint(18))],
+        [ethCall(GONE, SEL.bal), rpcOk(abiUint(0))],
+        [ethCall(GONE, SEL.sym), rpcOk(abiStr('GONE'))],
+        [ethCall(GONE, SEL.dec), rpcOk(abiUint(18))],
+      ], seen),
+    });
+    expect(failed).toEqual([]);
+    expect(read).toEqual(['lithosphere']);
+    expect(tokens.map((t) => `${t.chainId}:${t.symbol}:${t.balance}`)).toEqual(['9005:TSYN:25']);
+    expect(tokens[0]).toMatchObject({
+      key: `9005:${TSYN}`, address: TSYN, network: 'lithosphere', networkName: 'Lithosphere',
+      // Shown like a listed token: the home chain has no price source, so
+      // `priced` can't carry it (see classify).
+      source: 'lithoscan', decimals: 18, rawBalance: '25' + E18, priced: false, known: false, wellKnown: true,
+    });
+    // The amount came from the chain, not from the transfer list.
+    expect(seen.some((u) => u.includes(ethCall(TSYN, SEL.bal)))).toBe(true);
+    // Only Lithosphere was asked for.
+    expect(seen.some((u) => u.includes('blockscout') || u.includes('routescan'))).toBe(false);
+  });
+
+  it('falls back to the transactions when LithoScan serves no token list', async () => {
+    const seen: string[] = [];
+    const { tokens, read } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      fetchImpl: fakeFetch([
+        ['/token-transfers?limit=100', new Error('404')],
+        ['/txs?limit=100', { items: [
+          transferTx(TSYN, ME, '0x9999999999999999999999999999999999999999'),  // sent by me
+          transferTx(OLD, '0x8888888888888888888888888888888888888888', ME),    // sent to me
+          transferFromTx(ROUTER, ME, ME, '0x7777777777777777777777777777777777777777'),
+          { evmHash: '0xc', evmFromAddr: ME, evmToAddr: GONE, inputData: '0xdeadbeef' + w(1n) }, // another call
+          { evmHash: '0xd', evmFromAddr: ME, evmToAddr: OLD, inputData: '0x', value: '1' },      // native send
+        ], hasMore: false }],
+        [ethCall(TSYN, SEL.bal), rpcOk(abiUint('4' + E18))],
+        [ethCall(TSYN, SEL.sym), rpcOk(abiStr('TSYN'))],
+        [ethCall(TSYN, SEL.dec), rpcOk(abiUint(18))],
+        [ethCall(OLD, SEL.bal), rpcOk(abiUint('7000000'))],
+        [ethCall(OLD, SEL.sym), rpcOk(b32Str('LRC'))],          // bytes32 symbol
+        [ethCall(OLD, SEL.dec), rpcOk(abiUint(6))],
+        // ROUTER is a transferFrom target too, but not an ERC-20: it reverts.
+        [ethCall(ROUTER, SEL.bal), { jsonrpc: '2.0', id: 1, error: { message: 'execution reverted' } }],
+      ], seen),
+    });
+    expect(read).toEqual(['lithosphere']);
+    expect(tokens.map((t) => `${t.symbol}:${t.balance}:${t.decimals}`).sort()).toEqual(['LRC:7:6', 'TSYN:4:18']);
+    // A call that isn't a transfer never becomes a candidate.
+    expect(seen.some((u) => u.includes(ethCall(GONE, SEL.bal)))).toBe(false);
+  });
+
+  it('marks Lithosphere failed when LithoScan cannot be read at all', async () => {
+    const { tokens, read, failed } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      fetchImpl: fakeFetch([['lithoscan.ai', new Error('down')]]),
+    });
+    expect(read).toEqual([]);
+    expect(failed).toEqual(['lithosphere']);
+    expect(tokens).toEqual([]);
+  });
+
+  it('marks Lithosphere failed when the node answers nothing, not empty', async () => {
+    const { read, failed } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      fetchImpl: fakeFetch([
+        ['/token-transfers?limit=100', { items: [{ token: { address: TSYN } }] }],
+        ['rpc-mainnet.litho.ai', new Error('node down')],
+      ]),
+    });
+    expect(read).toEqual([]);
+    expect(failed).toEqual(['lithosphere']);
+  });
+
+  it('drops a fake LITHO, a lure symbol and a non-token on Lithosphere', async () => {
+    const FAKE = '0x5555555555555555555555555555555555555555';
+    const LURE = '0x6666666666666666666666666666666666666666';
+    const { tokens } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      fetchImpl: fakeFetch([
+        ['/token-transfers?limit=100', { items: [
+          { token: { address: FAKE } }, { token: { address: LURE } }, { token: { address: ROUTER } },
+        ] }],
+        [ethCall(FAKE, SEL.bal), rpcOk(abiUint('1' + E18))],
+        [ethCall(FAKE, SEL.sym), rpcOk(abiStr('LITHO'))],           // impersonates the gas coin
+        [ethCall(FAKE, SEL.dec), rpcOk(abiUint(18))],
+        [ethCall(LURE, SEL.bal), rpcOk(abiUint('1' + E18))],
+        [ethCall(LURE, SEL.sym), rpcOk(abiStr('claim-x.io'))],
+        [ethCall(LURE, SEL.dec), rpcOk(abiUint(18))],
+        [ethCall(ROUTER, SEL.bal), rpcOk(abiUint('1' + E18))],
+        [ethCall(ROUTER, SEL.sym), rpcOk('0x')],                     // no symbol: not an ERC-20
+        [ethCall(ROUTER, SEL.dec), rpcOk(abiUint(18))],
+      ]),
+    });
+    expect(tokens).toEqual([]);
+  });
+
+  it('accepts a Lithosphere token the user added as listed', async () => {
+    const { tokens } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      knownTokens: [{ chainId: 9005, address: TSYN.toUpperCase().replace('0X', '0x'), symbol: 'TSYN' }],
+      fetchImpl: fakeFetch([
+        ['/token-transfers?limit=100', { items: [{ token: { address: TSYN } }] }],
+        [ethCall(TSYN, SEL.bal), rpcOk(abiUint('2' + E18))],
+        [ethCall(TSYN, SEL.sym), rpcOk(abiStr('TSYN'))],
+        [ethCall(TSYN, SEL.dec), rpcOk(abiUint(18))],
+      ]),
+    });
+    expect(tokens.map((t) => [t.symbol, t.known, t.wellKnown])).toEqual([['TSYN', true, true]]);
   });
 });

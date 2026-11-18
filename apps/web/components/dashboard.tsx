@@ -32,7 +32,8 @@ import { signerSolanaAddress } from '../lib/signer-client';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
 import { type EvmChain } from '../lib/evm-chains';
 import {
-  getAllEvmNativeBalancesMerged, getAllEvmTokenBalancesMerged, getEvmChainMerged,
+  getAllEvmNativeBalancesMerged, getAllEvmTokenBalancesMerged, getEvmChainMerged, onCustomAssetsChanged,
+  refreshDiscoveredTokens,
   type EvmTokenLike,
 } from '../lib/custom-assets';
 import { historyAddresses, pendingActivityRows, resolvePendingTxs, syncExplorerHistory } from '../lib/tx-store';
@@ -473,6 +474,10 @@ export function Dashboard() {
      getAllEvmNativeBalances and stored as per-chain rows so the
      dashboard can show "ETH on Arbitrum" separately from "ETH on
      mainnet". */
+  // Bumped when a custom network/token is added or removed, so the reads
+  // below re-run and the new asset appears without a page reload.
+  const [assetsTick, setAssetsTick] = useState(0);
+  useEffect(() => onCustomAssetsChanged(() => setAssetsTick(t => t + 1)), []);
   useEffect(() => {
     if (!evmAddress) { setEvmChainBalances([]); setEvmTokenBalances([]); setEvmLoaded(false); return; }
     let cancel = false;
@@ -496,8 +501,12 @@ export function Dashboard() {
         if (!cancel) setEvmTokenBalances([]);
       }
     })();
+    // What else this address holds on Lithosphere (LithoScan). Throttled, and
+    // never awaited in front of the balances: it only announces a change,
+    // which re-runs this effect and reads the new rows the normal way.
+    void refreshDiscoveredTokens(evmAddress);
     return () => { cancel = true; };
-  }, [evmAddress]);
+  }, [evmAddress, assetsTick]);
 
   /* Build the coin rows STRICTLY from real chain state. No canonical
      fallback: if every chain says zero we show an empty list. Every EVM row

@@ -18,11 +18,20 @@
  *  - Solana: the RPC's getTokenAccountsByOwner (SPL Token and Token-2022).
  *  - Cosmos Hub: the bank balances REST endpoint; IBC denoms are named from
  *    their trace.
- *  - BNB Chain, Linea, Lithosphere: no free source lists holdings there
- *    (LithoScan's address token list is empty so far), so their tokens come
- *    from the wallet's list and user-added tokens only. A source is a row in
- *    EVM_NETWORKS plus a reader — e.g. an Etherscan key — without changing
- *    callers.
+ *  - Lithosphere: LithoScan names the candidates and the chain settles them.
+ *    LithoScan serves no holdings list, so its token-transfer list is read
+ *    for the contracts that have moved in or out of the address, falling back
+ *    to the address's transactions, where a token transfer appears as a
+ *    transfer()/transferFrom() call to the token's own contract. Each
+ *    candidate's balance, symbol and decimals are then read from the
+ *    Lithosphere node itself (eth_call), and only a balance the CHAIN
+ *    reports above zero is returned — a transfer list alone would keep a
+ *    token that has since been sent away, and the explorer's decimals are
+ *    never trusted for an amount (a wrong one is a fund-loss bug).
+ *  - BNB Chain, Linea: no free source lists holdings there, so their tokens
+ *    come from the wallet's list and user-added tokens only. A source is a
+ *    row in EVM_NETWORKS plus a reader — e.g. an Etherscan key — without
+ *    changing callers.
  *
  * Every token held (balance above zero) is classed:
  *  - spam — flagged by the explorer, a URL-like or "claim / visit / airdrop"
@@ -49,7 +58,7 @@ export interface DiscoveryAddresses {
   cosmos?: string;
 }
 
-export type DiscoverySource = 'routescan' | 'blockscout' | 'solana-rpc' | 'cosmos-rest';
+export type DiscoverySource = 'routescan' | 'blockscout' | 'solana-rpc' | 'cosmos-rest' | 'lithoscan';
 
 export interface DiscoveredToken {
   /** Unique per token: `<chainId or chain>:<address>`. */
@@ -114,9 +123,12 @@ const ROUTESCAN = 'https://api.routescan.io';
 const SOLANA_RPCS = ['https://solana-rpc.publicnode.com', 'https://api.mainnet-beta.solana.com'];
 const COSMOS_REST = 'https://cosmos-rest.publicnode.com';
 
-interface EvmNetwork { key: string; chainId: number; name: string; native: string; blockscout?: string; routescan?: boolean }
-/** EVM networks some free source lists holdings for. */
+interface EvmNetwork { key: string; chainId: number; name: string; native: string; blockscout?: string; routescan?: boolean; lithoscan?: boolean }
+/** EVM networks a source can read holdings on. Lithosphere leads — it's the
+ *  wallet's home chain — and is the one read through LithoScan plus its own
+ *  node rather than a holdings API. */
 const EVM_NETWORKS: EvmNetwork[] = [
+  { key: 'lithosphere', chainId: 9005, name: 'Lithosphere', native: 'LITHO', lithoscan: true },
   { key: 'ethereum',  chainId: 1,     name: 'Ethereum',  native: 'ETH',  blockscout: 'https://eth.blockscout.com',   routescan: true },
   { key: 'optimism',  chainId: 10,    name: 'Optimism',  native: 'ETH',  blockscout: 'https://explorer.optimism.io', routescan: true },
   { key: 'avalanche', chainId: 43114, name: 'Avalanche', native: 'AVAX',                                             routescan: true },
@@ -261,6 +273,14 @@ function classify(ctx: Ctx, h: Holding): DiscoveredToken | null {
     }
   }
   const priced = h.priceUsd != null && Number.isFinite(h.priceUsd) && h.priceUsd > 0;
+  // On Lithosphere a held token is shown like a listed one, not hidden as
+  // less known. Nothing prices LITHO-chain tokens, so `priced` — the proxy
+  // for "real" on the big chains — can never be true there, and the client
+  // asked for tokens held on the home chain to appear by themselves. What
+  // stands in for it is stronger: the candidate came from a transfer
+  // involving THIS address, the chain itself confirmed the balance, symbol
+  // and decimals, and the spam rules above already ran.
+  const homeChain = h.source === 'lithoscan';
   return {
     key: `${h.chainId ?? h.chain}:${address}`,
     chain: h.chain,
@@ -273,7 +293,7 @@ function classify(ctx: Ctx, h: Holding): DiscoveredToken | null {
     ...(h.reputation ? { reputation: h.reputation } : {}),
     ...(h.logo ? { logo: h.logo } : {}),
     known,
-    wellKnown: known || (priced && (!h.reputation || h.reputation === 'ok')),
+    wellKnown: known || homeChain || (priced && (!h.reputation || h.reputation === 'ok')),
   };
 }
 
@@ -442,6 +462,144 @@ async function cosmos(ctx: Ctx, addr: string): Promise<Holding[]> {
   return list.filter((h): h is Holding => h !== null);
 }
 
+/* ─── Lithosphere: LithoScan names them, the chain settles them ─────── */
+
+const LITHOSCAN = 'https://lithoscan.ai/api';
+const LITHO_RPC = 'https://rpc-mainnet.litho.ai';
+const LITHO_CHAIN_ID = 9005;
+/** Contracts read on-chain per pass. A transfer list can name many; the
+ *  balance read is three eth_calls each, so it is capped. */
+const LITHO_PROBE_MAX = 25;
+
+/** ERC-20 calls read from the node. */
+const SEL_BALANCE_OF = '0x70a08231';
+const SEL_SYMBOL     = '0x95d89b41';
+const SEL_DECIMALS   = '0x313ce567';
+/** The two calls that move an ERC-20, as they appear in a tx's calldata. */
+const SEL_TRANSFER      = 'a9059cbb';
+const SEL_TRANSFER_FROM = '23b872dd';
+
+const EVM_ADDR = /^0x[0-9a-f]{40}$/;
+
+/** An address as a 32-byte ABI word. */
+const pad32 = (addr: string): string => addr.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+
+/** eth_call against the Lithosphere node; null when it didn't answer with
+ *  hex (a revert, or not a contract at all). Throws only when the node
+ *  itself can't be reached, which marks the whole source failed. */
+async function lithoCall(ctx: Ctx, to: string, data: string): Promise<string | null> {
+  const json = await getJson(ctx, LITHO_RPC, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data }, 'latest'] }),
+  });
+  const r = json?.result;
+  return typeof r === 'string' && /^0x[0-9a-fA-F]*$/.test(r) ? r : null;
+}
+
+function hexToText(hex: string): string {
+  const bytes: number[] = [];
+  for (let i = 0; i + 1 < hex.length; i += 2) {
+    const b = parseInt(hex.slice(i, i + 2), 16);
+    if (!Number.isFinite(b)) return '';
+    bytes.push(b);
+  }
+  let out: string;
+  try {
+    out = new TextDecoder().decode(new Uint8Array(bytes));
+  } catch {
+    out = String.fromCharCode(...bytes);
+  }
+  // bytes32 symbols are NUL-padded; a bad decode leaves replacement chars.
+  return out.replace(/[\0\uFFFD]+/g, '').trim();
+}
+
+/** ABI-decode a returned `string`, or a `bytes32` one (pre-ERC-20 tokens). */
+function decodeAbiString(hex: string): string {
+  const b = hex.replace(/^0x/, '');
+  if (b.length >= 128) {
+    const offset = big('0x' + b.slice(0, 64));
+    const len = big('0x' + b.slice(64, 128));
+    if (offset === 32n && len !== null && len > 0n && len <= 64n && BigInt(b.length) >= 128n + len * 2n) {
+      return hexToText(b.slice(128, 128 + Number(len) * 2));
+    }
+  }
+  if (b.length === 64) return hexToText(b);
+  return '';
+}
+
+/** Token contracts LithoScan says have moved in or out of this address.
+ *
+ *  The token-transfer list is asked first; when it names any, those are the
+ *  candidates. Otherwise the address's transactions must be readable — a
+ *  LithoScan we can't read is a FAILED source, never an empty one, or an
+ *  outage would read to the caller as "you hold nothing here" and blank rows
+ *  it should have kept. */
+async function lithoCandidates(ctx: Ctx, addr: string): Promise<string[]> {
+  const me = lc(addr).replace(/^0x/, '');
+  const out = new Set<string>();
+  // The token-transfer list, once LithoScan serves one.
+  try {
+    const json = await getJson(ctx, `${LITHOSCAN}/address/${encodeURIComponent(addr)}/token-transfers?limit=100`);
+    const items: unknown = json?.items ?? json?.transfers ?? json?.result ?? json;
+    for (const x of (Array.isArray(items) ? items : []) as any[]) {
+      const t = x?.token ?? x?.tokenInfo ?? {};
+      const a = lc(t.address ?? t.address_hash ?? t.contractAddress ?? x?.contractAddress ?? x?.tokenAddress);
+      if (EVM_ADDR.test(a)) out.add(a);
+    }
+  } catch { /* no such list yet — the transactions below stand in */ }
+  if (out.size > 0) return [...out];
+  // Otherwise the address's transactions, where a token transfer is a
+  // transfer()/transferFrom() call whose `to` IS the token's own contract.
+  const json = await getJson(ctx, `${LITHOSCAN}/address/${encodeURIComponent(addr)}/txs?limit=100`);
+  const items: any[] = json?.items ?? json?.txs ?? (Array.isArray(json) ? json : []);
+  for (const t of items) {
+    const to = lc(t?.evmToAddr ?? t?.to);
+    const data = lc(t?.inputData ?? t?.input ?? '');
+    if (!EVM_ADDR.test(to)) continue;
+    const sel = data.slice(2, 10);
+    if (sel !== SEL_TRANSFER && sel !== SEL_TRANSFER_FROM) continue;
+    const args = data.slice(10);
+    const word = (i: number) => args.slice(i * 64 + 24, (i + 1) * 64);
+    // Sent by this address, or sent to it (the recipient is an argument).
+    const mine = lc(t?.evmFromAddr ?? t?.from).replace(/^0x/, '') === me
+      || (sel === SEL_TRANSFER && word(0) === me)
+      || (sel === SEL_TRANSFER_FROM && (word(0) === me || word(1) === me));
+    if (mine) out.add(to);
+  }
+  return [...out];
+}
+
+/** What the CHAIN says this address holds of one candidate contract: the
+ *  balance, symbol and decimals from the token itself. null when it isn't an
+ *  ERC-20, or holds nothing now. */
+async function lithoHolding(ctx: Ctx, owner: string, token: string): Promise<Holding | null> {
+  const [bal, sym, dec] = await Promise.all([
+    lithoCall(ctx, token, SEL_BALANCE_OF + pad32(owner)),
+    lithoCall(ctx, token, SEL_SYMBOL),
+    lithoCall(ctx, token, SEL_DECIMALS),
+  ]);
+  const raw = bal && bal.length > 2 ? big(bal) : null;
+  const decRaw = dec && dec.length > 2 ? big(dec) : null;
+  const decimals = decRaw === null ? null : decimalsOf(Number(decRaw));
+  const symbol = sym ? decodeAbiString(sym) : '';
+  if (raw === null || raw <= 0n || decimals === null || !symbol) return null;
+  return {
+    chain: 'evm', chainId: LITHO_CHAIN_ID, network: 'lithosphere', networkName: 'Lithosphere',
+    address: token, symbol, name: symbol, decimals, raw, source: 'lithoscan',
+  };
+}
+
+async function lithosphere(ctx: Ctx, addr: string): Promise<Holding[]> {
+  const candidates = (await lithoCandidates(ctx, addr)).slice(0, LITHO_PROBE_MAX);
+  if (candidates.length === 0) return [];
+  const probes = await Promise.allSettled(candidates.map((t) => lithoHolding(ctx, addr, t)));
+  // The node answering nothing at all is a failed source, not an empty one —
+  // otherwise a node outage would read as "you hold nothing here".
+  if (probes.every((p) => p.status === 'rejected')) throw (probes[0] as PromiseRejectedResult).reason;
+  return probes.flatMap((p) => (p.status === 'fulfilled' && p.value ? [p.value] : []));
+}
+
 /* ─── Entry point ───────────────────────────────────────────────────── */
 
 export async function discoverTokenHoldings(addrs: DiscoveryAddresses, opts: DiscoveryOptions = {}): Promise<DiscoveryResult> {
@@ -466,9 +624,18 @@ export async function discoverTokenHoldings(addrs: DiscoveryAddresses, opts: Dis
   const evm = addrs.evm;
   if (evm) {
     const wanted = opts.chainIds ? new Set(opts.chainIds) : null;
-    const nets = EVM_NETWORKS.filter((n) => !wanted || wanted.has(n.chainId));
+    const all = EVM_NETWORKS.filter((n) => !wanted || wanted.has(n.chainId));
+    // Lithosphere is read through LithoScan + its own node, so it runs on its
+    // own and never counts as a failed holdings API below.
+    if (all.some((n) => n.lithoscan)) {
+      jobs.push(lithosphere(ctx, evm).then(
+        (list) => { read.push('lithosphere'); holdings.push(...list); },
+        () => { failed.push('lithosphere'); },
+      ));
+    }
+    const nets = all.filter((n) => !n.lithoscan);
     const pages = Math.max(1, Math.floor(opts.routescanPages ?? 3));
-    jobs.push((async () => {
+    if (nets.length > 0) jobs.push((async () => {
       const [rs, ...bs] = await Promise.allSettled([
         nets.some((n) => n.routescan) ? routescan(ctx, evm, pages, nets.filter((n) => n.routescan)) : Promise.resolve([]),
         ...nets.map((n) => (n.blockscout ? blockscout(ctx, n, evm) : Promise.reject(new Error('no Blockscout')))),

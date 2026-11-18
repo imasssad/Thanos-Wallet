@@ -113,6 +113,14 @@ https://thanos.fi/privacy is the canonical document.
 ## What's New in this version (release notes, 4,000 chars max)
 
 ```
+• Tokens you hold on Lithosphere now show up on their own — no need to
+  add their contract address by hand.
+• A token you add by contract address appears on Home right away, even
+  with a zero balance.
+• On iPhone, the keyboard no longer covers the fields and buttons in
+  sheets such as Add token.
+• Discover: Litho.Finance and LithoVault.ai under DeFi & Yield, and a new
+  Community section with Degens.lt.
 • Thanos MultiSig: create a shared wallet on Lithosphere with co-signers,
   then propose, approve and send from it together. Approvals can be
   gas-free.

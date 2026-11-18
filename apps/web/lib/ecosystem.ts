@@ -32,6 +32,7 @@ const WEB_ICONS: Record<string, string> = {
   // Infrastructure + rewards — client app-icon pack (2026-06-16).
   'litho-deals':     '/images/dapps/litho-deals.png', // the double-struck 𝕃 mark
   lithoscan:         '/images/dapps/lithoscan.png',   // client-supplied 2026-09-11
+  'litho-finance':   '/images/dapps/litho-finance.png', // client-supplied 2026-11-13
 };
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = BASE_APPS.map(a => ({

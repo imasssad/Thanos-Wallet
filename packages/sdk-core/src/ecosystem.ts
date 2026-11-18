@@ -28,13 +28,17 @@ export interface EcosystemApp {
   section:     string;
 }
 
-/** Section headers in display order. Apps render grouped under these. */
+/** Section headers in display order. Apps render grouped under these.
+ *  'Community' was added on client request (2026-11-13); the DeFi apps from
+ *  the same request sit in the existing 'DeFi & Yield' rather than a second
+ *  DeFi section (client confirmed 2026-11-13: "DeFi & Yield works"). */
 export const ECOSYSTEM_SECTIONS = [
   'AI & Agents',
   'DeFi & Yield',
   'NFTs',
   'Infrastructure',
   'Rewards',
+  'Community',
 ] as const;
 
 export const ECOSYSTEM_APPS: EcosystemApp[] = [
@@ -95,6 +99,25 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     category: 'DEX',
     section: 'DeFi & Yield',
   },
+  // Added on client request 2026-11-13.
+  {
+    id: 'litho-finance',
+    name: 'Litho.Finance',
+    description: 'DeFi on Lithosphere.',
+    url: 'https://litho.finance',
+    color: '#3b7af7',
+    category: 'DeFi',
+    section: 'DeFi & Yield',
+  },
+  {
+    id: 'lithovault',
+    name: 'LithoVault.ai',
+    description: 'Vaults and yield strategies on Lithosphere.',
+    url: 'https://lithovault.ai',
+    color: '#8b7df7',
+    category: 'DeFi',
+    section: 'DeFi & Yield',
+  },
   // EGO Exchange removed per Esha 2026-06-10 — re-add when the team
   // confirms a real product URL + the integration is ready.
   // Mansa AI removed per client 2026-09-15 — re-add when confirmed ready.
@@ -136,6 +159,16 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
     color: '#3b7af7',
     category: 'Rewards',
     section: 'Rewards',
+  },
+  // ─── Community (client 2026-11-13) ───────────────────────────────────
+  {
+    id: 'degens',
+    name: 'Degens.lt',
+    description: 'Community hub for Lithosphere degens.',
+    url: 'https://degens.lt',
+    color: '#f97316',
+    category: 'Community',
+    section: 'Community',
   },
 ];
 
