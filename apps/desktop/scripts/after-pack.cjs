@@ -59,6 +59,44 @@ exports.default = async function afterPack(context) {
       // linux's packaged binary is named from `executableName`
       // (lowercased product name by default), not productFilename.
       : path.join(appOutDir, packager.executableName);
+  // The MAS build has no camera / location entitlements (App Review
+  // 2026-11-22, guideline 2.4.5(i)), so its Info.plist must not advertise
+  // them either: a usage string for a device the app can't touch is exactly
+  // the mismatch that review asks about. The strings stay in
+  // electron-builder.yml for the .dmg build, which does run verification
+  // in-app; `mas` inherits `mac` config through a DEEP merge, so they can't
+  // be turned off there in the config — they come back out here.
+  if (electronPlatformName === 'mas') {
+    const app = path.join(appOutDir, `${packager.appInfo.productFilename}.app`);
+    const { execFileSync } = require('child_process');
+
+    // The App Store build must run natively on Apple Silicon. electron-builder
+    // with no arch flag builds for the BUILD MACHINE's architecture, so an
+    // x86_64 .pkg off an Intel Mac sails through every other check and is
+    // then rejected for requiring Rosetta (App Review 2026-11-22, guideline
+    // 2.4.5(ii)). Check the binary itself rather than trusting the flag —
+    // this catches any build path, CI or someone's laptop.
+    const exe = path.join(app, 'Contents', 'MacOS', packager.appInfo.productFilename);
+    const archs = execFileSync('lipo', ['-archs', exe], { encoding: 'utf8' }).trim();
+    if (!archs.split(/\s+/).includes('arm64')) {
+      throw new Error(`afterPack: the MAS binary is ${archs}, with no arm64 slice — it would need Rosetta on Apple Silicon ` +
+        'and App Review rejects that (guideline 2.4.5(ii)). Build it with `electron-builder --mac mas --arm64`.');
+    }
+    console.log(`  • afterPack: MAS binary architecture ${archs}`);
+
+    const plist = path.join(app, 'Contents', 'Info.plist');
+    for (const key of ['NSCameraUsageDescription', 'NSLocationUsageDescription', 'NSLocationWhenInUseUsageDescription']) {
+      // plutil exits non-zero when the key isn't there, which is fine.
+      try { execFileSync('plutil', ['-remove', key, plist], { stdio: 'ignore' }); } catch { /* not present */ }
+    }
+    const left = execFileSync('plutil', ['-p', plist], { encoding: 'utf8' })
+      .split('\n').filter((l) => /NSCamera|NSLocation/.test(l));
+    if (left.length) {
+      throw new Error(`afterPack: the MAS Info.plist still declares ${left.join(', ').trim()} — remove it before submitting.`);
+    }
+    console.log('  • afterPack: MAS Info.plist carries no camera/location usage strings');
+  }
+
   await flipFuses(binaryPath, {
     version: FuseVersion.V1,
     resetAdHocDarwinSignature: electronPlatformName === 'darwin' || electronPlatformName === 'mas',

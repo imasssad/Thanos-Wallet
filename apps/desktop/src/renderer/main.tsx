@@ -6203,8 +6203,17 @@ function useOpenDapp() {
   const openDapp = useContext(DappOpenerContext);
   // purpose 'kyc': LAX identity verification — the in-app view may then use
   // the camera / location once the user allows it (main/dapp-browser.ts).
+  //
+  // Except in the Mac App Store build, which ships without the camera and
+  // location entitlements (App Review 2026-11-22, guideline 2.4.5(i): an
+  // entitlement whose functionality a reviewer can't reach). There
+  // verification opens in the user's own browser, where the camera is the
+  // browser's to ask for — the same path every non-desktop client already
+  // takes. Everything else still opens in-app.
   return (url: string, name?: string, purpose?: 'kyc') => {
-    if (openDapp && window.thanosDesktop?.dapp) {
+    if (__MAS_BUILD__ && purpose === 'kyc') {
+      openExternal(url);
+    } else if (openDapp && window.thanosDesktop?.dapp) {
       openDapp(url, name || '', purpose);
     } else {
       openExternal(url);

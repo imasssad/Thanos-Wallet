@@ -46,6 +46,54 @@ Both are gated and WIRED (2026-07-18):
 Verified: `MAS_BUILD=1 pnpm build` produces a bundle with no HW-wallet UI
 strings and no eager WebHID import; a normal build keeps them.
 
+## What App Review rejected on 2026-11-22, and what changed
+
+Submission `052e0277-8b6e-46dc-8b49-0b554d331047`, version 1.0 (1.0.0), two
+findings. Both are fixed in the build config — re-read this before the next
+submission.
+
+**2.4.5(ii) — "Rosetta is required to be installed in order to run app."**
+The submitted `.pkg` was x86_64-only, so it needed Rosetta on the reviewer's
+Apple Silicon Mac. Cause: `electron-builder --mac mas` with **no arch flag
+builds for the architecture of the machine doing the build** (verified in
+`electron-builder/out/builder.js`: with no `--x64/--arm64/--universal` it
+falls back to `archFromString(process.arch)`), and that `.pkg` came off an
+Intel Mac. CI's `macos-14` runner is arm64, so the workflow would have been
+fine — which is exactly why this has to be enforced, not assumed.
+
+Now: the App Store build is **Apple Silicon only**. Both build paths pass
+`--arm64` explicitly, and `scripts/after-pack.cjs` runs `lipo -archs` on the
+packaged binary and **fails the build** if there's no arm64 slice, whatever
+machine or command produced it. Intel Macs are served by the direct-download
+`.dmg` (`build-macos.sh --arch x64`), not the Store.
+
+**2.4.5(i) — entitlements with no matching functionality:**
+`com.apple.security.device.camera` and
+`com.apple.security.personal-information.location`. They were declared for
+LAX card identity verification, which runs a third-party verification page
+in the in-app browser. A reviewer cannot reach that flow — it needs a Thanos
+account, a card issued server-side and a real ID document — so from the
+outside the entitlements look unused, and 2.4.5(i) asks for the minimum set.
+
+Now: **the MAS build does verification outside the app.** Three changes, so
+no single one of them is load-bearing:
+- `entitlements.mas.plist` declares neither entitlement.
+- `useOpenDapp` in `src/renderer/main.tsx` opens a `'kyc'` URL with
+  `openExternal` when `__MAS_BUILD__`, so the verification page loads in the
+  user's own browser, where the camera is the browser's to ask for.
+- `installKycPermissions` in `src/main/dapp-browser.ts` refuses camera and
+  location outright when `process.mas` is true, so even an in-app view can't
+  reach them.
+- `after-pack.cjs` strips `NSCameraUsageDescription` /
+  `NSLocation*UsageDescription` from the MAS `Info.plist` (they stay for the
+  `.dmg`, which keeps the in-app flow) and fails the build if any survive.
+  This has to happen in the hook: `mas` inherits `mac` config through a
+  **deep** merge, so `extendInfo` keys can't be unset in the YAML.
+
+If the in-app verification flow is ever wanted in the Store build, re-add the
+entitlements *together with* a path a reviewer can actually walk, and spell
+it out in the App Review notes with demo credentials.
+
 ## App name — DECIDED: "Thanos Wallet" (the iOS app is "Thanos")
 
 The desktop app is **"Thanos Wallet"** on every platform, macOS included, and

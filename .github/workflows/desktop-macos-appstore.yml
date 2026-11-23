@@ -69,7 +69,12 @@ jobs:
           CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder --mac mas --publish never
+        # --arm64 is NOT optional: with no arch flag electron-builder builds
+        # for the BUILD MACHINE's architecture, and an x86_64 .pkg needs
+        # Rosetta on Apple Silicon — App Review rejected exactly that
+        # (2026-11-22, guideline 2.4.5(ii)). after-pack.cjs fails the build if
+        # the packaged binary has no arm64 slice, whatever machine it runs on.
+        run: npx electron-builder --mac mas --arm64 --publish never
 
       - name: Upload .pkg artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -35,13 +35,28 @@
        Ledger/Trezor stay in the direct-download .dmg build, which keeps its
        own non-sandboxed entitlements.) -->
 
-  <!-- LAX card identity verification (in-app): camera for the ID scan +
-       selfie, location when the check asks — each only after the user allows
-       it for that page (src/main/dapp-browser.ts). -->
-  <key>com.apple.security.device.camera</key>
-  <true/>
-  <key>com.apple.security.personal-information.location</key>
-  <true/>
+  <!-- (Removed com.apple.security.device.camera and
+       com.apple.security.personal-information.location — App Review
+       2026-11-22, guideline 2.4.5(i): "entitlements which do not appear to
+       have matching functionality within the app".
+
+       They were here for LAX card identity verification, which runs a
+       third-party verification page in the in-app browser and may ask for
+       the camera (ID scan + selfie) and location. A reviewer can't reach
+       that flow — it needs a Thanos account, a card issued server-side and
+       a real ID document — so from the outside the entitlements have no
+       visible use, and 2.4.5(i) asks for the minimum set.
+
+       The MAS build therefore does verification OUT of the app: the
+       renderer opens the verification URL in the user's default browser
+       (__MAS_BUILD__ in src/renderer/main.tsx), and the main process
+       refuses camera/location to any in-app view when process.mas is true
+       (src/main/dapp-browser.ts), so nothing in this build can reach either
+       device. The direct-download .dmg keeps the in-app flow and its own
+       entitlements in entitlements.mac.plist.
+
+       Re-add them only together with a flow a reviewer can actually run,
+       and say in the submission notes where to find it.) -->
 
   <!-- Import/export a recovery phrase or keystore file via the OS file picker. -->
   <key>com.apple.security.files.user-selected.read-write</key>
