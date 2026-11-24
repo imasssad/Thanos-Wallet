@@ -250,7 +250,19 @@ export class QuanttClient {
     // expo/fetch on web, which IS window.fetch) passed in unbound would
     // otherwise throw on every request.
     const f = opts.fetchImpl ?? fetch.bind(globalThis);
-    this.f = (input, init) => f(input, init);
+    // EVERY Quantt request is cookie-free, and that is load-bearing, not
+    // hygiene. Quantts also keeps a browser session in a `quantts_access`
+    // cookie. When typed-verify arrives WITH that cookie, the server reads it
+    // as "this signed-in user is linking a wallet" instead of "this wallet is
+    // signing in", and answers {linked:false, alreadyLinked:true, user:{…}}
+    // with no tokens at all. So after a disconnect — which clears our stored
+    // tokens but can't clear an httpOnly cookie — every reconnect failed with
+    // "no access token in response" and the wallet could never sign in again.
+    // The mobile twin (apps/mobile/lib/quantt.ts) fixed this in 37d210d;
+    // web/desktop/extension go through THIS client and were left sending the
+    // cookie. Auth here is the Bearer token only, so nothing wants cookies.
+    // `init` is spread last, but no call site sets credentials.
+    this.f = (input, init) => f(input, { credentials: 'omit', ...init });
   }
 
   /* ── session ──────────────────────────────────────────────────────── */
@@ -800,6 +812,18 @@ function normalizeSession(raw: unknown, prev?: QuanttSession): QuanttSession {
   };
   const accessToken = pickStr('accessToken', 'access_token', 'token', 'access', 'jwt') ?? prev?.accessToken;
   const refreshToken = pickStr('refreshToken', 'refresh_token', 'refresh') ?? prev?.refreshToken;
+  // The link-shaped answer: Quantts saw a session cookie on the request and
+  // treated it as a wallet LINK rather than a sign-in. The client sends
+  // `credentials: 'omit'` on every request now, so this should be
+  // unreachable — if it ever shows up again, the cookie got in somehow, and
+  // the message has to say what to do rather than dump the raw body (which
+  // carries the user's id and address) into the UI.
+  if (!accessToken && o.alreadyLinked === true) {
+    throw new QuanttError(409,
+      'This wallet is already linked to a Quantts account, but Quantts returned no session. '
+      + 'Please try Connect again; if it keeps happening, contact Quantts support.',
+      'typed-verify');
+  }
   if (!accessToken) {
     throw new QuanttError(500, `no access token in response: ${JSON.stringify(o).slice(0, 160)}`, 'typed-verify');
   }
