@@ -123,10 +123,7 @@
 /* Full view: the litho1 address, and the 0x form under it, smaller and quieter. */
 .tms-address-full { flex-direction: column; align-items: flex-start; gap: 2px; }
 .tms-address-line { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.tms-address-evm .tms-mono { font-size: 11px; color: var(--text-muted, #71717a); }
 /* Compact view: flips this address between litho1 and 0x. */
-.tms-address-switch { padding: 1px 6px; border: 1px solid var(--border-default, #282834); border-radius: 6px; background: transparent; color: var(--text-muted, #71717a); font: inherit; font-size: 11px; line-height: 1.5; cursor: pointer; }
-.tms-address-switch:hover, .tms-address-switch[aria-pressed="true"] { color: var(--blue, #3b7af7); border-color: var(--blue, #3b7af7); }
 .tms-muted { color: var(--text-secondary, #a1a1aa); font-size: 13px; line-height: 1.5; margin: 0; }
 .tms-footnote { color: var(--text-muted, #71717a); font-size: 12px; line-height: 1.5; margin: 8px 0 0; }
 .tms-static { display: block; padding: 10px 12px; border-radius: 10px; background: var(--bg-surface, #0e0e12); border: 1px dashed var(--border-default, #282834); }

@@ -129,6 +129,42 @@ export function lithoToEvm(litho: string): string {
   return getAddress(`0x${hex}`);
 }
 
+/* ─── Display ────────────────────────────────────────────────────────── */
+
+/**
+ * The ONE way Lithosphere addresses reach the user: always the bech32
+ * litho1… form, never 0x. Twin of formatForDisplay in
+ * packages/sdk-core/src/utils/litho-address.ts — keep the two in step.
+ *
+ * Thanos MultiSig and Litho Vault both show litho1 only (client 2026-11-24).
+ * 0x stays everywhere it is load-bearing — contract calls, signing, RPC,
+ * storage keys — and is converted at the edge, here, on the way to the
+ * screen. Anything this module can't parse as an EVM address (a name, a
+ * label, an empty value) comes back unchanged.
+ */
+export function formatForDisplay(address: string | null | undefined): string {
+  if (!address) return '';
+  const value = address.trim();
+  if (!/^0x[0-9a-fA-F]{40}$/.test(value)) return value;
+  try {
+    return evmToLitho(value);
+  } catch {
+    // An address that cannot be encoded is still not shown as 0x.
+    return value;
+  }
+}
+
+/** formatForDisplay + truncation, for rows and chips. */
+export function shortForDisplay(
+  address: string | null | undefined,
+  leading = 12,
+  trailing = 6,
+): string {
+  const shown = formatForDisplay(address);
+  if (!shown || shown.length <= leading + trailing + 3) return shown;
+  return `${shown.slice(0, leading)}…${shown.slice(-trailing)}`;
+}
+
 /* ─── DNNS name resolution ───────────────────────────────────────────── */
 
 /** Resolve a `name.litho` DNNS name to its 0x address via the API. */

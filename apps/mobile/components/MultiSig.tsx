@@ -16,20 +16,20 @@ import {
   SIGNER_TYPE_LABEL,
   SignerType,
   describeError,
-  displayAccount,
   explorerTxUrl,
   formatTimestamp,
   formatTokenUnits,
   isAnyAddress,
   isHumanSigner,
   parseAddress,
-  shortAccount,
-  toLithoAddress,
   type Address,
   type Call,
   type ReviewField,
   type TransactionReview,
 } from '@litho-vault/sdk';
+// The one way an address reaches the screen: litho1, never 0x (lib/address.ts,
+// twin of packages/sdk-core/src/utils/litho-address.ts).
+import { formatForDisplay, shortForDisplay } from '../lib/address';
 import {
   MultisigClient,
   cleanVaultName,
@@ -280,42 +280,44 @@ function Err({ ctx, error }: { ctx: Ctx; error: string | null | undefined }) {
 }
 
 /**
- * Every address as litho1… (people, the multisig, tokens). Full views add the 0x form on a second
- * line; in compact ones a tap switches to 0x…. Long-press copies the form shown.
+ * Every address as litho1… — people, the multisig, tokens — and only that.
+ *
+ * The 0x form is never shown, never copied and never named in an
+ * accessibility label (client 2026-11-24, the same rule Litho Vault follows).
+ * It is still what the contract calls, the signer and the RPC use;
+ * formatForDisplay converts at this edge, on the way to the screen. An
+ * address that can't be parsed is printed as given rather than guessed at.
  */
 function Addr({ ctx, address, full = false }: { ctx: Ctx; address: string; full?: boolean }) {
-  const [showEvm, setShowEvm] = useState(false);
   const a = parseAddress(address);
   if (!a) return <Text style={ctx.s.mono}>{address}</Text>;
-  const litho = toLithoAddress(a);
+  const litho = formatForDisplay(a);
   if (full) {
     return (
       <View>
-        <Pressable onLongPress={() => void Clipboard.setStringAsync(litho)} accessibilityLabel="Long-press to copy the litho1 address">
+        <Pressable onLongPress={() => void Clipboard.setStringAsync(litho)} accessibilityLabel="Long-press to copy the address">
           <Text style={ctx.s.mono}>{litho}</Text>
-        </Pressable>
-        <Pressable onLongPress={() => void Clipboard.setStringAsync(a)} accessibilityLabel="Long-press to copy the 0x address">
-          <Text style={[ctx.s.mono, { color: ctx.C.textMuted, fontSize: 11 }]}>{a}</Text>
         </Pressable>
       </View>
     );
   }
-  const shown = showEvm ? a : litho;
-  const short = showEvm ? `${a.slice(0, 8)}…${a.slice(-6)}` : `${litho.slice(0, 12)}…${litho.slice(-6)}`;
   return (
     <Pressable
-      onPress={() => setShowEvm((x) => !x)}
-      onLongPress={() => void Clipboard.setStringAsync(shown)}
-      accessibilityLabel={showEvm ? 'Tap for the litho1 address; long-press to copy' : 'Tap for the 0x address; long-press to copy'}
+      onLongPress={() => void Clipboard.setStringAsync(litho)}
+      accessibilityLabel="Long-press to copy the address"
     >
-      <Text style={ctx.s.mono}>{short}</Text>
+      <Text style={ctx.s.mono}>{shortForDisplay(a)}</Text>
     </Pressable>
   );
 }
 
+/** Takes a pasted 0x… too — people copy them out of explorers — but what it
+ *  echoes back underneath is always the litho1 form. */
 function AddressField({ ctx, value, onChange, placeholder, testID }: { ctx: Ctx; value: string; onChange: (v: string) => void; placeholder?: string; testID?: string }) {
   const parsed = value.trim() ? parseAddress(value) : null;
-  const hint = parsed ? (value.trim().toLowerCase().startsWith('litho1') ? `EVM: ${parsed}` : toLithoAddress(parsed)) : null;
+  // Only when it adds something: echoing a litho1 the user just typed is noise.
+  const litho = parsed ? formatForDisplay(parsed) : null;
+  const hint = litho && litho !== value.trim() ? litho : null;
   return (
     <View style={{ gap: 4 }}>
       <TextInput
@@ -382,11 +384,11 @@ function Home({ ctx, onBack }: { ctx: Ctx; onBack: () => void }) {
         </Card>
       )}
       {list.data?.map((v) => (
-        <Pressable key={v.address} style={s.row} onPress={() => go({ name: 'vault', address: v.address })} testID={`tms-vault-${v.address}`}>
+        <Pressable key={v.address} style={s.row} onPress={() => go({ name: 'vault', address: v.address })} testID={`tms-vault-${formatForDisplay(v.address)}`}>
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={s.rowTitle}>{v.name}</Text>
             <Text style={[s.rowSub, s.mono]}>
-              {shortAccount(v.address, 6)} · {String(v.threshold)} of {v.signers.filter((x) => isHumanSigner(x.type)).length}
+              {shortForDisplay(v.address)} · {String(v.threshold)} of {v.signers.filter((x) => isHumanSigner(x.type)).length}
             </Text>
             <View style={s.pills}>
               {v.needsMyApproval > 0 && <Pill ctx={ctx} tone="info" label={`Needs your approval · ${v.needsMyApproval}`} />}
@@ -438,7 +440,7 @@ function Vault({ ctx, address, onBack }: { ctx: Ctx; address: Address; onBack: (
   return (
     <View style={s.screen}>
       <Header ctx={ctx} title={name} onBack={onBack} onRefresh={data.reload} />
-      <Pressable onPress={() => void Clipboard.setStringAsync(address)}>
+      <Pressable onPress={() => void Clipboard.setStringAsync(formatForDisplay(address))}>
         <View testID="tms-vault-address">
           <Addr ctx={ctx} address={address} full />
         </View>
@@ -736,7 +738,7 @@ function Create({ ctx, onBack }: { ctx: Ctx; onBack: () => void }) {
         <Text style={s.label}>Name (only in your wallet)</Text>
         <TextInput style={s.input} value={name} onChangeText={setName} maxLength={40} placeholder="Team treasury" placeholderTextColor={ctx.C.textMuted} testID="tms-name" />
         <Text style={s.label}>Signer 1 (you)</Text>
-        <Text style={[s.mono, s.static]} testID="tms-me">{account ? displayAccount(account) : '—'}</Text>
+        <Text style={[s.mono, s.static]} testID="tms-me">{account ? formatForDisplay(account) : '—'}</Text>
         {others.map((o, i) => (
           <View key={i}>
             <Text style={s.label}>Signer {i + 2}</Text>
