@@ -13,6 +13,19 @@ const MOBILE_SSE = '../../../../apps/mobile/lib/quantt-sse';
 const MOBILE_AGENT_CONFIG = '../../../../apps/mobile/lib/quantt-agent-config';
 const mobileSse = (await import(/* @vite-ignore */ MOBILE_SSE)) as typeof import('../quantt/sse');
 const mobileAgentConfig = (await import(/* @vite-ignore */ MOBILE_AGENT_CONFIG)) as typeof import('../quantt/agent-config');
+
+// …and the CLIENT itself. It used to be tested here only in the sdk-core
+// copy, and the twins drifted: the cookie-free auth fix (37d210d) landed in
+// the mobile one alone, so web/desktop/extension spent two months unable to
+// reconnect to Quantts after a disconnect. apps/mobile/lib/quantt-client.ts
+// is dependency-free (the expo/ethers wiring lives in lib/quantt.ts) exactly
+// so this import works and the auth suite below can run against both.
+const MOBILE_CLIENT = '../../../../apps/mobile/lib/quantt-client';
+const mobileClient = (await import(/* @vite-ignore */ MOBILE_CLIENT)) as typeof import('../quantt/client');
+const CLIENTS = [
+  ['sdk-core', { QuanttClient, QuanttError }],
+  ['mobile twin', { QuanttClient: mobileClient.QuanttClient, QuanttError: mobileClient.QuanttError }],
+] as const;
 const IMPLS = [
   ['sdk-core', { SseParser: CoreSseParser, toAgentConfig: coreToAgentConfig, validateAgentUpdate: coreValidateAgentUpdate, diffAgentConfig: coreDiffAgentConfig }],
   ['mobile mirror', { ...mobileSse, ...mobileAgentConfig }],
@@ -113,7 +126,8 @@ describe('killSwitchMessage', () => {
    failed with "no access token in response". The mobile twin fixed this in
    37d210d; web/desktop/extension go through this client, which kept sending
    the cookie until 2026-11-24. */
-describe('Quantt auth is cookie-free', () => {
+for (const [impl, { QuanttClient, QuanttError }] of CLIENTS) {
+describe(`Quantt auth is cookie-free (${impl})`, () => {
   const ADDRESS = '0x7632460000000000000000000000000000000000';
   /** What /v1/auth/wallet/typed-challenge issues (see quantt-challenge.test.ts). */
   const signInChallenge = {
@@ -177,6 +191,7 @@ describe('Quantt auth is cookie-free', () => {
     expect(err!.message).not.toContain('0x763246');
   });
 });
+}
 
 describe('QuanttClient additions', () => {
   it('updateAgent refuses an invalid or empty body before any request', async () => {
