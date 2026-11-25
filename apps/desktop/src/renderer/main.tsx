@@ -6229,6 +6229,10 @@ const DAPP_ICONS: Record<string, string> = {
   furgpt: './images/dapps/furgpt.png',
   imagen: './images/dapps/imagen.png', ignite: './images/dapps/ignite.png', magma: './images/dapps/magma.png',
   'litho-finance': './images/dapps/litho-finance.png', // client-supplied 2026-11-13
+  degens: './images/dapps/degens.png', // client-supplied 2026-11-24
+  // Shipped in web/mobile but never copied here, so these showed letters.
+  'litho-deals': './images/dapps/litho-deals.png',
+  lithoscan: './images/dapps/lithoscan.png',
 };
 
 function DappTileIcon({ app }: { app: EcosystemApp }) {

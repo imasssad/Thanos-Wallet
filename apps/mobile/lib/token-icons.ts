@@ -160,6 +160,7 @@ const DAPP_ICONS: Record<string, ImageSourcePropType> = {
   'litho-deals':     require('../assets/images/dapps/litho-deals.png'),
   lithoscan:         require('../assets/images/dapps/lithoscan.png'), // client-supplied 2026-09-11
   'litho-finance':   require('../assets/images/dapps/litho-finance.png'), // client-supplied 2026-11-13
+  degens:            require('../assets/images/dapps/degens.png'),        // client-supplied 2026-11-24
 };
 
 /** Resolve a Discover app's icon by ECOSYSTEM_APPS id, or null. */

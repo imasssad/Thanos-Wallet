@@ -227,6 +227,9 @@ const DAPP_ICONS: Record<string, string> = {
   imagen: '/images/dapps/imagen.png', ignite: '/images/dapps/ignite.png', magma: '/images/dapps/magma.png',
   lithoscan: '/images/dapps/lithoscan.png', // client-supplied 2026-09-11
   'litho-finance': '/images/dapps/litho-finance.png', // client-supplied 2026-11-13
+  degens: '/images/dapps/degens.png', // client-supplied 2026-11-24
+  // Shipped in web/mobile but never copied here, so LITHO Deals showed a letter.
+  'litho-deals': '/images/dapps/litho-deals.png',
 };
 
 /* Swappable assets — the verified Makalu token set (matches the web

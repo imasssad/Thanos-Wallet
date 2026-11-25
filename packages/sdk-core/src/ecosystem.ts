@@ -102,7 +102,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   // Added on client request 2026-11-13.
   {
     id: 'litho-finance',
-    name: 'Litho.Finance',
+    name: 'LITHO Finance',
     description: 'DeFi on Lithosphere.',
     url: 'https://litho.finance',
     color: '#3b7af7',
@@ -111,7 +111,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   },
   {
     id: 'lithovault',
-    name: 'LithoVault.ai',
+    name: 'LITHO Vault',
     description: 'Vaults and yield strategies on Lithosphere.',
     url: 'https://lithovault.ai',
     color: '#8b7df7',
@@ -163,7 +163,7 @@ export const ECOSYSTEM_APPS: EcosystemApp[] = [
   // ─── Community (client 2026-11-13) ───────────────────────────────────
   {
     id: 'degens',
-    name: 'Degens.lt',
+    name: 'Degens Casino',
     description: 'Community hub for Lithosphere degens.',
     url: 'https://degens.lt',
     color: '#f97316',
