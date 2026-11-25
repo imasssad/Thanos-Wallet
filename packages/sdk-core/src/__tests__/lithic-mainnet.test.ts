@@ -199,8 +199,13 @@ describe('reviewing a transaction to the gateway', () => {
       { type: 'address', value: RECIPIENT }, { type: 'u256', value: 5_000000000000000000n },
     ]);
     const r = review(data);
-    expect(r.title).toContain('Approve 5.0 LAX');
-    expect(r.warnings.join(' ')).toMatch(/move 5.0 LAX of your tokens/);
+    // The shared allowance wording and risk, not a hand-rolled one: the
+    // ERC-20 and Lithic paths must read identically, because the risk level
+    // is what the clients turn into a red, deliberate confirmation.
+    expect(r.title).toBe(`Approve ${RECIPIENT} to spend 5.0 LAX`);
+    expect(r.rows.find((x) => x.label === 'Amount')?.value).toBe('5.0 LAX');
+    expect(r.risk).toBe('caution');
+    expect(r.warnings.join(' ')).toMatch(/without asking again/);
   });
 
   it('flags a call that carries coin value, which the chain burns gas for', () => {
@@ -223,7 +228,8 @@ describe('reviewing a transaction to the gateway', () => {
       { type: 'address', value: RECIPIENT }, { type: 'u256', value: 25_000000000000000000n },
     ]);
     // Decimals come from the wallet's token record, never from calldata.
-    expect(review(data).rows.find((x) => x.label === 'Amount')?.value).toBe('25000000000000000000 (base units)');
+    // Grouped the same way the ERC-20 path groups base units.
+    expect(review(data).rows.find((x) => x.label === 'Amount')?.value).toBe('25,000,000,000,000,000,000 (base units)');
   });
 });
 

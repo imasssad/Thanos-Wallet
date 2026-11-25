@@ -9,6 +9,7 @@
 import { formatEther, formatUnits, getAddress, Interface, isHexString, toUtf8String, TypedDataEncoder } from 'ethers';
 import {
   LITHIC_FT_SIGNATURES, NATIVE_LITHIC_GATEWAY, decodeLithicCall, findLithicToken,
+  type LithicToken,
 } from './native-lithic';
 
 export type SignRisk = 'safe' | 'caution' | 'review' | 'block';
@@ -453,51 +454,108 @@ const TX_ABI = new Interface([
 const PERMIT2_ABI = new Interface(['function approve(address token, address spender, uint160 amount, uint48 expiration)']);
 const PERMIT2_APPROVE = PERMIT2_ABI.getFunction('approve')!.selector;
 
+/** The Lithic signatures that only read. Everything else either moves value
+ *  or changes the token's state, so it must never leave the sheet in its
+ *  reassuring "Looks routine" state. */
+const LITHIC_READ_SIGNATURES: readonly string[] = [
+  LITHIC_FT_SIGNATURES.name, LITHIC_FT_SIGNATURES.symbol, LITHIC_FT_SIGNATURES.decimals,
+  LITHIC_FT_SIGNATURES.totalSupply, LITHIC_FT_SIGNATURES.balanceOf, LITHIC_FT_SIGNATURES.allowance,
+  LITHIC_FT_SIGNATURES.paused, LITHIC_FT_SIGNATURES.isFrozen, LITHIC_FT_SIGNATURES.admin,
+];
+
+/**
+ * A Lithic amount as the sheet shows it.
+ *
+ * Human units when the wallet ships the token (its decimals come from that
+ * record, not from the calldata, which carries base units and no scale);
+ * grouped base units otherwise, rather than a number that might be off by
+ * 10^18. Crucially it runs the value through the SAME `amount()` sentinel the
+ * ERC-20 path uses, so a max-value allowance reads as the word `Unlimited`
+ * here too instead of a 60-digit string the user has to count.
+ */
+function lithicAmount(value: bigint, token: LithicToken | null): { text: string; unlimited: boolean } {
+  const a = amount(value, UNLIMITED_256);
+  if (a.unlimited) return a;
+  return { text: token ? `${formatUnits(value, token.decimals)} ${token.symbol}` : a.text, unlimited: false };
+}
+
 /**
  * Describe a gateway call in the review sheet. Returns false when the
  * calldata isn't a gateway `call` after all, so the caller falls back to its
  * generic handling.
  *
- * Amounts are only formatted when the token is one the wallet ships: its
- * decimals come from that record, not from the calldata, which carries base
- * units and no scale. For an unknown Lithic contract the raw value is shown
- * rather than a number that might be off by 10^18.
+ * Every branch here owes the user exactly what the ERC-20 path gives: the
+ * parties, the amount, the same `Unlimited` wording, and the same risk level
+ * — the risk is what turns the client's Approve button red and relabels it
+ * ("I understand — sign"), so an allowance that reads as routine here is a
+ * drainer's best friend. A call this function cannot read back is said to be
+ * unreadable rather than quietly shown as a bare function name.
  */
 function reviewLithicCall(r: Review, data: string, chainId: number | undefined): boolean {
   const call = decodeLithicCall(data);
   if (!call) return false;
   const token = chainId !== undefined ? findLithicToken(chainId, call.target) : null;
   r.row('Through', 'Lithosphere native contract (LithoVM gateway)');
-  r.row('Contract', token ? `${token.symbol} · ${addr(call.target)}` : addr(call.target));
+  // Not 'Contract': the caller already labelled the gateway that, and two
+  // rows under one label leave the user guessing which address is which.
+  r.row('Lithic contract', token ? `${token.symbol} · ${addr(call.target)}` : addr(call.target));
 
   if (call.signature === LITHIC_FT_SIGNATURES.transfer) {
-    const [to, amount] = call.args;
-    if (to?.type === 'address' && amount?.type === 'u256') {
-      const shown = token ? `${formatUnits(amount.value, token.decimals)} ${token.symbol}` : `${amount.value} (base units)`;
-      r.title = `Send ${shown} to ${addr(to.value)}`;
-      r.row('Amount', shown);
+    const [to, value] = call.args;
+    if (to?.type === 'address' && value?.type === 'u256') {
+      const a = lithicAmount(value.value, token);
+      r.title = `Send ${a.text} to ${addr(to.value)}`;
+      r.row('Amount', a.text, a.unlimited ? 'danger' : undefined);
       checkParty(r, 'To', to.value);
+      // The ERC-20 path's wording, for the same reason: a transfer the dApp
+      // built is the drain shape, and it is never "routine".
+      r.warn('The dApp is asking to send your tokens. Check the recipient.', 'caution');
+      return true;
+    }
+  }
+  if (call.signature === LITHIC_FT_SIGNATURES.transferFrom) {
+    const [from, to, value] = call.args;
+    if (from?.type === 'address' && to?.type === 'address' && value?.type === 'u256') {
+      const a = lithicAmount(value.value, token);
+      r.title = `Transfer ${a.text} from ${addr(from.value)} to ${addr(to.value)}`;
+      checkParty(r, 'From', from.value);
+      checkParty(r, 'To', to.value);
+      r.row('Amount', a.text, a.unlimited ? 'danger' : undefined);
+      r.warn('This moves tokens out of an account using an allowance it was already given. Check both addresses.', 'caution');
       return true;
     }
   }
   if (call.signature === LITHIC_FT_SIGNATURES.approve) {
-    const [spender, amount] = call.args;
-    if (spender?.type === 'address' && amount?.type === 'u256') {
-      const shown = token ? `${formatUnits(amount.value, token.decimals)} ${token.symbol}` : `${amount.value} (base units)`;
-      r.title = `Approve ${shown}`;
-      r.row('Amount', shown);
+    const [spender, value] = call.args;
+    if (spender?.type === 'address' && value?.type === 'u256') {
+      const a = lithicAmount(value.value, token);
+      const revoke = value.value === 0n;
+      r.title = revoke
+        ? `Revoke ${addr(spender.value)}'s allowance`
+        : `Approve ${addr(spender.value)} to spend ${a.text}`;
       checkParty(r, 'Spender', spender.value);
-      r.warn(`This lets ${addr(spender.value)} move ${shown} of your tokens whenever it likes.`, 'caution');
+      r.row('Amount', revoke ? '0 (revoke)' : a.text, a.unlimited ? 'danger' : undefined);
+      // approvalWarning() escalates an unlimited allowance to 'review', which
+      // is what makes the client demand a deliberate confirmation. Hand-rolled
+      // wording here previously capped it at 'caution' for every size.
+      if (!revoke) approvalWarning(r, a.unlimited);
       return true;
     }
   }
 
-  // A known read or an unknown selector: say what it is, without pretending
-  // to understand more than we do. A selector cannot be reversed.
+  // Everything else: say what it is, without pretending to understand more
+  // than we do. A selector cannot be reversed, so an unknown one stays
+  // unknown — but the decoded arguments are shown either way, and anything
+  // that is not a plain read warns. A transfer or approve whose arguments
+  // arrive in a shape this wallet does not recognise lands here too: no
+  // honest dApp builds one, and it must not pass as a bare function name.
   r.title = call.signature ? `Lithic call: ${call.signature}` : 'Lithic contract call';
   r.row('Function', call.signature ?? `unrecognised (${call.selector.slice(0, 18)}…)`);
+  call.args.forEach((v, i) => r.row(`Argument ${i + 1}`, `${v.type}: ${v.type === 'u64' || v.type === 'u256' ? groupDigits(v.value) : String(v.value)}`));
   if (!call.signature) {
     r.warn('This calls a Lithosphere native function the wallet can\'t decode. Only continue if you trust the dApp.', 'caution');
+  } else if (!LITHIC_READ_SIGNATURES.includes(call.signature)) {
+    r.warn(`This calls ${call.signature}, which moves or changes your tokens, with arguments the wallet can't read back. Only continue if you trust the dApp.`, 'review');
   }
   return true;
 }

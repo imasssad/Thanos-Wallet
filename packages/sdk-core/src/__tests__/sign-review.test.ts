@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { Interface, MaxUint256, parseEther, hexlify, toUtf8Bytes, TypedDataEncoder } from 'ethers';
+import { Interface, MaxUint256, id, parseEther, hexlify, toUtf8Bytes, TypedDataEncoder } from 'ethers';
 import * as core from '../security/sign-review';
+import {
+  LITHIC_FT_SIGNATURES, MAINNET_LAX, NATIVE_GATEWAY_ABI, NATIVE_LITHIC_GATEWAY,
+  encodeLval, encodeNativeCall, type LvalInput,
+} from '../clients/native-lithic';
 
 // The mobile app carries a detached twin (EAS can't resolve this workspace
 // package); run the same suite against it. Loaded at runtime so it stays
@@ -310,6 +314,101 @@ for (const [impl, m] of [['sdk-core', core], ['mobile twin', mobile], ['desktop 
       expect(review('eth_sendTransaction', [{ from: SPENDER, to: SPENDER, value: '0x1' }]).blockReason).toMatch(/for account/);
       expect(tx({ to: SCAM, value: '0x1' }).risk).toBe('block');
       expect(tx({ to: TOKEN, data: erc20.encodeFunctionData('approve', [SCAM, 1n]) }).risk).toBe('block');
+    });
+
+    /* ── Lithic / LithoVM gateway calls ──────────────────────────────────
+     * A Lithic token is reached through the gateway, so every interaction
+     * with one is a call to 0x…f000 carrying opaque bytes. These cases pin
+     * the rule that decoding it must give the user EXACTLY what the ERC-20
+     * path gives — the same `Unlimited` wording and, more importantly, the
+     * same risk, which is what turns the client's Approve button red. An
+     * earlier revision formatted the Lithic allowance by hand and capped it
+     * at 'caution' for every size, so a max-value LAX approval reached the
+     * user as a 60-digit number behind a normal blue button. */
+    const LAX_CHAIN = MAINNET_LAX.chainId;
+    const gateway = (signature: string, args: Parameters<typeof encodeNativeCall>[2]) =>
+      review('eth_sendTransaction', [{
+        from: ME, to: NATIVE_LITHIC_GATEWAY, value: '0x0',
+        data: encodeNativeCall(MAINNET_LAX.nativeTarget, signature, args),
+      }], LAX_CHAIN);
+
+    it('an unlimited Lithic approval reads as Unlimited and escalates to review', () => {
+      const r = gateway(LITHIC_FT_SIGNATURES.approve, [
+        { type: 'address', value: SPENDER }, { type: 'u256', value: MaxUint256.toString() },
+      ]);
+      expect(r.risk).toBe('review');
+      expect(rowOf(r, 'Amount')).toBe('Unlimited');
+      expect(r.rows.find((x) => x.label === 'Amount')?.tone).toBe('danger');
+      expect(r.title).toContain(SPENDER);
+      expect(r.warnings.join(' ')).toMatch(/UNLIMITED/);
+      // The token is named from the wallet's own record, never from calldata,
+      // and under its own label — 'Contract' is the gateway the tx goes to.
+      expect(rowOf(r, 'Lithic contract')).toContain('LAX');
+    });
+
+    it('a limited Lithic approval is a caution in the token\'s own units', () => {
+      const r = gateway(LITHIC_FT_SIGNATURES.approve, [
+        { type: 'address', value: SPENDER }, { type: 'u256', value: 25n * 10n ** 18n },
+      ]);
+      expect(r.risk).toBe('caution');
+      expect(rowOf(r, 'Amount')).toBe('25.0 LAX');
+      expect(r.warnings.join(' ')).toMatch(/without asking again/);
+      // Zero is a revoke, not an approval, and carries no warning.
+      const revoke = gateway(LITHIC_FT_SIGNATURES.approve, [
+        { type: 'address', value: SPENDER }, { type: 'u256', value: 0n },
+      ]);
+      expect(revoke.title).toMatch(/^Revoke/);
+      expect(revoke.risk).toBe('safe');
+    });
+
+    it('a Lithic transfer names the recipient and warns like an ERC-20 one', () => {
+      const r = gateway(LITHIC_FT_SIGNATURES.transfer, [
+        { type: 'address', value: SPENDER }, { type: 'u256', value: 25n * 10n ** 18n },
+      ]);
+      expect(r.title).toBe(`Send 25.0 LAX to ${SPENDER}`);
+      expect(rowOf(r, 'To')).toBe(SPENDER);
+      expect(r.risk).toBe('caution');
+      expect(r.warnings.join(' ')).toMatch(/Check the recipient/);
+      // A scam recipient is still a block, through the shared party check.
+      expect(gateway(LITHIC_FT_SIGNATURES.transfer, [
+        { type: 'address', value: SCAM }, { type: 'u256', value: 1n },
+      ]).risk).toBe('block');
+    });
+
+    it('a Lithic transfer_from shows both parties and the amount', () => {
+      const r = gateway(LITHIC_FT_SIGNATURES.transferFrom, [
+        { type: 'address', value: ME }, { type: 'address', value: SPENDER },
+        { type: 'u256', value: 7n * 10n ** 18n },
+      ]);
+      expect(rowOf(r, 'From')).toBe(ME);
+      expect(rowOf(r, 'To')).toBe(SPENDER);
+      expect(rowOf(r, 'Amount')).toBe('7.0 LAX');
+      expect(r.risk).toBe('caution');
+      // It must never pass as a bare function name with no parties shown.
+      expect(r.title).not.toMatch(/^Lithic call/);
+    });
+
+    it('a value-moving Lithic call the wallet cannot read back never reads as routine', () => {
+      // Same transfer selector, but the amount tagged u64 instead of u256 —
+      // byte-identical payload, one different type tag. No honest dApp builds
+      // this, and it must not come out as "Looks routine" with no amount.
+      // Built by hand on purpose: this wallet's own encodeNativeCall() checks
+      // the argument types against the signature and refuses to build it.
+      const r = review('eth_sendTransaction', [{
+        from: ME, to: NATIVE_LITHIC_GATEWAY, value: '0x0',
+        data: NATIVE_GATEWAY_ABI.encodeFunctionData('call', [
+          MAINNET_LAX.nativeTarget, id(LITHIC_FT_SIGNATURES.transfer),
+          encodeLval([{ type: 'address', value: SPENDER }, { type: 'u64', value: 10n ** 18n }] as LvalInput[]),
+        ]),
+      }], LAX_CHAIN);
+      expect(r.risk).toBe('review');
+      expect(r.warnings.join(' ')).toMatch(/can't read back/);
+      // The decoded arguments are shown rather than dropped.
+      expect(rowOf(r, 'Argument 1')).toContain(SPENDER);
+      // A plain read is harmless and stays quiet.
+      const read = gateway(LITHIC_FT_SIGNATURES.paused, []);
+      expect(read.risk).toBe('safe');
+      expect(read.warnings).toHaveLength(0);
     });
 
     it('shows message text, and calls out opaque hashes and eth_sign', () => {
