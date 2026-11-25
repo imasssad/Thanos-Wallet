@@ -228,6 +228,8 @@ const DAPP_ICONS: Record<string, string> = {
   lithoscan: '/images/dapps/lithoscan.png', // client-supplied 2026-09-11
   'litho-finance': '/images/dapps/litho-finance.png', // client-supplied 2026-11-13
   degens: '/images/dapps/degens.png', // client-supplied 2026-11-24
+  // The product's own brand mark, from the litho-vault repo (docs/brand).
+  lithovault: '/images/dapps/lithovault.png',
   // Shipped in web/mobile but never copied here, so LITHO Deals showed a letter.
   'litho-deals': '/images/dapps/litho-deals.png',
 };
