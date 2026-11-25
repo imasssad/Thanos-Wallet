@@ -64,8 +64,18 @@ const SEED_BACKED_UP = 'thanos.seed_backed_up'; // AsyncStorage flag
 // derive in ~100ms like web/extension but needs a native rebuild + a new dep;
 // this pure-JS adaptive path is reliable with no new module.) Legacy Argon2id /
 // fixed-600k vaults still decrypt via their own stored kdf block.
-const PBKDF2_TARGET_MS = 600;      // aim derivation at ~0.6s on the creating device (hardware keystore backstops; NIST floor still applies)
-const PBKDF2_MIN_ITERS = 10_000;   // NIST SP 800-132 floor (hardware keystore backstops)
+const PBKDF2_TARGET_MS = 900;      // aim derivation at ~0.9s on the creating device (hardware keystore backstops; NIST floor still applies)
+// Hardening-audit M-1: THN-R1 M-06 raised the old 10,000 floor 5x to
+// 50,000 but flagged that OWASP's current PBKDF2-HMAC-SHA256
+// recommendation is 210,000+, and that this file had no real low-end-phone
+// measurement to say how far the calibrated budget could be pushed. Per
+// the audit's own fix note ("floor of at least 210k ... Restore from the
+// recovery phrase"), the floor is raised to meet that line: a device too
+// slow to clear it in the ~0.9s target still gets 210k (just a slower
+// unlock) rather than a weaker vault, and anyone who can't live with that
+// unlock time still has the recovery phrase to fall back to, same as any
+// other vault-loss path this app already supports.
+const PBKDF2_MIN_ITERS = 210_000;
 const PBKDF2_MAX_ITERS = 600_000;  // OWASP target ceiling
 const KEY_BYTES = 32;              // AES-256
 
@@ -148,14 +158,18 @@ export async function createVault(mnemonic: string, password: string): Promise<E
 }
 
 async function saveVault(vault: EncryptedVault): Promise<void> {
-  // keychainAccessible AFTER_FIRST_UNLOCK: the vault must survive a device
-  // REBOOT and be readable at app launch — the default is not guaranteed to be,
-  // so set it explicitly (iOS attribute; no-op on Android, which persists via
-  // EncryptedSharedPreferences). AFTER_FIRST_UNLOCK (not *_THIS_DEVICE_ONLY)
-  // keeps the encrypted blob restorable to a new device from an encrypted
-  // backup — safe because it's password-encrypted and useless without it.
+  // keychainAccessible AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY (hardening-audit
+  // M-1): the vault must still survive a device REBOOT and be readable at
+  // app launch, so AFTER_FIRST_UNLOCK stays — but the *_THIS_DEVICE_ONLY
+  // variant additionally keeps the wrapping key out of iCloud/Android
+  // encrypted-backup restores to a DIFFERENT device. That used to let a
+  // stolen/cloned backup carry the blob off-device, where it was only as
+  // strong as the password-derived KDF (M-1's other half, above). Losing
+  // this device no longer means losing the wallet either way: the same
+  // recovery phrase this app already asks every wallet to back up restores
+  // it on a new install, same as it would after any other vault loss.
   await SecureStore.setItemAsync(VAULT_KEY, JSON.stringify(vault), {
-    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
   });
 }
 

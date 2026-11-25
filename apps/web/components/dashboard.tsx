@@ -27,7 +27,8 @@ import type { Holding } from '../lib/price-history';
 import { useWallet } from './shell/AppShell';
 import { type IndexerActivityItem } from '../lib/indexer';
 import { usePrices, useQuotes, priceOr } from '../lib/usePrices';
-import { getSolanaAddress, getSolanaBalance } from '../lib/solana';
+import { getSolanaBalance } from '../lib/solana';
+import { signerSolanaAddress } from '../lib/signer-client';
 import { getBitcoinAddress, getBitcoinAddressFromSource, getBitcoinBalance } from '../lib/bitcoin';
 import { type EvmChain } from '../lib/evm-chains';
 import {
@@ -439,10 +440,11 @@ export function Dashboard() {
     if (!walletSeed?.length && !walletPk) { setSolBalance(null); setBtcBalance(null); return; }
     let cancel = false;
     (async () => {
-      // Solana — mnemonic only.
+      // Solana — mnemonic only. O-01 (H-1 residual, non-signing): the
+      // address comes from the signing Worker's own cache, not the seed.
       if (walletSeed?.length) {
         try {
-          const addr = getSolanaAddress(walletSeed.join(' '));
+          const { address: addr } = await signerSolanaAddress();
           const bal  = await getSolanaBalance(addr);
           if (!cancel) setSolBalance(parseFloat(bal));
         } catch {

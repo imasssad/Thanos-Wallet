@@ -43,10 +43,13 @@ const nextConfig = {
   // than the bundle the browser currently has loaded.
   env: { NEXT_PUBLIC_APP_VERSION: require('./package.json').version },
 
-  // Skip type-checking during build (handled by IDE / dev server)
-  typescript: { ignoreBuildErrors: true },
-  // Skip ESLint during build for the same reason
-  eslint:     { ignoreDuringBuilds: true },
+  // L-01: these used to skip type/lint checking during `next build` itself
+  // ("handled by IDE / dev server") — fine as long as every build goes
+  // through CI (which runs `pnpm typecheck` / `pnpm lint` first), but
+  // nothing enforced that, so a direct `next build` outside CI could still
+  // ship type or lint errors. Enforcing it here too costs nothing in CI
+  // (errors are already caught earlier) and closes that gap for any
+  // out-of-band build.
 
   async headers() {
     // T5 — cache the public, non-personalized marketing/legal/docs pages.

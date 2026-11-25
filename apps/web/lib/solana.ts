@@ -2,24 +2,26 @@
 /**
  * Solana wallet integration.
  *
- * Thin web-app facade over sdk-core's SolanaClient. The mnemonic is
- * consumed only inside the worker today (signer-worker), but Solana
- * isn't yet routed through the worker — every send here briefly handles
- * the mnemonic on the main thread. Worker integration for Solana is a
- * follow-up; the signing isolation slice covered EVM first because that's
- * where most of the wallet's risk lives.
+ * Thin web-app facade over sdk-core's SolanaClient for address/balance
+ * reads. Sending now routes through the signing Worker (signer-worker.ts's
+ * send-sol op) — H-1 residual, closed: this used to call
+ * `client.send(mnemonic, ...)` directly from here, briefly handling the
+ * mnemonic on the main thread for every send. No private-key import
+ * exists for SOL, so every send is mnemonic-derived and goes through the
+ * worker; there is no fallback main-thread path to keep.
  *
  * Public surface:
  *   - getSolanaAddress(mnemonic) → base58 address derived at SOL HD path
  *   - getSolanaBalance(address) → SOL balance in human-readable string
- *   - sendSol({ mnemonic, recipient, amount }) → tx signature (base58)
- *   - sendSplToken({ mnemonic, recipient, amount, mintAddress, decimals })
+ *   - sendSol({ recipient, amount }) → tx signature (base58)
+ *   - sendSplToken({ recipient, amount, mintAddress, decimals })
  *   - isValidSolanaAddress(input) → boolean, used in Send recipient validation
  */
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import {
   SolanaClient, SOLANA_MAINNET,
 } from '@thanos/sdk-core';
+import { signerSendSolana } from './signer-client';
 
 const NETWORK = SOLANA_MAINNET;
 const RPC_URLS = NETWORK.rpcUrls.length ? NETWORK.rpcUrls : ['https://api.mainnet-beta.solana.com'];
@@ -72,9 +74,9 @@ export async function getSolanaBalance(address: string): Promise<string> {
   return (lamports / LAMPORTS_PER_SOL).toFixed(9);
 }
 
-/** Native SOL transfer. Returns the tx signature. */
+/** Native SOL transfer. Returns the tx signature. Signs through the
+ *  Worker — no mnemonic ever passes through this function. */
 export async function sendSol(input: {
-  mnemonic: string;
   recipient: string;
   amount:    string;  // human-readable, e.g. "0.5"
 }): Promise<string> {
@@ -83,21 +85,17 @@ export async function sendSol(input: {
     throw new SolanaSendError('invalid_amount', 'Amount must be greater than zero');
   }
   try {
-    return await client.send(input.mnemonic, {
-      chainId:   NETWORK.chainId,
-      to:        input.recipient,
-      amount:    input.amount,
-      // mintAddress omitted → native SOL transfer
-    });
+    const { hash } = await signerSendSolana({ recipient: input.recipient, amount: input.amount });
+    return hash;
   } catch (e) {
     throw mapErr(e);
   }
 }
 
 /** SPL token transfer. Creates the recipient's associated token account
- *  if it doesn't exist (and pays the rent for it). */
+ *  if it doesn't exist (and pays the rent for it). Signs through the
+ *  Worker — no mnemonic ever passes through this function. */
 export async function sendSplToken(input: {
-  mnemonic:     string;
   recipient:    string;
   amount:       string;
   mintAddress:  string;
@@ -109,13 +107,13 @@ export async function sendSplToken(input: {
     throw new SolanaSendError('invalid_amount', 'Amount must be greater than zero');
   }
   try {
-    return await client.send(input.mnemonic, {
-      chainId:     NETWORK.chainId,
-      to:          input.recipient,
+    const { hash } = await signerSendSolana({
+      recipient:   input.recipient,
       amount:      input.amount,
       mintAddress: input.mintAddress,
       decimals:    input.decimals ?? 6,
     });
+    return hash;
   } catch (e) {
     throw mapErr(e);
   }

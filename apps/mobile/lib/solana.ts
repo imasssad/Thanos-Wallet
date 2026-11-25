@@ -4,14 +4,7 @@
  * Uses @solana/web3.js + ed25519-style HD derivation from BIP39 seed
  * (Phantom-compatible: m/44'/501'/0'/0').
  */
-import {
-  Connection, Keypair, LAMPORTS_PER_SOL, PublicKey,
-  SystemProgram, Transaction, sendAndConfirmTransaction,
-} from '@solana/web3.js';
-import {
-  createAssociatedTokenAccountInstruction, createTransferCheckedInstruction,
-  getAssociatedTokenAddress, TOKEN_PROGRAM_ID,
-} from '@solana/spl-token';
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
 import { HDKey } from '@scure/bip32';
 
@@ -113,7 +106,7 @@ export async function getSolanaBalance(address: string): Promise<string> {
 }
 
 export async function sendSol(input: {
-  mnemonic: string; recipient: string; amount: string;
+  recipient: string; amount: string;
 }): Promise<string> {
   if (!isValidSolanaAddress(input.recipient)) {
     throw new SolanaSendError('invalid_address', 'Recipient is not a valid Solana address');
@@ -122,16 +115,8 @@ export async function sendSol(input: {
   if (!v || v <= 0) throw new SolanaSendError('invalid_amount', 'Amount must be greater than zero');
 
   try {
-    const sender = keypairFromMnemonic(input.mnemonic);
-    const lamports = Math.round(v * LAMPORTS_PER_SOL);
-    const tx = new Transaction().add(
-      SystemProgram.transfer({
-        fromPubkey: sender.publicKey,
-        toPubkey: new PublicKey(input.recipient.trim()),
-        lamports,
-      }),
-    );
-    return await withSolanaRpc((conn) => sendAndConfirmTransaction(conn, tx, [sender]));
+    const { sendSolana } = await import('./signer');
+    return await sendSolana({ recipient: input.recipient.trim(), amount: input.amount });
   } catch (e) {
     const msg = (e as Error)?.message || 'Failed to send';
     if (/insufficient/i.test(msg)) throw new SolanaSendError('insufficient', 'Insufficient SOL balance');
@@ -141,32 +126,17 @@ export async function sendSol(input: {
 }
 
 export async function sendSplToken(input: {
-  mnemonic: string; recipient: string; amount: string; mintAddress: string; decimals?: number;
+  recipient: string; amount: string; mintAddress: string; decimals?: number;
 }): Promise<string> {
   if (!isValidSolanaAddress(input.recipient))   throw new SolanaSendError('invalid_address', 'Recipient is not a valid Solana address');
   if (!isValidSolanaAddress(input.mintAddress)) throw new SolanaSendError('invalid_token',   'Token mint address is not valid');
   const v = parseFloat(input.amount);
   if (!v || v <= 0) throw new SolanaSendError('invalid_amount', 'Amount must be greater than zero');
-  const decimals = input.decimals ?? 6;
-  const amountBase = BigInt(Math.round(v * 10 ** decimals));
 
-  const sender = keypairFromMnemonic(input.mnemonic);
-  const mint   = new PublicKey(input.mintAddress);
-  const dest   = new PublicKey(input.recipient.trim());
-
-  const senderAta = await getAssociatedTokenAddress(mint, sender.publicKey);
-  const destAta   = await getAssociatedTokenAddress(mint, dest);
-
-  return await withSolanaRpc(async (conn) => {
-    const tx = new Transaction();
-    const destAcc = await conn.getAccountInfo(destAta);
-    if (!destAcc) {
-      tx.add(createAssociatedTokenAccountInstruction(sender.publicKey, destAta, dest, mint));
-    }
-    tx.add(createTransferCheckedInstruction(
-      senderAta, mint, destAta, sender.publicKey, amountBase, decimals, [], TOKEN_PROGRAM_ID,
-    ));
-    return sendAndConfirmTransaction(conn, tx, [sender]);
+  const { sendSolana } = await import('./signer');
+  return await sendSolana({
+    recipient: input.recipient.trim(), amount: input.amount,
+    mintAddress: input.mintAddress, decimals: input.decimals ?? 6,
   });
 }
 

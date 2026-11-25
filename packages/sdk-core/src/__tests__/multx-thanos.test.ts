@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { Interface, Wallet } from 'ethers';
+import { Interface, JsonRpcProvider, Wallet } from 'ethers';
 import {
   createThanosBridge, multxThanosConfig, parseBridgeAmount, formatBridgeAmount, bridgeTransferLabel,
-  bridgeErrorMessage, bridgeSigner, MULTX_HISTORY_KEY, MultXAdapterError,
+  bridgeErrorMessage, bridgeSigner, createRemoteEvmSigner, MULTX_HISTORY_KEY, MultXAdapterError,
   type MultXBridgeTransfer, type MultXKeyValueStore,
 } from '../multx-thanos/service';
 import { startMockEvm, type MockEvm } from './support/mock-evm';
@@ -174,6 +174,40 @@ describe('Thanos bridge against a local chain', () => {
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ status: 'RELEASED', symbol: 'LAX', sourceTxHash: done.sourceTxHash });
     await expect(b.history('0x' + '99'.repeat(20))).resolves.toEqual([]);
+  });
+
+  /* ── H-1 residual: createRemoteEvmSigner — no private key crosses to the
+   * caller at all. The delegate below stands in for a client's isolated
+   * signer (Worker / main-process IPC / offscreen doc / mobile's cached
+   * module) — it alone ever touches KEY; this test's assertions only ever
+   * see the Signer wrapper, proving the same approve+lock+release flow
+   * works without the bridge path ever deriving or receiving the key. */
+  it('approves, locks and releases through createRemoteEvmSigner, with no private key ever reaching the Signer object', async () => {
+    const { bridge: b } = bridge();
+    const [option] = await b.load();
+
+    const provider = new JsonRpcProvider(evm.url(SRC), SRC, { staticNetwork: true, cacheTimeout: -1 });
+    let delegateCalls = 0;
+    const remote = createRemoteEvmSigner({
+      address: USER,
+      provider,
+      sendTransaction: async (tx) => {
+        delegateCalls += 1;
+        // Only the delegate — standing in for an isolated signing context —
+        // ever constructs a key-holding Wallet.
+        const sent = await new Wallet(KEY, provider).sendTransaction(tx);
+        return { hash: sent.hash };
+      },
+    });
+    expect(remote).not.toHaveProperty('privateKey');
+    await expect(remote.signTransaction({})).rejects.toThrow(/not supported/);
+    await expect(remote.signMessage('x')).rejects.toThrow(/not supported/);
+    await expect(remote.signTypedData({}, {}, {})).rejects.toThrow(/not supported/);
+
+    const done = await b.send({ signer: remote, option, amount: '12.5' });
+    expect(done).toMatchObject({ status: 'RELEASED', amountBaseUnits: (125n * E18 / 10n).toString() });
+    expect(delegateCalls).toBe(2); // approve + lock, both through the delegate
+    provider.destroy();
   });
 
   it('skips the approval when the allowance already covers the amount', async () => {

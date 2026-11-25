@@ -49,6 +49,18 @@ export async function removeToken(token: string): Promise<void> {
   await query(`delete from push_tokens where token = $1`, [token]);
 }
 
+/** Only removes the token if it's actually registered to `address` (THN-R1
+ *  M-01) — unlike removeToken above, which stays unauthenticated for Expo
+ *  DeliveryNotRegistered pruning (sendToTokens), a caller-initiated
+ *  unregister must prove it owns the registration being dropped. */
+export async function removeTokenOwnedBy(token: string, address: string): Promise<boolean> {
+  const rows = await query(
+    `delete from push_tokens where token = $1 and lower(address) = lower($2) returning token`,
+    [token, address],
+  );
+  return rows.length > 0;
+}
+
 export async function tokensForAddress(address: string): Promise<string[]> {
   const rows = await query<{ token: string }>(
     `select token from push_tokens where lower(address) = lower($1)`,

@@ -8,8 +8,27 @@
  *  - Every other page (landing, docs, legal) is statically pre-rendered and
  *    shared-cached (next.config.js headers), so it can't carry a
  *    per-request nonce and keeps 'unsafe-inline' for Next's inline scripts.
- *    Those pages hold no keys, and links into the wallet are full page
- *    loads, so the wallet never runs under this policy.
+ *    The wallet itself never RUNS under this policy: links into /app are full
+ *    page loads, which re-fetch under the nonce policy above.
+ *
+ *    What this does NOT buy, and an earlier version of this comment wrongly
+ *    claimed it did (Autha THN-R1 O-02): these pages do not "hold no keys".
+ *    Web Storage and IndexedDB are scoped to the ORIGIN, not the path, so a
+ *    public page shares the wallet's localStorage (which holds the encrypted
+ *    vault) and, in the same tab, its sessionStorage. An injection on any
+ *    public page reaches them. What limits the damage is not this split:
+ *      - the vault in localStorage is password-encrypted (PBKDF2-SHA256 600k),
+ *        so reading it buys an offline guess at the password, not the seed;
+ *      - the session key is no longer raw bytes anywhere. It is a
+ *        non-extractable CryptoKey in IndexedDB (lib/vault.ts, audit H-2), so
+ *        a script on this origin cannot read key material out of it — though
+ *        while a tab is unlocked it could still ASK that key to decrypt, which
+ *        is the residual risk of sharing an origin at all.
+ *    Closing that properly means either dropping 'unsafe-inline' from these
+ *    pages (they would have to stop being shared-cached, since the nonce is
+ *    per-request) or serving the wallet from its own origin. Both are product
+ *    decisions, not edits to this file; until one is taken, the exposure above
+ *    is the accurate statement of it.
  *
  * Tight allow-list: only domains we actually call. Edit when adding a new
  * upstream (e.g. a new RPC, a new bridge).

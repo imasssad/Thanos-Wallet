@@ -20,7 +20,10 @@
  * mobile without the workspace) — edit here, then run
  * `node scripts/sync-multx-thanos.mjs`.
  */
-import { JsonRpcProvider, Wallet, formatUnits, parseUnits, type Signer } from 'ethers';
+import {
+  AbstractSigner, JsonRpcProvider, Wallet, formatUnits, parseUnits,
+  type Provider, type Signer, type TransactionRequest, type TransactionResponse,
+} from 'ethers';
 import { MultXAdapter, MultXAdapterError, verifyErc20ReleaseViaRpc } from './adapter/index';
 import type {
   InternalMultXTransfer, MultXManifest, MultXTelemetryEvent, TransferStatus,
@@ -183,6 +186,58 @@ export function bridgeErrorMessage(err: unknown): string {
 export function bridgeSigner(privateKey: string, rpcUrl: string, chainId: number): { signer: Wallet; destroy: () => void } {
   const provider = new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true, cacheTimeout: -1 });
   return { signer: new Wallet(privateKey, provider), destroy: () => provider.destroy() };
+}
+
+/** O-01 (H-1 residual): an ethers v6 `Signer` that never holds a private
+ *  key at all — every client's main thread used to derive one from the
+ *  raw mnemonic (`walletFromSeed(...).privateKey`) just to call
+ *  `bridgeSigner()`, which re-crossed the seed into exactly the main-
+ *  thread/UI-reachable state the H-1 signing-isolation work closed for
+ *  every other EVM path (native sends, ERC-20 transfers). `adapter.
+ *  transfer()` only ever calls `signer.getAddress()` directly; the
+ *  `ethers.Contract` instances it builds (approve / lockTokens) call
+ *  `signer.sendTransaction(populatedTx)` — that single method is this
+ *  class's whole job, delegated to whichever isolated signer the calling
+ *  client already runs its other EVM transactions through (the web
+ *  Worker's `sign-transaction`, desktop's main-process IPC bridge, the
+ *  extension's offscreen document, mobile's cached-seed module).
+ *
+ *  `signTransaction` / `signMessage` / `signTypedData` are intentionally
+ *  unimplemented — nothing in the bridge path calls them, and leaving
+ *  them unimplemented is a louder failure than silently signing with the
+ *  wrong isolation if that ever changes. */
+export function createRemoteEvmSigner(deps: {
+  address:  string;
+  provider: Provider;
+  /** Signs AND broadcasts a populated EVM transaction through whatever
+   *  isolated signer the caller already has for this chain, returning the
+   *  broadcast tx hash. Mirrors the shape every client's existing
+   *  "send an EVM transaction" primitive already has (e.g. web's
+   *  `signerSignTransaction`, desktop's `window.thanosDesktop.signer.
+   *  sendTx`, the extension's `sign.evm-tx`). */
+  sendTransaction: (tx: TransactionRequest) => Promise<{ hash: string }>;
+}): Signer {
+  class RemoteEvmSigner extends AbstractSigner<Provider> {
+    async getAddress(): Promise<string> { return deps.address; }
+    connect(provider: null | Provider): Signer {
+      if (!provider) throw new Error('createRemoteEvmSigner: cannot disconnect from its provider');
+      return createRemoteEvmSigner({ ...deps, provider });
+    }
+    async sendTransaction(tx: TransactionRequest): Promise<TransactionResponse> {
+      const populated = await this.populateTransaction(tx);
+      const { hash } = await deps.sendTransaction(populated);
+      // Re-read from the provider so the caller gets a real, receipt-
+      // pollable TransactionResponse (tx.wait()) rather than a bare hash —
+      // bridge.ts's sendWithNonceRetry calls .wait() on everything it sends.
+      const sent = await this.provider.getTransaction(hash);
+      if (!sent) throw new Error(`createRemoteEvmSigner: broadcast tx ${hash} not found by the provider`);
+      return sent;
+    }
+    async signTransaction(): Promise<string> { throw new Error('createRemoteEvmSigner: signTransaction is not supported — use sendTransaction'); }
+    async signMessage(): Promise<string> { throw new Error('createRemoteEvmSigner: signMessage is not supported'); }
+    async signTypedData(): Promise<string> { throw new Error('createRemoteEvmSigner: signTypedData is not supported'); }
+  }
+  return new RemoteEvmSigner(deps.provider);
 }
 
 const IN_FLIGHT: ReadonlySet<TransferStatus> = new Set(['FINALIZING', 'SIGNING', 'REVIEW']);

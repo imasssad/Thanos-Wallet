@@ -16,12 +16,14 @@ import React, { useEffect, useState } from 'react';
 import { Globe, ChevronLeft } from 'lucide-react';
 import { useWalletSeed } from './send';
 import { executeWcRequest, WcSignerError, activeChain, chainIdFromCaip } from './wc-signer';
-import { reviewSigningRequest } from '@thanos/sdk-core';
+import { reviewSigningRequest, applyWcVerifyContext, type WcVerifyContext } from '@thanos/sdk-core';
 import { SignReviewPanel } from './SignReviewPanel';
 import { isExtensionSender, type MessageSenderLike } from '../../lib/message-sender';
 
 interface SessionRow { topic: string; name: string; url: string }
-interface ProposalRow { id: number; name: string; url?: string }
+/** `verified` is WalletConnect's own Verify result (THN-03) — prefer it over
+ *  the dApp's self-declared `url` for display and scam/invalid gating. */
+interface ProposalRow { id: number; name: string; url?: string; verified?: WcVerifyContext['verified'] }
 interface PendingRequest {
   id:     number;
   topic:  string;
@@ -30,6 +32,7 @@ interface PendingRequest {
   name:   string;
   /** CAIP-2 chain the dApp sent the request on ("eip155:9005"). */
   chainId?: string;
+  verified?: WcVerifyContext['verified'];
 }
 
 function send<T = unknown>(message: object): Promise<T> {
@@ -83,7 +86,10 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     return () => { live = false; };
   }, [pending]);
   const review = pending
-    ? reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: chainId, account: evmAddress })
+    ? applyWcVerifyContext(
+        reviewSigningRequest({ method: pending.method, params: pending.params, activeChainId: chainId, account: evmAddress }),
+        pending.verified ? { verified: pending.verified } : undefined,
+      )
     : null;
   const blocked = review?.risk === 'block';
 
@@ -115,9 +121,9 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
       // content script could otherwise put a forged request (e.g. an
       // eth_sendTransaction to itself) on this approval sheet.
       if (!isExtensionSender(sender)) return;
-      const m = raw as { type?: string; id?: number; topic?: string; method?: string; params?: unknown[]; name?: string; url?: string; chainId?: string };
+      const m = raw as { type?: string; id?: number; topic?: string; method?: string; params?: unknown[]; name?: string; url?: string; chainId?: string; verified?: WcVerifyContext['verified'] };
       if (m?.type === 'wc.event.proposal') {
-        setProposal({ id: m.id!, name: m.name ?? 'dApp', url: m.url });
+        setProposal({ id: m.id!, name: m.name ?? 'dApp', url: m.url, verified: m.verified });
       } else if (m?.type === 'wc.event.request' && m.topic && m.method) {
         setPending({
           id:     m.id!,
@@ -126,6 +132,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
           params: (m.params ?? []) as unknown[],
           name:   m.name ?? 'dApp',
           chainId: typeof m.chainId === 'string' ? m.chainId : undefined,
+          verified: m.verified,
         });
       } else if (m?.type === 'wc.event.session_delete') {
         void refresh();
@@ -143,7 +150,10 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
     if (!cur || blocked || chainId === undefined) return;
     setBusy(true); setErr(null);
     try {
-      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params }, chainId: cur.chainId });
+      // `account` pins the signature to the address this sheet reviewed
+      // against (line ~90 passes the same evmAddress to reviewSigningRequest),
+      // so an account switch while the sheet is open can't redirect it (O-06).
+      const result = await executeWcRequest(seed, { request: { method: cur.method, params: cur.params }, chainId: cur.chainId, account: evmAddress });
       setPending(null);
       await send({ type: 'wc.respond', topic: cur.topic, id: cur.id, result });
     } catch (e) {
@@ -181,7 +191,7 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
   };
 
   const approve = async () => {
-    if (!proposal || !evmAddress) return;
+    if (!proposal || !evmAddress || proposal.verified?.isScam) return;
     setBusy(true); setErr(null);
     try {
       const r = await send<{ ok: boolean; error?: string }>({ type: 'wc.approve', id: proposal.id, evmAddress });
@@ -238,12 +248,36 @@ export function WalletConnectModal({ evmAddress, onClose }: { evmAddress: string
               <div className="row-avatar" style={{ background: 'rgba(59,122,247,0.18)', color: '#3b7af7' }}><Globe size={16}/></div>
               <div className="row-mid">
                 <div className="row-name">{proposal.name}</div>
+                <div className="row-sub">{proposal.url}</div>
                 <div className="row-sub">Wants to connect on Lithosphere + 8 EVM chains</div>
               </div>
             </div>
+            {/* THN-03: proposal.url above is already the WalletConnect-verified
+                origin when one exists (offscreen/main.ts prefers it over the
+                dApp's self-declared metadata.url); surface the verification
+                status itself, and refuse a scam origin outright. */}
+            {proposal.verified?.isScam ? (
+              <div className="row-sub" style={{ color: '#ef4444', marginBottom: 10 }}>
+                WalletConnect's Verify API flags this origin as a known scam. This wallet refuses to connect to it.
+              </div>
+            ) : proposal.verified?.validation === 'INVALID' ? (
+              <div className="row-sub" style={{ color: '#ef4444', marginBottom: 10 }}>
+                WalletConnect could not verify this origin — it does NOT match the domain the dApp claims. Likely spoofed.
+              </div>
+            ) : proposal.verified?.validation === 'UNKNOWN' ? (
+              <div className="row-sub" style={{ marginBottom: 10 }}>
+                WalletConnect could not verify this dApp's origin. Treat its identity as unconfirmed.
+              </div>
+            ) : null}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={reject}  className="btn-secondary" style={{ flex: 1 }}>Reject</button>
-              <button onClick={approve} disabled={busy} className="btn-primary" style={{ flex: 1, opacity: busy ? 0.6 : 1 }}>{busy ? 'Connecting…' : 'Approve'}</button>
+              {/* isScam has no override — nothing to "connect anyway" to. */}
+              {!proposal.verified?.isScam && (
+                <button onClick={approve} disabled={busy} className="btn-primary"
+                  style={{ flex: 1, opacity: busy ? 0.6 : 1, background: proposal.verified?.validation === 'INVALID' ? '#ef4444' : undefined }}>
+                  {busy ? 'Connecting…' : proposal.verified?.validation === 'INVALID' ? 'Connect anyway' : 'Approve'}
+                </button>
+              )}
             </div>
           </>
         ) : (

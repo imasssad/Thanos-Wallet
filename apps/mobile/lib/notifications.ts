@@ -18,6 +18,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { executeWcRequest } from './wc-signer';
 
 const ENABLED_KEY = 'thanos.notifications_enabled';
 /* Matches lib/auth-client.ts. The push endpoints are address-keyed and
@@ -81,6 +82,54 @@ export async function getPushToken(): Promise<string | null> {
   }
 }
 
+/** The proof message this client will sign MUST match the server's own
+ *  fixed template exactly (services/api/src/lib/push-auth.ts messageFor):
+ *  our lowercase address, a 32-hex nonce, an ISO-8601 expiry — nothing
+ *  else. The address is format-checked first, so nothing unescaped ever
+ *  reaches the RegExp source. */
+function isExpectedProofMessage(message: string, address: string): boolean {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return false;
+  const re = new RegExp(
+    `^Thanos Wallet push notifications\\n\\nAddress: ${address.toLowerCase()}\\nNonce: [0-9a-f]{32}\\nExpires: \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
+  );
+  return re.test(message);
+}
+
+/** Fetch a proof-of-ownership nonce for `address` and sign it with the
+ *  unlocked seed (THN-R1 M-01) — register/unregister require this so the
+ *  backend knows the caller actually controls the address it's pushing to
+ *  before storing/dropping a device token against it. Silent: this is the
+ *  app proving its own wallet's address, not a dApp request, so it never
+ *  shows the signing-approval sheet. Returns null on any failure (offline,
+ *  locked wallet, backend not live yet) — callers treat that as "skip".
+ *  Hardening-audit H-1: no seed parameter — executeWcRequest signs through
+ *  lib/signer.ts's own cache (set once at unlock by App.tsx) and throws if
+ *  the wallet is locked, caught below the same as any other failure.
+ *
+ *  Because this signs with NO approval sheet, the message is never trusted
+ *  as free-form server text: it must match the fixed ownership-proof
+ *  template above, with this wallet's own address embedded, or nothing is
+ *  signed. Without that check, whoever controls API responses (a
+ *  compromised backend, or a MITM of the API host) could feed this silent
+ *  path an arbitrary string — a SIWE login challenge, a signature-derived
+ *  key-generation message — and harvest a chosen-message personal_sign
+ *  signature from every mobile user on app start. The server reconstructs
+ *  the message from the nonceToken's own embedded fields when verifying,
+ *  so a template-conforming message is exactly what it expects. */
+async function signOwnershipProof(address: string): Promise<{ nonceToken: string; signature: string } | null> {
+  try {
+    const nonceRes = await fetch(`${API_BASE}/push/nonce?address=${encodeURIComponent(address)}`);
+    if (!nonceRes.ok) return null;
+    const { nonceToken, message } = await nonceRes.json() as { nonceToken: string; message: string };
+    if (typeof nonceToken !== 'string' || typeof message !== 'string') return null;
+    if (!isExpectedProofMessage(message, address)) return null; // never sign free-form server text
+    const signature = await executeWcRequest({ request: { method: 'personal_sign', params: [message, address] } }) as string;
+    return { nonceToken, signature };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Enable push for this wallet: get a token and register it with the
  * backend against the wallet address so the server can target it.
@@ -91,10 +140,12 @@ export async function registerPush(address: string): Promise<boolean> {
   const token = await getPushToken();
   if (!token) return false;
   try {
+    const proof = await signOwnershipProof(address);
+    if (!proof) return true; // local notifications still work; remote registration skipped
     await fetch(`${API_BASE}/push/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token, address, platform: Platform.OS }),
+      body: JSON.stringify({ token, address, platform: Platform.OS, ...proof }),
     });
   } catch {
     /* backend endpoint not live yet — token still valid for next try */
@@ -106,11 +157,12 @@ export async function registerPush(address: string): Promise<boolean> {
 export async function unregisterPush(address: string): Promise<void> {
   try {
     const token = await getPushToken();
-    if (token) {
+    const proof = token ? await signOwnershipProof(address) : null;
+    if (token && proof) {
       await fetch(`${API_BASE}/push/unregister`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token, address }),
+        body: JSON.stringify({ token, address, ...proof }),
       });
     }
   } catch { /* best-effort */ }

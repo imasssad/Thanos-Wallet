@@ -58,8 +58,14 @@ mac:
     NSLocationWhenInUseUsageDescription: Thanos Wallet uses your location only during LAX card identity verification, when the verification asks for it.
   # electron-builder auto-discovers the Developer ID cert from the keychain
   # (or from CSC_LINK / CSC_KEY_PASSWORD when running in CI).
-  # Notarization disabled by default; CI sets it to true via env vars when
-  # APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID are configured.
+  # O-08: this flag, on its own, does NOT read APPLE_ID / APPLE_APP_
+  # SPECIFIC_PASSWORD / APPLE_TEAM_ID — electron-builder only auto-notarizes
+  # when `notarize` is left unset, and a literal `false` here forces
+  # notarization off unconditionally regardless of those env vars. Default
+  # false here (so a local/unconfigured build never tries to notarize and
+  # fails on missing credentials); desktop-macos.yml and release.yml's
+  # macOS build steps pass `-c.mac.notarize=true` on the electron-builder
+  # CLI explicitly when APPLE_ID is actually configured, overriding this.
   notarize: false
   target:
     - dmg

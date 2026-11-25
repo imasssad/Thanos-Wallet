@@ -5,10 +5,15 @@
  * VITE_MULTX_MANIFEST_SHA256 (release.yml maps the MULTX_* repository
  * variables) — routes, bridges and tokens come only from that manifest.
  */
-import { createThanosBridge, multxThanosConfig, bridgeSigner, lithoscanTxUrl, type ThanosBridge } from '@thanos/sdk-core';
-import { HDNodeWallet, Mnemonic } from 'ethers';
+import { createThanosBridge, multxThanosConfig, bridgeSigner, createRemoteEvmSigner, lithoscanTxUrl, type ThanosBridge } from '@thanos/sdk-core';
+import { HDNodeWallet, JsonRpcProvider, Mnemonic, type Signer } from 'ethers';
 import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
 import { getExtEvmChain } from './custom-assets';
+
+/** HD path for the active EVM account — matches wc-signer.ts's activeHdPath(). */
+function activeHdPath(): string {
+  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
+}
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
 
@@ -42,15 +47,57 @@ export function thanosBridge(): ThanosBridge {
   return instance;
 }
 
-/** The active account's key: a private-key wallet's own, or the seed's at the active index. */
+/** The active account's key: a private-key wallet's own, or the seed's at
+ *  the active index. Still used for display (the address shown before a
+ *  transfer) — that non-signing use is a separate, larger pattern left
+ *  open across every client, not this signing path. multxSigner() itself
+ *  no longer calls this for the signing case — see its doc comment. */
 export function multxPrivateKey(seed: string[]): string {
   if (isPrivateKeyWallet(seed)) return seed[0].trim();
-  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), `m/44'/60'/0'/0/${getActiveAccountIndex()}`).privateKey;
+  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), activeHdPath()).privateKey;
 }
 
-/** A signer for the active account on the route's source chain. */
-export function multxSigner(seed: string[], chainId: number): ReturnType<typeof bridgeSigner> {
+/** A signer for a private-key-imported account on the route's source
+ *  chain — that key is already surfaced to the UI by the import flow
+ *  itself (a separate, accepted exposure), so handing it to `bridgeSigner`
+ *  directly adds nothing new.
+ *
+ * H-1 residual, closed for the mnemonic/HD case: this used to derive a
+ * raw private key from the seed right here for EVERY wallet — exactly the
+ * "WalletConnect always re-derived the key in the renderer" gap the H-1
+ * work's main-process IPC bridge closed for every other EVM signing path
+ * (wc-signer.ts). A mnemonic/HD account now routes through that same
+ * bridge instead — see multxRemoteSigner(). */
+export function multxSigner(privateKey: string, chainId: number): ReturnType<typeof bridgeSigner> {
   const url = multxRpcUrl(chainId);
   if (!url) throw new Error(`No RPC for chain ${chainId}`);
-  return bridgeSigner(multxPrivateKey(seed), url, chainId);
+  return bridgeSigner(privateKey, url, chainId);
+}
+
+/** The mnemonic/HD-account counterpart of multxSigner() — see its doc
+ *  comment. Reads the already-unlocked account's address from the main-
+ *  process signer bridge (no secret crosses back to the renderer) and
+ *  routes every signed transaction through that same bridge's sendTx. */
+export async function multxRemoteSigner(chainId: number): Promise<Signer> {
+  const url = multxRpcUrl(chainId);
+  if (!url) throw new Error(`No RPC for chain ${chainId}`);
+  const bridge = typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined;
+  if (!bridge) throw new Error('multxRemoteSigner: the main-process signer bridge is unavailable');
+  const path     = activeHdPath();
+  const address  = await bridge.address(path);
+  const provider = new JsonRpcProvider(url, chainId, { staticNetwork: true, cacheTimeout: -1 });
+  return createRemoteEvmSigner({
+    address,
+    provider,
+    sendTransaction: async (tx) => ({
+      hash: await bridge.sendTx(path, {
+        to:   tx.to as string,
+        value:                tx.value?.toString(),
+        data:                 tx.data as string | undefined,
+        gas:                  tx.gasLimit?.toString(),
+        maxFeePerGas:         tx.maxFeePerGas?.toString(),
+        maxPriorityFeePerGas: tx.maxPriorityFeePerGas?.toString(),
+      }, { chainId, rpcUrl: url }),
+    }),
+  });
 }

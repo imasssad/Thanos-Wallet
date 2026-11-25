@@ -12,19 +12,20 @@
  * lives in memory for the lifetime of a single transaction.
  */
 import {
-  Contract, HDNodeWallet, Mnemonic, Wallet,
+  HDNodeWallet, Interface, Mnemonic, Wallet,
   parseUnits,
-  type Provider, type TransactionResponse,
+  type Provider,
 } from 'ethers';
 import { estimateMakaluGas } from './gas';
 import { humanSendError } from '@thanos/sdk-core';
 import { getEvmProvider } from './evm-chains';
 import { getEvmChainMerged } from './custom-assets';
 import { resolveToEvm } from './address';
+import { signerSignTransaction, SignerError } from './signer-client';
 
 /* ─── Constants ────────────────────────────────────────────────────────── */
 
-import { getKametProvider, KAMET_CHAIN_ID } from './rpc';
+import { getKametProvider, listRpcUrls, KAMET_CHAIN_ID } from './rpc';
 import { getActiveAccountIndex } from './vault';
 
 /** HD path for the active EVM account. Read at sign time so a switch in
@@ -79,10 +80,30 @@ export interface NativeSendInput {
   chainId:   number;
   recipient: string;        // 0x… address
   amount:    string;        // human-readable, parsed against 18 decimals
-  accountIdx?: number;      // HD account to sign from (default 0)
 }
 
-export async function sendNativeEvm(walletInput: WalletInput, input: NativeSendInput): Promise<SendResult> {
+/** Maps a SignerError (or anything else) from the signing worker to the
+ *  same SendError codes/messages this function always threw, so callers
+ *  (the Send modal) don't need to know signing moved out of this thread. */
+function mapSendErr(err: unknown, insufficientMsg: string): SendError {
+  const msg = err instanceof SignerError ? err.message : (err instanceof Error ? err.message : String(err));
+  if (/insufficient funds/i.test(msg)) return new SendError('insufficient', insufficientMsg);
+  if (/user rejected/i.test(msg))      return new SendError('rejected', 'You cancelled the transaction');
+  return new SendError('rpc_error', humanSendError(err));
+}
+
+/**
+ * Hardening-audit H-1 (web, EVM sends): this used to derive an ethers
+ * Wallet from the raw seed/private key right here and sign in the main
+ * thread (walletFromInput). Signing now happens inside workers/signer-
+ * worker.ts via signerSignTransaction() — the worker already holds the
+ * secret from initSigner() at unlock time and tracks the active HD account
+ * (setSignerAccountIndex, called on every account switch), so this
+ * function never needs the secret at all any more. Everything above the
+ * signerSignTransaction() call (chain lookup, address/amount validation)
+ * stays here — none of it touches key material.
+ */
+export async function sendNativeEvm(input: NativeSendInput): Promise<SendResult> {
   const chain = getEvmChainMerged(input.chainId);
   if (!chain) throw new SendError('invalid_chain', `Unsupported chain: ${input.chainId}`);
 
@@ -96,27 +117,18 @@ export async function sendNativeEvm(walletInput: WalletInput, input: NativeSendI
   catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
   if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
-  const provider = getEvmProvider(input.chainId);
-  const wallet   = walletFromInput(walletInput, provider, input.accountIdx);
-
-  let tx: TransactionResponse;
+  let hash: string;
   try {
-    tx = await wallet.sendTransaction({ to, value: weiAmount });
+    ({ hash } = await signerSignTransaction({ chainId: input.chainId, rpcUrl: chain.rpcUrl, to, value: weiAmount.toString() }));
   } catch (err) {
-    const msg = (err as Error).message || '';
-    if (/insufficient funds/i.test(msg))  throw new SendError('insufficient', `Insufficient ${chain.nativeSymbol} for amount + gas`);
-    if (/user rejected/i.test(msg))       throw new SendError('rejected', 'You cancelled the transaction');
-    throw new SendError('rpc_error', humanSendError(err));
+    throw mapSendErr(err, `Insufficient ${chain.nativeSymbol} for amount + gas`);
   }
 
+  const provider = getEvmProvider(input.chainId); // read-only: receipt polling, no secret
   return {
-    hash:   tx.hash,
-    symbol: chain.nativeSymbol,
-    to,
-    value:  weiAmount,
-    kind:   'native',
-    wait:   async () => {
-      const r = await tx.wait();
+    hash, symbol: chain.nativeSymbol, to, value: weiAmount, kind: 'native',
+    wait: async () => {
+      const r = await provider.waitForTransaction(hash);
       if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
       return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
     },
@@ -130,12 +142,15 @@ export interface EvmTokenSendInput {
   symbol:       string;     // for error messages + the SendResult
   recipient:    string;     // 0x… address
   amount:       string;     // human-readable, parsed against the token decimals
-  accountIdx?:  number;     // HD account to sign from (default 0)
 }
 
+const ERC20_TRANSFER_IFACE = new Interface(LEP100_TRANSFER_ABI);
+
 /** ERC-20 token transfer on any supported EVM chain (USDT/USDC/etc.) — the
- *  token sibling of sendNativeEvm. */
-export async function sendEvmToken(walletInput: WalletInput, input: EvmTokenSendInput): Promise<SendResult> {
+ *  token sibling of sendNativeEvm, same H-1 note: calldata is pure ABI
+ *  encoding (no secret), only the signerSignTransaction() call touches the
+ *  worker-held key. */
+export async function sendEvmToken(input: EvmTokenSendInput): Promise<SendResult> {
   const chain = getEvmChainMerged(input.chainId);
   if (!chain) throw new SendError('invalid_chain', `Unsupported chain: ${input.chainId}`);
 
@@ -149,29 +164,21 @@ export async function sendEvmToken(walletInput: WalletInput, input: EvmTokenSend
   catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
   if (amount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
-  const provider = getEvmProvider(input.chainId);
-  const wallet   = walletFromInput(walletInput, provider, input.accountIdx);
-
-  let tx: TransactionResponse;
+  const data = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [to, amount]);
+  let hash: string;
   try {
-    const contract = new Contract(input.tokenAddress, LEP100_TRANSFER_ABI, wallet);
-    tx = await contract.transfer(to, amount);
+    ({ hash } = await signerSignTransaction({ chainId: input.chainId, rpcUrl: chain.rpcUrl, to: input.tokenAddress, data, value: '0' }));
   } catch (err) {
-    const msg = (err as Error).message || '';
+    const msg = err instanceof SignerError ? err.message : (err instanceof Error ? err.message : String(err));
     if (/transfer amount exceeds balance/i.test(msg)) throw new SendError('insufficient', `Insufficient ${input.symbol} balance`);
-    if (/insufficient funds/i.test(msg))              throw new SendError('insufficient', `Insufficient ${chain.nativeSymbol} for gas`);
-    if (/user rejected/i.test(msg))                   throw new SendError('rejected', 'You cancelled the transaction');
-    throw new SendError('rpc_error', humanSendError(err));
+    throw mapSendErr(err, `Insufficient ${chain.nativeSymbol} for gas`);
   }
 
+  const provider = getEvmProvider(input.chainId); // read-only: receipt polling, no secret
   return {
-    hash:   tx.hash,
-    symbol: input.symbol,
-    to,
-    value:  amount,
-    kind:   'erc20',
-    wait:   async () => {
-      const r = await tx.wait();
+    hash, symbol: input.symbol, to, value: amount, kind: 'erc20',
+    wait: async () => {
+      const r = await provider.waitForTransaction(hash);
       if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
       return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
     },
@@ -187,14 +194,18 @@ function lithoProviderFor(chainId: number): Provider {
 }
 
 /**
- * Native LITHO transfer on Kamet (900523) — the chain-aware main-thread path.
+ * Native LITHO transfer on Kamet (900523) — same H-1 move as sendNativeEvm:
+ * signing goes through the worker, not a main-thread wallet. The read path
+ * (receipt polling below) keeps using getKametProvider()'s multi-URL
+ * failover; the broadcast itself goes out on listRpcUrls()'s primary URL,
+ * same single-endpoint exposure WalletConnect's eth_sendTransaction on this
+ * chain already has via the worker — not a new regression, just now shared.
  * Recipient may be litho1 or 0x.
  */
 export async function sendLithoNative(
-  walletInput: WalletInput,
-  input: { chainId: number; recipient: string; amount: string; accountIdx?: number },
+  input: { chainId: number; recipient: string; amount: string },
 ): Promise<SendResult> {
-  const provider = lithoProviderFor(input.chainId);
+  if (input.chainId !== KAMET_CHAIN_ID) throw new SendError('invalid_chain', `Unsupported Lithosphere chain: ${input.chainId}`);
   const to = resolveToEvm(input.recipient.trim());
   if (!to) throw new SendError('invalid_address', 'Recipient is not a valid litho1… or 0x… address');
 
@@ -203,37 +214,31 @@ export async function sendLithoNative(
   catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
   if (weiAmount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
 
-  // Sign from the ACTIVE account.
-  const wallet = walletFromInput(walletInput, provider, input.accountIdx);
+  const rpcUrl = listRpcUrls(KAMET_CHAIN_ID)[0];
+  if (!rpcUrl) throw new SendError('rpc_error', 'No Kamet RPC endpoint configured');
 
-  let tx: TransactionResponse;
+  let hash: string;
   try {
-    tx = await wallet.sendTransaction({ to, value: weiAmount });
+    ({ hash } = await signerSignTransaction({ chainId: input.chainId, rpcUrl, to, value: weiAmount.toString() }));
   } catch (err) {
-    const msg = (err as Error).message || '';
-    if (/insufficient funds/i.test(msg)) throw new SendError('insufficient', 'Insufficient LITHO for amount + gas');
-    if (/user rejected/i.test(msg))      throw new SendError('rejected', 'You cancelled the transaction');
-    throw new SendError('rpc_error', humanSendError(err));
+    throw mapSendErr(err, 'Insufficient LITHO for amount + gas');
   }
 
+  const provider = getKametProvider(); // read-only: receipt polling, no secret
   return {
-    hash:   tx.hash,
-    symbol: 'LITHO',
-    to,
-    value:  weiAmount,
-    kind:   'native',
-    wait:   async () => {
-      const r = await tx.wait();
+    hash, symbol: 'LITHO', to, value: weiAmount, kind: 'native',
+    wait: async () => {
+      const r = await provider.waitForTransaction(hash);
       if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
       return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
     },
   };
 }
 
-/** Cheap gas estimate for a native send on the given EVM chain. Same
- *  FeeEstimate shape as the Kamet path so the SendModal can render it with
- *  the same UI. */
-export async function estimateNativeEvmFee(walletInput: WalletInput, input: NativeSendInput): Promise<FeeEstimate | null> {
+/** Cheap gas estimate for a native send on the given EVM chain. Needs only
+ *  the sender's ADDRESS (public, already known from the unlocked wallet
+ *  context) — never the secret, so no worker round-trip either. */
+export async function estimateNativeEvmFee(fromAddress: string, input: NativeSendInput): Promise<FeeEstimate | null> {
   const chain = getEvmChainMerged(input.chainId);
   if (!chain) return null;
   if (!/^0x[a-fA-F0-9]{40}$/.test(input.recipient.trim())) return null;
@@ -243,11 +248,9 @@ export async function estimateNativeEvmFee(walletInput: WalletInput, input: Nati
   if (weiAmount <= 0n) return null;
 
   const provider = getEvmProvider(input.chainId);
-  const wallet   = walletFromInput(walletInput, provider);
-
   try {
     const est = await estimateMakaluGas({
-      tx: { from: wallet.address, to: input.recipient.trim(), value: weiAmount },
+      tx: { from: fromAddress, to: input.recipient.trim(), value: weiAmount },
       provider,
     });
     return {
@@ -262,10 +265,10 @@ export async function estimateNativeEvmFee(walletInput: WalletInput, input: Nati
   }
 }
 
-/** Gas estimate for a native LITHO send on Kamet, on Kamet's own provider
- *  (it used to be estimated on Makalu). */
+/** Gas estimate for a native LITHO send on Kamet — same no-secret-needed
+ *  shape as estimateNativeEvmFee above. */
 export async function estimateLithoNativeFee(
-  walletInput: WalletInput,
+  fromAddress: string,
   input: { chainId: number; recipient: string; amount: string },
 ): Promise<FeeEstimate | null> {
   const to = resolveToEvm(input.recipient.trim());
@@ -276,8 +279,7 @@ export async function estimateLithoNativeFee(
   if (weiAmount <= 0n) return null;
   try {
     const provider = lithoProviderFor(input.chainId);
-    const wallet   = walletFromInput(walletInput, provider);
-    const est = await estimateMakaluGas({ tx: { from: wallet.address, to, value: weiAmount }, provider });
+    const est = await estimateMakaluGas({ tx: { from: fromAddress, to, value: weiAmount }, provider });
     return {
       gasLimit:     est.gasLimit,
       maxFeePerGas: est.maxFeePerGas,

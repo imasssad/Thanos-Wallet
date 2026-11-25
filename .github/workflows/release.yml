@@ -12,6 +12,14 @@ name: release
 # artifact (electron-builder emits the binary, EAS job skips). Operators
 # can verify integrity via the per-artifact .sha256 sidecar.
 #
+# O-08 — Linux AppImage has no OS-level code-signing framework (unlike the
+# Windows/macOS targets above, electron-updater's own update channel has
+# nothing but a sha512 hash to check for it — see electron-builder's
+# latest-linux.yml). A GPG detached signature (RELEASE_GPG_PRIVATE_KEY,
+# optional) closes the gap for anyone who verifies manually; it does NOT
+# change what electron-updater itself checks on auto-update. See
+# SECURITY.md's "Linux AppImage updates" section.
+#
 # See SIGNING.md for every secret + where it comes from.
 
 on:
@@ -41,8 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -59,7 +67,7 @@ jobs:
         run: |
           tar -czf web-dist-${GITHUB_REF_NAME}.tar.gz -C apps/web/.next standalone
           sha256sum web-dist-${GITHUB_REF_NAME}.tar.gz > web-dist-${GITHUB_REF_NAME}.tar.gz.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: web-dist
           path: |
@@ -73,8 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -102,7 +110,7 @@ jobs:
             [ -e "$f" ] || continue
             sha256sum "$f" > "$f.sha256"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: extension-zips
           if-no-files-found: error
@@ -142,7 +150,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # node-gyp (used to compile keccak/blake-hash/tiny-secp256k1/
       # bigint-buffer from source when no prebuilt binary matches this
       # Electron ABI) needs Python's distutils, which was removed in
@@ -151,9 +159,9 @@ jobs:
       # fails identically on Linux/macOS/Windows with "No module named
       # 'distutils'" — not a platform-specific issue, a runner-default
       # issue. Pin 3.11 (last version with distutils in the stdlib).
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: '3.11' }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -172,13 +180,23 @@ jobs:
             echo "::notice::No macOS signing certificate configured — building UNSIGNED."
             unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
             export CSC_IDENTITY_AUTO_DISCOVERY=false
+            NOTARIZE_FLAG=(-c.mac.notarize=false)
+          elif [ -z "$APPLE_ID" ]; then
+            echo "::notice::Signed but no Apple ID configured — build will be signed, NOT notarized."
+            NOTARIZE_FLAG=(-c.mac.notarize=false)
+          else
+            echo "::notice::Signing + notarizing (APPLE_ID configured)."
+            NOTARIZE_FLAG=(-c.mac.notarize=true)
           fi
-          pnpm --filter @thanos/desktop exec electron-builder --mac --publish never
+          pnpm --filter @thanos/desktop exec electron-builder --mac --publish never "${NOTARIZE_FLAG[@]}"
         env:
           # When these are unset, electron-builder produces an unsigned build
-          # instead of failing — useful for preview tags. Real releases set all
-          # five and notarization runs automatically. (See the guard above: an
-          # empty secret is *defined*, so we normalize it to truly-unset.)
+          # instead of failing — useful for preview tags. Real releases set
+          # all five, and the guard above then passes -c.mac.notarize=true:
+          # electron-builder.yml's own notarize: false (O-08) doesn't read
+          # these secrets by itself, so this step has to opt in explicitly.
+          # (The CSC_LINK guard above also normalizes an empty-but-defined
+          # secret to truly-unset.)
           CSC_LINK:                    ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD:            ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID:                    ${{ secrets.APPLE_ID }}
@@ -211,12 +229,39 @@ jobs:
             sha256sum "$f" > "$f.sha256"
           done
 
-      - uses: actions/upload-artifact@v4
+      # O-08: the Linux AppImage's own auto-update channel (electron-updater)
+      # verifies nothing but that sha256 — there's no OS-level code-signing
+      # framework for AppImage the way Gatekeeper/Authenticode give the
+      # macOS/Windows targets. A GPG detached signature doesn't change what
+      # electron-updater checks, but it gives a manual verifier (`gpg
+      # --verify`) something beyond "trust the hash in the same release
+      # that might itself be compromised". Optional: skipped with a notice
+      # when RELEASE_GPG_PRIVATE_KEY isn't configured.
+      - name: GPG-sign the Linux AppImage (operator-side verification)
+        if: matrix.target == 'linux'
+        shell: bash
+        env:
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE:  ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$RELEASE_GPG_PRIVATE_KEY" ]; then
+            echo "::notice::RELEASE_GPG_PRIVATE_KEY not set — AppImage ships with only a .sha256 sidecar (see SECURITY.md)."
+            exit 0
+          fi
+          gpg --batch --import <<< "$RELEASE_GPG_PRIVATE_KEY"
+          cd apps/desktop/release
+          for f in *.AppImage; do
+            [ -e "$f" ] || continue
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" --detach-sign --armor -o "$f.sig" "$f"
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-${{ matrix.target }}
           path: |
             ${{ matrix.artifact }}
             apps/desktop/release/*.sha256
+            apps/desktop/release/*.sig
           if-no-files-found: error
           retention-days: 30
 
@@ -231,8 +276,8 @@ jobs:
     # Expo + Apple + Google accounts are wired (see SIGNING.md §3).
     if: ${{ vars.EAS_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 20 }
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -253,9 +298,9 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }   # full history so changelog auto-gen works
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: release-artifacts
       - name: Flatten artifact tree (release-page upload doesn't recurse)
@@ -267,7 +312,7 @@ jobs:
             -exec cp {} flat/ \;
           ls -la flat/
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name:               ${{ github.ref_name }}
           name:                   Thanos Wallet ${{ github.ref_name }}

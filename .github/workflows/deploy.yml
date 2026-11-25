@@ -4,10 +4,22 @@ name: website-cd
 # CI has gone green. Pulls the repo on the VPS over SSH, rebuilds the web
 # image, restarts only the web service.
 #
-# Requires three GitHub Actions secrets to be configured:
+# Requires these GitHub Actions secrets to be configured:
 #   VPS_SSH_HOST       — IP or hostname (e.g. 76.13.250.159)
 #   VPS_SSH_USER       — typically 'root' or a dedicated deploy user
 #   VPS_SSH_PRIVATE_KEY — full PEM content of the private key with VPS access
+#   VPS_SSH_HOST_KEY   — (O-08) the VPS's known_hosts line, pinned once by a
+#                        human instead of trust-on-first-use every run. Get
+#                        it from a channel other than this same SSH
+#                        connection (the VPS provider's console, or a prior
+#                        `ssh-keyscan -H <host>` run and manually verified
+#                        against the provider's published fingerprint) —
+#                        TOFU over this same link can't tell a real key from
+#                        a MITM's. Example value:
+#                          76.13.250.159 ssh-ed25519 AAAA...
+#                        Falls back to ssh-keyscan (the prior behavior) only
+#                        when this secret is unset, so deploys keep working
+#                        until it's added — set it to close the gap.
 
 on:
   push:
@@ -42,10 +54,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
@@ -83,11 +95,19 @@ jobs:
 
     steps:
       - name: Configure SSH
+        env:
+          HOST_KEY: ${{ secrets.VPS_SSH_HOST_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.VPS_SSH_HOST }}" >> ~/.ssh/known_hosts
+          # O-08: prefer the pinned host key over trust-on-first-use.
+          if [ -n "$HOST_KEY" ]; then
+            printf '%s\n' "$HOST_KEY" >> ~/.ssh/known_hosts
+          else
+            echo "::warning::VPS_SSH_HOST_KEY secret not set — falling back to ssh-keyscan (trust-on-first-use, no MITM protection on this run). Set VPS_SSH_HOST_KEY to close this gap."
+            ssh-keyscan -H "${{ secrets.VPS_SSH_HOST }}" >> ~/.ssh/known_hosts
+          fi
 
       - name: Pull + rebuild + restart website
         run: |
