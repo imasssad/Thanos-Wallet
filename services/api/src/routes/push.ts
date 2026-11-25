@@ -44,7 +44,7 @@ const NotifySchema = z.object({
   address: z.string().min(8).max(128),
   title:   z.string().min(1).max(120),
   body:    z.string().min(1).max(240),
-  data:    z.record(z.unknown()).optional(),
+  data:    z.record(z.string(), z.unknown()).optional(),
 });
 
 pushRouter.post('/notify', async (req: Request, res: Response) => {
