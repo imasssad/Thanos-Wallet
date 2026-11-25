@@ -204,6 +204,38 @@ describe.each([['sdk-core', core], ['mobile twin', mobile]])('%s discoverTokenHo
     expect(merged[0]).toMatchObject({ priced: true, priceUsd: 2, source: 'routescan' });
   });
 
+  it('drops a Lithic contract impersonating LAX on the home chain', async () => {
+    // Holdings on Lithosphere are shown by DEFAULT (nothing prices them, so
+    // `priced` can't carry them), which makes an impostor there more
+    // dangerous than on a chain where it would sit behind "less known".
+    // Anyone can deploy a Lithic contract whose symbol() returns "LAX" and
+    // airdrop it; only the real contract may use that ticker.
+    const REAL = '0x29147bebb1c49c3a54aa464137611fe708886df3';
+    const FAKE = '0x5555555555555555555555555555555555555555';
+    const ethCall = (token: string, sel: string) => `{"to":"${token}","data":"${sel}`;
+    const SEL = { bal: '0x70a08231', sym: '0x95d89b41', dec: '0x313ce567' };
+    const w = (v: string | number | bigint) =>
+      (typeof v === 'string' ? v.replace(/^0x/, '').toLowerCase() : BigInt(v).toString(16)).padStart(64, '0');
+    const abiStr = (t: string) => '0x' + w(32) + w(t.length)
+      + [...t].map((c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('').padEnd(64, '0');
+    const rpcOk = (result: string) => ({ jsonrpc: '2.0', id: 1, result });
+
+    const { tokens } = await m.discoverTokenHoldings({ evm: ME }, {
+      chainIds: [9005],
+      fetchImpl: fakeFetch([
+        ['/token-transfers?limit=100', { items: [{ token: { address: REAL } }, { token: { address: FAKE } }] }],
+        [ethCall(REAL, SEL.bal), rpcOk('0x' + w(10n ** 18n))],
+        [ethCall(REAL, SEL.sym), rpcOk(abiStr('LAX'))],
+        [ethCall(REAL, SEL.dec), rpcOk('0x' + w(18))],
+        [ethCall(FAKE, SEL.bal), rpcOk('0x' + w(99n * 10n ** 18n))],
+        [ethCall(FAKE, SEL.sym), rpcOk(abiStr('LAX'))],   // the impostor
+        [ethCall(FAKE, SEL.dec), rpcOk('0x' + w(18))],
+      ]),
+    });
+    expect(tokens.map((t) => t.address)).toEqual([REAL]);
+    expect(tokens[0].known).toBe(true);
+  });
+
   it('caps the list, keeping listed and priced tokens first', async () => {
     const many = Array.from({ length: 30 }, (_, i) => bsItem(`0x${(1000 + i).toString(16)}`, `T${i}`, '1' + E18));
     const { tokens } = await m.discoverTokenHoldings({ evm: ME }, {

@@ -141,6 +141,12 @@ const NATIVE_SYMBOL = new Map(EVM_NETWORKS.map((n) => [n.chainId, n.native]));
 /** Tokens the wallets list (apps' EXT_EVM_TOKENS), by chain → contract →
  *  symbol. Callers add their own and user-added ones via `knownTokens`. */
 const KNOWN_TOKENS: Record<number, Record<string, string>> = {
+  // Lithosphere mainnet: the real Lithic LAX. Listed so the look-alike rule
+  // below has something to compare against — without it, a Lithic contract
+  // airdropped to the user with symbol() = "LAX" passes every check and, since
+  // holdings on the home chain are shown by default, sits in the asset list
+  // beside the genuine LAX.
+  9005:  { '0x29147bebb1c49c3a54aa464137611fe708886df3': 'LAX' },
   1:     { '0xdac17f958d2ee523a2206206994597c13d831ec7': 'USDT', '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',
            '0xbd79b7db6f70979df7f4124e161eb3586085d140': 'LAX', '0x1c3547dfa9ce7acd9c54ae49244575fa65bc75e2': 'IMAGE',
            '0x75d86078625d1e2f612de2627d34c7bc411c18b8': 'AGII', '0x528605856a9eb9567688b0e912ed6961522a74d4': 'MUSA',
