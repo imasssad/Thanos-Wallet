@@ -16,7 +16,7 @@ import { useDisplayCurrency } from '../lib/use-fx';
 import { LithoSym } from './ui/LithoSym';
 import { TokenDetailModal } from './TokenDetailModal';
 import { NativeAssetModal } from './NativeAssetModal';
-import { useNativeLax } from '../lib/native-lax';
+import { useLithicTokens, useNativeLax } from '../lib/native-lax';
 import { NATIVE_LAX } from '@thanos/sdk-core';
 import { Select } from './ui/Select';
 import { TokenIcon } from './TokenIcon';
@@ -435,6 +435,7 @@ export function Dashboard() {
   const [evmTokenBalances, setEvmTokenBalances] = useState<Array<{ token: EvmTokenLike; balance: number }>>([]);
   /* Native Lithic LAX — only with Makalu added as a custom network. */
   const nativeLax = useNativeLax(evmAddress);
+  const lithicTokens = useLithicTokens(evmAddress);
   const walletSeed = wallet?.seed;
   const walletPk   = wallet?.privateKey;
   useEffect(() => {
@@ -577,22 +578,24 @@ export function Dashboard() {
       };
     });
 
-    /* Native Lithic LAX on Makalu — view-only, unpriced (it isn't the EVM
-       LAX the price feeds track). A failed read shows as unavailable. */
-    const nativeRows = nativeLax ? [{
-      sym:    NATIVE_LAX.symbol,
-      name:   `${NATIVE_LAX.name} · Makalu native`,
-      bal:    nativeLax.ok ? nativeLax.text : '—',
-      balNum: nativeLax.ok ? Number(nativeLax.read.balanceFormatted) : 0,
+    /* Lithic tokens — LAX on Lithosphere mainnet, and Makalu's when that
+       network is added. View-only for now, and unpriced: this is not the EVM
+       LAX the price feeds track. A failed read shows as unavailable rather
+       than as a zero balance. */
+    const nativeRows = lithicTokens.map((row) => ({
+      sym:    row.token.symbol,
+      name:   `${row.token.name} · ${row.label}`,
+      bal:    row.ok ? row.text : '—',
+      balNum: row.ok ? Number(row.read.balanceFormatted) : 0,
       usdNum: 0,
       priceKnown: false,
       chg:    0,
       color:  '#a3e635',
-      chainId: NATIVE_LAX.chainId as number | undefined,
+      chainId: row.token.chainId as number | undefined,
       native:  false,
       readOnly: true,
-      readError: nativeLax.ok ? undefined : nativeLax.error,
-    }] : [];
+      readError: row.ok ? undefined : row.error,
+    }));
 
     const combined = [...evmRows, ...evmTokenRows, ...extraRows, ...nativeRows];
     const total = combined.reduce((s, c) => s + c.usdNum, 0) || 1;
@@ -605,7 +608,7 @@ export function Dashboard() {
       readOnly: c.readOnly, readError: c.readError,
       pct: Math.max(1, Math.round((c.usdNum / total) * 100)),
     }));
-  }, [solBalance, btcBalance, evmChainBalances, evmTokenBalances, nativeLax, prices]);
+  }, [solBalance, btcBalance, evmChainBalances, evmTokenBalances, lithicTokens, prices]);
 
   /* Bumped to force a recompute of the optimistic pending rows (localStorage
      mutations don't trigger React). Ticked when the Send modal closes and on
@@ -1047,7 +1050,7 @@ export function Dashboard() {
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}>
                       <span>{c.readOnly
-                        ? (c.readError ? 'Makalu native · balance unavailable' : 'Makalu native · view only')
+                        ? `${c.name.split(' · ')[1] ?? 'Lithic'} · ${c.readError ? 'balance unavailable' : 'view only'}`
                         : priceTxt || c.name}</span>
                       {c.chg !== 0 && (
                         <span className={c.chg >= 0 ? 'amt-pos' : 'amt-neg'} style={{ fontWeight: 600 }}>

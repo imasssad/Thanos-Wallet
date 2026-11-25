@@ -664,7 +664,10 @@ interface DisplayAsset {
   /** Native Lithic asset (Makalu LAX): its native target — not an ERC-20
    *  address, so never a tokenAddress. View-only: no Send. */
   nativeTarget?: string;
+  /** No Send for this row yet — Lithic sends ship behind a flag. */
   readOnly?: boolean;
+  /** "Lithosphere native" / "Makalu native", for the row's subtitle. */
+  nativeLabel?: string;
   /** Exact balance in base units (`balance` is a lossy JS number). */
   baseUnits?: string;
   /** Block the balance was read at. */
@@ -788,27 +791,43 @@ function heldTokenRows(tokens: HeldToken[], prices: Record<string, number>, list
 /** Native LAX on Makalu, read through the native gateway (lib/native-lithic)
  *  — only when the user has added Makalu (700777) as a custom network, at that
  *  network's RPC. A failed read shows as unavailable, never as 0. */
-async function readNativeLaxAsset(address: string): Promise<DisplayAsset | null> {
-  const [lithic, custom] = await Promise.all([import('./lib/native-lithic'), import('./lib/custom-assets')]);
-  const { NATIVE_LAX } = lithic;
-  const makalu = custom.customChains().find((c) => c.chainId === NATIVE_LAX.chainId);
-  if (!makalu) return null;
-  const row: DisplayAsset = {
-    sym: NATIVE_LAX.symbol, name: NATIVE_LAX.name, chainId: NATIVE_LAX.chainId,
-    balance: 0, balanceText: '—', decimals: NATIVE_LAX.decimals,
-    priceUsd: 0, usdValue: 0, color: assetColor(NATIVE_LAX.symbol), native: false,
-    nativeTarget: NATIVE_LAX.nativeTarget, readOnly: true,
-  };
-  try {
-    const r = await lithic.readNativeLaxBalance(address, { rpcUrl: makalu.rpcUrl });
-    return {
-      ...row,
-      balance: Number(r.balanceFormatted), balanceText: lithic.formatNativeAmount(r.balanceBaseUnits, r.decimals),
-      baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+/** One row per Lithic token the wallet knows and has a network for: LAX on
+ *  Lithosphere mainnet (built in) and Makalu's native LAX (only once the user
+ *  adds that network).
+ *
+ *  A Lithic token is not an ERC-20 — its address has no EVM code — so it can
+ *  never arrive through the ordinary token path and is read through the
+ *  LithoVM gateway here. A failed read keeps its error rather than showing a
+ *  zero, which would read as "you hold nothing". */
+async function readLithicAssets(address: string): Promise<DisplayAsset[]> {
+  const [lithic, custom, ext] = await Promise.all([
+    import('./lib/native-lithic'), import('./lib/custom-assets'), import('./lib/evm-external'),
+  ]);
+  const rpcFor = (token: import('./lib/native-lithic').LithicToken): string | null =>
+    ext.EXT_EVM_CHAINS.find((c) => c.chainId === token.chainId)?.rpcUrl
+    ?? custom.customChains().find((c) => c.chainId === token.chainId)?.rpcUrl
+    ?? null;
+  const tokens: Array<import('./lib/native-lithic').LithicToken> =
+    [lithic.MAINNET_LAX, lithic.NATIVE_LAX].filter((t) => !!rpcFor(t));
+  const reads = await Promise.all(tokens.map(async (token): Promise<DisplayAsset> => {
+    const row: DisplayAsset = {
+      sym: token.symbol, name: token.name, chainId: token.chainId,
+      balance: 0, balanceText: '—', decimals: token.decimals,
+      priceUsd: 0, usdValue: 0, color: assetColor(token.symbol), native: false,
+      nativeTarget: token.nativeTarget, readOnly: true, nativeLabel: lithic.lithicNetworkLabel(token),
     };
-  } catch (e) {
-    return { ...row, readError: e instanceof Error ? e.message : String(e) };
-  }
+    try {
+      const r = await lithic.readLithicBalance(address, token, { rpcUrl: rpcFor(token)! });
+      return {
+        ...row,
+        balance: Number(r.balanceFormatted), balanceText: lithic.formatNativeAmount(r.balanceBaseUnits, r.decimals),
+        baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+      };
+    } catch (e) {
+      return { ...row, readError: e instanceof Error ? e.message : String(e) };
+    }
+  }));
+  return reads;
 }
 
 function usePortfolio(address: string, seed?: string[]): PortfolioState {
@@ -887,7 +906,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
           })().catch(() => null),
           fetchEcosystemPrices().catch(() => ({} as Record<string, number>)),
           // Native Lithic LAX (Makalu added only) — view-only.
-          readNativeLaxAsset(address).catch(() => null),
+          readLithicAssets(address).catch(() => [] as DisplayAsset[]),
         ]);
         if (cancelled) return;
 
@@ -949,7 +968,7 @@ function usePortfolio(address: string, seed?: string[]): PortfolioState {
             // instead of lingering. Persisted as the new snapshot (public data
             // only) when at least one network answered — an offline refresh
             // never overwrites a good snapshot.
-            const merged = [...nativeRows, ...tokenRows, ...(nativeLax ? [nativeLax] : []), ...prev.filter((p) => p.chainId === 0)];
+            const merged = [...nativeRows, ...tokenRows, ...nativeLax, ...prev.filter((p) => p.chainId === 0)];
             if (nativesRead > 0) void setPortfolioSnapshot(address, merged, merged.reduce((s, x) => s + x.usdValue, 0));
             return merged;
           });
@@ -2696,7 +2715,7 @@ function HomeScreen({ navigate, onOpenToken }: { navigate: (s: Screen) => void; 
               <View style={styles.rowMid}>
                 <Text style={styles.rowSymbol}>{a.name}</Text>
                 <Text style={styles.rowSub}>{a.readOnly
-                  ? (a.readError ? 'Makalu native · balance unavailable' : 'Makalu native · view only')
+                  ? `${a.nativeLabel ?? 'Makalu native'} · ${a.readError ? 'balance unavailable' : 'view only'}`
                   : a.priceUsd > 0 ? formatUsd(a.priceUsd) : a.lessKnown ? 'Less known' : '—'}</Text>
               </View>
               <View style={styles.rowRight}>

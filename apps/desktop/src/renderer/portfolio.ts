@@ -11,7 +11,11 @@
  * and shown view-only.
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readNativeLaxBalance } from '@thanos/sdk-core';
+import {
+  MAINNET_LAX, NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount,
+  lithicNetworkLabel, readLithicBalance, type LithicToken,
+} from '@thanos/sdk-core';
+import { EXT_EVM_CHAINS } from './evm-external-meta';
 import { getLocalActivity, resolvePendingActivity, setNativeHash, type LocalTx } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
 import { syncWalletHistory } from './explorer-activity';
@@ -128,7 +132,10 @@ export interface DisplayCoin {
   /** Native Lithic asset (Makalu LAX): its native target — not an ERC-20
    *  address, so never a tokenAddress. View-only: no Send. */
   nativeTarget?: string;
+  /** No Send for this row yet — Lithic sends ship behind a flag. */
   readOnly?: boolean;
+  /** "Lithosphere native" / "Makalu native", for the row's subtitle. */
+  nativeLabel?: string;
   /** Exact balance in base units (`balance` is a lossy JS number). */
   baseUnits?: string;
   /** Block the balance was read at. */
@@ -183,25 +190,41 @@ export interface PortfolioState {
 /** Native LAX on Makalu, read through the native gateway — only when the
  *  user has added Makalu (700777) as a custom network, at that network's RPC.
  *  A failed read shows as unavailable, never as 0. */
-async function readNativeLaxCoin(address: string): Promise<DisplayCoin | null> {
-  const makalu = customChains().find((c) => c.chainId === NATIVE_LAX.chainId);
-  if (!makalu) return null;
-  const coin: DisplayCoin = {
-    sym: NATIVE_LAX.symbol, name: NATIVE_LAX.name, chainId: NATIVE_LAX.chainId,
-    balance: 0, balanceText: '—', decimals: NATIVE_LAX.decimals,
-    priceUsd: 0, usdValue: 0, pct: 0, color: coinColor(NATIVE_LAX.symbol), native: false,
-    nativeTarget: NATIVE_LAX.nativeTarget, readOnly: true,
-  };
-  try {
-    const r = await readNativeLaxBalance(address, { rpcUrl: makalu.rpcUrl });
-    return {
-      ...coin,
-      balance: Number(r.balanceFormatted), balanceText: formatNativeAmount(r.balanceBaseUnits, r.decimals),
-      baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+/** The RPC for a Lithic token's chain: a built-in network (Lithosphere
+ *  mainnet) or one the user added (Makalu). Null when there is no network for
+ *  that chain, which is how Makalu stays hidden until added. */
+function lithicRpcUrl(token: LithicToken): string | null {
+  const builtin = EXT_EVM_CHAINS.find((c) => c.chainId === token.chainId);
+  if (builtin) return builtin.rpcUrl;
+  return customChains().find((c) => c.chainId === token.chainId)?.rpcUrl ?? null;
+}
+
+/** One row per Lithic token the wallet knows and has a network for. A Lithic
+ *  token is not an ERC-20 — its address has no EVM code — so it never comes
+ *  back from the ordinary token path and is read through the gateway here. A
+ *  failed read keeps its error rather than showing a zero. */
+async function readLithicCoins(address: string): Promise<DisplayCoin[]> {
+  const tokens: LithicToken[] = [MAINNET_LAX, NATIVE_LAX].filter((t) => !!lithicRpcUrl(t));
+  const reads = await Promise.allSettled(tokens.map(async (token) => {
+    const rpcUrl = lithicRpcUrl(token)!;
+    const blank: DisplayCoin = {
+      sym: token.symbol, name: token.name, chainId: token.chainId,
+      balance: 0, balanceText: '—', decimals: token.decimals,
+      priceUsd: 0, usdValue: 0, pct: 0, color: coinColor(token.symbol), native: false,
+      nativeTarget: token.nativeTarget, readOnly: true, nativeLabel: lithicNetworkLabel(token),
     };
-  } catch (e) {
-    return { ...coin, readError: e instanceof Error ? e.message : String(e) };
-  }
+    try {
+      const r = await readLithicBalance(address, token, { rpcUrl });
+      return {
+        ...blank,
+        balance: Number(r.balanceFormatted), balanceText: formatNativeAmount(r.balanceBaseUnits, r.decimals),
+        baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+      };
+    } catch (e) {
+      return { ...blank, readError: e instanceof Error ? e.message : String(e) };
+    }
+  }));
+  return reads.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
 }
 
 /** Fetch + price the wallet's portfolio and activity. Re-runs on
@@ -269,7 +292,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
     (async () => {
       try {
         // Started now, awaited with the rest below.
-        const nativeLax = readNativeLaxCoin(address);
+        const nativeLax = readLithicCoins(address);
         // Balances come straight from each chain's RPC below. The Thanos
         // indexer only covers the Makalu testnet, which the wallet no longer
         // includes (2026-09-29), so its holdings and activity aren't shown.
@@ -370,9 +393,9 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
         // effect and reads the new rows' balances the normal way.
         void refreshDiscoveredTokens(address);
 
-        const lax = await nativeLax;
+        const lithicCoins = await nativeLax;
         if (cancelled) return;
-        if (lax) xchain.push(lax);
+        xchain.push(...lithicCoins);
 
         const totalUsd = xchain.reduce((s, x) => s + x.usdValue, 0);
         const coins: DisplayCoin[] = xchain.map(c => ({ ...c, pct: totalUsd > 0 ? Math.round((c.usdValue / totalUsd) * 100) : 0 }));

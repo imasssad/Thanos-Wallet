@@ -35,7 +35,7 @@ import { bitcoinExplorerUrl } from '../lib/bitcoin';
 import { BookUser, Plus, Trash2, ArrowUpRight, Zap } from 'lucide-react';
 import { TokenDetailModal } from './TokenDetailModal';
 import { NativeAssetModal } from './NativeAssetModal';
-import { useNativeLax } from '../lib/native-lax';
+import { useLithicTokens, useNativeLax } from '../lib/native-lax';
 import { NATIVE_LAX } from '@thanos/sdk-core';
 import { getHiddenNetworks, toggleNetworkVisibility, ALL_NETWORKS } from '../lib/asset-visibility';
 import * as customAssets from '../lib/custom-assets';
@@ -287,6 +287,9 @@ export function PortfolioView() {
   const live = useLiveBalances(evmAddress, walletSource);
   // Native Lithic LAX — only with Makalu added as a custom network.
   const nativeLax = useNativeLax(evmAddress);
+  // Every Lithic token, not just Makalu's: LAX on Lithosphere mainnet is the
+  // one most holders have.
+  const lithicTokens = useLithicTokens(evmAddress);
   const [tokenBals, setTokenBals] = useState<Array<{ token: customAssets.EvmTokenLike; balance: number }>>([]);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   // Bumped when a custom network/token is added or removed, so the token read
@@ -331,14 +334,18 @@ export function PortfolioView() {
       priceUsd: prices?.[sym] ?? null, color: TOKENS.find(t => t.sym === sym)?.color ?? '#52525b',
       balText: undefined as string | undefined, readOnly: false,
     })).filter(r => r.balNum > 0),
-    // Native Lithic LAX on Makalu — view-only and unpriced (the LAX price
-    // feeds track the older EVM token). Exact amount text from base units.
-    ...(nativeLax ? [{
-      key: `${NATIVE_LAX.symbol}@${NATIVE_LAX.chainId}:native`, sym: NATIVE_LAX.symbol, name: `${NATIVE_LAX.name} · Makalu native`,
-      chainId: NATIVE_LAX.chainId as number | undefined, balNum: nativeLax.ok ? Number(nativeLax.read.balanceFormatted) : 0,
+    // Lithic tokens (LAX on Lithosphere mainnet, and Makalu's when added) —
+    // view-only for now and unpriced, since the LAX price feeds track the
+    // older EVM token. Exact amount text from base units.
+    ...lithicTokens.map((row) => ({
+      key: `${row.token.symbol}@${row.token.chainId}:native`,
+      sym: row.token.symbol,
+      name: `${row.token.name} · ${row.label}`,
+      chainId: row.token.chainId as number | undefined,
+      balNum: row.ok ? Number(row.read.balanceFormatted) : 0,
       priceUsd: null, color: '#a3e635',
-      balText: nativeLax.ok ? nativeLax.text : '—', readOnly: true,
-    }] : []),
+      balText: row.ok ? row.text : '—', readOnly: true,
+    })),
   ].sort((a, b) => (a.chainId === 9005 ? -1 : 0) - (b.chainId === 9005 ? -1 : 0));
   const _raw = rowsRaw.map(r => ({
     ...r,

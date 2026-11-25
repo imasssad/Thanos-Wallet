@@ -546,7 +546,7 @@ function PortfolioList({ onViewAll }: { onViewAll: () => void }) {
             <div className="portfolio-right">
               <div className="portfolio-price">{formatUsd(c.usdValue)}</div>
               <div className="portfolio-chg">{c.readOnly
-                ? (c.readError ? 'Makalu native · unavailable' : 'Makalu native · view only')
+                ? `${c.nativeLabel ?? 'Makalu native'} · ${c.readError ? 'unavailable' : 'view only'}`
                 : c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</div>
             </div>
           </div>

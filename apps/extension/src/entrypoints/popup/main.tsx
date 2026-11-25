@@ -3069,7 +3069,7 @@ function HomeScreen({
             <div className="row-mid">
               <div className="row-name">{a.name}</div>
               <div className="row-sub">{a.readOnly
-                ? (a.readError ? 'Makalu native · balance unavailable' : 'Makalu native · view only')
+                ? `${a.nativeLabel ?? 'Makalu native'} · ${a.readError ? 'balance unavailable' : 'view only'}`
                 : a.priceUsd > 0 ? formatUsd(a.priceUsd) : '—'}</div>
             </div>
             <div className="row-right">

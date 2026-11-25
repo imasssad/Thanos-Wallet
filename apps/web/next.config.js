@@ -87,6 +87,9 @@ const nextConfig = {
    * proxies through /v1/rpc/litho for the same reason.) */
   async rewrites() {
     return [
+      // Lithic tokens on LITHO mainnet are read through the LithoVM gateway
+      // at this RPC, which sends no CORS headers either.
+      { source: '/rpc/litho',    destination: 'https://rpc-mainnet.litho.ai/' },
       { source: '/rpc/makalu',   destination: 'https://rpc.litho.ai/' },
       { source: '/rpc/makalu-2', destination: 'https://rpc-2.litho.ai/' },
       { source: '/rpc/kamet',    destination: 'https://rpc-3.litho.ai/' },

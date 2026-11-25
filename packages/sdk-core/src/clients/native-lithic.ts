@@ -552,6 +552,41 @@ export async function probeLithicToken(
   }
 }
 
+/** How a Lithic token's network reads in a list row: "Lithosphere native",
+ *  "Makalu native". The row's own suffix ("· view only", "· balance
+ *  unavailable") is the client's, since it depends on what it managed to read. */
+export function lithicNetworkLabel(token: LithicToken): string {
+  if (token.chainId === LITHO_MAINNET_CHAIN_ID) return 'Lithosphere native';
+  if (token.chainId === MAKALU_CHAIN_ID) return 'Makalu native';
+  return `Chain ${token.chainId} native`;
+}
+
+/* ── Sending: off until someone has confirmed a transfer on mainnet ──── */
+
+/**
+ * The flag that turns Lithic sends on, read from each client's own
+ * environment (Vite, Next and Expo expose variables differently, so the
+ * value is passed in rather than read here).
+ *
+ * Default OFF. The send path is built to Litho's documented protocol and
+ * unit-tested against their vectors, but it could not be exercised against
+ * mainnet where it was written, and a failed Lithic call reverts with no
+ * reason data. Balances, history and transaction decoding are unaffected and
+ * always on; only the send button waits for one confirmed transfer on a real
+ * build.
+ */
+export const LITHIC_SEND_FLAG = 'THANOS_LITHIC_SENDS';
+
+export function lithicSendsEnabled(flagValue: string | undefined | null): boolean {
+  return flagValue === '1' || flagValue?.toLowerCase() === 'true';
+}
+
+/** Whether to offer Send for this token: the token must support it AND the
+ *  flag must be on. */
+export function canSendLithic(token: LithicToken, flagValue: string | undefined | null): boolean {
+  return token.transferEnabled && lithicSendsEnabled(flagValue);
+}
+
 /* ── Writes: calldata only, never a signature ────────────────────────── */
 
 /** The native signatures LAX defines. No formal Lithic token standard exists

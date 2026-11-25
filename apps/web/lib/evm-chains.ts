@@ -192,6 +192,7 @@ export function findEvmChain(chainId: number): EvmChain | undefined {
    This is what lets a user add Makalu back as a custom network with its
    usual RPC URL. */
 const LITHO_RPC_PROXY: Record<string, string> = {
+  'rpc-mainnet.litho.ai': '/rpc/litho',
   'rpc.litho.ai':   '/rpc/makalu',
   'rpc-2.litho.ai': '/rpc/makalu-2',
   'rpc-3.litho.ai': '/rpc/kamet',
