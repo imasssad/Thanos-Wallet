@@ -17,11 +17,13 @@ import {
   type Provider,
 } from 'ethers';
 import { estimateMakaluGas } from './gas';
-import { humanSendError } from '@thanos/sdk-core';
-import { getEvmProvider } from './evm-chains';
+import {
+  humanSendError, canSendLithic, findLithicToken, lithicTransferCall, readLithicSendPreflight,
+} from '@thanos/sdk-core';
+import { getEvmProvider, browserRpcUrl } from './evm-chains';
 import { getEvmChainMerged } from './custom-assets';
 import { resolveToEvm } from './address';
-import { signerSignTransaction, SignerError } from './signer-client';
+import { signerSignTransaction, getSignerAddress, SignerError } from './signer-client';
 
 /* ─── Constants ────────────────────────────────────────────────────────── */
 
@@ -127,6 +129,72 @@ export async function sendNativeEvm(input: NativeSendInput): Promise<SendResult>
   const provider = getEvmProvider(input.chainId); // read-only: receipt polling, no secret
   return {
     hash, symbol: chain.nativeSymbol, to, value: weiAmount, kind: 'native',
+    wait: async () => {
+      const r = await provider.waitForTransaction(hash);
+      if (!r) throw new SendError('rpc_error', 'Receipt unavailable');
+      return { blockNumber: r.blockNumber, status: Number(r.status ?? 0) };
+    },
+  };
+}
+
+/** Lithic sends stay off until a transfer has been confirmed on a real
+ *  build; balances, history and transaction decoding are unaffected. */
+const LITHIC_SENDS_FLAG = process.env.NEXT_PUBLIC_THANOS_LITHIC_SENDS;
+
+export interface LithicSendInput {
+  chainId:      number;
+  /** The Lithic token's native target — NOT an ERC-20 address. */
+  nativeTarget: string;
+  recipient:    string;
+  amount:       string;
+}
+
+/**
+ * Send a Lithic token.
+ *
+ * Same H-1 shape as sendEvmToken: the calldata is pure encoding and holds no
+ * secret, and only signerSignTransaction() touches the worker-held key. What
+ * differs is where it goes — the LithoVM gateway, never the token, whose
+ * address has no EVM code — and that the value must be 0, since a Lithic
+ * call carrying coin fails and burns all its gas.
+ */
+export async function sendLithicToken(input: LithicSendInput): Promise<SendResult> {
+  const chain = getEvmChainMerged(input.chainId);
+  if (!chain) throw new SendError('invalid_chain', `Unsupported chain: ${input.chainId}`);
+  const token = findLithicToken(input.chainId, input.nativeTarget);
+  if (!token) throw new SendError('invalid_chain', 'Unknown Lithic token');
+  if (!canSendLithic(token, LITHIC_SENDS_FLAG)) {
+    throw new SendError('invalid_chain', `${token.symbol} sends are not enabled yet`);
+  }
+
+  const to = input.recipient.trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+    throw new SendError('invalid_address', `${chain.name} requires a 0x EVM address`);
+  }
+  let amount: bigint;
+  try { amount = parseUnits(input.amount, token.decimals); }
+  catch { throw new SendError('invalid_amount', 'Enter a valid amount'); }
+  if (amount <= 0n) throw new SendError('invalid_amount', 'Amount must be greater than zero');
+
+  // A failed Lithic call reverts with NO reason, so ask the token why first.
+  const rpcUrl = browserRpcUrl(chain.rpcUrl);
+  const account = await getSignerAddress().then((r) => r.address).catch(() => null);
+  if (account) {
+    const check = await readLithicSendPreflight(account, token, amount, { rpcUrl }, to).catch(() => null);
+    if (check?.blockedReason) throw new SendError('insufficient', check.blockedReason);
+  }
+
+  const tx = lithicTransferCall(token, to, amount);
+  let hash: string;
+  try {
+    ({ hash } = await signerSignTransaction({ chainId: input.chainId, rpcUrl: chain.rpcUrl, to: tx.to, data: tx.data, value: '0' }));
+  } catch (err) {
+    throw mapSendErr(err, `Insufficient ${chain.nativeSymbol} for gas`);
+  }
+
+  const provider = getEvmProvider(input.chainId);
+  return {
+    hash, symbol: token.symbol, to, value: amount, kind: 'erc20',
     wait: async () => {
       const r = await provider.waitForTransaction(hash);
       if (!r) throw new SendError('rpc_error', 'Receipt unavailable');

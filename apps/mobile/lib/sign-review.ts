@@ -6,7 +6,10 @@
  * below this header — packages/sdk-core/src/__tests__/sign-review.test.ts
  * runs its whole suite against both.
  */
-import { formatEther, getAddress, Interface, isHexString, toUtf8String, TypedDataEncoder } from 'ethers';
+import { formatEther, formatUnits, getAddress, Interface, isHexString, toUtf8String, TypedDataEncoder } from 'ethers';
+import {
+  LITHIC_FT_SIGNATURES, NATIVE_LITHIC_GATEWAY, decodeLithicCall, findLithicToken,
+} from './native-lithic';
 
 export type SignRisk = 'safe' | 'caution' | 'review' | 'block';
 
@@ -450,6 +453,55 @@ const TX_ABI = new Interface([
 const PERMIT2_ABI = new Interface(['function approve(address token, address spender, uint160 amount, uint48 expiration)']);
 const PERMIT2_APPROVE = PERMIT2_ABI.getFunction('approve')!.selector;
 
+/**
+ * Describe a gateway call in the review sheet. Returns false when the
+ * calldata isn't a gateway `call` after all, so the caller falls back to its
+ * generic handling.
+ *
+ * Amounts are only formatted when the token is one the wallet ships: its
+ * decimals come from that record, not from the calldata, which carries base
+ * units and no scale. For an unknown Lithic contract the raw value is shown
+ * rather than a number that might be off by 10^18.
+ */
+function reviewLithicCall(r: Review, data: string, chainId: number | undefined): boolean {
+  const call = decodeLithicCall(data);
+  if (!call) return false;
+  const token = chainId !== undefined ? findLithicToken(chainId, call.target) : null;
+  r.row('Through', 'Lithosphere native contract (LithoVM gateway)');
+  r.row('Contract', token ? `${token.symbol} · ${addr(call.target)}` : addr(call.target));
+
+  if (call.signature === LITHIC_FT_SIGNATURES.transfer) {
+    const [to, amount] = call.args;
+    if (to?.type === 'address' && amount?.type === 'u256') {
+      const shown = token ? `${formatUnits(amount.value, token.decimals)} ${token.symbol}` : `${amount.value} (base units)`;
+      r.title = `Send ${shown} to ${addr(to.value)}`;
+      r.row('Amount', shown);
+      checkParty(r, 'To', to.value);
+      return true;
+    }
+  }
+  if (call.signature === LITHIC_FT_SIGNATURES.approve) {
+    const [spender, amount] = call.args;
+    if (spender?.type === 'address' && amount?.type === 'u256') {
+      const shown = token ? `${formatUnits(amount.value, token.decimals)} ${token.symbol}` : `${amount.value} (base units)`;
+      r.title = `Approve ${shown}`;
+      r.row('Amount', shown);
+      checkParty(r, 'Spender', spender.value);
+      r.warn(`This lets ${addr(spender.value)} move ${shown} of your tokens whenever it likes.`, 'caution');
+      return true;
+    }
+  }
+
+  // A known read or an unknown selector: say what it is, without pretending
+  // to understand more than we do. A selector cannot be reversed.
+  r.title = call.signature ? `Lithic call: ${call.signature}` : 'Lithic contract call';
+  r.row('Function', call.signature ?? `unrecognised (${call.selector.slice(0, 18)}…)`);
+  if (!call.signature) {
+    r.warn('This calls a Lithosphere native function the wallet can\'t decode. Only continue if you trust the dApp.', 'caution');
+  }
+  return true;
+}
+
 function reviewTransaction(raw: unknown, input: SignReviewInput): SignReview {
   const tx = obj(raw) ?? {};
   const r = new Review('Send a transaction');
@@ -470,6 +522,22 @@ function reviewTransaction(raw: unknown, input: SignReviewInput): SignReview {
     checkParty(r, data.length > 2 ? 'Contract' : 'To', to);
   }
   if (value > 0n) r.row('Value', `${formatEther(value)} (native coin)`);
+
+  // A Lithic token lives behind the LithoVM gateway, so every interaction
+  // with one is a call to 0x…f000 carrying opaque-looking bytes. Decoded
+  // here, it reads as "Send 25 LAX to …" instead of "unrecognised" — and
+  // crucially the wallet does NOT treat the gateway as a suspicious
+  // precompile: it is the intended target of every Lithic call.
+  if (typeof to === 'string' && to.toLowerCase() === NATIVE_LITHIC_GATEWAY && data.length > 2) {
+    const lithic = reviewLithicCall(r, data, txChain ?? input.activeChainId);
+    if (lithic) {
+      if (value > 0n) {
+        // Documented: a Lithic call carrying value fails AND burns all gas.
+        r.warn('This Lithic call carries a coin value. Lithic calls must send 0 — the chain rejects it and the gas is lost.', 'review');
+      }
+      return r.done();
+    }
+  }
 
   if (data.length > 2) {
     const selector = data.slice(0, 10).toLowerCase();

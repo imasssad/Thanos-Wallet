@@ -24,5 +24,8 @@ interface ImportMeta {
     /** Etherscan API V2 key — adds BNB Chain and Linea to Activity
      *  (explorer-activity.ts). */
     readonly VITE_ETHERSCAN_API_KEY?: string;
+    /** Lithic sends stay off until a transfer has been confirmed on a real
+     *  build — see canSendLithic in @thanos/sdk-core. */
+    readonly VITE_THANOS_LITHIC_SENDS?: string;
   };
 }

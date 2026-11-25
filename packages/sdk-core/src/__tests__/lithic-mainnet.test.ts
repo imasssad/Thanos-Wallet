@@ -15,6 +15,9 @@
 import { describe, expect, it } from 'vitest';
 import { id } from 'ethers';
 import {
+  estimateLithicTransferGas,
+  fetchLithicTransfers,
+  reviewSigningRequest,
   LITHIC_FT_SIGNATURES,
   LITHIC_LOG_TOPIC,
   LITHO_MAINNET_CHAIN_ID,
@@ -166,5 +169,141 @@ describe('gateway logs', () => {
     // One unreadable entry must not take a whole receipt down.
     const broken = { ...log, data: `0x${Buffer.from('{not json', 'utf8').toString('hex')}` };
     expect(parseLithicLogs([broken, log])).toHaveLength(1);
+  });
+});
+
+/* ── The signing sheet ───────────────────────────────────────────────── */
+
+describe('reviewing a transaction to the gateway', () => {
+  const review = (data: string, value = '0x0') => reviewSigningRequest({
+    method: 'eth_sendTransaction',
+    params: [{ from: HOLDER, to: NATIVE_LITHIC_GATEWAY, data, value, chainId: `0x${LITHO_MAINNET_CHAIN_ID.toString(16)}` }],
+    activeChainId: LITHO_MAINNET_CHAIN_ID,
+    account: HOLDER,
+  });
+
+  it('reads a Lithic transfer as a send, not an unrecognised call', () => {
+    const { data } = lithicTransferCall(MAINNET_LAX, RECIPIENT, 25_000000000000000000n);
+    const r = review(data);
+    expect(r.title).toContain('Send 25.0 LAX');
+    expect(r.rows.find((x) => x.label === 'Amount')?.value).toBe('25.0 LAX');
+    expect(r.rows.some((x) => x.value.includes('LithoVM gateway'))).toBe(true);
+    // The gateway is the intended target of every Lithic call and must not be
+    // blocked for looking like a precompile.
+    expect(r.risk).not.toBe('block');
+    expect(r.warnings.join(' ')).not.toMatch(/can.t decode/);
+  });
+
+  it('warns that an approval hands over spending power', () => {
+    const data = encodeNativeCall(MAINNET_LAX.nativeTarget, LITHIC_FT_SIGNATURES.approve, [
+      { type: 'address', value: RECIPIENT }, { type: 'u256', value: 5_000000000000000000n },
+    ]);
+    const r = review(data);
+    expect(r.title).toContain('Approve 5.0 LAX');
+    expect(r.warnings.join(' ')).toMatch(/move 5.0 LAX of your tokens/);
+  });
+
+  it('flags a call that carries coin value, which the chain burns gas for', () => {
+    const { data } = lithicTransferCall(MAINNET_LAX, RECIPIENT, 1n);
+    const r = review(data, '0x1');
+    expect(r.warnings.join(' ')).toMatch(/must send 0/);
+  });
+
+  it('says what it does and does not know for an unknown Lithic function', () => {
+    const data = encodeNativeCall(MAINNET_LAX.nativeTarget, 'mystery(u256)', [{ type: 'u256', value: 1n }]);
+    const r = review(data);
+    expect(r.title).toBe('Lithic contract call');
+    expect(r.rows.find((x) => x.label === 'Function')?.value).toMatch(/unrecognised/);
+    expect(r.warnings.join(' ')).toMatch(/can.t decode/);
+  });
+
+  it('shows base units rather than a wrong number for an unknown token', () => {
+    const other = '0x1111111111111111111111111111111111111111';
+    const data = encodeNativeCall(other, LITHIC_FT_SIGNATURES.transfer, [
+      { type: 'address', value: RECIPIENT }, { type: 'u256', value: 25_000000000000000000n },
+    ]);
+    // Decimals come from the wallet's token record, never from calldata.
+    expect(review(data).rows.find((x) => x.label === 'Amount')?.value).toBe('25000000000000000000 (base units)');
+  });
+});
+
+/* ── Gas and history, over a stubbed RPC ─────────────────────────────── */
+
+function fakeRpc(handler: (method: string, params: unknown[]) => unknown) {
+  return async (_url: string, init: { body: string }) => {
+    const { id, method, params } = JSON.parse(init.body) as { id: number; method: string; params: unknown[] };
+    return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result: handler(method, params) }) };
+  };
+}
+const CHAIN_HEX = `0x${LITHO_MAINNET_CHAIN_ID.toString(16)}`;
+
+describe('gas', () => {
+  it('estimates with the real sender and returns the limit to send', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const limit = await estimateLithicTransferGas(HOLDER, MAINNET_LAX, RECIPIENT, 1n, {
+      rpcUrl: 'https://rpc.example',
+      fetchImpl: fakeRpc((method, params) => {
+        if (method === 'eth_chainId') return CHAIN_HEX;
+        seen.push(params[0] as Record<string, unknown>);
+        return '0x4fbc8';                       // 326,600
+      }) as never,
+    });
+    // Without a non-zero `from` the node refuses the estimate outright.
+    expect(seen[0].from).toBe(HOLDER);
+    expect(seen[0].value).toBe('0x0');
+    expect(seen[0].to).toBe(NATIVE_LITHIC_GATEWAY);
+    expect(limit).toBe(391_920n);               // estimate + 20%
+  });
+});
+
+describe('history', () => {
+  const values = encodeLval([
+    { type: 'address', value: HOLDER },
+    { type: 'address', value: RECIPIENT },
+    { type: 'u256', value: 2_000000000000000000n },
+  ]);
+  const logFor = (contract: string) => ({
+    address: NATIVE_LITHIC_GATEWAY,
+    topics: [LITHIC_LOG_TOPIC],
+    data: `0x${Buffer.from(JSON.stringify({ Events: [{ contract, name: 'Transfer', values }] }), 'utf8').toString('hex')}`,
+    transactionHash: `0x${'ab'.repeat(32)}`,
+    blockNumber: '0xe4e4e4',
+    logIndex: '0x0',
+  });
+
+  it('keeps only this token’s transfers involving the holder', async () => {
+    const filters: Array<Record<string, unknown>> = [];
+    const rows = await fetchLithicTransfers(HOLDER, MAINNET_LAX, {
+      rpcUrl: 'https://rpc.example',
+      maxWindows: 1,
+      fetchImpl: fakeRpc((method, params) => {
+        if (method === 'eth_chainId') return CHAIN_HEX;
+        if (method === 'eth_blockNumber') return '0xe4e4e4';
+        filters.push(params[0] as Record<string, unknown>);
+        // A transfer of OUR token, and one of another Lithic contract.
+        return [logFor(MAINNET_LAX.nativeTarget.toLowerCase()), logFor('0x1111111111111111111111111111111111111111')];
+      }) as never,
+    });
+    // The node can only filter on the gateway plus the single topic; the rest
+    // is ours to do.
+    expect(filters[0]).toMatchObject({ address: NATIVE_LITHIC_GATEWAY, topics: [LITHIC_LOG_TOPIC] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ direction: 'out', counterparty: RECIPIENT, amount: '2.0', symbol: 'LAX' });
+  });
+
+  it('skips a window the node refuses instead of losing the rest', async () => {
+    let call = 0;
+    const rows = await fetchLithicTransfers(HOLDER, MAINNET_LAX, {
+      rpcUrl: 'https://rpc.example',
+      maxWindows: 2,
+      windowSize: 10,
+      fetchImpl: fakeRpc((method) => {
+        if (method === 'eth_chainId') return CHAIN_HEX;
+        if (method === 'eth_blockNumber') return '0xe4e4e4';
+        if (++call === 1) throw new Error('range too wide');
+        return [logFor(MAINNET_LAX.nativeTarget.toLowerCase())];
+      }) as never,
+    });
+    expect(rows).toHaveLength(1);
   });
 });

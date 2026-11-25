@@ -14,9 +14,13 @@
  */
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
-  MAINNET_LAX, NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount,
-  knownLithicTokens, lithicNetworkLabel, readLithicBalance, type LithicToken,
+  MAINNET_LAX, NATIVE_LAX, canSendLithic, fetchEcosystemPrices, formatFiat, formatNativeAmount,
+  lithicNetworkLabel, readLithicBalance, type LithicToken,
 } from '@thanos/sdk-core';
+
+/** Lithic sends stay off until a transfer has been confirmed on a real
+ *  build; balances and history are unaffected. */
+const LITHIC_SENDS_FLAG = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_THANOS_LITHIC_SENDS;
 import { customChains, onCustomAssetsChanged, refreshDiscoveredTokens } from '../../lib/custom-assets';
 import { EXT_EVM_CHAINS } from '../../lib/evm-external';
 import { getLocalActivity, addLocalReceive, mergeExplorerRows, resolvePendingActivity, rowId } from '../../lib/local-activity';
@@ -214,7 +218,8 @@ async function readLithicCoins(address: string): Promise<DisplayCoin[]> {
       sym: token.symbol, name: token.name, chainId: token.chainId,
       balance: 0, balanceText: '—', decimals: token.decimals,
       priceUsd: 0, usdValue: 0, color: coinColor(token.symbol), native: false,
-      nativeTarget: token.nativeTarget, readOnly: true, nativeLabel: lithicNetworkLabel(token),
+      nativeTarget: token.nativeTarget, readOnly: !canSendLithic(token, LITHIC_SENDS_FLAG),
+      nativeLabel: lithicNetworkLabel(token),
     };
     try {
       const r = await readLithicBalance(address, token, { rpcUrl });

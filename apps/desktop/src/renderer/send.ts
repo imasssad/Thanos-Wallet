@@ -11,7 +11,14 @@
  */
 import { createContext, useContext } from 'react';
 import { HDNodeWallet, Wallet, Interface, Mnemonic, Contract, JsonRpcProvider, parseUnits, getAddress } from 'ethers';
-import { humanSendError, lithoToEvm } from '@thanos/sdk-core';
+import {
+  humanSendError, lithoToEvm, canSendLithic, findLithicToken, lithicTransferCall,
+  readLithicSendPreflight,
+} from '@thanos/sdk-core';
+
+/** Lithic sends stay off until a transfer has been confirmed on a real
+ *  build; balances, history and transaction decoding are unaffected. */
+const LITHIC_SENDS_FLAG = import.meta.env?.VITE_THANOS_LITHIC_SENDS as string | undefined;
 import { sendViaLedger, type LedgerConnection } from './ledger-sign';
 import { sendViaTrezor, type TrezorConnection } from './trezor-sign';
 import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
@@ -80,6 +87,9 @@ export interface SendAssetArgs {
   decimals: number;
   /** LEP100 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
+  /** A Lithic token's native target. Not an ERC-20 address: the transfer
+   *  goes to the LithoVM gateway with this as its argument. */
+  nativeTarget?: string;
   /** SPL mint — required when chain='solana' and not native SOL. */
   splMintAddress?: string;
   /** Optional Cosmos memo. */
@@ -184,6 +194,28 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new Error('Wallet is locked');
   const path = activeHdPath();
   const bridge = (typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined);
+
+  // A Lithic send is an ordinary EVM transaction to the gateway, so it rides
+  // the same main-process signer as everything else: the seed stays in main,
+  // and only the calldata (which holds no secret) is built here.
+  if (args.nativeTarget) {
+    const token = findLithicToken(evmChain.chainId, args.nativeTarget);
+    if (!token) throw new Error('Unknown Lithic token');
+    if (!canSendLithic(token, LITHIC_SENDS_FLAG)) throw new Error(`${token.symbol} sends are not enabled yet`);
+    const from = args.seed.length
+      ? (isPrivateKeyWallet(args.seed)
+        ? new Wallet(args.seed[0].trim()).address
+        : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath()).address)
+      : null;
+    if (from) {
+      // A failed Lithic call reverts with no reason — ask the token first.
+      const check = await readLithicSendPreflight(from, token, value, { rpcUrl: evmChain.rpcUrl }, args.to).catch(() => null);
+      if (check?.blockedReason) throw new Error(check.blockedReason);
+    }
+    const tx = lithicTransferCall(token, args.to, value);
+    if (!bridge || !(await bridge.hasSeed())) throw new Error('Wallet is locked');
+    return await bridge.sendTx(activeHdPath(), { to: tx.to, value: '0x0', data: tx.data }, evmChain);
+  }
 
   try {
     if (bridge && (await bridge.hasSeed())) {

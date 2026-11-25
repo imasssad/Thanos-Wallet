@@ -320,7 +320,11 @@ function chainLabel(chainId: number): string {
   return `chain ${chainId}`;
 }
 
-const READ_METHODS = new Set(['eth_chainId', 'eth_blockNumber', 'eth_call']);
+/** Still read-only: eth_getLogs reads history and eth_estimateGas simulates.
+ *  eth_sendRawTransaction is deliberately absent — broadcasting stays with
+ *  each client's signer, so this module can never put a transaction on
+ *  chain. */
+const READ_METHODS = new Set(['eth_chainId', 'eth_blockNumber', 'eth_call', 'eth_getLogs', 'eth_estimateGas']);
 /** `eth_call` is refused outright without a non-zero `from` ("EVM origin does
  *  not match message sender"). For a read it is only an execution context —
  *  any address works, and this one signs nothing. */
@@ -332,7 +336,9 @@ function rpcClient({ rpcUrl, fetchImpl, timeoutMs = 15_000 }: NativeReadOptions)
   need((url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password, 'Invalid RPC URL');
   const send = fetchImpl ?? (globalThis.fetch as unknown as NativeFetch);
   let nextId = 0;
-  return async function rpc(method: string, params: unknown[] = []): Promise<string> {
+  // Most of these methods answer with a hex string; eth_getLogs answers with
+  // an array, so the result type is the caller's to name.
+  return async function rpc<T = string>(method: string, params: unknown[] = []): Promise<T> {
     need(READ_METHODS.has(method), 'Read-only methods only');
     const requestId = ++nextId;
     // AbortController rather than AbortSignal.timeout — Hermes (mobile) lacks it.
@@ -348,8 +354,12 @@ function rpcClient({ rpcUrl, fetchImpl, timeoutMs = 15_000 }: NativeReadOptions)
       need(r.ok, `RPC HTTP ${r.status}`);
       const j = (await r.json()) as { jsonrpc?: string; id?: number; result?: unknown; error?: unknown };
       need(j && j.jsonrpc === '2.0' && j.id === requestId, 'RPC response id/version differs');
-      need(!j.error && typeof j.result === 'string', `RPC rejected ${method}: ${JSON.stringify(j.error ?? null)}`);
-      return j.result as string;
+      need(!j.error && j.result != null, `RPC rejected ${method}: ${JSON.stringify(j.error ?? null)}`);
+      need(
+        method === 'eth_getLogs' ? Array.isArray(j.result) : typeof j.result === 'string',
+        `Unexpected result type for ${method}`,
+      );
+      return j.result as T;
     } finally {
       clearTimeout(timer);
     }
@@ -778,6 +788,146 @@ export function receiptHasLithicTransfer(logs: readonly RawLog[], token: LithicT
       e.contract.toLowerCase() === target
       && e.name === 'Transfer'
       && e.values.some((v) => v.type === 'address' && v.value === me)));
+}
+
+/* ── Gas ─────────────────────────────────────────────────────────────── */
+
+/**
+ * Estimate a Lithic transfer with the REAL sender, which the chain insists
+ * on: without a non-zero `from` the node answers "EVM origin does not match
+ * message sender". A LAX transfer estimates around 326,600.
+ *
+ * Returns the limit to send (estimate + margin), not the bare estimate,
+ * because the chain charges for at least half the limit.
+ */
+export async function estimateLithicTransferGas(
+  owner: string,
+  token: LithicToken,
+  to: string,
+  amountBaseUnits: bigint,
+  options: NativeReadOptions,
+  marginPercent = 20,
+): Promise<bigint> {
+  const from = getAddress(owner);
+  need(BigInt(from) !== 0n, 'Nonzero sender required');
+  const tx = lithicTransferCall(token, to, amountBaseUnits);
+  const rpc = rpcClient(options);
+  need(BigInt(await rpc('eth_chainId')) === BigInt(token.chainId), `This RPC is not ${chainLabel(token.chainId)}`);
+  const raw = await rpc('eth_estimateGas', [{ from, to: tx.to, value: tx.value, data: tx.data }]);
+  return lithicGasLimit(BigInt(raw), marginPercent);
+}
+
+/* ── History ─────────────────────────────────────────────────────────── */
+
+export interface LithicTransferRow {
+  /** `${txHash}:${logIndex}:${eventIndex}` — stable per transfer. */
+  id: string;
+  txHash: string;
+  blockNumber: number;
+  direction: 'in' | 'out';
+  /** The other party. */
+  counterparty: string;
+  /** Exact amount in base units (decimal string). */
+  amountBaseUnits: string;
+  /** Formatted with the token's decimals. */
+  amount: string;
+  symbol: string;
+  chainId: number;
+  nativeTarget: string;
+}
+
+export interface LithicHistoryOptions extends NativeReadOptions {
+  /** Default: the first block the gateway did anything (mainnet). */
+  fromBlock?: number;
+  /** Default: the chain head. */
+  toBlock?: number;
+  /** Blocks per request — nodes cap the range. 10,000 is documented as safe. */
+  windowSize?: number;
+  /** Stop after this many requests, newest window first (default 12). */
+  maxWindows?: number;
+}
+
+const HEX = (n: number): string => `0x${n.toString(16)}`;
+
+/**
+ * Transfers of `token` involving `owner`, read from the gateway's logs.
+ *
+ * The gateway emits ONE topic and the contract and event name are not
+ * indexed, so a node can only filter by gateway + topic: everything else is
+ * filtered here, over raw-JSON payloads. Windows are walked newest first so
+ * a caller that stops early still has the recent history.
+ *
+ * Failures of a single window are skipped rather than thrown — partial
+ * history beats none — but an unreachable RPC still throws from the first
+ * call, so "no history" and "couldn't read" stay distinguishable.
+ */
+export async function fetchLithicTransfers(
+  owner: string,
+  token: LithicToken,
+  options: LithicHistoryOptions,
+): Promise<LithicTransferRow[]> {
+  const me = getAddress(owner);
+  const rpc = rpcClient(options);
+  need(BigInt(await rpc('eth_chainId')) === BigInt(token.chainId), `This RPC is not ${chainLabel(token.chainId)}`);
+  const head = options.toBlock ?? Number(BigInt(await rpc('eth_blockNumber')));
+  const floor = Math.max(
+    options.fromBlock ?? (token.chainId === LITHO_MAINNET_CHAIN_ID ? LITHIC_MAINNET_FIRST_BLOCK : 0),
+    0,
+  );
+  const window = Math.max(1, options.windowSize ?? 10_000);
+  const maxWindows = Math.max(1, options.maxWindows ?? 12);
+  const target = token.nativeTarget.toLowerCase();
+
+  const rows: LithicTransferRow[] = [];
+  let to = head;
+  for (let i = 0; i < maxWindows && to >= floor; i++) {
+    const from = Math.max(floor, to - window + 1);
+    let logs: unknown;
+    try {
+      logs = await rpc<unknown>('eth_getLogs', [{
+        address: NATIVE_LITHIC_GATEWAY,
+        topics: [LITHIC_LOG_TOPIC],
+        fromBlock: HEX(from),
+        toBlock: HEX(to),
+      }]);
+    } catch {
+      to = from - 1;
+      continue;   // one bad window must not lose the rest
+    }
+    for (const raw of (Array.isArray(logs) ? logs : []) as Array<Record<string, unknown>>) {
+      const txHash = typeof raw.transactionHash === 'string' ? raw.transactionHash : '';
+      const blockNumber = typeof raw.blockNumber === 'string' ? Number(BigInt(raw.blockNumber)) : 0;
+      const logIndex = typeof raw.logIndex === 'string' ? Number(BigInt(raw.logIndex)) : 0;
+      const entries = parseLithicLogs([{
+        address: String(raw.address ?? ''),
+        topics: (raw.topics as string[]) ?? [],
+        data: String(raw.data ?? '0x'),
+      }]);
+      for (const entry of entries) {
+        entry.events.forEach((event, eventIndex) => {
+          if (event.contract.toLowerCase() !== target || event.name !== 'Transfer') return;
+          const [fromV, toV, amountV] = event.values;
+          if (fromV?.type !== 'address' || toV?.type !== 'address' || amountV?.type !== 'u256') return;
+          const outgoing = fromV.value === me;
+          if (!outgoing && toV.value !== me) return;
+          rows.push({
+            id: `${txHash}:${logIndex}:${eventIndex}`,
+            txHash,
+            blockNumber,
+            direction: outgoing ? 'out' : 'in',
+            counterparty: outgoing ? toV.value : fromV.value,
+            amountBaseUnits: amountV.value.toString(),
+            amount: formatUnits(amountV.value, token.decimals),
+            symbol: token.symbol,
+            chainId: token.chainId,
+            nativeTarget: token.nativeTarget,
+          });
+        });
+      }
+    }
+    to = from - 1;
+  }
+  return rows.sort((a, b) => b.blockNumber - a.blockNumber || b.id.localeCompare(a.id));
 }
 
 /** Balance for a list row, from exact base units: thousands separators and at

@@ -246,6 +246,9 @@ export interface SendAssetArgs {
   decimals: number;
   /** LEP100 / ERC-20 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
+  /** A Lithic token's native target. Not an ERC-20 address: the transfer
+   *  goes to the LithoVM gateway with this as its argument. */
+  nativeTarget?: string;
   /** SPL mint address — required when chain='solana' and not native SOL. */
   splMintAddress?: string;
   /** Optional Cosmos memo. */
@@ -261,6 +264,11 @@ export interface SendAssetArgs {
  * (default 'evm', on `args.evmChain`). Returns the broadcast tx
  * hash/signature.
  */
+/** Lithic sends stay off until a transfer has been confirmed on a real
+ *  build; balances, history and transaction decoding are unaffected. */
+const LITHIC_SENDS_FLAG =
+  (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_THANOS_LITHIC_SENDS : undefined) as string | undefined;
+
 export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!args.seed.length) throw new WcSignerError(-32000, 'Wallet is locked');
   const chain = args.chain ?? 'evm';
@@ -309,7 +317,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   try { value = parseUnits(args.amount, args.decimals); }
   catch { throw new WcSignerError(-32602, 'Invalid amount'); }
   // A zero-value send is only meaningful as a call carrying data.
-  if (value < 0n || (value === 0n && !data)) throw new WcSignerError(-32602, 'Amount must be greater than zero');
+  if (value < 0n || (value === 0n && !data && !args.nativeTarget)) {
+    throw new WcSignerError(-32602, 'Amount must be greater than zero');
+  }
 
   const path = activeHdPath();
   const signer = await import('./signer');
@@ -321,6 +331,25 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   if (!signer.hasSeed()) throw new WcSignerError(-32000, 'Wallet is locked');
 
   try {
+    if (args.nativeTarget) {
+      const lithic = await import('./native-lithic');
+      const token = lithic.findLithicToken(evmChain.chainId, args.nativeTarget);
+      if (!token) throw new WcSignerError(-32602, 'Unknown Lithic token');
+      if (!lithic.canSendLithic(token, LITHIC_SENDS_FLAG)) {
+        throw new WcSignerError(-32000, `${token.symbol} sends are not enabled yet`);
+      }
+      // A failed Lithic call reverts with NO reason data, so ask the token
+      // why before spending gas on a revert.
+      const from = (() => { try { return signer.deriveAddress(path); } catch { return null; } })();
+      if (from) {
+        const check = await lithic
+          .readLithicSendPreflight(from, token, value, { rpcUrl: evmChain.rpcUrl }, args.to)
+          .catch(() => null);
+        if (check?.blockedReason) throw new WcSignerError(-32000, check.blockedReason);
+      }
+      const tx = lithic.lithicTransferCall(token, args.to, value);
+      return await signer.transferLithic(path, { to: tx.to, data: tx.data }, evmChain);
+    }
     if (args.tokenAddress) {
       return await signer.transferErc20(path, {
         tokenAddress: args.tokenAddress, to: args.to, amount: value,

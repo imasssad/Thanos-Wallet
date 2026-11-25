@@ -126,6 +126,31 @@ export async function transferErc20(
   return sent.hash as string;
 }
 
+/**
+ * Send a Lithic token. It is an ordinary EVM transaction signed by the same
+ * cached wallet as everything else, but addressed to the LithoVM gateway
+ * rather than to the token — whose address has no EVM code — and carrying
+ * value 0, since a Lithic call with coin attached fails and burns all gas.
+ *
+ * The caller does the pre-flight read (balance / paused / frozen): a failed
+ * Lithic call reverts with no reason data, so without it the user only ever
+ * sees "execution reverted".
+ */
+export async function transferLithic(
+  hdPath: string,
+  args: { to: string; data: string; gasLimit?: bigint },
+  chain: SignChain,
+): Promise<string> {
+  const w = walletFor(hdPath).connect(chainProvider(chain));
+  const sent = await w.sendTransaction({
+    to: args.to,
+    value: 0n,
+    data: args.data,
+    ...(args.gasLimit ? { gasLimit: args.gasLimit } : {}),
+  });
+  return sent.hash;
+}
+
 /* ─── Solana / Cosmos ──────────────────────────────────────────────────
  * O-01 (H-1 residual): mnemonic-only — no private-key import exists for
  * either chain. The derivation logic below is copied from
