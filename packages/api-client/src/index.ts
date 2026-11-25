@@ -247,9 +247,36 @@ export class ThanosApiClient {
 
   /** Generic authed request against the Thanos backend, with the same
    *  Bearer-token + 401-refresh handling as every method above. For
-   *  feature modules (LAX, …) that don't each warrant a bespoke method. */
-  async apiRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
-    return this.req<T>(method, path, body, true);
+   *  feature modules (LAX, …) that don't each warrant a bespoke method.
+   *  `extraHeaders` — e.g. a step-up token (see stepUp() below) — are sent
+   *  as-is, merged over the defaults. */
+  async apiRequest<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
+    return this.req<T>(method, path, body, true, extraHeaders);
+  }
+
+  /* ─── Step-up auth (THN-R1 M-04) ──────────────────────────────────────
+     A handful of routes (LAX card PIN/details) require, beyond the normal
+     session, a step-up grant proving the caller re-entered the account
+     password moments ago. stepUp() gets one and caches it in memory (never
+     persisted — it's meant to be short-lived); callers pass the cached
+     token as the `x-step-up-token` header via apiRequest's extraHeaders. */
+  private stepUpCache: { token: string; expiresAt: number } | null = null;
+
+  async stepUp(password: string): Promise<{ stepUpToken: string; expiresAt: string }> {
+    const data = await this.req<{ stepUpToken: string; expiresAt: string }>('POST', '/auth/step-up', { password }, true);
+    this.stepUpCache = { token: data.stepUpToken, expiresAt: Date.parse(data.expiresAt) };
+    return data;
+  }
+
+  /** A still-valid cached step-up token (a 10s safety margin before its
+   *  real expiry), or null if there isn't one — callers should call
+   *  stepUp() again in that case. */
+  getCachedStepUp(): string | null {
+    if (!this.stepUpCache || Date.now() > this.stepUpCache.expiresAt - 10_000) {
+      this.stepUpCache = null;
+      return null;
+    }
+    return this.stepUpCache.token;
   }
 
   /* Internal ----------------------------------------------------------- */
@@ -259,10 +286,12 @@ export class ThanosApiClient {
     path: string,
     body: unknown,
     auth: boolean,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       'x-platform':   this.platform,
+      ...extraHeaders,
     };
     if (auth) {
       const access = await this.storage.get(ACCESS_KEY);

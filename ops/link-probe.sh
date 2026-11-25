@@ -177,10 +177,12 @@ probe litho "lithosphere.network" "https://lithosphere.network/"                
 # ─── External chain RPCs ─────────────────────────────────────────────
 section "External chain RPCs"
 # Bitcoin mempool — single endpoint (no public fallback), genuinely
-# critical for BTC sends. Solana mainnet-beta same. Ethereum primary +
-# fallback share a group, so a single failure is silent.
+# critical for BTC sends. Solana (publicnode primary, mainnet-beta fallback
+# — sdk-core networks.ts) and Ethereum primary + fallback share a group, so a
+# single failure is silent. mainnet-beta often 403s cloud runners.
 probe rpc "bitcoin mempool"        "https://mempool.space/api/blocks/tip/height"  GET  "" 5 200 btc-rpc
 probe rpc "bitcoin fees"           "https://mempool.space/api/v1/fees/recommended" GET "" 5 200 ""
+probe rpc "solana publicnode"      "https://solana-rpc.publicnode.com"           POST "$SOL_BODY" 8 200 sol-rpc
 probe rpc "solana mainnet-beta"    "https://api.mainnet-beta.solana.com"          POST "$SOL_BODY" 8 200 sol-rpc
 probe rpc "cosmos rest"            "https://cosmos-rest.publicnode.com/cosmos/bank/v1beta1/params" GET "" 8 200 ""
 probe rpc "ethereum publicnode"    "https://ethereum.publicnode.com"              POST "$RPC_BODY" 8 200 eth-rpc

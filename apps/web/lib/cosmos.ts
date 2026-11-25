@@ -10,17 +10,18 @@
  *   - sendCosmos({ mnemonic, recipient, amount }) → tx hash
  *   - cosmosExplorerUrl(hash)
  *
- * Mnemonic-only for v1 (no PK import flow). The signing happens briefly
- * on the main thread; worker re-isolation lands with the multi-chain
- * worker refactor.
+ * Mnemonic-only for v1 (no PK import flow). H-1 residual, closed: signing
+ * now routes through the Worker's send-cosmos op (signer-worker.ts) —
+ * no mnemonic passes through sendCosmos() any more.
  *
  * Network defaults to Cosmos Hub mainnet (cosmoshub-4); operators can
  * override via NEXT_PUBLIC_COSMOS_RPC + NEXT_PUBLIC_COSMOS_CHAIN_ID.
  */
 import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing';
-import { SigningStargateClient, GasPrice, calculateFee } from '@cosmjs/stargate';
+import { GasPrice, calculateFee } from '@cosmjs/stargate';
 import { fromBech32 } from '@cosmjs/encoding';
 import { stringToPath, type HdPath } from '@cosmjs/crypto';
+import { signerSendCosmos } from './signer-client';
 
 /* ─── Network defaults ─────────────────────────────────────────────── */
 /* Cosmos Hub mainnet — chain ID + a public RPC. The RPC URL list is
@@ -138,7 +139,6 @@ export function estimateCosmosFee(): { atom: string; gas: number } {
 /* ─── Send ────────────────────────────────────────────────────────── */
 
 export async function sendCosmos(input: {
-  mnemonic:  string;
   recipient: string;
   amount:    string;   // human-readable ATOM, e.g. "1.25"
   memo?:     string;
@@ -152,46 +152,15 @@ export async function sendCosmos(input: {
   catch { throw new CosmosSendError('invalid_amount', 'Enter a valid amount'); }
   if (amountUatom <= 0n) throw new CosmosSendError('invalid_amount', 'Amount must be greater than zero');
 
-  let wallet: DirectSecp256k1HdWallet;
   try {
-    wallet = await DirectSecp256k1HdWallet.fromMnemonic(input.mnemonic, {
-      prefix:  BECH32_PREFIX,
-      hdPaths: [parseHdPath(HD_PATH)],
-    });
-  } catch (e) {
-    throw new CosmosSendError('derive_failed', `Could not derive Cosmos key: ${(e as Error).message}`);
-  }
-
-  const [acc] = await wallet.getAccounts();
-  let client: SigningStargateClient;
-  try {
-    client = await SigningStargateClient.connectWithSigner(RPC_URL, wallet, {
-      gasPrice: GAS_PRICE,
-    });
-  } catch (e) {
-    throw new CosmosSendError('rpc_error', `Could not connect to Cosmos RPC: ${(e as Error).message}`);
-  }
-
-  try {
-    const result = await client.sendTokens(
-      acc.address,
-      recipient,
-      [{ denom: NATIVE_DENOM, amount: amountUatom.toString() }],
-      'auto',
-      input.memo ?? '',
-    );
-    if (result.code !== 0) {
-      throw new CosmosSendError('rpc_error', result.rawLog || `Tx failed (code ${result.code})`);
-    }
-    return result.transactionHash;
+    const { hash } = await signerSendCosmos({ recipient, amount: input.amount, memo: input.memo });
+    return hash;
   } catch (e) {
     if (e instanceof CosmosSendError) throw e;
     const msg = (e as Error).message || '';
     if (/insufficient/i.test(msg)) throw new CosmosSendError('insufficient', 'Insufficient ATOM for amount + fees');
     if (/rejected|denied/i.test(msg)) throw new CosmosSendError('rejected', 'Transaction rejected');
     throw new CosmosSendError('rpc_error', msg || 'Failed to broadcast Cosmos transaction');
-  } finally {
-    client.disconnect();
   }
 }
 

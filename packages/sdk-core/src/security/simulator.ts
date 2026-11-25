@@ -44,6 +44,11 @@ export class TransactionSimulator {
     const isToken   = !!request.tokenAddress;
     const tokenDec  = request.tokenDecimals ?? 18;
     const sendSym   = request.tokenSymbol ?? nativeSym;
+    // O-03: a dApp's eth_sendTransaction can carry a contract call dressed
+    // up as a plain transfer — without this, estimateGas below ran against
+    // {to, value} alone, silently treating any calldata-bearing call as a
+    // bare native send. Native sends only: a token send builds its own data.
+    const data = !isToken && request.data && request.data !== '0x' ? request.data : undefined;
 
     // Parse the human amount up front: native transfers are 18 decimals;
     // ERC-20 transfers use the token's own decimals (BSC-peg USDT is 18,
@@ -80,7 +85,7 @@ export class TransactionSimulator {
         ? Promise.resolve().then(() => provider.estimateGas(isToken
             ? { from: request.from!, to: request.tokenAddress!,
                 data: erc20.encodeFunctionData('transfer', [request.to, amountUnits!]) }
-            : { from: request.from!, to: request.to, value: amountUnits! }))
+            : { from: request.from!, to: request.to, value: amountUnits!, ...(data ? { data } : {}) }))
         : Promise.resolve(null),
     ]);
 
@@ -93,19 +98,36 @@ export class TransactionSimulator {
       try { tokenBalance = BigInt(tokenBalResult.value); } catch { /* non-numeric eth_call result */ }
     }
 
+    const estimatedGas = gasResult.status === 'fulfilled' ? gasResult.value : null;
+    const gasEstimated = estimatedGas != null;
     // Network fee ≈ gasLimit × maxFeePerGas. When estimateGas failed (dead
-    // RPC, or the transfer itself would revert) fall back to standard
-    // limits so the gas-sufficiency check still runs.
-    const gasLimit = gasResult.status === 'fulfilled' && gasResult.value != null
-      ? BigInt(gasResult.value.toString())
-      : (isToken ? 65_000n : 21_000n);
+    // RPC, or the call itself would revert) fall back to standard limits —
+    // 21k base plus calldata at 16 gas/non-zero-byte (never undershoots) —
+    // so the gas-sufficiency check still runs.
+    const gasLimit = gasEstimated
+      ? BigInt(estimatedGas!.toString())
+      : (isToken ? 65_000n : 21_000n + (data ? BigInt((data.length - 2) / 2) * 16n : 0n));
     const gasPrice = feeData?.maxFeePerGas ?? feeData?.gasPrice ?? null;
     const feeWei   = gasPrice != null ? gasLimit * BigInt(gasPrice.toString()) : null;
 
+    // O-03: estimateGas rejects when a contract call would revert — the one
+    // signal available without decoding the call. Surfaced only when there
+    // IS calldata to blame (a plain native send's estimate failing means
+    // something else, like insufficient balance, caught below instead).
+    if (data && request.from && amountUnits !== null && !gasEstimated) {
+      issues.push({
+        level:   'warning',
+        code:    'CALL_MAY_FAIL',
+        message: `The network couldn't estimate gas for this transaction's data — it will probably fail on ${network.name}. Check the data and the recipient.`,
+      });
+    }
+
     // Recipient is a contract → warn. Sending native to a contract that
-    // doesn't implement `receive()` will revert and burn gas; sending to
-    // a proxy or DEX router can be intentional but the user should know.
-    if (recipientCode && recipientCode !== '0x') {
+    // doesn't implement `receive()` will revert and burn gas; sending to a
+    // proxy or DEX router can be intentional but the user should know. Not
+    // when calldata is present — calling the contract IS the point then,
+    // and CALL_MAY_FAIL above already covers the "will this revert" signal.
+    if (!data && recipientCode && recipientCode !== '0x') {
       issues.push({
         level:   'warning',
         code:    'RECIPIENT_IS_CONTRACT',

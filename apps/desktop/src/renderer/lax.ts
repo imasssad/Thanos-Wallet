@@ -134,6 +134,9 @@ export async function laxCurrencies(): Promise<unknown> {
 /** One card as best we can pin it from get-my-cards / our own lax_cards
  *  row. Every field optional — the upstream shape isn't documented. */
 export interface LaxCard {
+  /** Our own opaque lax_cards.id — pass THIS, not card_number, to every
+   *  per-card call below (M-7: card numbers no longer travel in URL paths). */
+  id?: string;
   card_number?: string;
   cardNumber?: string;
   status?: string;
@@ -151,14 +154,14 @@ export async function laxCards(): Promise<LaxCard[]> {
 }
 
 /** GET /lax/card/:n/balance — POST /api/cards/get-card-balance upstream. */
-export async function laxCardBalance(cardNumber: string): Promise<unknown> {
-  return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/balance`);
+export async function laxCardBalance(cardId: string): Promise<unknown> {
+  return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardId)}/balance`);
 }
 
 /** GET /lax/card/:n/transactions — upstream returns a stringified-JSON
  *  blob; parseTxBlob() unwraps it best-effort. */
-export async function laxCardTransactions(cardNumber: string): Promise<LaxTxn[]> {
-  const raw = await apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/transactions`);
+export async function laxCardTransactions(cardId: string): Promise<LaxTxn[]> {
+  const raw = await apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardId)}/transactions`);
   return parseTxBlob(raw);
 }
 
@@ -174,8 +177,10 @@ export interface LaxCardDetails {
 
 /** GET /lax/card/:n/details — expiry + CVC (+ maybe PAN). Sensitive:
  *  never persist the result, clear it from state on unmount. */
-export async function laxCardDetails(cardNumber: string): Promise<LaxCardDetails> {
-  const raw = await apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/details`);
+/** stepUpToken: from apiClient.stepUp(password) (THN-R1 M-04) — the server
+ *  requires a fresh step-up grant for this route. */
+export async function laxCardDetails(cardId: string, stepUpToken: string): Promise<LaxCardDetails> {
+  const raw = await apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardId)}/details`, undefined, { 'x-step-up-token': stepUpToken });
   return coerceDetails(raw);
 }
 
@@ -194,17 +199,18 @@ export async function laxIssueCard(input: { amount: number; currency: string; em
 
 /** POST /lax/card/:n/status — freeze / unfreeze. `status` shape is
  *  unconfirmed upstream; send what the backend forwards. */
-export async function laxSetCardStatus(cardNumber: string, status: 'active' | 'frozen' | string): Promise<unknown> {
-  return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/status`, { status });
+export async function laxSetCardStatus(cardId: string, status: 'active' | 'frozen' | string): Promise<unknown> {
+  return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardId)}/status`, { status });
 }
 export interface LaxHolderInput { name: string; NFT_holder?: number; Card_color?: string; firstName: string; lastName: string; address_line1: string; city: string; state: string; country: string; zip: string; phone: string; email: string; cellPhoneNumber: string; callingCode: string; countryCallingCode: string; birth_date: string; genderId: number }
 export async function laxCreatePhysicalHolder(input: LaxHolderInput): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/holder', input); }
 export async function laxGetPhysicalHolder(): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', '/lax/physical/holder'); }
 export async function laxStartPhysicalKyc(holderId: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/kyc/start', { holderId }); }
 export async function laxSubmitPhysicalHolder(holderId: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', '/lax/physical/submit', { holderId }); }
-export async function laxGetPin(cardNumber: string): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardNumber)}/pin`); }
-export async function laxSetPin(cardNumber: string, PIN: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/pin`, { PIN }); }
-export async function laxActivateCard(cardNumber: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardNumber)}/activate`); }
+// stepUpToken: from apiClient.stepUp(password) (THN-R1 M-04) on all three — the server requires a fresh step-up grant.
+export async function laxGetPin(cardId: string, stepUpToken: string): Promise<unknown> { return apiClient.apiRequest<unknown>('GET', `/lax/card/${encodeURIComponent(cardId)}/pin`, undefined, { 'x-step-up-token': stepUpToken }); }
+export async function laxSetPin(cardId: string, PIN: string, stepUpToken: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardId)}/pin`, { PIN }, { 'x-step-up-token': stepUpToken }); }
+export async function laxActivateCard(cardId: string, stepUpToken: string): Promise<unknown> { return apiClient.apiRequest<unknown>('POST', `/lax/card/${encodeURIComponent(cardId)}/activate`, undefined, { 'x-step-up-token': stepUpToken }); }
 
 /* ── loose parse helpers ────────────────────────────────────────────── */
 
@@ -317,4 +323,10 @@ export function extractKycUrl(raw: unknown): string | undefined {
 /** card_number of a card object regardless of key spelling. */
 export function cardNumberOf(c: LaxCard): string | undefined {
   return (c.card_number ?? c.cardNumber ?? c.number ?? (typeof c.last4 === 'string' ? undefined : undefined)) as string | undefined;
+}
+
+/** Our own opaque card identifier (M-7) — use this, not cardNumberOf(), for
+ *  every per-card API call; cardNumberOf() stays for DISPLAY (masking, etc.) only. */
+export function cardIdOf(c: LaxCard): string | undefined {
+  return c.id as string | undefined;
 }

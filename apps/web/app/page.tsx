@@ -392,7 +392,7 @@ function SecuritySection() {
               <li>BIP39 12-word recovery phrase</li>
               <li>BIP44 / BIP84 derivation paths</li>
               <li>Tap-to-order phrase verification</li>
-              <li>Fully open source — github.com/imasssad/Thanos-Wallet</li>
+              <li>Fully open source</li>
             </ul>
           </div>
 

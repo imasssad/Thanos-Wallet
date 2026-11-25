@@ -5,7 +5,14 @@ const { app, BrowserWindow, nativeTheme, session, clipboard, Notification } = re
 /** The secret last copied through clipboard:write-secret, until it's wiped. */
 let secretClipboard: { value: string; timer: ReturnType<typeof setTimeout> } | null = null;
 app.on('will-quit', () => {
-  if (secretClipboard && clipboard.readText() === secretClipboard.value) clipboard.clear();
+  // Electron 38+ made clipboard.readText()/writeText() async (modeled on the
+  // W3C navigator.clipboard API); 'will-quit' can't await, so run it fire-and
+  // -forget — a best-effort wipe on quit, same as before, just no longer
+  // guaranteed to finish before the process actually exits.
+  if (secretClipboard) {
+    const value = secretClipboard.value;
+    void clipboard.readText().then((t) => { if (t === value) return clipboard.clear(); }).catch(() => {});
+  }
 });
 
 /* USB / HID vendor IDs we let the renderer enumerate. Hardware-wallet
@@ -145,7 +152,12 @@ const createWindow = () => {
     callback(dev ? dev.deviceId : undefined);
   });
 
-  if (process.env.NODE_ENV === 'development') win.loadURL('http://localhost:5173');
+  // app.isPackaged, not NODE_ENV: the latter is a plain environment variable
+  // readable (and settable) in the signed, packaged binary, which would let
+  // anyone with a shell on the machine point the wallet window — and the
+  // IPC trust it carries (see ipc-guard.ts isAppUrl) — at a local dev server
+  // they control (THN-04).
+  if (!app.isPackaged) win.loadURL('http://localhost:5173');
   else win.loadFile(path.join(__dirname, 'index.html'));
 
   // Keep the 1.1 UI scale-up at the Chromium level (correct click hit-testing,
@@ -179,22 +191,22 @@ app.whenReady().then(() => {
 
   // Clipboard via the main process — navigator.clipboard is blocked in the
   // packaged file:// renderer, so every Copy button needs this bridge.
-  handleTrusted('clipboard:write', (_e, text: string) => {
-    clipboard.writeText(String(text ?? ''));
+  handleTrusted('clipboard:write', async (_e, text: string) => {
+    await clipboard.writeText(String(text ?? ''));
     return { ok: true };
   });
 
   // A recovery phrase / private key (audit M-10): wiped again after 60 s —
   // only if the clipboard still holds it, so something the user copied since
   // is left alone — and on quit.
-  handleTrusted('clipboard:write-secret', (_e, text: string) => {
+  handleTrusted('clipboard:write-secret', async (_e, text: string) => {
     const secret = String(text ?? '');
-    clipboard.writeText(secret);
+    await clipboard.writeText(secret);
     if (secretClipboard) clearTimeout(secretClipboard.timer);
     secretClipboard = {
       value: secret,
       timer: setTimeout(() => {
-        if (clipboard.readText() === secret) clipboard.clear();
+        void clipboard.readText().then((t) => { if (t === secret) return clipboard.clear(); }).catch(() => {});
         secretClipboard = null;
       }, 60_000),
     };
@@ -221,6 +233,10 @@ app.whenReady().then(() => {
   handleTrusted('signer:personal',    (_e, hdPath: string, msg)     => signer.signPersonalMessage(hdPath, msg));
   handleTrusted('signer:typed-data',  (_e, hdPath: string, payload) => signer.signTypedData(hdPath, payload));
   handleTrusted('signer:erc20-transfer', (_e, hdPath: string, args, chain) => signer.transferErc20(hdPath, args, chain));
+  handleTrusted('signer:send-sol',    (_e, args)                    => signer.sendSolana(args));
+  handleTrusted('signer:send-cosmos', (_e, args)                    => signer.sendCosmosTx(args));
+  handleTrusted('signer:sol-address',    ()                         => signer.solanaAddress());
+  handleTrusted('signer:cosmos-address', ()                         => signer.cosmosAddress());
 
   /* Native-HID Ledger bridge — used by the renderer as a fallback when
      WebHID is unavailable (typically Linux). Lazy-loaded so a missing

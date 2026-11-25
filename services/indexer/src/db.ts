@@ -6,10 +6,24 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+// THN-R1 M-07: DATABASE_SSL=true used to mean `{ rejectUnauthorized: false }`
+// unconditionally — encryption with no server authentication, i.e. exactly
+// the config a man-in-the-middle needs to be invisible. .env.example
+// documented this as the flag for "a managed/remote Postgres that requires
+// TLS", which is the one case this most needed to NOT be true: a real
+// managed Postgres (RDS, etc.) has a publicly-trusted cert and should be
+// verified. DATABASE_SSL=true now verifies properly; the old behavior is
+// still available, but only via a separately and loudly named flag that
+// can't be set by accident.
+const sslInsecure = process.env.DATABASE_SSL_INSECURE === 'true';
+if (sslInsecure) {
+  console.warn('[indexer:pg] DATABASE_SSL_INSECURE=true — TLS certificate verification is OFF. Local/dev only; never set this against a production database.');
+}
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Allow self-signed certs during local docker-compose dev.
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  ssl: sslInsecure ? { rejectUnauthorized: false }
+     : process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true }
+     : false,
   max: 10,
   idleTimeoutMillis: 30_000,
 });

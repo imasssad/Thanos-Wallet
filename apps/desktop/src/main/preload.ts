@@ -107,6 +107,17 @@ contextBridge.exposeInMainWorld('thanosDesktop', {
     typedData:  (hdPath: string, payload: TypedDataPayload) => ipcRenderer.invoke('signer:typed-data', hdPath, payload) as Promise<string>,
     erc20Transfer: (hdPath: string, args: { tokenAddress: string; to: string; amount: string }, chain: { chainId: number; rpcUrl: string }) =>
       ipcRenderer.invoke('signer:erc20-transfer', hdPath, args, chain) as Promise<string>,
+    // O-01 (H-1 residual): Solana / Cosmos — mnemonic-only, no hdPath
+    // needed (Solana always derives account 0; Cosmos has no HD-account
+    // switcher in this wallet yet).
+    sendSol:    (args: { recipient: string; amount: string; mintAddress?: string; decimals?: number }) =>
+      ipcRenderer.invoke('signer:send-sol', args) as Promise<string>,
+    sendCosmos: (args: { recipient: string; amount: string; memo?: string }) =>
+      ipcRenderer.invoke('signer:send-cosmos', args) as Promise<string>,
+    // O-01 (H-1 residual, non-signing): balance/receive displays read
+    // these instead of deriving from the seed in the renderer.
+    solAddress:    () => ipcRenderer.invoke('signer:sol-address')    as Promise<string>,
+    cosmosAddress: () => ipcRenderer.invoke('signer:cosmos-address') as Promise<string>,
   },
 
   /* ─── Native-HID Ledger fallback ────────────────────────────────────

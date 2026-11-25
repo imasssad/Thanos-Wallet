@@ -13,10 +13,8 @@
  * offscreen signer signs it, and Quantt returns a bearer session. Keys never
  * leave the wallet — Quantt only ever sees a signature.
  */
-import { HDNodeWallet, Mnemonic, Wallet } from 'ethers';
 import { QuanttClient, type QuanttSession, type Eip712TypedData } from '@thanos/sdk-core';
-import { getActiveAccountIndex, isPrivateKeyWallet } from '../../lib/vault';
-import { signTypedData as offscreenSignTypedData } from './offscreen-sign';
+import { signTypedData as offscreenSignTypedData, getSignerAddress } from './offscreen-sign';
 
 const STORE_KEY = 'quantt_session';
 
@@ -50,28 +48,18 @@ export function forgetQuanttSession(): Promise<void> {
   return quantt.signOut();
 }
 
-function hdPath(): string {
-  return `m/44'/60'/0'/0/${getActiveAccountIndex()}`;
-}
-
-/** The active account's EVM address — a private-key wallet's own (the
- *  offscreen signer signs with that key too), else the seed's at the active
- *  index. */
-export function quanttAddress(seed: string[]): string {
-  if (isPrivateKeyWallet(seed)) return new Wallet(seed[0].trim()).address;
-  return HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(seed.join(' ')), hdPath()).address;
-}
-
-/** Sign in to Quantt with the unlocked wallet seed. Throws if locked. */
+/** Sign in to Quantt with the unlocked wallet (hardening-audit H-1: both the
+ *  address and the signature now come from the offscreen signer's own
+ *  cache, never from a wallet derived here, so the two can't disagree).
+ *  `seed` is kept only as the caller's fast "is probably unlocked" check —
+ *  it is never read for signing. Throws if locked. */
 export async function quanttSignIn(seed: string[]): Promise<QuanttSession> {
   if (!seed?.length) throw new Error('Wallet is locked');
-  const address = quanttAddress(seed);
+  const address = await getSignerAddress();
   // Mirror wc-signer's eth_signTypedData_v4: pass types as-is (incl.
   // EIP712Domain) and map the challenge `message` → the signer's `value`.
   const sign = (typed: Eip712TypedData): Promise<string> =>
     offscreenSignTypedData({
-      seed,
-      hdPath: hdPath(),
       payload: { domain: typed.domain, types: typed.types, value: typed.message },
     });
   return quantt.signIn(address, sign);
@@ -85,8 +73,6 @@ export async function quanttBindWithdrawalAddress(seed: string[], address: strin
   if (!seed?.length) throw new Error('Wallet is locked');
   const challenge = await quantt.withdrawalAddressChallenge(address);
   const signature = await offscreenSignTypedData({
-    seed,
-    hdPath: hdPath(),
     payload: { domain: challenge.domain, types: challenge.types, value: challenge.message },
   });
   return quantt.bindWithdrawalAddress({ address, signature });

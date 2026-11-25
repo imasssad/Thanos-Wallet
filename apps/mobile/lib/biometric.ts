@@ -120,10 +120,16 @@ export async function enableBiometricUnlock(derivedKey: Uint8Array): Promise<Bio
   // Single OS prompt — confirms the user owns the enrolled biometric right
   // now. (On iOS a SecureStore write wouldn't prompt at all, so doing it
   // here gives a consistent confirmation across platforms.)
+  // disableDeviceFallback: true (hardening-audit M-3) — the device PASSCODE
+  // is not the same credential as the enrolled biometric; allowing it here
+  // meant anyone who knows the phone's passcode could unlock the wallet
+  // through a feature labelled "Face ID / Fingerprint unlock". Enabling
+  // biometric unlock itself must be proven with the biometric, not a
+  // fallback to the thing that already guards the whole device.
   const auth = await LocalAuthentication.authenticateAsync({
     promptMessage:         `Confirm to enable ${biometricLabel(cap.kind)} unlock`,
     cancelLabel:           'Cancel',
-    disableDeviceFallback: false,
+    disableDeviceFallback: true,
   });
   if (!auth.success) return { ok: false, reason: mapAuthError(auth.error) };
 
@@ -156,10 +162,14 @@ export async function readProtectedKey(): Promise<Uint8Array | null> {
     const cap = await getBiometricCapability();
     if (!cap.hasHardware || !cap.isEnrolled) return null;
 
+    // disableDeviceFallback: true (hardening-audit M-3) — same reasoning as
+    // enableBiometricUnlock: the device passcode must not substitute for
+    // the biometric this slot was gated on. A user who wants passcode-level
+    // access already has that via the normal password unlock screen.
     const auth = await LocalAuthentication.authenticateAsync({
       promptMessage:         'Unlock Thanos Wallet',
       cancelLabel:           'Cancel',
-      disableDeviceFallback: false,
+      disableDeviceFallback: true,
     });
     if (!auth.success) return null;
 

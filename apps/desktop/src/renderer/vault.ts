@@ -150,13 +150,16 @@ export async function openVault(
   }
 }
 
-/** Decrypt with a session-cached raw AES key (refresh case). */
+/** Decrypt with a session-cached key (refresh case) — either the raw bytes
+ *  openVault() just derived, or the non-extractable CryptoKey getSessionKey()
+ *  hands back (hardening-audit H-2: the session cache no longer holds raw
+ *  bytes at all, see "Session key cache" below). */
 export async function openVaultWithKey(
   vault: EncryptedVault,
-  keyBytes: Uint8Array,
+  key: Uint8Array | CryptoKey,
 ): Promise<string | null> {
   try {
-    const aes = await importAesKey(keyBytes);
+    const aes = key instanceof Uint8Array ? await importAesKey(key) : key;
     const pt = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: hexToBytes(vault.iv) as BufferSource },
       aes,
@@ -356,9 +359,9 @@ export async function openWallet(plaintext: string): Promise<StoredWallet> {
   return selectWallet(set);
 }
 
-interface OpenSet { vault: EncryptedVault; key: Uint8Array; set: WalletSet }
+interface OpenSet { vault: EncryptedVault; key: CryptoKey; set: WalletSet }
 async function openSet(): Promise<OpenSet | null> {
-  const key = getSessionKey();
+  const key = await getSessionKey();
   const vault = key ? loadVault() : null;
   if (!key || !vault) return null;
   const pt = await openVaultWithKey(vault, key);
@@ -366,12 +369,12 @@ async function openSet(): Promise<OpenSet | null> {
 }
 
 /** Re-encrypt new plaintext under the same password-derived key — same KDF
- *  and salt, fresh IV. */
-async function sealWithKey(vault: EncryptedVault, keyBytes: Uint8Array, plaintext: string): Promise<EncryptedVault> {
+ *  and salt, fresh IV. `key` is already the non-extractable CryptoKey the
+ *  session cache hands back — no need to round-trip it through raw bytes. */
+async function sealWithKey(vault: EncryptedVault, key: CryptoKey, plaintext: string): Promise<EncryptedVault> {
   const iv = randomBytes(12);
-  const aes = await importAesKey(keyBytes);
   const ct = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource }, aes, new TextEncoder().encode(plaintext) as BufferSource,
+    { name: 'AES-GCM', iv: iv as BufferSource }, key, new TextEncoder().encode(plaintext) as BufferSource,
   );
   return { ...vault, iv: bytesToHex(iv), ciphertext: bytesToHex(new Uint8Array(ct)) };
 }
@@ -785,23 +788,92 @@ export function clearVault(): void {
   for (const key of DURABLE_KEYS) if (key !== STORAGE_KEYS.vault) removeFromKeychain(key);
   _walletId = FIRST_WALLET_ID;
   hydrated.clear();
-  clearSessionKey();
+  // The sessionStorage marker is dropped synchronously (before this async
+  // call's first await runs); the IndexedDB delete behind it is best-effort
+  // cleanup that doesn't need to block callers of this (sync) function.
+  void clearSessionKey().catch(() => {});
 }
 
-/* ─── Session key cache (refresh persistence, NOT cold-open) ────────────── */
-export function cacheSessionKey(key: Uint8Array): void {
-  if (typeof window === 'undefined') return;
-  sessionStorage.setItem(STORAGE_KEYS.sessionKey, bytesToHex(key));
+/* ─── Session key cache (refresh persistence, NOT cold-open) ─────────────
+ * Hardening-audit H-2: this used to hex-encode the raw AES key into
+ * sessionStorage, so any main-thread script could read the key with one
+ * synchronous `sessionStorage.getItem`. A non-extractable CryptoKey closes
+ * that: its structured clone carries no exportable key material, so
+ * IndexedDB — the one storage API that can hold a CryptoKey at all — is
+ * what we cache it in now; a script that reaches in gets an opaque key it
+ * can only USE through our own decrypt calls, never read bytes out of.
+ *
+ * sessionStorage still has a role: a bare marker (no secret) under the same
+ * key this used to hold the hex key. IndexedDB (unlike sessionStorage)
+ * survives a renderer reload the same session-storage-clearing event
+ * wouldn't, so without the marker a reload could resurrect a key this was
+ * never meant to outlive; getSessionKey() treats a missing marker as "no
+ * cache", same as the original "Electron keeps no session storage across
+ * restarts" guarantee in the header comment above.
+ */
+const SESSION_DB_NAME  = 'thanos-vault-session';
+const SESSION_DB_STORE = 'keys';
+const SESSION_DB_ENTRY = 'aes';
+
+function hasIndexedDb(): boolean {
+  return typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
 }
-export function getSessionKey(): Uint8Array | null {
-  if (typeof window === 'undefined') return null;
-  const hex = sessionStorage.getItem(STORAGE_KEYS.sessionKey);
-  if (!hex) return null;
-  try { return hexToBytes(hex); } catch { return null; }
+
+function openSessionDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(SESSION_DB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(SESSION_DB_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => reject(req.error);
+  });
 }
-export function clearSessionKey(): void {
-  if (typeof window === 'undefined') return;
+
+async function withSessionStore<T>(
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  const db = await openSessionDb();
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(SESSION_DB_STORE, mode);
+      const req = fn(tx.objectStore(SESSION_DB_STORE));
+      tx.onerror    = () => reject(tx.error);
+      tx.onabort    = () => reject(tx.error);
+      tx.oncomplete = () => resolve(req.result);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** Cache the AES key for the rest of this session. Takes the raw bytes
+ *  openVault()/createVault() just derived — they're imported into a
+ *  non-extractable CryptoKey here and only the CryptoKey is ever stored. */
+export async function cacheSessionKey(rawKey: Uint8Array): Promise<void> {
+  if (!hasIndexedDb()) return;
+  const key = await importAesKey(rawKey);
+  sessionStorage.setItem(STORAGE_KEYS.sessionKey, '1'); // session-lifetime marker, not a secret
+  await withSessionStore('readwrite', (store) => store.put(key, SESSION_DB_ENTRY));
+}
+
+/** The cached key, or null if this is a cold open (no cache), a reload that
+ *  inherited a previous session's IndexedDB entry (no sessionStorage marker
+ *  — treated the same as no cache and swept away), or IndexedDB is
+ *  unavailable. */
+export async function getSessionKey(): Promise<CryptoKey | null> {
+  if (!hasIndexedDb()) return null;
+  if (!sessionStorage.getItem(STORAGE_KEYS.sessionKey)) {
+    await clearSessionKey(); // best-effort: drop any stale entry from a previous session
+    return null;
+  }
+  const key = await withSessionStore('readonly', (store) => store.get(SESSION_DB_ENTRY));
+  return (key as CryptoKey | undefined) ?? null;
+}
+
+export async function clearSessionKey(): Promise<void> {
   sessionStorage.removeItem(STORAGE_KEYS.sessionKey);
+  if (!hasIndexedDb()) return;
+  await withSessionStore('readwrite', (store) => store.delete(SESSION_DB_ENTRY));
 }
 
 /* ─── Migration from plaintext (legacy) ─────────────────────────────────── */

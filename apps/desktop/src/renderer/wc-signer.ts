@@ -57,11 +57,27 @@ export class WcSignerError extends Error {
 }
 
 /** A raw-key wallet is a single account (no derivation) — the dApp browser's
- *  transactions used to go through evm-external, which already handled it. */
+ *  transactions used to go through evm-external, which already handled it.
+ *
+ *  Hardening-audit H-1 (desktop, slice 2): this is now the FALLBACK path
+ *  only, for the same "older shell / dev hot-reload" case send.ts already
+ *  documents — the main process already caches the seed from unlock
+ *  (signer:set-seed) and exposes signing over IPC, so every signing branch
+ *  below tries `window.thanosDesktop.signer` first and derives a wallet
+ *  here only when that bridge isn't available. WalletConnect used to be
+ *  the one path on this client that always re-derived the key in the
+ *  renderer — the exact "copy, not a boundary" the audit's H-1 describes. */
 function walletFromSeed(seed: string[]): HDNodeWallet | Wallet {
   if (isPrivateKeyWallet(seed)) return new Wallet(seed[0].trim());
   const mnemonic = Mnemonic.fromPhrase(seed.join(' '));
   return HDNodeWallet.fromMnemonic(mnemonic, activeHdPath());
+}
+
+/** The main-process signer bridge, if this build has it wired — same guard
+ *  send.ts uses before trusting it over the in-renderer fallback. */
+async function signerBridge() {
+  const bridge = typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined;
+  return bridge && (await bridge.hasSeed()) ? bridge : null;
 }
 
 /** Human-readable summary shown in the approval sheet. */
@@ -99,22 +115,27 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
   const method = reqParams.request.method;
   const params = reqParams.request.params as unknown[];
 
+  const path = activeHdPath();
+  const bridge = await signerBridge();
+
   switch (method) {
     case 'eth_accounts':
     case 'eth_requestAccounts':
-      return [walletFromSeed(seed).address];
+      return [bridge ? await bridge.address(path) : walletFromSeed(seed).address];
 
     case 'eth_chainId':
       return `0x${(chainIdFromCaip(reqParams.chainId) ?? DEFAULT_WC_CHAIN_ID).toString(16)}`;
 
     case 'personal_sign': {
       const hexMsg = params[0] as string;
+      if (bridge) return bridge.personal(path, hexMsg);
       const bytes = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
       return walletFromSeed(seed).signMessage(bytes);
     }
 
     case 'eth_sign': {
       const hexMsg = params[1] as string;
+      if (bridge) return bridge.personal(path, hexMsg);
       const bytes = isHexString(hexMsg) ? getBytes(hexMsg) : toUtf8Bytes(String(hexMsg));
       return walletFromSeed(seed).signMessage(bytes);
     }
@@ -127,11 +148,9 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       };
       const { EIP712Domain: _omit, ...types } = typed.types as Record<string, unknown>;
       void _omit;
-      return walletFromSeed(seed).signTypedData(
-        typed.domain,
-        types as Record<string, Array<{ name: string; type: string }>>,
-        typed.message,
-      );
+      const typesTyped = types as Record<string, Array<{ name: string; type: string }>>;
+      if (bridge) return bridge.typedData(path, { domain: typed.domain, types: typesTyped, value: typed.message });
+      return walletFromSeed(seed).signTypedData(typed.domain, typesTyped, typed.message);
     }
 
     case 'eth_sendTransaction': {
@@ -144,8 +163,15 @@ export async function executeWcRequest(seed: string[], reqParams: WcRequestParam
       // into the signature, so the tx can only ever land there.
       const chain = requestChain(reqParams);
       if (!chain) throw new WcSignerError(4901, 'This network is not available in the wallet.');
-      const wallet = walletFromSeed(seed).connect(new JsonRpcProvider(chain.rpcUrl, chain.chainId, { staticNetwork: true }));
       try {
+        if (bridge) {
+          return await bridge.sendTx(path, {
+            to: tx.to, value: tx.value, data: tx.data,
+            gas: tx.gas ?? tx.gasLimit,
+            maxFeePerGas: tx.maxFeePerGas, maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+          }, { chainId: chain.chainId, rpcUrl: chain.rpcUrl });
+        }
+        const wallet = walletFromSeed(seed).connect(new JsonRpcProvider(chain.rpcUrl, chain.chainId, { staticNetwork: true }));
         const sent = await wallet.sendTransaction({
           to:                   tx.to,
           value:                tx.value ? BigInt(tx.value) : undefined,

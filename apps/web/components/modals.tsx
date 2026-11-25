@@ -54,7 +54,6 @@ import { getKametProvider, KAMET_CHAIN_ID } from '../lib/rpc';
 import { getEvmProvider } from '../lib/evm-chains';
 import { parseUnits as ethersParseUnits, Contract as EthersContract, formatUnits as ethersFormatUnits } from 'ethers';
 import { LedgerError } from '../lib/ledger-transport';
-import { getActiveAccountIndex } from '../lib/vault';
 import { MultXBridge } from './MultXBridge';
 import { MULTX_CONFIG } from '../lib/multx-thanos';
 import { recordPendingTx } from '../lib/tx-store';
@@ -485,7 +484,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       const t = setTimeout(async () => {
         try {
           const est = await estimateNativeEvmFee(
-            wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+            wallet.evmAddress,
             { chainId: evmChainId, recipient: evmRecipient, amount },
           );
           if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} ${evmChain.nativeSymbol}` : null);
@@ -526,7 +525,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
     const t = setTimeout(async () => {
       try {
         const est = await estimateLithoNativeFee(
-          wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed },
+          wallet.evmAddress,
           { chainId: KAMET_CHAIN_ID, recipient: to, amount },
         );
         if (!cancelled) setFeeStr(est ? `${Number(est.totalLitho).toFixed(6)} LITHO` : null);
@@ -718,7 +717,6 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       setError(null);
       try {
         const hash = await sendCosmos({
-          mnemonic:  wallet.seed.join(' '),
           recipient: to.trim(),
           // Reserve ~0.005 ATOM for gas when sending max so the fee doesn't push
           // the total over the balance.
@@ -792,9 +790,9 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         const sig = selectedToken.address === null
           // Native SOL: reserve ~0.00001 SOL for the signature fee on send-max.
           // (SPL token max is the full token balance — its fee is paid in SOL.)
-          ? await sendSol({       mnemonic: wallet.seed.join(' '), recipient: to.trim(),
+          ? await sendSol({       recipient: to.trim(),
                                    amount: maxMode ? String(Math.max(0, parseFloat(amount || '0') - 0.00001)) : amount })
-          : await sendSplToken({  mnemonic: wallet.seed.join(' '), recipient: to.trim(), amount,
+          : await sendSplToken({  recipient: to.trim(), amount,
                                    mintAddress: selectedToken.address, decimals: selectedToken.decimals });
         recordPendingSend(sig);
         setTxHash(sig);
@@ -899,15 +897,16 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         return;
       }
       try {
-        const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
         // A token on this chain → ERC-20 transfer; the native coin → native.
-        const acctIdx = getActiveAccountIndex();
+        // Signing happens in the signer worker (hardening-audit H-1) — it
+        // already holds the unlocked key and tracks the active HD account,
+        // so neither call below needs the seed/private key at all.
         const result = tokenOnChain
-          ? await sendEvmToken(walletInput, {
+          ? await sendEvmToken({
               chainId: evmChainId, tokenAddress: tokenOnChain.address, decimals: tokenOnChain.decimals,
-              symbol: tokenOnChain.symbol, recipient: evmRecipient, amount, accountIdx: acctIdx,
+              symbol: tokenOnChain.symbol, recipient: evmRecipient, amount,
             })
-          : await sendNativeEvm(walletInput, { chainId: evmChainId, recipient: evmRecipient, amount, accountIdx: acctIdx });
+          : await sendNativeEvm({ chainId: evmChainId, recipient: evmRecipient, amount });
         recordPendingSend(result.hash);
         setTxHash(result.hash);
         setStage('pending');
@@ -1011,13 +1010,11 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       setStage('failed');
       return;
     }
-    /* Kamet keyring sends — native LITHO through the chain-aware main-thread
-       sendLithoNative (the seed is already in this context). Signs from the
-       ACTIVE account. */
+    /* Kamet keyring sends — native LITHO, signed in the signer worker
+       (hardening-audit H-1), which already tracks the active account. */
     try {
-      const walletInput = wallet.privateKey ? { privateKey: wallet.privateKey } : { seed: wallet.seed };
-      const result = await sendLithoNative(walletInput, {
-        chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount, accountIdx: getActiveAccountIndex(),
+      const result = await sendLithoNative({
+        chainId: KAMET_CHAIN_ID, recipient: to.trim(), amount,
       });
       recordPendingSend(result.hash);
       setTxHash(result.hash);
@@ -1511,9 +1508,8 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
  */
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import QRCode from 'qrcode';
-import { getSolanaAddress } from '../lib/solana';
 import { getBitcoinAddressFromSource } from '../lib/bitcoin';
-import { getCosmosAddress } from '../lib/cosmos';
+import { signerSolanaAddress, signerCosmosAddress } from '../lib/signer-client';
 
 interface ReceiveNetwork {
   id:      string;
@@ -1566,37 +1562,44 @@ export function ReceiveModal({ onClose, initialAsset }: { onClose: () => void; i
   const litho = wallet?.addresses?.litho ?? '';
   const evm   = wallet?.addresses?.evm   ?? '';
 
-  /* Derive non-EVM addresses on demand. Same code path as the dashboard
-     uses to display SOL / BTC balances; safe to call repeatedly.
-     Cosmos derivation is async (CosmJS does I/O-free crypto behind a
-     Promise) so it lands via a separate useEffect. */
-  const { btcAddr, solAddr } = useMemo(() => {
+  /* Derive non-EVM addresses on demand. Bitcoin isn't signing-isolated yet
+     (H-1 residual, deferred — see apps/web/lib/bitcoin.ts), so it still
+     derives from the raw seed here; safe to call repeatedly. Solana and
+     Cosmos ARE isolated (O-01/H-1 residual, closed) — both land via their
+     own effect, reading the address from the signing Worker's cache
+     instead of the seed. */
+  const btcAddr = useMemo(() => {
     const seedAvailable = !!wallet?.seed?.length;
     const pk = wallet?.privateKey;
-    let btc = '';
-    let sol = '';
     try {
-      if (seedAvailable) {
-        sol = getSolanaAddress(wallet!.seed.join(' '));
-      }
       const source = pk
         ? { kind: 'privateKey' as const, privateKey: pk }
         : seedAvailable
           ? { kind: 'mnemonic' as const, mnemonic: wallet!.seed.join(' ') }
           : null;
-      if (source) btc = getBitcoinAddressFromSource(source);
-    } catch { /* derivation can fail for malformed keys — show nothing */ }
-    return { btcAddr: btc, solAddr: sol };
+      return source ? getBitcoinAddressFromSource(source) : '';
+    } catch { return ''; /* derivation can fail for malformed keys — show nothing */ }
   }, [wallet?.seed, wallet?.privateKey]);
+
+  const [solAddr, setSolAddr] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setSolAddr('');
+    if (!wallet?.seed?.length) return;
+    signerSolanaAddress()
+      .then(({ address }) => { if (!cancelled) setSolAddr(address); })
+      .catch(() => { /* wallet locked / worker not ready — show no row */ });
+    return () => { cancelled = true; };
+  }, [wallet?.seed]);
 
   const [atomAddr, setAtomAddr] = useState('');
   useEffect(() => {
     let cancelled = false;
     setAtomAddr('');
     if (!wallet?.seed?.length) return;
-    getCosmosAddress(wallet.seed.join(' '))
-      .then(a => { if (!cancelled) setAtomAddr(a); })
-      .catch(() => { /* swallow — malformed seed shows no row */ });
+    signerCosmosAddress()
+      .then(({ address }) => { if (!cancelled) setAtomAddr(address); })
+      .catch(() => { /* wallet locked / worker not ready — show no row */ });
     return () => { cancelled = true; };
   }, [wallet?.seed]);
 

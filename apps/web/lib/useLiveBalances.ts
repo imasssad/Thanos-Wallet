@@ -23,9 +23,10 @@
  * once) only triggers one set of fetches.
  */
 import { useEffect, useState } from 'react';
-import { getSolanaAddress,    getSolanaBalance    } from './solana';
+import { getSolanaBalance } from './solana';
 import { getBitcoinAddressFromSource, getBitcoinBalance } from './bitcoin';
-import { getCosmosAddress,    getCosmosBalance    } from './cosmos';
+import { getCosmosBalance } from './cosmos';
+import { signerSolanaAddress, signerCosmosAddress } from './signer-client';
 import { type EvmChain } from './evm-chains';
 import { getAllEvmNativeBalancesMerged } from './custom-assets';
 import type { WalletSource } from './wallet-source';
@@ -84,10 +85,14 @@ async function loadOnce(
     const bySym       = new Map<string, string>();
     const bySymNumber = new Map<string, number>();
 
-    /* ── Solana (mnemonic only — no SLIP-0010 from raw secp key) ── */
+    /* ── Solana (mnemonic only — no SLIP-0010 from raw secp key) ──
+     * O-01 (H-1 residual, non-signing): the address comes from the
+     * signing Worker's own cache (signerSolanaAddress), not from
+     * source.mnemonic directly — this is the one call in this file
+     * that no longer needs to read it. */
     if (source?.kind === 'mnemonic') {
       try {
-        const addr = getSolanaAddress(source.mnemonic);
+        const { address: addr } = await signerSolanaAddress();
         const bal  = parseFloat(await getSolanaBalance(addr));
         if (bal > 0) {
           bySym.set('sol', bal.toLocaleString('en-US', { maximumFractionDigits: 9 }));
@@ -110,10 +115,11 @@ async function loadOnce(
       } catch { /* mempool.space blip — skip */ }
     }
 
-    /* ── Cosmos Hub (mnemonic only — secp256k1 BIP44 m/44'/118'/0'/0/0) ── */
+    /* ── Cosmos Hub (mnemonic only — secp256k1 BIP44 m/44'/118'/0'/0/0) ──
+     * O-01 (H-1 residual, non-signing): same as Solana above. */
     if (source?.kind === 'mnemonic') {
       try {
-        const addr = await getCosmosAddress(source.mnemonic);
+        const { address: addr } = await signerCosmosAddress();
         const bal  = parseFloat(await getCosmosBalance(addr));
         if (bal > 0) {
           bySym.set('atom', bal.toLocaleString('en-US', { maximumFractionDigits: 6 }));

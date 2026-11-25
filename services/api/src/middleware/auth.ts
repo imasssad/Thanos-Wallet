@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken, type AccessTokenPayload } from '../lib/jwt.js';
 import { isSessionLive } from '../lib/sessions.js';
+import { verifyStepUpToken } from '../lib/step-up.js';
 
 export interface AuthRequest extends Request {
   userId:    string;
@@ -54,5 +55,22 @@ export async function requireAuth(
   (req as AuthRequest).userId    = payload.sub;
   (req as AuthRequest).sessionId = payload.sessionId;
   (req as AuthRequest).deviceId  = payload.deviceId;
+  next();
+}
+
+/**
+ * THN-R1 M-04: require a fresh step-up grant (POST /auth/step-up, which
+ * re-confirms the account password) on top of requireAuth, for routes
+ * where a stolen-but-valid access token alone shouldn't be enough — card
+ * PIN view/change, full card details, card activation. Mount requireAuth
+ * first; this reads req.userId/sessionId it set.
+ */
+export function requireStepUp(req: Request, res: Response, next: NextFunction): void {
+  const { userId, sessionId } = req as AuthRequest;
+  const token = req.header('x-step-up-token');
+  if (!token || !verifyStepUpToken(token, userId, sessionId)) {
+    res.status(403).json({ error: 'Re-confirm your password to continue', code: 'step_up_required' });
+    return;
+  }
   next();
 }

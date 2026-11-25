@@ -113,6 +113,15 @@ https://thanos.fi/privacy is the canonical document.
 ## What's New in this version (release notes, 4,000 chars max)
 
 ```
+• Thanos MultiSig: create a shared wallet on Lithosphere with co-signers,
+  then propose, approve and send from it together. Approvals can be
+  gas-free.
+• Security hardening from an independent audit: your recovery phrase
+  stays in secure storage and is no longer passed around for each
+  signature, the vault uses stronger key derivation, and biometric
+  unlock no longer falls back to the device passcode.
+• Native LAX on the Makalu testnet shows as a view-only balance when
+  Makalu is added as a custom network.
 • Keep several wallets in Thanos: create a new one or import another
   recovery phrase or private key, without removing the one you have.
   “Wallets & accounts” lists each wallet with its accounts, grouped as

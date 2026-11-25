@@ -125,7 +125,10 @@ export async function rejectSession(id: number, reason = 'User rejected the sess
 
 /* ─── Active sessions ─────────────────────────────────────────────────── */
 
-export async function getActiveSessions() {
+/* Typed explicitly: the inferred type pointed into @reown/walletkit's own copy
+   of @walletconnect/types, which the build refuses to name (TS2742) once
+   the two versions differ. */
+export async function getActiveSessions(): Promise<Record<string, SessionTypes.Struct>> {
   const kit = await getWalletKit();
   return kit.getActiveSessions();
 }

@@ -17,8 +17,17 @@
  *
  * Security stance:
  *   - contextIsolation:true, nodeIntegration:false, sandbox:true
- *   - No preload script means dApps see no `window.thanosDesktop` —
- *     wallet connection must go through WalletConnect.
+ *   - dApps see no `window.thanosDesktop`: the wallet's own bridge is never
+ *     exposed to a dApp view. They DO get a provider — this view installs
+ *     dapp-provider-preload.js (see createDappView below), which injects
+ *     window.ethereum / window.thanos and forwards requests over the
+ *     `dapp:rpc` channel, gated to this view's top frame. An earlier version
+ *     of this heading claimed there was no preload at all (Autha THN-R1
+ *     O-04); that was wrong, and the preload is the main attack surface
+ *     here, so it is stated plainly: requests arrive attributed to the
+ *     frame's own URL and are reviewed before anything is signed.
+ *     The LAX identity-verification view is the one case with no provider
+ *     preload (`kyc` below) — that page genuinely cannot reach the wallet.
  *   - Permission requests blanket-denied — except in a LAX identity
  *     verification view, which may use the camera and location once the
  *     user allows it (see "LAX identity verification" below).
@@ -73,10 +82,16 @@ const BROWSER_CHAINS: Record<number, string> = {
 let currentChainId = DEFAULT_CHAIN_ID;
 
 // Per-open connection state — reset when the browser view is destroyed.
-// connectedOrigin scopes the grant to the host that was approved: navigating
-// the same in-app browser to a DIFFERENT site must not inherit the address
-// (each origin re-approves), so every check below compares it to the request's
-// current origin.
+// connectedOrigin scopes the grant to the ORIGIN (scheme + host + port) that
+// was approved — not just the host (THN-07): keying on host alone let
+// https://good.example and http://good.example (or a different port on the
+// same host) share one grant, which is wrong on two counts — a plain-HTTP
+// page is on-path-attacker-controlled regardless of what the hostname says,
+// and two different ports on one host are two different web origins by the
+// same-origin policy the rest of the web platform relies on. Navigating the
+// same in-app browser to a DIFFERENT origin must not inherit the address
+// (each origin re-approves), so every check below compares it to the
+// request's current origin.
 let connected = false;
 let connectedAddress = '';
 let connectedOrigin = '';
@@ -110,7 +125,19 @@ function execViaRenderer(method: string, params: unknown[], chainId: number): Pr
 }
 
 // Read-only JSON-RPC (eth_call, eth_getBalance, …) is answered straight from
-// the current chain's RPC — no seed, no approval needed.
+// the current chain's RPC — no seed, no approval needed. Only methods on
+// this allowlist ever reach the node (M-02); mirrors the extension's
+// RPC_PASSTHROUGH (background.ts).
+const RPC_PASSTHROUGH = new Set<string>([
+  'eth_call', 'eth_estimateGas', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory',
+  'eth_blockNumber', 'eth_getBalance', 'eth_getCode', 'eth_getStorageAt', 'eth_getProof',
+  'eth_getTransactionCount', 'eth_getTransactionReceipt', 'eth_getTransactionByHash',
+  'eth_getTransactionByBlockHashAndIndex', 'eth_getTransactionByBlockNumberAndIndex',
+  'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getBlockReceipts',
+  'eth_getBlockTransactionCountByNumber', 'eth_getBlockTransactionCountByHash',
+  'eth_getLogs', 'eth_getUncleCountByBlockHash', 'eth_getUncleCountByBlockNumber',
+  'eth_createAccessList', 'eth_syncing', 'web3_clientVersion', 'net_listening',
+]);
 const readProviders = new Map<number, import('ethers').JsonRpcProvider>();
 function chainRead(chainId: number): import('ethers').JsonRpcProvider {
   let p = readProviders.get(chainId);
@@ -453,15 +480,27 @@ function attachIpc(): void {
     }
     const method = req.method;
     const params = (req.params ?? []) as unknown[];
-    // The origin of the frame that actually sent this request — not the
-    // view's last-known URL, which a navigation racing the request could
-    // have changed.
-    const originHost = (() => { try { return new URL(e.senderFrame?.url || currentUrl).host; } catch { return ''; } })();
+    // The origin (scheme + host + port) of the frame that actually sent this
+    // request — not the view's last-known URL, which a navigation racing the
+    // request could have changed, and not just its host (THN-07).
+    const frameUrl = e.senderFrame?.url || currentUrl;
+    const requestOrigin = (() => { try { return new URL(frameUrl).origin; } catch { return ''; } })();
+    const requestIsHttps = (() => { try { return new URL(frameUrl).protocol === 'https:'; } catch { return false; } })();
+    // THN-07: the provider is withheld from a non-HTTPS top frame outright —
+    // not just at connect time. ensureHttps() keeps the view's OWN
+    // navigations on https, but a page it loaded can still redirect itself
+    // to http (a same-site link, a misconfigured server); the preload stays
+    // attached across that navigation same as the main wallet window (THN-04),
+    // so without this check window.ethereum would keep answering requests
+    // from a plain-HTTP document an on-path attacker can tamper with freely.
+    if (!requestIsHttps) {
+      return { __thanosError: true, code: 4900, message: 'Wallet disconnected' };
+    }
 
     // Trivially-known / already-authorised reads — no prompt.
     if (method === 'eth_chainId')  return `0x${currentChainId.toString(16)}`;
     if (method === 'net_version')  return String(currentChainId);
-    if (method === 'eth_accounts') return connected && connectedAddress && connectedOrigin && connectedOrigin === originHost ? [connectedAddress] : [];
+    if (method === 'eth_accounts') return connected && connectedAddress && connectedOrigin && connectedOrigin === requestOrigin ? [connectedAddress] : [];
     // switch + add behave the same: a KNOWN chain becomes current (and the dApp
     // is told via chainChanged); an unknown one is refused (no arbitrary RPC).
     if (method === 'wallet_switchEthereumChain' || method === 'wallet_addEthereumChain') {
@@ -474,12 +513,16 @@ function attachIpc(): void {
       return { __thanosError: true, code: method === 'wallet_switchEthereumChain' ? 4902 : 4001, message: 'Unsupported network — Thanos supports Lithosphere and major EVM chains.' };
     }
 
+    // Host alone, for dialog text only — grants are keyed on requestOrigin.
+    const originHost = (() => { try { return new URL(frameUrl).host; } catch { return ''; } })();
+
     // Connect — approve, then read the address back from the renderer.
     if (method === 'eth_requestAccounts') {
-      // Never grant on an opaque origin (data:/about:blank → host ''), which
-      // would otherwise store connectedOrigin '' and wildcard-match later.
-      if (!originHost) return { __thanosError: true, code: 4100, message: 'Cannot connect on this page.' };
-      if (connected && connectedAddress && connectedOrigin && connectedOrigin === originHost) return [connectedAddress];
+      // Never grant on an opaque origin (data:/about:blank → origin 'null'),
+      // which would otherwise store connectedOrigin 'null' and wildcard-match
+      // later.
+      if (!requestOrigin || requestOrigin === 'null') return { __thanosError: true, code: 4100, message: 'Cannot connect on this page.' };
+      if (connected && connectedAddress && connectedOrigin && connectedOrigin === requestOrigin) return [connectedAddress];
       const ok = await approveViaDialog('connect', originHost,
         `${originHost || 'This site'} will see your wallet address and can request signatures. Each signature still needs your approval.`);
       if (!ok) return { __thanosError: true, code: 4001, message: 'User rejected the connection request.' };
@@ -489,7 +532,7 @@ function attachIpc(): void {
       if (Array.isArray(accts) && accts.length) {
         connected = true;
         connectedAddress = accts[0];
-        connectedOrigin = originHost;
+        connectedOrigin = requestOrigin;
         view.webContents.send('dapp:emit', { event: 'accountsChanged', data: accts });
       }
       return out.result;
@@ -500,7 +543,7 @@ function attachIpc(): void {
     // connect-before-sign and can't attribute a signature to a site the user
     // never connected to). Then approve, then sign in the renderer.
     if (method === 'personal_sign' || method === 'eth_sign' || method === 'eth_signTypedData_v4' || method === 'eth_sendTransaction') {
-      if (!connected || !connectedOrigin || connectedOrigin !== originHost) {
+      if (!connected || !connectedOrigin || connectedOrigin !== requestOrigin) {
         return { __thanosError: true, code: 4100, message: 'Unauthorized — connect the wallet to this site first.' };
       }
       const kind = method === 'eth_sendTransaction' ? 'tx' : 'sign';
@@ -522,7 +565,12 @@ function attachIpc(): void {
       return out.result;
     }
 
-    // Anything else is a read — proxy to the current chain's RPC.
+    // Anything else must be on the read-only allowlist (M-02) — a write-
+    // oriented or admin RPC name the selected node happens to support never
+    // reaches it, same gate the extension's background.ts already has.
+    if (!RPC_PASSTHROUGH.has(method)) {
+      return { __thanosError: true, code: 4200, message: `Method not supported: ${method}` };
+    }
     try {
       return await chainRead(currentChainId).send(method, params);
     } catch (err) {

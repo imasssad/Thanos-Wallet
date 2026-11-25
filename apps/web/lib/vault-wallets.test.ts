@@ -10,6 +10,7 @@
  * Run with: pnpm --filter @thanos/web test
  */
 import { describe, expect, it, beforeAll, vi, afterEach } from 'vitest';
+import 'fake-indexeddb/auto'; // cacheSessionKey/getSessionKey now cache a CryptoKey in IndexedDB (hardening-audit H-2)
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -55,7 +56,7 @@ async function freshVault(plaintext: string) {
   const vault = await createVault(plaintext, PASSWORD);
   saveVault(vault);
   const opened = await openVault(vault, PASSWORD);
-  cacheSessionKey(opened!.key);
+  await cacheSessionKey(opened!.key);
   return openWallet(opened!.mnemonic);
 }
 
@@ -187,7 +188,7 @@ describe('wallet set — adding wallets', () => {
     await freshVault(serializeSource({ kind: 'mnemonic', mnemonic: PHRASE_1 }));
     for (let i = 2; i <= MAX_WALLETS; i++) added(await addWallet(`0x${i.toString(16).padStart(64, '0')}`));
     expect(await addWallet(PK_1)).toEqual({ error: `Thanos holds up to ${MAX_WALLETS} wallets.` });
-    clearSessionKey();
+    await clearSessionKey();
     expect(await addWallet(PK_2)).toEqual({ error: 'The wallet is locked — unlock it and try again.' });
     expect(await listWallets()).toBeNull();
   }, SLOW);
@@ -232,7 +233,7 @@ describe('wallet set — accounts', () => {
     expect((await openAccount('w0', 4))?.id).toBe('w0');
     expect(getActiveAccountIndex()).toBe(4);
 
-    clearSessionKey();
+    await clearSessionKey();
     expect(await addAccountToWallet('w0')).toEqual({ error: 'The wallet is locked — unlock it and try again.' });
   }, SLOW);
 

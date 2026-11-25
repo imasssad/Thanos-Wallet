@@ -32,12 +32,34 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
   const [proposal, setProposal]     = useState<WalletKitTypes.SessionProposal | null>(null);
   const [ackRisk, setAckRisk]       = useState(false);
 
+  // THN-03: WalletConnect's own Verify check (proposal.verifyContext) tells
+  // us whether the origin below actually matches the dApp's domain —
+  // `proposal.params.proposer.metadata.url` is just a string the dApp
+  // supplies and asserts nothing about. Prefer the verified origin for
+  // display and for classifyOrigin; a scam-flagged origin blocks outright,
+  // with no "connect anyway" override.
+  const verified      = proposal?.verifyContext?.verified;
+  const displayOrigin = verified?.origin || proposal?.params.proposer.metadata.url || '';
+  const isScam        = verified?.isScam === true;
+
   /* Pre-classify the dApp URL while the user reads the connect screen. */
   const originVerdict = useMemo(() => {
-    const url = proposal?.params.proposer.metadata.url ?? '';
-    return url ? classifyOrigin(url) : null;
-  }, [proposal]);
-  const requiresAck = originVerdict?.risk === 'warning' || originVerdict?.risk === 'critical';
+    const base = displayOrigin ? classifyOrigin(displayOrigin) : null;
+    if (isScam) {
+      return { risk: 'critical' as const, reasons: ["WalletConnect's Verify API flags this origin as a known scam.", ...(base?.reasons ?? [])] };
+    }
+    if (verified?.validation === 'INVALID') {
+      return {
+        risk: 'critical' as const,
+        reasons: ["WalletConnect could not verify this origin — it does NOT match the domain the dApp claims. Likely spoofed.", ...(base?.reasons ?? [])],
+      };
+    }
+    if (verified?.validation === 'UNKNOWN' && (!base || base.risk === 'safe' || base.risk === 'unknown')) {
+      return { risk: 'warning' as const, reasons: ["WalletConnect could not verify this dApp's origin. Treat its identity as unconfirmed.", ...(base?.reasons ?? [])] };
+    }
+    return base;
+  }, [displayOrigin, isScam, verified?.validation]);
+  const requiresAck = !isScam && (originVerdict?.risk === 'warning' || originVerdict?.risk === 'critical');
 
   // Subscribe to incoming proposals while this modal is mounted.
   useEffect(() => {
@@ -139,8 +161,15 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
                 {proposal.params.proposer.metadata.name}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Geist Mono, monospace', textAlign: 'center', wordBreak: 'break-all' }}>
-                {proposal.params.proposer.metadata.url}
+                {displayOrigin}
               </div>
+              {verified && (
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {verified.validation === 'VALID' ? 'Origin verified by WalletConnect'
+                    : verified.validation === 'INVALID' ? 'Origin FAILED WalletConnect verification'
+                    : "Origin not verified by WalletConnect"}
+                </div>
+              )}
             </div>
 
             {originVerdict && <PhishingBanner verdict={originVerdict} hideSafe={false}/>}
@@ -190,19 +219,24 @@ export function WalletConnectModal({ onClose }: { onClose: () => void }) {
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button className="btn-outline" style={{ flex: 1 }} onClick={onReject}>Reject</button>
-              <button
-                className="btn-primary"
-                style={{
-                  flex: 1,
-                  background: originVerdict?.risk === 'critical' ? 'var(--red)' : undefined,
-                  opacity: requiresAck && !ackRisk ? 0.45 : 1,
-                  cursor:  requiresAck && !ackRisk ? 'not-allowed' : 'pointer',
-                }}
-                disabled={requiresAck && !ackRisk}
-                onClick={onApprove}
-              >
-                {originVerdict?.risk === 'critical' ? 'Connect anyway' : 'Connect'}
-              </button>
+              {/* isScam has no override — WalletConnect's Verify API matched this
+                  origin against a known-malicious dApp; there's nothing to "connect
+                  anyway" to (THN-03). */}
+              {!isScam && (
+                <button
+                  className="btn-primary"
+                  style={{
+                    flex: 1,
+                    background: originVerdict?.risk === 'critical' ? 'var(--red)' : undefined,
+                    opacity: requiresAck && !ackRisk ? 0.45 : 1,
+                    cursor:  requiresAck && !ackRisk ? 'not-allowed' : 'pointer',
+                  }}
+                  disabled={requiresAck && !ackRisk}
+                  onClick={onApprove}
+                >
+                  {originVerdict?.risk === 'critical' ? 'Connect anyway' : 'Connect'}
+                </button>
+              )}
             </div>
           </div>
         )}
