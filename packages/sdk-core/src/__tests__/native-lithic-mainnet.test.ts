@@ -21,7 +21,9 @@ import {
   encodeNativeCall,
   encodeNativeTransfer,
   nativeLithicTokensFor,
-  type NativeLithicToken,
+  prepareNativeTransfer,
+  type LvalInput,
+  type NativeFetch,
 } from '../clients/native-lithic.js';
 
 const HOLDER = '0xc2C32EB0601E01BD3C9573bf2f865aeEcb38C73b';
@@ -124,24 +126,30 @@ describe('reading a gateway transaction for the signing screen', () => {
 });
 
 describe('sending', () => {
-  it('refuses while the token has sending disabled', () => {
-    expect(NATIVE_LAX_MAINNET.transferEnabled).toBe(false);
-    expect(() => encodeNativeTransfer(NATIVE_LAX_MAINNET, RECIPIENT, 1n)).toThrow(/not enabled/);
+  it('is enabled for mainnet LAX and still disabled for Makalu', () => {
+    // Mainnet is on: the vendor documented the send workflow and the owner
+    // authorised it. Makalu is not: those docs cover mainnet only, so the
+    // testnet path stays read-only until something authorises it.
+    expect(NATIVE_LAX_MAINNET.transferEnabled).toBe(true);
+    expect(NATIVE_LAX.transferEnabled).toBe(false);
     expect(() => encodeNativeTransfer(NATIVE_LAX, RECIPIENT, 1n)).toThrow(/not enabled/);
   });
 
-  it('builds a gateway transaction with value 0 once a token is enabled', () => {
-    // A copy with sending on: a Lithic call carrying LITHO fails and burns all the gas.
-    const enabled: NativeLithicToken = { ...NATIVE_LAX_MAINNET, transferEnabled: true };
-    const tx = encodeNativeTransfer(enabled, RECIPIENT, 25n * 10n ** 18n);
+  it('builds a gateway transaction with value 0', () => {
+    // A Lithic call carrying LITHO fails and burns all the gas.
+    const tx = encodeNativeTransfer(NATIVE_LAX_MAINNET, RECIPIENT, 25n * 10n ** 18n);
     expect(tx.to).toBe(NATIVE_LITHIC_GATEWAY);
     expect(tx.value).toBe('0x0');
     expect(decodeNativeCall(tx.data, LITHO_MAINNET_CHAIN_ID)!.amount).toBe(25n * 10n ** 18n);
   });
 
   it('refuses the zero recipient, which the token rejects with no reason given', () => {
-    const enabled: NativeLithicToken = { ...NATIVE_LAX_MAINNET, transferEnabled: true };
-    expect(() => encodeNativeTransfer(enabled, '0x' + '00'.repeat(20), 1n)).toThrow(/Nonzero recipient/);
+    expect(() => encodeNativeTransfer(NATIVE_LAX_MAINNET, '0x' + '00'.repeat(20), 1n)).toThrow(/Nonzero recipient/);
+  });
+
+  it('keeps the name the chain reports, not the abbreviation in the docs', () => {
+    expect(NATIVE_LAX_MAINNET.name).toBe('Lithosphere Algorithmic');
+    expect(NATIVE_LAX_MAINNET.symbol).toBe('LAX');
   });
 });
 
@@ -162,5 +170,79 @@ describe('confirming a transfer from the gateway log', () => {
   it('ignores a log from anywhere but the gateway', () => {
     const forged = [{ ...gatewayLog([{ contract: LAX, name: 'Transfer', values: transferValues(HOLDER, RECIPIENT, 5n) }]), address: LAX }];
     expect(confirmsNativeTransfer(forged, NATIVE_LAX_MAINNET, HOLDER, RECIPIENT)).toBe(false);
+  });
+});
+
+describe('preparing a mainnet send', () => {
+  /** A fake RPC: answers chainId, the token reads, and the gas estimate. */
+  function rpc(answers: {
+    chainId?: number;
+    balance?: bigint;
+    paused?: boolean;
+    frozen?: (who: string) => boolean;
+    estimate?: bigint;
+  } = {}) {
+    const seen: { method: string; params: unknown[] }[] = [];
+    const lval = (v: LvalInput) => {
+      const inner = encodeLval([v]).slice(2);
+      const length = (inner.length / 2).toString(16).padStart(64, '0');
+      const pad = '0'.repeat((64 - (inner.length % 64)) % 64);
+      return '0x' + (32).toString(16).padStart(64, '0') + length + inner + pad;
+    };
+    const fetchImpl = (async (_url: string, init: { body: string }) => {
+      const { id, method, params } = JSON.parse(init.body) as { id: number; method: string; params: unknown[] };
+      seen.push({ method, params });
+      const reply = (result: string) => ({ ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result }) });
+      if (method === 'eth_chainId') return reply('0x' + (answers.chainId ?? 9005).toString(16));
+      if (method === 'eth_estimateGas') return reply('0x' + (answers.estimate ?? 326_600n).toString(16));
+      if (method === 'eth_call') {
+        const call = (params[0] as { data: string }).data;
+        const decoded = decodeNativeCall(call, 9005)!;
+        if (decoded.signature === 'balance_of(address)') return reply(lval({ type: 'u256', value: answers.balance ?? 10n ** 21n }));
+        if (decoded.signature === 'paused()') return reply(lval({ type: 'bool', value: answers.paused ?? false }));
+        if (decoded.signature === 'is_frozen(address)') {
+          const who = String(decoded.args[0]!.value);
+          return reply(lval({ type: 'bool', value: answers.frozen ? answers.frozen(who) : false }));
+        }
+      }
+      return { ok: false, status: 400, json: async () => ({ jsonrpc: '2.0', id, error: { message: 'unexpected' } }) };
+    }) as unknown as NativeFetch;
+    return { seen, options: { rpcUrl: 'https://rpc-mainnet.litho.ai', fetchImpl } };
+  }
+
+  it('builds a signable transaction with gas estimated for the real sender', async () => {
+    const { seen, options } = rpc();
+    const plan = await prepareNativeTransfer(NATIVE_LAX_MAINNET, HOLDER, RECIPIENT, 25n * 10n ** 18n, options);
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.tx.to).toBe(NATIVE_LITHIC_GATEWAY);
+    expect(plan.tx.value).toBe('0x0'); // LITHO with a Lithic call burns all the gas
+    expect(plan.estimatedGas).toBe(326_600n);
+    expect(BigInt(plan.tx.gas)).toBe((326_600n * 12n) / 10n); // +20% margin, not a fixed limit
+    expect(decodeNativeCall(plan.tx.data, 9005)!.amount).toBe(25n * 10n ** 18n);
+    // Every read and the estimate carry the sender: without `from` the node refuses.
+    for (const call of seen.filter((s) => s.method === 'eth_call' || s.method === 'eth_estimateGas')) {
+      expect((call.params[0] as { from?: string }).from).toBe(HOLDER);
+    }
+  });
+
+  it('reports why a transfer would fail, since the chain gives no reason', async () => {
+    const { options } = rpc({ balance: 1n, paused: true, frozen: (who) => who === RECIPIENT });
+    const plan = await prepareNativeTransfer(NATIVE_LAX_MAINNET, HOLDER, RECIPIENT, 10n ** 18n, options);
+
+    expect(plan.blockers.join(' | ')).toMatch(/balance is/);
+    expect(plan.blockers.join(' | ')).toMatch(/paused/);
+    expect(plan.blockers.join(' | ')).toMatch(/recipient is frozen/);
+  });
+
+  it('refuses an RPC for another chain, so a mainnet balance cannot be spent on a testnet', async () => {
+    const { options } = rpc({ chainId: 700777 });
+    await expect(prepareNativeTransfer(NATIVE_LAX_MAINNET, HOLDER, RECIPIENT, 1n, options)).rejects.toThrow(/not chain 9005/);
+  });
+
+  it('still refuses a token whose sending is disabled, before any RPC call', async () => {
+    const { seen, options } = rpc();
+    await expect(prepareNativeTransfer(NATIVE_LAX, HOLDER, RECIPIENT, 1n, options)).rejects.toThrow(/not enabled/);
+    expect(seen).toEqual([]);
   });
 });

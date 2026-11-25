@@ -231,7 +231,7 @@ export interface NativeReadOptions {
   timeoutMs?: number;
 }
 
-const READ_METHODS = new Set(['eth_chainId', 'eth_blockNumber', 'eth_call']);
+const READ_METHODS = new Set(['eth_chainId', 'eth_blockNumber', 'eth_call', 'eth_estimateGas']);
 const QUANTITY = /^0x(?:0|[1-9a-f][0-9a-f]*)$/;
 
 function rpcClient({ rpcUrl, fetchImpl, timeoutMs = 15_000 }: NativeReadOptions) {
@@ -346,22 +346,27 @@ export const LITHO_MAINNET_CHAIN_ID = 9005;
  * from the historical EVM LAX, so it is keyed by chain and native target like
  * the others — never by symbol.
  *
- * `transferEnabled` stays false: the vendor's mainnet integration docs
- * (2026-11-21) do describe the send workflow, and `encodeNativeTransfer`
- * below implements it, but turning it on moves real funds from a shipping
- * wallet. That is Litho's call to make explicitly, not a side effect of
- * adding mainnet reads.
+ * Sending is ENABLED here, on the authority of the vendor's mainnet
+ * integration docs (2026-11-21), which document the send workflow in full —
+ * the gateway calldata, value 0, gas estimation with the real sender, and
+ * confirming by the Transfer event — and the repository owner's instruction
+ * to turn it on. Makalu's native LAX above stays read-only: those docs cover
+ * mainnet, and nothing has authorised the testnet path.
+ *
+ * `name` is what the chain's own `name()` answers, confirmed by a gateway
+ * read on 2026-11-25. The vendor's table abbreviates it to "LAX"; the
+ * metadata check compares against the chain, so the chain's spelling wins.
  */
 export const NATIVE_LAX_MAINNET = {
   chainId: LITHO_MAINNET_CHAIN_ID,
   executionProfile: 'lithovm-native-mainnet',
   nativeTarget: '0x29147bebb1c49c3a54aa464137611fe708886df3',
   gateway: NATIVE_LITHIC_GATEWAY,
-  name: 'LAX',
+  name: 'Lithosphere Algorithmic',
   symbol: 'LAX',
   decimals: 18,
   balanceTransport: 'gateway-eth-call-lval-v1',
-  transferEnabled: false,
+  transferEnabled: true,
   /** Before this block a gateway call did nothing and returned `0x`. */
   activeFromBlock: 14_946_527,
 } as const;
@@ -539,4 +544,84 @@ export function confirmsNativeTransfer(
     }
   }
   return false;
+}
+
+/* ── Preparing a send ────────────────────────────────────────────────── */
+
+export interface NativeTransferPlan {
+  /** Ready to hand to a signer: an ordinary EVM transaction. */
+  tx: { to: string; value: string; data: string; gas: string };
+  /** Reasons this transfer would fail, read from the token before sending. */
+  blockers: string[];
+  /** The raw estimate, before the margin. */
+  estimatedGas: bigint;
+}
+
+/**
+ * Everything that has to happen before a native Lithic transfer is signed.
+ *
+ * Why this is not just calldata plus a signature:
+ *
+ * - **A failure carries no reason.** A rejected Lithic call gives status 0,
+ *   `execution reverted`, empty revert data and no event. So the token is
+ *   asked first — balance, `paused()`, `is_frozen()` for both parties — and
+ *   the caller gets sentences instead of a silent failure after the fee is
+ *   spent.
+ * - **Gas must be estimated with the real sender**, and the chain charges for
+ *   at least half the gas limit, so a generous fixed limit is money burned.
+ *   The estimate is taken with `from` set to the sender and a 20% margin
+ *   added (a LAX transfer estimates around 326,600).
+ * - **`value` is 0**: a Lithic call carrying LITHO fails and burns all the
+ *   gas, and these contracts cannot hold LITHO.
+ *
+ * `blockers` being non-empty does not throw: a caller may want to show them
+ * and let the user decide (a balance can change between the read and the
+ * send). Refusing outright is `encodeNativeTransfer`'s job, for the cases
+ * that can never work.
+ */
+export async function prepareNativeTransfer(
+  token: NativeLithicToken,
+  from: string,
+  to: string,
+  amountBaseUnits: bigint | string,
+  options: NativeReadOptions,
+): Promise<NativeTransferPlan> {
+  const sender = getAddress(from);
+  const amount = integer(amountBaseUnits);
+  const base = encodeNativeTransfer(token, to, amount); // refuses a disabled token or zero recipient
+  const rpc = rpcClient(options);
+  need(BigInt(await rpc('eth_chainId')) === BigInt(token.chainId), `This RPC is not chain ${token.chainId}`);
+
+  const read = async (signature: string, args: LvalInput[], type: LvalType): Promise<LvalValue['value'] | null> => {
+    try {
+      const raw = await rpc('eth_call', [{
+        from: sender, to: NATIVE_LITHIC_GATEWAY, value: '0x0', gas: '0x4c4b40',
+        data: encodeNativeCall(token.nativeTarget, signature, args),
+      }, 'latest']);
+      const values = decodeGatewayResult(raw);
+      return values.length === 1 && values[0].type === type ? values[0].value : null;
+    } catch {
+      return null; // the token may not offer this read; absence is not a blocker
+    }
+  };
+
+  const blockers: string[] = [];
+  const recipient = getAddress(to);
+  const balance = await read('balance_of(address)', [{ type: 'address', value: sender }], 'u256');
+  if (typeof balance === 'bigint' && balance < amount) {
+    blockers.push(`balance is ${formatNativeAmount(balance.toString(), token.decimals)} ${token.symbol}, less than the amount`);
+  }
+  if ((await read('paused()', [], 'bool')) === true) blockers.push(`${token.symbol} transfers are paused`);
+  for (const [who, address] of [['sender', sender], ['recipient', recipient]] as const) {
+    if ((await read('is_frozen(address)', [{ type: 'address', value: address }], 'bool')) === true) {
+      blockers.push(`the ${who} is frozen for ${token.symbol}`);
+    }
+  }
+
+  const estimated = BigInt(await rpc('eth_estimateGas', [{
+    from: sender, to: base.to, value: base.value, data: base.data,
+  }]));
+  const gas = (estimated * 12n) / 10n; // +20%; the chain charges for at least half the limit
+
+  return { tx: { ...base, gas: '0x' + gas.toString(16) }, blockers, estimatedGas: estimated };
 }

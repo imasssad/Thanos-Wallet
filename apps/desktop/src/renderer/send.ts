@@ -11,7 +11,7 @@
  */
 import { createContext, useContext } from 'react';
 import { HDNodeWallet, Wallet, Interface, Mnemonic, Contract, JsonRpcProvider, parseUnits, getAddress } from 'ethers';
-import { humanSendError, lithoToEvm } from '@thanos/sdk-core';
+import { humanSendError, lithoToEvm, nativeLithicTokensFor, prepareNativeTransfer } from '@thanos/sdk-core';
 import { sendViaLedger, type LedgerConnection } from './ledger-sign';
 import { sendViaTrezor, type TrezorConnection } from './trezor-sign';
 import { getActiveAccountIndex, isPrivateKeyWallet } from './vault';
@@ -80,6 +80,9 @@ export interface SendAssetArgs {
   decimals: number;
   /** LEP100 contract address; omit for a native LITHO send. */
   tokenAddress?: string;
+  /** A native LithoVM (Lithic) token's contract — its transfer goes through
+   *  the gateway, not to the address itself, which holds no EVM code. */
+  nativeLithicTarget?: string;
   /** SPL mint — required when chain='solana' and not native SOL. */
   splMintAddress?: string;
   /** Optional Cosmos memo. */
@@ -175,6 +178,44 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
       if (/insufficient funds/i.test(msg))        throw new Error('Insufficient balance on Trezor account for amount + gas');
       throw new Error(humanSendError(e));
     }
+  }
+
+  // ─── Native LithoVM (Lithic) token ─────────────────────────────────
+  // Not an ERC-20 transfer: the token address holds no EVM code, so this is
+  // an ordinary EVM transaction to the LithoVM gateway carrying LVAL-encoded
+  // arguments. prepareNativeTransfer reads the token first (a failed Lithic
+  // call gives no reason at all) and estimates the gas with the real sender,
+  // because the chain charges for at least half the limit.
+  if (args.nativeLithicTarget) {
+    const token = nativeLithicTokensFor(evmChain.chainId)
+      .find((t) => getAddress(t.nativeTarget) === getAddress(args.nativeLithicTarget!));
+    if (!token) throw new Error(`No native Lithic token known at ${args.nativeLithicTarget} on chain ${evmChain.chainId}`);
+    // The sender has to be known before anything is signed: the gateway
+    // refuses an eth_call or an estimate without a non-zero `from`.
+    const sender =
+      args.ledger?.address ??
+      args.trezor?.address ??
+      (args.seed.length
+        ? (isPrivateKeyWallet(args.seed)
+            ? new Wallet(args.seed[0].trim())
+            : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath())
+          ).address
+        : undefined);
+    if (!sender) throw new Error('Unlock the wallet or connect a hardware signer to send a Lithic token');
+    const plan = await prepareNativeTransfer(token, sender, args.to, value, { rpcUrl: evmChain.rpcUrl });
+    if (plan.blockers.length) throw new Error(`This transfer would fail: ${plan.blockers.join('; ')}`);
+    const bridge = (typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined);
+    if (bridge && (await bridge.hasSeed())) {
+      return await bridge.sendTx(activeHdPath(), plan.tx, evmChain);
+    }
+    const wallet = (isPrivateKeyWallet(args.seed)
+      ? new Wallet(args.seed[0].trim())
+      : HDNodeWallet.fromMnemonic(Mnemonic.fromPhrase(args.seed.join(' ')), activeHdPath())
+    ).connect(new JsonRpcProvider(evmChain.rpcUrl, evmChain.chainId, { staticNetwork: true }));
+    const sent = await wallet.sendTransaction({
+      to: plan.tx.to, data: plan.tx.data, value: 0n, gasLimit: BigInt(plan.tx.gas), chainId: BigInt(evmChain.chainId),
+    });
+    return sent.hash;
   }
 
   // ─── Default: sign via the main-process signer ──────────────────────
