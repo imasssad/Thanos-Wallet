@@ -1,8 +1,45 @@
-# Native Lithic LAX on Makalu (view-only)
+# Native Lithic tokens (LAX)
 
-Thanos shows the native Lithic LAX balance on Makalu (700777) when the user has added Makalu as a custom network. The balance is read-only: there is no Send, Receive or Swap for it, and native transfers stay disabled until Litho authorises the execution workflow.
+Thanos supports native Lithic tokens on two chains, and they are **not** at the same stage:
 
-This follows Litho's native Lithic handoff (2026-10-26): the integration guide, `native-lithic.cjs` and `reference/GOLDEN_VECTORS.json`.
+| Chain | Token | Read | Send |
+| --- | --- | --- | --- |
+| LITHO mainnet (9005) | native LAX `0x29147beb…6df3` | yes | **yes** |
+| Makalu (700777) | native LAX `0x5803af8a…09ed` | yes | no — read-only |
+
+Makalu stays read-only: native transfers there are still disabled pending authorisation of that
+path. Mainnet sending is enabled on the authority of KaJ Labs' mainnet integration docs
+(2026-11-21), which document the whole send workflow — gateway calldata, `value` 0, gas estimated
+with the real sender, and confirmation by the gateway's `Transfer` event.
+
+`transferEnabled` on each token is the single switch; `encodeNativeTransfer` refuses a token whose
+switch is off, so enabling a chain is one deliberate change and cannot be routed around.
+
+This follows Litho's native Lithic handoff (2026-10-26) for the Makalu read path, and the mainnet
+integration docs (2026-11-21) for everything mainnet.
+
+## Sending (mainnet)
+
+`prepareNativeTransfer(token, from, to, amountBaseUnits, { rpcUrl })` does everything that has to
+happen before a signature:
+
+- **Reads the token first.** A rejected Lithic call carries no reason at all — status 0,
+  `execution reverted`, empty revert data, no event. So balance, `paused()` and `is_frozen()` for
+  both parties are read and returned as `blockers`, in words, rather than letting the user pay a
+  fee to learn nothing.
+- **Estimates gas with the real sender** and adds 20%. The chain charges for at least half the gas
+  limit, so a generous fixed limit is money burned. A LAX transfer estimates around 326,600.
+- **Keeps `value` at 0.** A Lithic call carrying LITHO fails and burns all the gas, and these
+  contracts cannot hold LITHO.
+- **Checks the chain**, so a mainnet balance cannot be spent against a testnet RPC.
+
+`confirmsNativeTransfer(logs, token, from, to)` then proves the transfer actually happened. Status
+1 is not enough on its own: a native function that returns `false` still produces a successful
+transaction, and a failed call emits no log at all.
+
+The desktop send path takes this route whenever `sendAsset` is given a `nativeLithicTarget`; it
+signs through the same main-process signer as any other EVM transaction (`TxRequest` already
+carries `to`, `data` and `gas`), so no new IPC surface was added.
 
 ## What's different from an ERC-20
 
@@ -23,10 +60,11 @@ This follows Litho's native Lithic handoff (2026-10-26): the integration guide, 
   - the canonical ABI `bytes` unwrap;
   - `readNativeLaxBalance(owner, { rpcUrl })`.
 
-  The reader checks that the chain is 700777. It reads name, symbol, decimals and `balance_of` at one block, from the wallet's own address. It then checks the metadata. Amounts stay as `bigint` or decimal strings. Any RPC failure throws, so a failed read is never shown as 0.
+  `readNativeLaxBalance` checks that the chain is 700777 (it is the Makalu reader). It reads name, symbol, decimals and `balance_of` at one block, from the wallet's own address. It then checks the metadata. Amounts stay as `bigint` or decimal strings. Any RPC failure throws, so a failed read is never shown as 0.
 - `packages/sdk-core/src/__tests__/native-lithic.test.ts` checks the reader against the handoff's golden vectors (getters and the six reviewed transfer calls). The vectors are in `fixtures/native-lithic-golden-vectors.json`, unchanged, sha256 `d26feb45…954a`.
 - `apps/mobile/lib/native-lithic.ts` is mobile's copy. Mobile builds without the workspace. `node scripts/sync-native-lithic.mjs` writes the copy; CI runs it with `--check`.
-- Each client adds one view-only row (`readOnly`, `nativeTarget`). That row never gets a `tokenAddress`, so it can't reach Send. Tapping it opens a view-only screen.
+- Makalu's row stays view-only (`readOnly`, `nativeTarget`) and never gets a `tokenAddress`, so it cannot reach Send. Tapping it opens a view-only screen. Mainnet LAX reaches Send through `nativeLithicTarget`, which routes to the gateway rather than to the token address.
+- `packages/sdk-core/src/__tests__/native-lithic-mainnet.test.ts` covers the mainnet side: the documented worked calldata, transaction decoding for the signing screen, the send gate per token, gas margin, the blocker reads, and confirmation from the gateway log.
 
   | Client | Files |
   | --- | --- |
