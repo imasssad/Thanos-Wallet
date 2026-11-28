@@ -4126,9 +4126,13 @@ const EXT_CHAIN_META: Record<ExtSendChain, { label: string; sym: string; decimal
  *  left out Lithosphere Mainnet, so Mainnet sends were broadcast on Makalu.) */
 const evmChainOf = (chainId?: number) =>
   chainId ? allEvmChains().find((c) => c.chainId === chainId) : undefined;
-/** Unique key per holding — a bare symbol is ambiguous (ETH on 5 chains, etc.). */
-const coinKey = (c: { sym: string; chainId?: number; tokenAddress?: string }): string =>
-  `${c.sym}@${c.chainId ?? 'litho'}${c.tokenAddress ? ':' + c.tokenAddress : ''}`;
+/** Unique key per holding — a bare symbol is ambiguous (ETH on 5 chains, etc.).
+ *  The native target is part of it too: a Lithic token and an ERC-20 of the
+ *  same symbol on the same chain are different assets reached different ways,
+ *  and sending one as the other would lose the money. */
+const coinKey = (c: { sym: string; chainId?: number; tokenAddress?: string; nativeTarget?: string }): string =>
+  `${c.sym}@${c.chainId ?? 'litho'}${c.tokenAddress ? ':' + c.tokenAddress : ''}`
+  + (c.nativeTarget ? `:native:${c.nativeTarget.toLowerCase()}` : '');
 
 /** One-tap recipients for moving funds between the user's own accounts.
  *  EVM addresses are shared across Lithosphere and every EVM network, so this
@@ -4197,8 +4201,9 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
   const { coins: allCoins, reload } = usePortfolioCtx();
   // The EVM pill's asset list: EVM balances only. The portfolio also carries
   // BTC/SOL/ATOM rows (no chainId) — those have their own pills, and picking
-  // one here would route a send through the EVM path. View-only rows (native
-  // Makalu LAX) can't be sent at all.
+  // one here would route a send through the EVM path. Rows the portfolio
+  // marked read-only can't be sent: that is Makalu's LAX, whose transfers the
+  // chain never authorised, and any Lithic token with the kill switch off.
   const coins = useMemo(() => allCoins.filter(c => c.chainId != null && !c.readOnly), [allCoins]);
   const seed = useWalletSeed();
   const [chain, setChain] = useState<ExtSendChain>(initialChain ?? 'evm');
@@ -4273,7 +4278,9 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
     const evmNet = chain === 'evm' ? evmChainOf(coin?.chainId) : undefined;
     if (chain === 'evm') {
       if (!coin) return;
-      if (!coin.native && !coin.tokenAddress) {
+      // A Lithic token has neither: it is reached through the gateway, with
+      // its native target as the argument.
+      if (!coin.native && !coin.tokenAddress && !coin.nativeTarget) {
         setError(`${coin.sym} has no contract address available.`);
         return;
       }
@@ -4295,6 +4302,7 @@ function SendModal({ onClose, initialChain, initialCoin, initialChainId, initial
         amount:       amt,
         decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
         tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        nativeTarget: chain === 'evm' && coin ? coin.nativeTarget : undefined,
         memo:         chain === 'cosmos' ? memo : undefined,
         // The chain of the balance being spent — never a default network.
         evmChain:     evmNet ? { chainId: evmNet.chainId, rpcUrl: evmNet.rpcUrl } : undefined,

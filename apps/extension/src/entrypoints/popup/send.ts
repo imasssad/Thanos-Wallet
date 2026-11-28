@@ -8,7 +8,13 @@
  */
 import { createContext, useContext } from 'react';
 import { parseUnits, getAddress } from 'ethers';
-import { humanSendError, lithoToEvm } from '@thanos/sdk-core';
+import {
+  humanSendError, lithoToEvm, canSendLithic, findLithicToken, lithicTransferCall,
+  readLithicSendPreflight,
+} from '@thanos/sdk-core';
+
+/** Kill switch for Lithic sends (default on). */
+const LITHIC_SENDS_FLAG = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_THANOS_LITHIC_SENDS;
 
 const API_BASE = String(
   (import.meta as unknown as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
@@ -59,6 +65,9 @@ export interface SendAssetArgs {
   amount:        string;
   decimals:      number;
   tokenAddress?: string;
+  /** A Lithic token's native target. Not an ERC-20 address: the transfer is
+   *  addressed to the LithoVM gateway with this as its argument. */
+  nativeTarget?: string;
   splMintAddress?: string;
   memo?:         string;
   /** EVM transfers: the chain of the asset being sent. Required — there is
@@ -107,9 +116,31 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   catch { throw new Error('Invalid amount'); }
   if (value <= 0n) throw new Error('Amount must be greater than zero');
 
-  const { signAndBroadcastTx, transferErc20 } = await import('./offscreen-sign');
+  const { signAndBroadcastTx, transferErc20, getSignerAddress } = await import('./offscreen-sign');
 
   try {
+    // A Lithic token lives behind the LithoVM gateway and its address holds
+    // no EVM code, so an ERC-20 transfer there would move nothing. Build the
+    // gateway calldata here (it carries no secret) and hand it to the same
+    // offscreen signer as every other send — the key never leaves it.
+    if (args.nativeTarget) {
+      const token = findLithicToken(evmChain.chainId, args.nativeTarget);
+      if (!token) throw new Error('Unknown Lithic token');
+      if (!canSendLithic(token, LITHIC_SENDS_FLAG)) throw new Error(`${token.symbol} sends are switched off in this build`);
+      // A rejected Lithic call reverts with no reason at all, so ask the
+      // token why before the fee is spent.
+      const from = await getSignerAddress().catch(() => null);
+      if (from) {
+        const pre = await readLithicSendPreflight(from, token, value, { rpcUrl: evmChain.rpcUrl }, args.to).catch(() => null);
+        if (pre?.blockedReason) throw new Error(pre.blockedReason);
+      }
+      const tx = lithicTransferCall(token, args.to, value);
+      return await signAndBroadcastTx({
+        tx:      { to: tx.to, value: tx.value, data: tx.data },
+        chainId: evmChain.chainId,
+        rpcUrl:  evmChain.rpcUrl,
+      });
+    }
     if (args.tokenAddress) {
       return await transferErc20({
         tokenAddress: args.tokenAddress,

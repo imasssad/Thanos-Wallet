@@ -605,6 +605,51 @@ export function canSendLithic(token: LithicToken, flagValue: string | undefined 
   return token.transferEnabled && lithicSendsEnabled(flagValue);
 }
 
+/** The Lithic tokens on `chainId` a user may send right now. */
+export function sendableLithicTokens(chainId: number, flagValue?: string | null): LithicToken[] {
+  return knownLithicTokens(chainId).filter((t) => canSendLithic(t, flagValue));
+}
+
+/* ── Naming a Lithic asset in a send picker ──────────────────────────────
+ *
+ * Every client's Send screen picks its asset by symbol. A Lithic token is
+ * not an ERC-20 and is in no token catalog, so a bare "LAX" there would be
+ * ambiguous the moment a user adds a custom token of the same name — and
+ * the two are different assets, one reached through the gateway and one
+ * not. Sending to the wrong one loses the money.
+ *
+ * So a Lithic asset carries its own id in the picker. These three helpers
+ * are the only place that id's shape is known; every client shares them, so
+ * the four Send screens cannot disagree about what "LAX" means.
+ */
+export const LITHIC_COIN_PREFIX = 'lithic:';
+
+export function lithicCoinId(symbol: string): string {
+  return `${LITHIC_COIN_PREFIX}${symbol}`;
+}
+
+export function isLithicCoinId(coinId: string): boolean {
+  return coinId.startsWith(LITHIC_COIN_PREFIX);
+}
+
+/** What to show in the picker for a coin id: "LAX · Lithic", or the id
+ *  unchanged when it is an ordinary symbol. */
+export function lithicCoinLabel(coinId: string): string {
+  return isLithicCoinId(coinId) ? `${coinId.slice(LITHIC_COIN_PREFIX.length)} · Lithic` : coinId;
+}
+
+/** The sendable Lithic token a picker id names, or null when the id is an
+ *  ordinary symbol, the chain has no such token, or sends are switched off. */
+export function lithicTokenForCoinId(
+  chainId: number,
+  coinId: string,
+  flagValue?: string | null,
+): LithicToken | null {
+  if (!isLithicCoinId(coinId)) return null;
+  const symbol = coinId.slice(LITHIC_COIN_PREFIX.length);
+  return sendableLithicTokens(chainId, flagValue).find((t) => t.symbol === symbol) ?? null;
+}
+
 /* ── Writes: calldata only, never a signature ────────────────────────── */
 
 /** The native signatures LAX defines. No formal Lithic token standard exists

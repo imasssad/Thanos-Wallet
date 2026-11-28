@@ -3685,7 +3685,11 @@ const initialNetworkId = (chain?: DesktopSendChain, chainId?: number): string =>
    Send picker by `sym` alone always resolves to the first network's coin,
    so you could never target ETH-on-Base. We key by sym+chainId instead,
    which restores the extension's network→asset selection as a flat list. */
-const coinKey = (c: { sym: string; chainId?: number }) => `${c.sym}::${c.chainId ?? 0}`;
+const coinKey = (c: { sym: string; chainId?: number; nativeTarget?: string }) =>
+  // The native target is part of the key: a Lithic token and an ERC-20 of the
+  // same symbol on the same chain are different assets reached different ways,
+  // and sending one as the other would lose the money.
+  `${c.sym}::${c.chainId ?? 0}${c.nativeTarget ? `::${c.nativeTarget.toLowerCase()}` : ''}`;
 
 // BTC/SOL/ATOM are their own Send tabs — exclude them from the EVM asset list.
 const NON_EVM_SYMS = new Set(['BTC', 'SOL', 'ATOM']);
@@ -3697,9 +3701,13 @@ const NON_EVM_SYMS = new Set(['BTC', 'SOL', 'ATOM']);
    precedence over its synthetic placeholder. Every entry carries its chainId —
    the chain the send is signed on. */
 function buildEvmSendAssets(coins: DisplayCoin[]): DisplayCoin[] {
-  // View-only rows (native Makalu LAX) can't be sent.
+  // Read-only rows can't be sent: Makalu's LAX, whose transfers the chain
+  // never authorised, and any Lithic token with the kill switch thrown.
   const evmOwned   = coins.filter(c => !NON_EVM_SYMS.has(c.sym) && c.chainId != null && !c.readOnly);
   const ownedByKey = new Map(evmOwned.map(c => [coinKey(c), c]));
+  // A Lithic token is in no token catalog, so it has no synthetic entry to be
+  // merged onto below — it is only ever here because the user holds it.
+  const lithicOwned = evmOwned.filter(c => c.nativeTarget);
 
   const externalSynthetic: DisplayCoin[] = [
     ...allEvmChains().map((ch): DisplayCoin => ({
@@ -3716,7 +3724,7 @@ function buildEvmSendAssets(coins: DisplayCoin[]): DisplayCoin[] {
       native: false, chainId: t.chainId, tokenAddress: t.address,
     })),
   ];
-  return externalSynthetic.map(s => ownedByKey.get(coinKey(s)) ?? s);
+  return [...externalSynthetic.map(s => ownedByKey.get(coinKey(s)) ?? s), ...lithicOwned];
 }
 
 /** One-tap recipients for moving funds between the user's own accounts.
@@ -3947,7 +3955,9 @@ function SendModal({ onClose, initialChain, initialChainId, initialCoin, address
     const evmNet = chain === 'evm' && coin?.chainId ? getExtEvmChain(coin.chainId) : undefined;
     if (chain === 'evm') {
       if (!coin) return;
-      if (!coin.native && !coin.tokenAddress) {
+      // A Lithic token has neither: it is reached through the gateway, with
+      // its native target as the argument.
+      if (!coin.native && !coin.tokenAddress && !coin.nativeTarget) {
         setError(`${coin.sym} has no contract address available.`);
         return;
       }
@@ -3995,6 +4005,9 @@ function SendModal({ onClose, initialChain, initialChainId, initialCoin, address
         amount,
         decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
         tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        // A Lithic token is addressed to the LithoVM gateway, with this as the
+        // argument — its own address holds no EVM code.
+        nativeLithicTarget: chain === 'evm' && coin ? coin.nativeTarget : undefined,
         memo:         chain === 'cosmos' ? memo : undefined,
         signWith:     chain === 'evm' ? signer : 'seed',
         ledger:       chain === 'evm' && signer === 'ledger' ? ledger ?? undefined : undefined,
