@@ -799,6 +799,11 @@ function heldTokenRows(tokens: HeldToken[], prices: Record<string, number>, list
  *  never arrive through the ordinary token path and is read through the
  *  LithoVM gateway here. A failed read keeps its error rather than showing a
  *  zero, which would read as "you hold nothing". */
+/** Kill switch for Lithic sends (default on). A read-only row is one the
+ *  Send screen will not offer. */
+const LITHIC_SENDS_FLAG =
+  (typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_THANOS_LITHIC_SENDS : undefined) as string | undefined;
+
 async function readLithicAssets(address: string): Promise<DisplayAsset[]> {
   const [lithic, custom, ext] = await Promise.all([
     import('./lib/native-lithic'), import('./lib/custom-assets'), import('./lib/evm-external'),
@@ -814,7 +819,11 @@ async function readLithicAssets(address: string): Promise<DisplayAsset[]> {
       sym: token.symbol, name: token.name, chainId: token.chainId,
       balance: 0, balanceText: '—', decimals: token.decimals,
       priceUsd: 0, usdValue: 0, color: assetColor(token.symbol), native: false,
-      nativeTarget: token.nativeTarget, readOnly: true, nativeLabel: lithic.lithicNetworkLabel(token),
+      // Sendable once the token allows it and the kill switch is not thrown;
+      // Makalu's LAX stays view-only, its transfers were never authorised.
+      nativeTarget: token.nativeTarget,
+      readOnly: !lithic.canSendLithic(token, LITHIC_SENDS_FLAG),
+      nativeLabel: lithic.lithicNetworkLabel(token),
     };
     try {
       const r = await lithic.readLithicBalance(address, token, { rpcUrl: rpcFor(token)! });
@@ -4308,8 +4317,12 @@ const CHAIN_META: Record<SendChainOption, { label: string; sym: string; decimals
 /** Unique key per holding — a bare symbol is ambiguous now that ETH exists on
  *  5 chains (Ethereum/Base/Arbitrum/Linea/Optimism) and USDT/USDC on many.
  *  Key = sym@chainId[:tokenAddress]. */
-const assetKeyOf = (a: { sym: string; chainId: number; tokenAddress?: string }): string =>
-  `${a.sym}@${a.chainId}${a.tokenAddress ? ':' + a.tokenAddress : ''}`;
+const assetKeyOf = (a: { sym: string; chainId: number; tokenAddress?: string; nativeTarget?: string }): string =>
+  // The native target is part of the key: a Lithic token and an ERC-20 of the
+  // same symbol on the same chain are different assets reached different
+  // ways, and sending one as the other would lose the money.
+  `${a.sym}@${a.chainId}${a.tokenAddress ? ':' + a.tokenAddress : ''}`
+  + (a.nativeTarget ? `:native:${a.nativeTarget.toLowerCase()}` : '');
 
 /* ── Hide/show networks + assets ──────────────────────────────────────────
    A pure DISPLAY preference — it never restricts Send/Receive/dApp use, so a
@@ -4737,6 +4750,12 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
     // A 0x or litho1 recipient (toEvm): the simulator can't resolve .litho.
     if (chain !== 'evm' || !coin || !evmNet || !toEvm
         || (amtNum <= 0 && hexBytes === 0) || !hexOk || overBalance) { setSimReport(null); return; }
+    // A Lithic token is neither a native coin nor an ERC-20, so the simulator
+    // would model the amount as a native LITHO transfer and warn on the gas
+    // balance. Its own pre-flight (balance, paused, frozen) runs before
+    // signing and gives the real reason — the only way to get one, since a
+    // rejected Lithic call reverts with none.
+    if (coin.nativeTarget) { setSimReport(null); return; }
     const toAddr = toEvm;
     const fromAddr = addr;
     const amount = shownAmt;
@@ -4768,7 +4787,9 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
     if (sending) return;
     if (chain === 'evm') {
       if (!coin) return;
-      if (!coin.native && !coin.tokenAddress) {
+      // A Lithic token has neither: it is reached through the gateway, with
+      // its native target as the argument.
+      if (!coin.native && !coin.tokenAddress && !coin.nativeTarget) {
         Alert.alert('Cannot send', `${coin.sym} has no contract address available.`);
         return;
       }
@@ -4803,6 +4824,9 @@ function SendScreen({ goBack, initialChain, initialSym, initialChainId, initialT
         amount:       shownAmt,
         decimals:     chain === 'evm' && coin ? coin.decimals : meta.decimals,
         tokenAddress: chain === 'evm' && coin && !coin.native ? coin.tokenAddress : undefined,
+        // A Lithic token goes to the LithoVM gateway with this as its
+        // argument; its own address holds no EVM code.
+        nativeTarget: chain === 'evm' && coin ? coin.nativeTarget : undefined,
         memo:         chain === 'cosmos' ? memo : undefined,
         data:         hexBytes > 0 ? hexInput : undefined,
       });

@@ -23,14 +23,25 @@ import { TokenIcon } from '../TokenIcon';
 interface Props {
   value:   string;
   onChange:(sym: string) => void;
-  options: string[];                  // list of symbols
+  options: string[];                  // list of symbols, or `prefix:SYMBOL` ids
+  /** Text for an option. Defaults to the id itself. Used where an id is not
+   *  a bare symbol — a Lithic asset is listed as `lithic:LAX` so a custom
+   *  token of the same name can never be picked in its place. */
+  label?: (value: string) => string;
   /** Width override — defaults to fill container. */
   width?:  React.CSSProperties['width'];
   /** Optional aria-label for the trigger. */
   ariaLabel?: string;
 }
 
-export function TokenSelect({ value, onChange, options, width, ariaLabel }: Props) {
+/** The icon to draw for an id: the part after the prefix, when it has one. */
+function iconSym(id: string): string {
+  const i = id.indexOf(':');
+  return i === -1 ? id : id.slice(i + 1);
+}
+
+export function TokenSelect({ value, onChange, options, width, ariaLabel, label }: Props) {
+  const text = (v: string) => (label ? label(v) : v);
   return (
     <Select.Root value={value} onValueChange={onChange}>
       <Select.Trigger
@@ -48,9 +59,9 @@ export function TokenSelect({ value, onChange, options, width, ariaLabel }: Prop
           backgroundImage:'none',
         }}
       >
-        <TokenIcon sym={value} size={22}/>
+        <TokenIcon sym={iconSym(value)} size={22}/>
         <Select.Value asChild>
-          <span style={{ flex: 1, fontWeight: 600 }}>{value}</span>
+          <span style={{ flex: 1, fontWeight: 600 }}>{text(value)}</span>
         </Select.Value>
         <Select.Icon asChild>
           <ChevronDown size={16} strokeWidth={2} style={{ color: 'var(--text-muted)' }}/>
@@ -97,9 +108,9 @@ export function TokenSelect({ value, onChange, options, width, ariaLabel }: Prop
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <TokenIcon sym={sym} size={22}/>
+                <TokenIcon sym={iconSym(sym)} size={22}/>
                 <Select.ItemText asChild>
-                  <span style={{ flex: 1 }}>{sym}</span>
+                  <span style={{ flex: 1 }}>{text(sym)}</span>
                 </Select.ItemText>
                 <Select.ItemIndicator>
                   <Check size={14} strokeWidth={2.5} style={{ color: 'var(--blue)' }}/>

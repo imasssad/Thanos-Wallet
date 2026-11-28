@@ -12,9 +12,13 @@
  */
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
-  MAINNET_LAX, NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount,
+  MAINNET_LAX, NATIVE_LAX, canSendLithic, fetchEcosystemPrices, formatFiat, formatNativeAmount,
   lithicNetworkLabel, readLithicBalance, type LithicToken,
 } from '@thanos/sdk-core';
+
+/** Kill switch for Lithic sends (default on). A read-only row is one the
+ *  Send screen will not offer. */
+const LITHIC_SENDS_FLAG = import.meta.env?.VITE_THANOS_LITHIC_SENDS as string | undefined;
 import { EXT_EVM_CHAINS } from './evm-external-meta';
 import { getLocalActivity, resolvePendingActivity, setNativeHash, type LocalTx } from './local-activity';
 import { readSnapshot, writeSnapshot } from './portfolio-cache';
@@ -211,7 +215,10 @@ async function readLithicCoins(address: string): Promise<DisplayCoin[]> {
       sym: token.symbol, name: token.name, chainId: token.chainId,
       balance: 0, balanceText: '—', decimals: token.decimals,
       priceUsd: 0, usdValue: 0, pct: 0, color: coinColor(token.symbol), native: false,
-      nativeTarget: token.nativeTarget, readOnly: true, nativeLabel: lithicNetworkLabel(token),
+      // Sendable once the token allows it and the kill switch is not thrown;
+      // Makalu's LAX stays view-only, its transfers were never authorised.
+      nativeTarget: token.nativeTarget, readOnly: !canSendLithic(token, LITHIC_SENDS_FLAG),
+      nativeLabel: lithicNetworkLabel(token),
     };
     try {
       const r = await readLithicBalance(address, token, { rpcUrl });

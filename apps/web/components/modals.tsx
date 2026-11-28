@@ -1,6 +1,13 @@
 'use client';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { humanSendError } from '@thanos/sdk-core';
+import {
+  humanSendError, lithicCoinId, lithicCoinLabel, lithicTokenForCoinId, sendableLithicTokens,
+} from '@thanos/sdk-core';
+import { useLithicTokens } from '../lib/native-lax';
+
+/** Kill switch for Lithic sends (default on). Read once: it is a build
+ *  constant, inlined by Next. */
+const LITHIC_SENDS_FLAG = process.env.NEXT_PUBLIC_THANOS_LITHIC_SENDS;
 import { TOKENS, SWAP_STABLES, swapPriceUsd, swapRateFor } from '../lib/tokens';
 import { usePrices } from '../lib/usePrices';
 import { useWallet } from './shell/AppShell';
@@ -11,6 +18,7 @@ import {
 import {
   SendError,
   sendNativeEvm, estimateNativeEvmFee, sendEvmToken, sendLithoNative, estimateLithoNativeFee,
+  sendLithicToken,
 } from '../lib/signer';
 import {
   getQuote   as multxGetQuote,
@@ -226,13 +234,27 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
     if (network === 'bitcoin') return ['BTC'];
     if (network === 'solana')  return ['SOL'];
     if (network === 'cosmos')  return ['ATOM'];
-    if (evmChain) return [evmChain.nativeSymbol, ...allTokensForChain(evmChain.chainId).map(t => t.symbol)];
+    if (evmChain) {
+      return [
+        evmChain.nativeSymbol,
+        ...allTokensForChain(evmChain.chainId).map(t => t.symbol),
+        // Lithic tokens are not ERC-20s and are not in any token catalog, so
+        // they are listed under their own id rather than a bare symbol: a
+        // user-added custom token called "LAX" must never be mistaken for
+        // the Lithic one, which lives behind the gateway.
+        ...sendableLithicTokens(evmChain.chainId, LITHIC_SENDS_FLAG).map(t => lithicCoinId(t.symbol)),
+      ];
+    }
     return [];
   }, [network, evmChain]);
 
   // Live balance of the selected EVM stablecoin (useLiveBalances doesn't track
   // stablecoins). Read balanceOf on the selected chain so the Send screen shows
   // the real USDT/USDC balance + MAX works.
+  // The selected Lithic token's balance. It is in no token catalog and no
+  // price feed, so neither useLiveBalances nor the stablecoin read below
+  // sees it; this is the same hook the portfolio rows use.
+  const lithicRows = useLithicTokens(wallet?.addresses?.evm);
   const [stableBal, setStableBal] = useState<string | null>(null);
   useEffect(() => {
     setStableBal(null);
@@ -308,6 +330,11 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
    *  ask for more than Mainnet held.) */
   const balanceFor = (sym: string) => {
     if (evmChainId !== null) {
+      const lithic = lithicTokenForCoinId(evmChainId, sym, LITHIC_SENDS_FLAG);
+      if (lithic) {
+        const row = lithicRows.find(r => r.token.nativeTarget === lithic.nativeTarget && r.ok);
+        return row?.ok ? row.read.balanceFormatted : '0';
+      }
       const tok = allEvmTokens().find(t => t.chainId === evmChainId && t.symbol === sym);
       if (tok) return stableBal ?? '0';
       if (evmChain && sym === evmChain.nativeSymbol) {
@@ -329,6 +356,12 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
      Note: external EVM-native coins (ETH/BNB/POL/AVAX/…) aren't in TOKENS
      because that file is the Lithosphere ecosystem registry. The
      `isEvmSend` branch below is driven by `network`, not `selectedToken`. */
+  /** The Lithic token the picker is on, when it is on one. Null for every
+   *  ordinary asset, so the branches below are untouched for them. */
+  const lithicToken = useMemo(
+    () => (evmChainId === null ? null : lithicTokenForCoinId(evmChainId, coin, LITHIC_SENDS_FLAG)),
+    [evmChainId, coin],
+  );
   const selectedToken = useMemo(() => TOKENS.find(t => t.sym === coin) ?? null, [coin]);
   const isEvmSend     = network.startsWith('evm:');
   const isSolanaSend  = !isEvmSend && (network === 'solana'  || selectedToken?.chain === 'Solana');
@@ -547,6 +580,14 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
     const targetChainId = isEvmSend ? evmChainId : lithoChainId;
     if (!targetChainId) { setSimReport(null); return; }
     if (isSolanaSend || isBitcoinSend || isCosmosSend) { setSimReport(null); return; }
+    // A Lithic token is not simulated here. The simulator understands native
+    // coins and ERC-20s; a Lithic asset is neither, so with no token address
+    // it would model the amount as a native LITHO transfer and block the send
+    // on the gas balance — the same nonsense the ERC-20 case below avoids.
+    // Nothing is lost: sendLithicToken asks the token itself (balance,
+    // paused, frozen) before signing and reports the real reason, which is
+    // the only way to get one — a rejected Lithic call reverts with none.
+    if (lithicToken) { setSimReport(null); return; }
     const fromAddr = canonicalEvm || (isEvmSend ? to.trim() : '');
     // Don't simulate when we don't even know the sender — happens briefly
     // before the wallet resolves an EVM address from the active source.
@@ -572,7 +613,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
       if (!cancelled) setSimReport(report);
     }, 450);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [coin, to, amount, recipientValidation.valid, canonicalEvm, isEvmSend, isSolanaSend, isBitcoinSend, isCosmosSend, evmChainId, wallet?.addresses?.evm]);
+  }, [coin, to, amount, recipientValidation.valid, canonicalEvm, isEvmSend, isSolanaSend, isBitcoinSend, isCosmosSend, evmChainId, lithicToken, wallet?.addresses?.evm]);
 
   /* Record a just-broadcast send in the local pending-tx store so the
      Activity feed can show an optimistic "Pending" row until the indexer
@@ -901,7 +942,18 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
         // Signing happens in the signer worker (hardening-audit H-1) — it
         // already holds the unlocked key and tracks the active HD account,
         // so neither call below needs the seed/private key at all.
-        const result = tokenOnChain
+        // A Lithic token is addressed to the LithoVM gateway, never to the
+        // token: its address holds no EVM code, so an ERC-20 transfer there
+        // would be a transfer into nothing. sendLithicToken also asks the
+        // token why a send would fail first — a rejected Lithic call carries
+        // no reason at all, so without that the user would see only
+        // "execution reverted" after paying the gas.
+        const result = lithicToken
+          ? await sendLithicToken({
+              chainId: evmChainId, nativeTarget: lithicToken.nativeTarget,
+              recipient: evmRecipient, amount,
+            })
+          : tokenOnChain
           ? await sendEvmToken({
               chainId: evmChainId, tokenAddress: tokenOnChain.address, decimals: tokenOnChain.decimals,
               symbol: tokenOnChain.symbol, recipient: evmRecipient, amount,
@@ -1229,7 +1281,7 @@ export function SendModal({ onClose, initialNetwork, initialCoin, initialAddress
             with just its native coin gets a static chip. */}
         <div style={{ marginBottom: 12 }}>
           {sendableCoins.length > 1 ? (
-            <TokenSelect value={coin} onChange={setCoin} options={sendableCoins} ariaLabel="Send asset"/>
+            <TokenSelect value={coin} onChange={setCoin} options={sendableCoins} label={lithicCoinLabel} ariaLabel="Send asset"/>
           ) : (
             <div className="field-select" style={{
               display: 'flex', alignItems: 'center', gap: 10,
