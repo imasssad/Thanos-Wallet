@@ -26,7 +26,7 @@ function stepText(step: MultXBridgeStep, o: MultXBridgeOption): string {
   }
 }
 
-const ROW: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 11, marginTop: 6, color: 'var(--text-secondary)' };
+const ROW: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 12.5, marginTop: 6, color: 'var(--text-secondary)' };
 
 const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
@@ -49,8 +49,8 @@ function TxLink({ chainId, hash, label }: { chainId: number; hash?: string; labe
     <div style={ROW}>
       <span>{label}</span>
       {href
-        ? <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)', fontFamily: litho ? undefined : 'monospace', fontSize: 12 }}>{litho ? 'View on LithoScan' : short(hash)}</a>
-        : <code style={{ fontSize: 12 }}>{short(hash)}</code>}
+        ? <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue, #3b7af7)', fontFamily: litho ? undefined : 'monospace', fontSize: 14 }}>{litho ? 'View on LithoScan' : short(hash)}</a>
+        : <code style={{ fontSize: 14 }}>{short(hash)}</code>}
     </div>
   );
 }
@@ -147,17 +147,17 @@ export function MultXBridgePanel({ seed }: { seed: string[] }) {
 
   if (loadErr) {
     return (
-      <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
+      <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.5 }}>
         <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Bridge unavailable</div>
         {loadErr}
         <div><button className="btn-outline" style={{ marginTop: 12 }} onClick={load}>Try again</button></div>
       </div>
     );
   }
-  if (!options) return <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Loading bridge routes…</div>;
+  if (!options) return <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 15 }}>Loading bridge routes…</div>;
   if (!options.length) {
     return (
-      <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
+      <div className="modal-body" style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 15, lineHeight: 1.5 }}>
         <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>No bridge routes are open</div>
         MultX transfers are paused right now. Try again later.
       </div>
@@ -193,26 +193,26 @@ export function MultXBridgePanel({ seed }: { seed: string[] }) {
         <label className="field-label" style={{ margin: 0 }}>AMOUNT</label>
         {option && balance !== null && (
           <button type="button" disabled={busy} onClick={() => setAmt(formatBridgeAmount(balance, option.decimals))}
-            style={{ background: 'none', border: 'none', color: 'var(--blue, #3b7af7)', fontSize: 11, cursor: 'pointer', padding: 0 }}>
+            style={{ background: 'none', border: 'none', color: 'var(--blue, #3b7af7)', fontSize: 12.5, cursor: 'pointer', padding: 0 }}>
             Balance {formatBridgeAmount(balance, option.decimals)} {option.symbol} · Max
           </button>
         )}
       </div>
       <input className="field" inputMode="decimal" value={amt} disabled={busy} aria-label="Amount"
         onChange={(e) => setAmt(e.target.value)} placeholder="0.00" style={{ width: '100%', marginTop: 6, borderColor: amountErr ? 'var(--red)' : undefined }}/>
-      {amountErr && <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4 }}>{amountErr}</div>}
+      {amountErr && <div style={{ fontSize: 12.5, color: 'var(--red)', marginTop: 4 }}>{amountErr}</div>}
 
       {option && from && to && (
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 12, lineHeight: 1.5 }}>
           Arrives at <strong style={{ color: 'var(--text-secondary)' }}>your address on {to.name}</strong>
           {address ? <> ({shortAddrOn(address, dst)})</> : null}. The network fee is paid
           in {from.nativeSymbol} on {from.name}{base ? '; the first transfer of a token also needs an approval' : ''}.
         </div>
       )}
 
-      {busy && option && <div role="status" style={{ fontSize: 12, color: TONE.pending, marginTop: 10 }}>{stepText(step!, option)}</div>}
+      {busy && option && <div role="status" style={{ fontSize: 14, color: TONE.pending, marginTop: 10 }}>{stepText(step!, option)}</div>}
       {outcome && current && (
-        <div role="status" style={{ fontSize: 12, color: TONE[outcome.tone], marginTop: 10, lineHeight: 1.5 }}>
+        <div role="status" style={{ fontSize: 14, color: TONE[outcome.tone], marginTop: 10, lineHeight: 1.5 }}>
           {current.status === 'RELEASED' && `✓ ${formatBridgeAmount(current.amountBaseUnits, current.decimals)} ${current.symbol} arrived on ${multxChain(current.destinationChainId).name}.`}
           {current.status === 'REVIEW' && 'Your tokens were sent, but the release on the other network isn’t confirmed yet. It stays in Recent transfers and is checked again next time you open the bridge.'}
           {current.status === 'FAILED' && 'The transfer failed on the source network, so no tokens left your wallet.'}
@@ -221,7 +221,7 @@ export function MultXBridgePanel({ seed }: { seed: string[] }) {
       )}
       {current && <TxLink chainId={current.sourceChainId} hash={current.sourceTxHash} label="Lock"/>}
       {current && <TxLink chainId={current.destinationChainId} hash={current.destinationTxHash} label="Release"/>}
-      {err && <div role="alert" style={{ fontSize: 12, color: 'var(--red)', marginTop: 10 }}>{err}</div>}
+      {err && <div role="alert" style={{ fontSize: 14, color: 'var(--red)', marginTop: 10 }}>{err}</div>}
 
       <button className="btn-primary" style={{ marginTop: 14 }} disabled={!canRun} onClick={run}>
         {!canSign ? 'This account can’t sign here' : busy ? 'Bridging…' : `Bridge${option ? ` ${option.symbol}` : ''}${to ? ` to ${to.name}` : ''}`}
@@ -240,8 +240,8 @@ export function MultXBridgePanel({ seed }: { seed: string[] }) {
                   <span style={{ color: 'var(--text-muted)' }}> · {multxChain(t.sourceChainId).name} → {multxChain(t.destinationChainId).name}</span>
                 </span>
                 {href
-                  ? <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: TONE[l.tone], fontSize: 12, fontWeight: 600 }}>{l.label}</a>
-                  : <span style={{ color: TONE[l.tone], fontSize: 12, fontWeight: 600 }}>{l.label}</span>}
+                  ? <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: TONE[l.tone], fontSize: 14, fontWeight: 600 }}>{l.label}</a>
+                  : <span style={{ color: TONE[l.tone], fontSize: 14, fontWeight: 600 }}>{l.label}</span>}
               </div>
             );
           })}
@@ -249,7 +249,7 @@ export function MultXBridgePanel({ seed }: { seed: string[] }) {
       )}
 
       {release && (
-        <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
           MultX release {release.tag} · {release.commit.slice(0, 7)}
         </div>
       )}

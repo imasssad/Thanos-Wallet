@@ -4,7 +4,8 @@
  * web app, the extension popup and the desktop app alike.
  */
 import React, { useState } from 'react';
-import { isAnyAddress, parseAddress, toLithoAddress } from '@litho-vault/sdk';
+import { isAnyAddress, parseAddress } from '@litho-vault/sdk';
+import { formatForDisplay, shortForDisplay } from '@thanos/sdk-core/src/utils/litho-address';
 
 type Children = { children?: React.ReactNode };
 
@@ -145,38 +146,33 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
 }
 
 /**
- * An address as Thanos shows it: litho1… for everything (people, the multisig itself, tokens).
- * 0x… is the secondary form: its own line under the litho1 address in full views, and the "0x"
- * switch in compact ones. The copy button copies the form shown.
+ * An address as Thanos shows it: the bech32 litho1… form, and only that —
+ * people, the multisig itself, tokens, every one of them.
+ *
+ * The 0x form is never shown, never copied and never put in a tooltip
+ * (client 2026-11-24, the same rule Litho Vault follows). It is still what
+ * the contract calls, the signer and the RPC use; formatForDisplay converts
+ * at this edge, on the way to the screen. An address that can't be parsed is
+ * printed as given rather than guessed at.
  */
 export function AddressText({ address, full = false, testId }: { address: string; full?: boolean; testId?: string }) {
-  const [showEvm, setShowEvm] = useState(false);
   const parsed = parseAddress(address);
   if (!parsed) return <span className="tms-mono">{address}</span>;
-  const litho = toLithoAddress(parsed);
+  const litho = formatForDisplay(parsed);
   if (full) {
     return (
-      <span className="tms-address tms-address-full" title={`${litho}\n${parsed}`} data-testid={testId}>
+      <span className="tms-address tms-address-full" title={litho} data-testid={testId}>
         <span className="tms-address-line">
           <span className="tms-mono" data-testid={testId ? `${testId}-litho` : undefined}>{litho}</span>
-          <CopyButton text={litho} label="Copy litho1 address" />
-        </span>
-        <span className="tms-address-line tms-address-evm">
-          <span className="tms-mono" data-testid={testId ? `${testId}-evm` : undefined}>{parsed}</span>
-          <CopyButton text={parsed} label="Copy 0x address" />
+          <CopyButton text={litho} label="Copy address" />
         </span>
       </span>
     );
   }
-  const shown = showEvm ? parsed : litho;
-  const short = showEvm ? `${parsed.slice(0, 8)}…${parsed.slice(-6)}` : `${litho.slice(0, 12)}…${litho.slice(-6)}`;
   return (
-    <span className="tms-address" title={`${litho}\n${parsed}`} data-testid={testId}>
-      <span className="tms-mono">{short}</span>
-      <CopyButton text={shown} label="Copy address" />
-      <button type="button" className="tms-address-switch" aria-pressed={showEvm} title={showEvm ? 'Show the litho1 address' : 'Show the 0x address'} onClick={() => setShowEvm((x) => !x)}>
-        {showEvm ? 'litho1' : '0x'}
-      </button>
+    <span className="tms-address" title={litho} data-testid={testId}>
+      <span className="tms-mono">{shortForDisplay(parsed)}</span>
+      <CopyButton text={litho} label="Copy address" />
     </span>
   );
 }
@@ -191,10 +187,16 @@ export function Field({ label, hint, children, error }: Children & { label: stri
   );
 }
 
-/** An address input that takes litho1… or 0x… and shows the other form of what was typed. */
+/**
+ * An address input. A pasted 0x… is still accepted — people copy them out of
+ * explorers and other wallets — but what is echoed back underneath is always
+ * the litho1 form, so the 0x never becomes the address the user reads.
+ */
 export function AddressInput({ value, onChange, placeholder, testId }: { value: string; onChange: (v: string) => void; placeholder?: string; testId?: string }) {
   const parsed = value.trim() ? parseAddress(value) : null;
-  const hint = parsed ? (value.trim().toLowerCase().startsWith('litho1') ? `EVM: ${parsed}` : toLithoAddress(parsed)) : null;
+  // Only when it adds something: echoing a litho1 the user just typed is noise.
+  const litho = parsed ? formatForDisplay(parsed) : null;
+  const hint = litho && litho !== value.trim() ? litho : null;
   return (
     <span className="tms-address-input">
       <input

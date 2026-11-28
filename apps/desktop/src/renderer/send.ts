@@ -226,6 +226,9 @@ export async function sendAsset(args: SendAssetArgs): Promise<string> {
   const path = activeHdPath();
   const bridge = (typeof window !== 'undefined' ? window.thanosDesktop?.signer : undefined);
 
+  // (A Lithic send never reaches here: it is handled above, where a hardware
+  // signer can serve as the sender the gateway insists on.)
+
   try {
     if (bridge && (await bridge.hasSeed())) {
       if (args.tokenAddress) {

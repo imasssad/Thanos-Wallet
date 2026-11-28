@@ -19,7 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@litho-vault/sdk": "file:../../vendor/litho-vault-sdk-1.0.0.tgz"
+    "@litho-vault/sdk": "file:../../vendor/litho-vault-sdk-1.0.0.tgz",
+    "@thanos/sdk-core": "workspace:*"
   },
   "peerDependencies": {
     "ethers": "^6.13.4",
@@ -28,8 +29,10 @@
   "devDependencies": {
     "@types/node": "^22.10.1",
     "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "ethers": "^6.13.4",
     "react": "18.3.1",
+    "react-dom": "18.3.1",
     "vitest": "^2.1.4"
   }
 }

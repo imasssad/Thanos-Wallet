@@ -1,4 +1,5 @@
-import { formatTokenUnits, shortAccount } from '@litho-vault/sdk';
+import { formatTokenUnits } from '@litho-vault/sdk';
+import { shortForDisplay } from '@thanos/sdk-core/src/utils/litho-address';
 import { useMultisig } from '../context';
 import { useAsync } from '../hooks';
 import { Button, Card, ErrorText, Icon, Notice, Pill, Screen, Spinner } from '../ui';
@@ -54,14 +55,14 @@ export function HomeScreen({ onBack }: { onBack?: () => void }) {
       {list.data && list.data.length > 0 && (
         <div className="tms-list" data-testid="tms-vault-list">
           {list.data.map((v) => (
-            <button type="button" className="tms-row" key={v.address} onClick={() => go({ name: 'vault', address: v.address })} data-testid={`tms-vault-${v.address}`}>
+            <button type="button" className="tms-row" key={v.address} onClick={() => go({ name: 'vault', address: v.address })} data-testid={`tms-vault-${shortForDisplay(v.address, 64, 0)}`}>
               <span className="tms-avatar" aria-hidden="true">
                 <Icon name="shield" size={18} />
               </span>
               <span className="tms-row-main">
                 <span className="tms-row-title">{v.name}</span>
                 <span className="tms-row-sub tms-mono">
-                  {shortAccount(v.address, 6)} · {String(v.threshold)} of {v.signers.filter((s) => s.type === 1 || s.type === 2).length}
+                  {shortForDisplay(v.address)} · {String(v.threshold)} of {v.signers.filter((s) => s.type === 1 || s.type === 2).length}
                 </span>
                 <span className="tms-pills">
                   {v.needsMyApproval > 0 && <Pill tone="info">Needs your approval · {v.needsMyApproval}</Pill>}

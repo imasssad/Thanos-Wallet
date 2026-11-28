@@ -13,6 +13,19 @@ const MOBILE_SSE = '../../../../apps/mobile/lib/quantt-sse';
 const MOBILE_AGENT_CONFIG = '../../../../apps/mobile/lib/quantt-agent-config';
 const mobileSse = (await import(/* @vite-ignore */ MOBILE_SSE)) as typeof import('../quantt/sse');
 const mobileAgentConfig = (await import(/* @vite-ignore */ MOBILE_AGENT_CONFIG)) as typeof import('../quantt/agent-config');
+
+// …and the CLIENT itself. It used to be tested here only in the sdk-core
+// copy, and the twins drifted: the cookie-free auth fix (37d210d) landed in
+// the mobile one alone, so web/desktop/extension spent two months unable to
+// reconnect to Quantts after a disconnect. apps/mobile/lib/quantt-client.ts
+// is dependency-free (the expo/ethers wiring lives in lib/quantt.ts) exactly
+// so this import works and the auth suite below can run against both.
+const MOBILE_CLIENT = '../../../../apps/mobile/lib/quantt-client';
+const mobileClient = (await import(/* @vite-ignore */ MOBILE_CLIENT)) as typeof import('../quantt/client');
+const CLIENTS = [
+  ['sdk-core', { QuanttClient, QuanttError }],
+  ['mobile twin', { QuanttClient: mobileClient.QuanttClient, QuanttError: mobileClient.QuanttError }],
+] as const;
 const IMPLS = [
   ['sdk-core', { SseParser: CoreSseParser, toAgentConfig: coreToAgentConfig, validateAgentUpdate: coreValidateAgentUpdate, diffAgentConfig: coreDiffAgentConfig }],
   ['mobile mirror', { ...mobileSse, ...mobileAgentConfig }],
@@ -104,6 +117,81 @@ describe('killSwitchMessage', () => {
       .toBe("Quantts has halted all agent trading. Agents can't be started until the halt is lifted.");
   });
 });
+
+/* Reconnecting after a disconnect used to be impossible: Quantts also keeps a
+   browser session in a `quantts_access` cookie, and a typed-verify that
+   carries it is read as "this signed-in user is LINKING a wallet", answered
+   with {linked:false, alreadyLinked:true} and no tokens. Disconnect clears our
+   stored tokens but cannot clear an httpOnly cookie, so every reconnect then
+   failed with "no access token in response". The mobile twin fixed this in
+   37d210d; web/desktop/extension go through this client, which kept sending
+   the cookie until 2026-11-24. */
+for (const [impl, { QuanttClient, QuanttError }] of CLIENTS) {
+describe(`Quantt auth is cookie-free (${impl})`, () => {
+  const ADDRESS = '0x7632460000000000000000000000000000000000';
+  /** What /v1/auth/wallet/typed-challenge issues (see quantt-challenge.test.ts). */
+  const signInChallenge = {
+    domain: { name: 'Quantts.ai', version: '1', chainId: 700777 },
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' },
+      ],
+      SignIn: [
+        { name: 'address', type: 'address' }, { name: 'nonce', type: 'bytes32' }, { name: 'validUntil', type: 'uint256' },
+      ],
+    },
+    primaryType: 'SignIn',
+    message: { address: ADDRESS, nonce: `0x${'ab'.repeat(32)}`, validUntil: 1_900_000_000 },
+  };
+  const sign = async () => '0xsig';
+
+  function clientFor(verifyBody: unknown) {
+    const calls: Array<[string, RequestInit]> = [];
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      if (url.endsWith('/v1/auth/wallet/typed-challenge')) return jsonResponse(signInChallenge);
+      if (url.endsWith('/v1/auth/wallet/typed-verify')) return jsonResponse(verifyBody);
+      return jsonResponse({});
+    }) as unknown as typeof fetch;
+    let stored: QuanttSession | null = null;
+    const c = new QuanttClient({ fetchImpl, store: { get: () => stored, set: (n) => { stored = n; } } });
+    return { c, calls };
+  }
+
+  it('sends no cookies on the sign-in handshake', async () => {
+    const { c, calls } = clientFor({ accessToken: 'at', refreshToken: 'rt' });
+    await expect(c.signIn(ADDRESS, sign)).resolves.toMatchObject({ accessToken: 'at' });
+    expect(calls.map(([u]) => u.split('/v1')[1])).toEqual(['/auth/wallet/typed-challenge', '/auth/wallet/typed-verify']);
+    for (const [url, init] of calls) {
+      expect(init.credentials, `${url} must not send cookies`).toBe('omit');
+    }
+  });
+
+  it('sends no cookies on authed requests or logout either', async () => {
+    const { c, calls } = clientFor({ accessToken: 'at', refreshToken: 'rt' });
+    await c.signIn(ADDRESS, sign);
+    await c.signOut();
+    expect(calls.some(([u]) => u.endsWith('/v1/auth/logout'))).toBe(true);
+    for (const [url, init] of calls) {
+      expect(init.credentials, `${url} must not send cookies`).toBe('omit');
+    }
+  });
+
+  it('explains an alreadyLinked answer instead of dumping the raw body', async () => {
+    const { c } = clientFor({
+      linked: false, alreadyLinked: true,
+      user: { id: 'cmucqc7qa002kao0i343uuuwl', email: ADDRESS },
+    });
+    const err = await c.signIn(ADDRESS, sign).then(() => null, (e: QuanttError) => e);
+    expect(err).toBeInstanceOf(QuanttError);
+    expect(err!.status).toBe(409);
+    expect(err!.message).toMatch(/already linked to a Quantts account/);
+    // The user's id and address never reach the message the UI shows.
+    expect(err!.message).not.toContain('cmucqc7qa002kao0i343uuuwl');
+    expect(err!.message).not.toContain('0x763246');
+  });
+});
+}
 
 describe('QuanttClient additions', () => {
   it('updateAgent refuses an invalid or empty body before any request', async () => {

@@ -62,7 +62,7 @@ test.describe('Native Lithic LAX (Makalu)', () => {
     await withMakalu(page);
     await createWallet(page);
 
-    const row = page.getByRole('button').filter({ hasText: 'Makalu native · view only' });
+    const row = page.getByRole('button').filter({ hasText: /Makalu native · view only/ });
     await expect(row).toBeVisible();
     await expect(row).toContainText('1,234.5 LAX');
     // Read with the native signature through the gateway, never ERC-20 balanceOf.
@@ -93,7 +93,7 @@ test.describe('Native Lithic LAX (Makalu)', () => {
     await withMakalu(page);
     await createWallet(page);
 
-    const row = page.getByRole('button').filter({ hasText: 'Makalu native · balance unavailable' });
+    const row = page.getByRole('button').filter({ hasText: /Makalu native · balance unavailable/ });
     await expect(row).toBeVisible();
     await expect(row).not.toContainText('0 LAX');
     await row.click();

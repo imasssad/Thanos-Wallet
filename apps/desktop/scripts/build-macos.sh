@@ -120,10 +120,17 @@ case "$MODE" in
       --config.mac.notarize.teamId="$APPLE_TEAM_ID"
     ;;
   mas)
-    say "Packaging Mac App Store .pkg  (v$VERSION) — see docs/DESKTOP-MACOS-APP-STORE.md"
+    # Always --arm64, whatever --arch said: the App Store build is Apple
+    # Silicon only, and without the flag electron-builder would build for
+    # THIS machine's architecture — on an Intel Mac that produces an x86_64
+    # .pkg that needs Rosetta, which App Review rejects (2026-11-22,
+    # guideline 2.4.5(ii)). Intel users get the direct-download .dmg
+    # (--arch x64). after-pack.cjs re-checks the packaged binary.
+    say "Packaging Mac App Store .pkg  (v$VERSION, arm64) — see docs/DESKTOP-MACOS-APP-STORE.md"
     [ -f build/thanos-mas.provisionprofile ] || \
       die "build/thanos-mas.provisionprofile missing — download the MAS provisioning profile first"
-    npx electron-builder --mac mas --publish never
+    [ "$ARCH" = "arm64" ] || echo "  ! ignoring --arch $ARCH: the App Store build is arm64 only"
+    npx electron-builder --mac mas --arm64 --publish never
     ;;
 esac
 

@@ -502,6 +502,9 @@ importers:
       '@litho-vault/sdk':
         specifier: file:../../vendor/litho-vault-sdk-1.0.0.tgz
         version: file:vendor/litho-vault-sdk-1.0.0.tgz(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+      '@thanos/sdk-core':
+        specifier: workspace:*
+        version: link:../sdk-core
     devDependencies:
       '@types/node':
         specifier: ^22.10.1
@@ -509,12 +512,18 @@ importers:
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.3.1
+        version: 18.3.7(@types/react@18.3.28)
       ethers:
         specifier: ^6.13.4
         version: 6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       react:
         specifier: 18.3.1
         version: 18.3.1
+      react-dom:
+        specifier: 18.3.1
+        version: 18.3.1(react@18.3.1)
       vitest:
         specifier: ^2.1.4
         version: 2.1.9(@types/node@22.19.17)(lightningcss@1.27.0)(terser@5.46.2)

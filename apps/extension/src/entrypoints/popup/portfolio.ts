@@ -13,8 +13,16 @@
  * Lithic LAX is read through the native gateway and shown view-only.
  */
 import { createContext, useContext, useEffect, useState } from 'react';
-import { NATIVE_LAX, fetchEcosystemPrices, formatFiat, formatNativeAmount, readNativeLaxBalance } from '@thanos/sdk-core';
-import { customChains } from '../../lib/custom-assets';
+import {
+  MAINNET_LAX, NATIVE_LAX, canSendLithic, fetchEcosystemPrices, formatFiat, formatNativeAmount,
+  lithicNetworkLabel, readLithicBalance, type LithicToken,
+} from '@thanos/sdk-core';
+
+/** Lithic sends stay off until a transfer has been confirmed on a real
+ *  build; balances and history are unaffected. */
+const LITHIC_SENDS_FLAG = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_THANOS_LITHIC_SENDS;
+import { customChains, onCustomAssetsChanged, refreshDiscoveredTokens } from '../../lib/custom-assets';
+import { EXT_EVM_CHAINS } from '../../lib/evm-external';
 import { getLocalActivity, addLocalReceive, mergeExplorerRows, resolvePendingActivity, rowId } from '../../lib/local-activity';
 import { fetchWalletHistory, HISTORY_EVM_CHAIN_IDS } from '../../lib/explorer-activity';
 import { detectIncoming, watchKeyEvm, watchKeyNative, type WatchedBalance } from '../../lib/incoming';
@@ -130,10 +138,14 @@ export interface DisplayCoin {
   tokenAddress?: string; native: boolean;
   /** EVM chainId for external-EVM holdings (1/56/137/…); absent for Litho/BTC/SOL/ATOM. */
   chainId?: number;
-  /** Native Lithic asset (Makalu LAX): its native target — not an ERC-20
-   *  address, so never a tokenAddress. View-only: no Send. */
+  /** A Lithic token (LAX on Lithosphere mainnet or Makalu): its native
+   *  target — not an ERC-20 address, so never a tokenAddress. The address has
+   *  no EVM code, so this row can only ever come from the gateway reader. */
   nativeTarget?: string;
+  /** No Send for this row yet — Lithic sends ship behind a flag. */
   readOnly?: boolean;
+  /** "Lithosphere native" / "Makalu native", for the row's subtitle. */
+  nativeLabel?: string;
   /** Exact balance in base units (`balance` is a lossy JS number). */
   baseUnits?: string;
   /** Block the balance was read at. */
@@ -183,25 +195,44 @@ export interface PortfolioState {
 /** Native LAX on Makalu, read through the native gateway — only when the
  *  user has added Makalu (700777) as a custom network, at that network's RPC.
  *  A failed read shows as unavailable, never as 0. */
-async function readNativeLaxCoin(address: string): Promise<DisplayCoin | null> {
-  const makalu = customChains().find((c) => c.chainId === NATIVE_LAX.chainId);
-  if (!makalu) return null;
-  const coin: DisplayCoin = {
-    sym: NATIVE_LAX.symbol, name: NATIVE_LAX.name, chainId: NATIVE_LAX.chainId,
-    balance: 0, balanceText: '—', decimals: NATIVE_LAX.decimals,
-    priceUsd: 0, usdValue: 0, color: coinColor(NATIVE_LAX.symbol), native: false,
-    nativeTarget: NATIVE_LAX.nativeTarget, readOnly: true,
-  };
-  try {
-    const r = await readNativeLaxBalance(address, { rpcUrl: makalu.rpcUrl });
-    return {
-      ...coin,
-      balance: Number(r.balanceFormatted), balanceText: formatNativeAmount(r.balanceBaseUnits, r.decimals),
-      baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+/** The RPC for a Lithic token's chain: a built-in network (Lithosphere
+ *  mainnet) or one the user added (Makalu). Null when the wallet has no
+ *  network for that chain, which is how Makalu stays hidden until added. */
+function lithicRpcUrl(token: LithicToken): string | null {
+  const builtin = EXT_EVM_CHAINS.find((c) => c.chainId === token.chainId);
+  if (builtin) return builtin.rpcUrl;
+  return customChains().find((c) => c.chainId === token.chainId)?.rpcUrl ?? null;
+}
+
+/** One row per Lithic token the wallet knows and has a network for.
+ *
+ *  A Lithic token is not an ERC-20 — its address has no EVM code — so it can
+ *  never come back from the ordinary token-balance path; it is read through
+ *  the gateway here. A failed read keeps the row with its error rather than
+ *  showing a zero, which would read as "you hold nothing". */
+async function readLithicCoins(address: string): Promise<DisplayCoin[]> {
+  const tokens: LithicToken[] = [MAINNET_LAX, NATIVE_LAX].filter((t) => !!lithicRpcUrl(t));
+  const reads = await Promise.allSettled(tokens.map(async (token) => {
+    const rpcUrl = lithicRpcUrl(token)!;
+    const blank: DisplayCoin = {
+      sym: token.symbol, name: token.name, chainId: token.chainId,
+      balance: 0, balanceText: '—', decimals: token.decimals,
+      priceUsd: 0, usdValue: 0, color: coinColor(token.symbol), native: false,
+      nativeTarget: token.nativeTarget, readOnly: !canSendLithic(token, LITHIC_SENDS_FLAG),
+      nativeLabel: lithicNetworkLabel(token),
     };
-  } catch (e) {
-    return { ...coin, readError: e instanceof Error ? e.message : String(e) };
-  }
+    try {
+      const r = await readLithicBalance(address, token, { rpcUrl });
+      return {
+        ...blank,
+        balance: Number(r.balanceFormatted), balanceText: formatNativeAmount(r.balanceBaseUnits, r.decimals),
+        baseUnits: r.balanceBaseUnits, blockHeight: r.blockHeight,
+      };
+    } catch (e) {
+      return { ...blank, readError: e instanceof Error ? e.message : String(e) };
+    }
+  }));
+  return reads.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
 }
 
 /** Fetch + price the wallet's portfolio and activity. When `seed` is
@@ -221,6 +252,11 @@ function initialStateFor(address: string): Omit<PortfolioState, 'reload' | 'addr
 export function usePortfolio(address: string, seed?: string[]): PortfolioState {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<Omit<PortfolioState, 'reload' | 'address'>>(() => initialStateFor(address));
+
+  // The token list changing — a token added or removed in Settings, or one
+  // discovery found — re-reads the balances, so the row appears without the
+  // popup being closed and opened again.
+  useEffect(() => onCustomAssetsChanged(() => setNonce((n) => n + 1)), []);
 
   const seedKey = seed?.join(' ') ?? '';
 
@@ -243,7 +279,7 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
         if (cancelled) return;
 
         // Started now, awaited with the rest below.
-        const nativeLax = readNativeLaxCoin(address);
+        const nativeLax = readLithicCoins(address);
 
         // Cross-chain native positions — only when seed is unlocked.
         const xchain: DisplayCoin[] = [];
@@ -320,7 +356,14 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
             }]),
           ]);
           const natives = nativeReads.filter((r): r is { chain: typeof r.chain; balance: number } => r.balance != null && r.balance > 0);
-          const tokens = tokenReads.filter((r): r is { token: typeof r.token; balance: number } => r.balance != null && r.balance > 0);
+          // Built-in USDT/USDC are a catalog: only what's actually held shows.
+          // A token the USER added is an explicit "show me this", so it keeps
+          // its row at zero — and even when the RPC read fails (balance null),
+          // so an added asset never silently vanishes from Home/Assets.
+          const tokens = tokenReads.flatMap(({ token, balance }) =>
+            balance != null && balance > 0 ? [{ token, balance }]
+            : token.custom              ? [{ token, balance: balance ?? 0 }]
+            : []);
           for (const { chain, balance } of natives) {
             const priceUsd = prices[chain.nativeSymbol] ?? 0;
             evmExt.push({
@@ -344,11 +387,16 @@ export function usePortfolio(address: string, seed?: string[]): PortfolioState {
           }
         } catch { /* best-effort */ }
 
-        const lax = await nativeLax;
+        // What else this address holds on Lithosphere (LithoScan). Throttled,
+        // never awaited here: it only announces a change, which re-runs this
+        // effect and reads the new rows' balances the normal way.
+        void refreshDiscoveredTokens(address);
+
+        const lithicCoins = await nativeLax;
         if (cancelled) return;
         const totalUsd = xchain.reduce((s, x) => s + x.usdValue, 0)
                        + evmExt.reduce((s, x) => s + x.usdValue, 0);
-        const coins: DisplayCoin[] = [...xchain, ...evmExt, ...(lax ? [lax] : [])];
+        const coins: DisplayCoin[] = [...xchain, ...evmExt, ...lithicCoins];
         // Lithosphere MAINNET (chainId 9005) always leads regardless of
         // amount — the Web4 home chain, client requirement 2026-08-27.
         coins.sort((a, b) => {

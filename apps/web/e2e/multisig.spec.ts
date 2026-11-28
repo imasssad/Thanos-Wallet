@@ -42,13 +42,20 @@ test('create a 2-of-3 MultiSig, propose a payment, approve and execute it', asyn
   await page.getByTestId('tms-signer-2').fill(await second.getAddress());
   await page.getByTestId('tms-add-signer').click();
   await page.getByTestId('tms-signer-3').fill(toLithoAddress(await third.getAddress()));
-  await expect(page.getByTestId('tms-signer-3-hint')).toHaveText(`EVM: ${await third.getAddress()}`);
+  // A litho1 typed in is already the display form, so there is nothing to echo.
+  await expect(page.getByTestId('tms-signer-3-hint')).toHaveCount(0);
+  // A pasted 0x IS echoed — as litho1, never as the 0x that was pasted.
+  await expect(page.getByTestId('tms-signer-2-hint')).toHaveText(toLithoAddress(await second.getAddress()));
   await page.getByTestId('tms-threshold').selectOption('2');
   await page.getByTestId('tms-deploy').click();
 
   await expect(page.getByTestId('tms-vault-name')).toHaveText('E2E treasury', { timeout: 60_000 });
-  const vault = (await page.getByTestId('tms-vault-address-evm').innerText()).trim();
-  await expect(page.getByTestId('tms-vault-address-litho')).toHaveText(toLithoAddress(vault));
+  // Only the litho1 form is on screen (client 2026-11-24). The 0x the funding
+  // transaction below needs is derived from it, not read off the page.
+  const shownVault = (await page.getByTestId('tms-vault-address-litho').innerText()).trim();
+  expect(shownVault.startsWith('litho1')).toBe(true);
+  const vault = parseAddress(shownVault)!;
+  await expect(page.getByTestId('tms-vault-address')).not.toContainText(vault);
   await expect(page.getByTestId('tms-signers')).toContainText('2 of 3 must approve');
 
   // Fund it and propose sending 1.25 LITHO.

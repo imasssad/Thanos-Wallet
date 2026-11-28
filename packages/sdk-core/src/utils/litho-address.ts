@@ -136,6 +136,52 @@ export function truncateLithoAddress(address: string, leading = 10, trailing = 6
 }
 
 /**
+ * The ONE way Lithosphere addresses reach the user: always the bech32
+ * litho1… form, never 0x.
+ *
+ * Thanos MultiSig and Litho Vault both show litho1 only (client 2026-11-24).
+ * 0x stays everywhere it is load-bearing — contract calls, signing, RPC,
+ * storage keys — and is converted at the edge, here, on the way to the
+ * screen. Routing every MultiSig address surface through this one function
+ * is what stops a stray 0x reappearing in a new screen.
+ *
+ * Anything that is not an address this module can parse comes back
+ * unchanged: callers pass names, ENS/DNNS strings and empty values through
+ * it too, and a label must never be mangled into something it is not.
+ *
+ *   formatForDisplay('0x742d35Cc6634C0532925a3b844Bc454e4438f44e')
+ *   // → 'litho1wglp4tqdgcjvp6xhgczk3tnne7t4m8z5csd4l4'
+ *   formatForDisplay('litho1wglp…')  // → unchanged
+ *   formatForDisplay('treasury.litho') // → unchanged
+ */
+export function formatForDisplay(address: string | null | undefined): string {
+  if (!address) return '';
+  const value = address.trim();
+  if (!isEvmAddress(value)) return value;
+  try {
+    return evmToLitho(value);
+  } catch {
+    // An address that cannot be encoded is still not shown as 0x.
+    return value;
+  }
+}
+
+/**
+ * formatForDisplay + truncation, for rows and chips where the full address
+ * doesn't fit. Keeps the litho1 prefix legible at the front.
+ *
+ *   shortForDisplay('0x742d…f44e') // → 'litho1wglp4t…csd4l4'
+ */
+export function shortForDisplay(
+  address: string | null | undefined,
+  leading = 12,
+  trailing = 6,
+): string {
+  const shown = formatForDisplay(address);
+  return shown ? truncateLithoAddress(shown, leading, trailing) : '';
+}
+
+/**
  * Returns the "preferred" display format for a given chain.
  * On Lithosphere chains we show litho1... in the UI by default.
  */

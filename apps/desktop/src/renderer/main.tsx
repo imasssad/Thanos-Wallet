@@ -546,7 +546,7 @@ function PortfolioList({ onViewAll }: { onViewAll: () => void }) {
             <div className="portfolio-right">
               <div className="portfolio-price">{formatUsd(c.usdValue)}</div>
               <div className="portfolio-chg">{c.readOnly
-                ? (c.readError ? 'Makalu native · unavailable' : 'Makalu native · view only')
+                ? `${c.nativeLabel ?? 'Makalu native'} · ${c.readError ? 'unavailable' : 'view only'}`
                 : c.priceUsd > 0 ? formatUsd(c.priceUsd) : '—'}</div>
             </div>
           </div>
@@ -6203,8 +6203,17 @@ function useOpenDapp() {
   const openDapp = useContext(DappOpenerContext);
   // purpose 'kyc': LAX identity verification — the in-app view may then use
   // the camera / location once the user allows it (main/dapp-browser.ts).
+  //
+  // Except in the Mac App Store build, which ships without the camera and
+  // location entitlements (App Review 2026-11-22, guideline 2.4.5(i): an
+  // entitlement whose functionality a reviewer can't reach). There
+  // verification opens in the user's own browser, where the camera is the
+  // browser's to ask for — the same path every non-desktop client already
+  // takes. Everything else still opens in-app.
   return (url: string, name?: string, purpose?: 'kyc') => {
-    if (openDapp && window.thanosDesktop?.dapp) {
+    if (__MAS_BUILD__ && purpose === 'kyc') {
+      openExternal(url);
+    } else if (openDapp && window.thanosDesktop?.dapp) {
       openDapp(url, name || '', purpose);
     } else {
       openExternal(url);
@@ -6219,6 +6228,13 @@ const DAPP_ICONS: Record<string, string> = {
   agii: './images/dapps/agii.png', colle: './images/dapps/colle.png',
   furgpt: './images/dapps/furgpt.png',
   imagen: './images/dapps/imagen.png', ignite: './images/dapps/ignite.png', magma: './images/dapps/magma.png',
+  'litho-finance': './images/dapps/litho-finance.png', // client-supplied 2026-11-13
+  degens: './images/dapps/degens.png', // client-supplied 2026-11-24
+  // The product's own brand mark, from the litho-vault repo (docs/brand).
+  lithovault: './images/dapps/lithovault.png',
+  // Shipped in web/mobile but never copied here, so these showed letters.
+  'litho-deals': './images/dapps/litho-deals.png',
+  lithoscan: './images/dapps/lithoscan.png',
 };
 
 function DappTileIcon({ app }: { app: EcosystemApp }) {

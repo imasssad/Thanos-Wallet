@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { displayAccount } from '@litho-vault/sdk';
+import { formatForDisplay } from '@thanos/sdk-core/src/utils/litho-address';
 import { cleanVaultName } from '../../store';
 import { useMultisig } from '../context';
 import { useAction } from '../hooks';
@@ -44,7 +44,7 @@ export function CreateScreen({ onBack }: { onBack?: () => void }) {
             <input className="tms-input" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Team treasury" data-testid="tms-name" />
           </Field>
           <Field label="Signer 1 (you)">
-            <span className="tms-mono tms-static" data-testid="tms-me">{account ? displayAccount(account) : "—"}</span>
+            <span className="tms-mono tms-static" data-testid="tms-me">{account ? formatForDisplay(account) : "—"}</span>
           </Field>
           {others.map((o, i) => (
             <Field key={i} label={`Signer ${i + 2}`}>

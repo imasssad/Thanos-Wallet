@@ -257,7 +257,26 @@ async function askKycPermission(kind: KycPermission, origin: string, pageUrl: st
   return true;
 }
 
+/* The Mac App Store build ships WITHOUT the camera / location entitlements
+   (App Review 2026-11-22, guideline 2.4.5(i) — see
+   build/entitlements.mas.plist), so verification opens in the user's own
+   browser there instead (__MAS_BUILD__ in the renderer). This is the main
+   process's half of that: with no entitlement, asking the OS for the camera
+   would fail anyway, and a sandboxed app that touches a device it hasn't
+   declared is terminated — so a MAS build never grants either, whatever a
+   page asks for. Electron sets process.mas on Mac App Store builds; the
+   renderer's compile-time flag isn't visible here (the main process is
+   plain tsc output, not a Vite bundle). */
+const MAS_RUNTIME = process.mas === true;
+
 function installKycPermissions(ses: import('electron').Session): void {
+  if (MAS_RUNTIME) {
+    // Same blanket deny every other session gets.
+    ses.setPermissionRequestHandler((_w, _p, cb) => cb(false));
+    ses.setPermissionCheckHandler(() => false);
+    ses.setDevicePermissionHandler(() => false);
+    return;
+  }
   ses.setPermissionRequestHandler((wc, permission, callback, details) => {
     let answered = false;
     const reply = (ok: boolean) => { if (!answered) { answered = true; callback(ok); } };

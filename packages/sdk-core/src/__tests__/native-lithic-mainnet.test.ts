@@ -237,7 +237,10 @@ describe('preparing a mainnet send', () => {
 
   it('refuses an RPC for another chain, so a mainnet balance cannot be spent on a testnet', async () => {
     const { options } = rpc({ chainId: 700777 });
-    await expect(prepareNativeTransfer(NATIVE_LAX_MAINNET, HOLDER, RECIPIENT, 1n, options)).rejects.toThrow(/not chain 9005/);
+    // The message names the network rather than only its number: "not chain
+    // 9005" tells a user nothing, and this text reaches them.
+    await expect(prepareNativeTransfer(NATIVE_LAX_MAINNET, HOLDER, RECIPIENT, 1n, options))
+      .rejects.toThrow(/This RPC is not LITHO mainnet \(9005\)/);
   });
 
   it('still refuses a token whose sending is disabled, before any RPC call', async () => {

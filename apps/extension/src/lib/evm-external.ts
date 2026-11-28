@@ -12,6 +12,14 @@
  */
 import { Contract, JsonRpcProvider, HDNodeWallet, Wallet, Mnemonic, formatUnits, parseUnits, type Provider } from 'ethers';
 import { allEvmChains, allTokensForChain } from './custom-assets';
+import {
+  canSendLithic, estimateLithicTransferGas, findLithicToken, lithicTransferCall,
+  readLithicSendPreflight,
+} from '@thanos/sdk-core';
+
+/** Lithic sends are off until a transfer has been confirmed on a real build
+ *  (WXT exposes import.meta.env.VITE_*). */
+const LITHIC_SENDS_FLAG = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_THANOS_LITHIC_SENDS;
 
 export interface ExtEvmChain {
   chainId:      number;
@@ -125,7 +133,12 @@ export async function getAllExtEvmNativeBalances(address: string): Promise<Array
 
 /** Minimal token shape the portfolio/send need — satisfied by both the built-in
  *  ExtEvmToken (USDT/USDC) and user-added custom tokens. */
-export interface ExtTokenLike { chainId: number; symbol: string; name: string; address: string; decimals: number }
+export interface ExtTokenLike {
+  chainId: number; symbol: string; name: string; address: string; decimals: number;
+  /** true on a token the USER added (custom-assets.ts). Such a token keeps its
+   *  Home row at zero balance — see portfolio.ts. */
+  custom?: true;
+}
 
 /** ERC-20 balances for every known token (built-in USDT/USDC + custom);
  *  `null` where the read failed. */
@@ -168,6 +181,42 @@ function walletFor(seed: string[], accountIdx: number, provider: Provider) {
  * external EVM chain. `tokenAddress` present → ERC-20 transfer; else native.
  * Returns the broadcast tx hash.
  */
+/**
+ * Send a Lithic token. It is an ordinary EVM transaction — signed and
+ * broadcast by the same wallet as everything else — but addressed to the
+ * LithoVM gateway rather than to the token, carrying value 0.
+ *
+ * The pre-flight read is not optional politeness: a failed Lithic call
+ * reverts with NO reason data, so without it a paused token, a frozen
+ * account or a short balance all surface as a bare "execution reverted".
+ */
+async function sendLithic(
+  args: { chainId: number; nativeTarget?: string },
+  wallet: HDNodeWallet | Wallet,
+  to: string,
+  value: bigint,
+  rpcUrl: string,
+): Promise<string> {
+  const token = findLithicToken(args.chainId, args.nativeTarget!);
+  if (!token) throw new ExtEvmSendError('invalid_chain', 'Unknown Lithic token');
+  if (!canSendLithic(token, LITHIC_SENDS_FLAG)) {
+    throw new ExtEvmSendError('invalid_chain', `${token.symbol} sends are not enabled yet`);
+  }
+  const from = await wallet.getAddress();
+  const check = await readLithicSendPreflight(from, token, value, { rpcUrl }, to)
+    .catch(() => null);   // the send still gets its own chance if this read fails
+  if (check?.blockedReason) throw new ExtEvmSendError('insufficient', check.blockedReason);
+
+  const tx = lithicTransferCall(token, to, value);
+  // Estimate with the real sender, and send the estimate plus a margin: the
+  // chain charges for at least half the gas limit, so a round number is paid
+  // for rather than refunded.
+  const gasLimit = await estimateLithicTransferGas(from, token, to, value, { rpcUrl })
+    .catch(() => 400_000n);
+  const sent = await wallet.sendTransaction({ to: tx.to, value: 0n, data: tx.data, gasLimit });
+  return sent.hash;
+}
+
 export async function sendExtEvm(args: {
   seed: string[];
   accountIdx: number;
@@ -176,6 +225,9 @@ export async function sendExtEvm(args: {
   amount: string;       // human-readable
   decimals: number;     // 18 native, token decimals for ERC-20
   tokenAddress?: string;
+  /** A Lithic token's native target. Not an ERC-20 address: the transfer
+   *  goes to the LithoVM gateway instead, with this as its argument. */
+  nativeTarget?: string;
 }): Promise<string> {
   const chain = getExtEvmChain(args.chainId);
   if (!chain) throw new ExtEvmSendError('invalid_chain', `Unsupported chain ${args.chainId}`);
@@ -192,6 +244,7 @@ export async function sendExtEvm(args: {
   const wallet   = walletFor(args.seed, args.accountIdx, provider);
 
   try {
+    if (args.nativeTarget) return await sendLithic(args, wallet, to, value, chain.rpcUrl);
     if (args.tokenAddress) {
       const c = new Contract(args.tokenAddress, ERC20_TRANSFER_ABI, wallet);
       const sent = await c.transfer(to, value);
